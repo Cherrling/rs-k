@@ -33,6 +33,18 @@ struct rb_augment_callbacks {
 extern void __rb_insert_augmented(struct rb_node *node, struct rb_root *root,
 	void (*augment_rotate)(struct rb_node *old, struct rb_node *new));
 
+#ifdef CONFIG_RUST_RBTREE
+extern void rust_rb_insert_augmented(struct rb_node *node,
+				      struct rb_root *root,
+				      void (*augment_rotate)(struct rb_node *old,
+							     struct rb_node *new));
+extern void rust_rb_erase_color(struct rb_node *parent, struct rb_root *root,
+	void (*augment_rotate)(struct rb_node *old, struct rb_node *new));
+extern void rust_rb_erase_augmented(struct rb_node *node,
+				     struct rb_root *root,
+				     const struct rb_augment_callbacks *augment);
+#endif
+
 /*
  * Fixup the rbtree and update the augmented information when rebalancing.
  *
@@ -241,6 +253,7 @@ __rb_change_child_rcu(struct rb_node *old, struct rb_node *new,
 extern void __rb_erase_color(struct rb_node *parent, struct rb_root *root,
 	void (*augment_rotate)(struct rb_node *old, struct rb_node *new));
 
+#ifndef CONFIG_RUST_RBTREE
 static __always_inline struct rb_node *
 __rb_erase_augmented(struct rb_node *node, struct rb_root *root,
 		     const struct rb_augment_callbacks *augment)
@@ -351,6 +364,14 @@ rb_erase_augmented(struct rb_node *node, struct rb_root *root,
 	if (rebalance)
 		__rb_erase_color(rebalance, root, augment->rotate);
 }
+#else
+static inline void
+rb_erase_augmented(struct rb_node *node, struct rb_root *root,
+		   const struct rb_augment_callbacks *augment)
+{
+	rust_rb_erase_augmented(node, root, augment);
+}
+#endif
 
 static __always_inline void
 rb_erase_augmented_cached(struct rb_node *node, struct rb_root_cached *root,

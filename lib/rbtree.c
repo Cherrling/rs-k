@@ -12,6 +12,8 @@
 #include <linux/rbtree_augmented.h>
 #include <linux/export.h>
 
+#ifndef CONFIG_RUST_RBTREE
+
 /*
  * red-black trees properties:  https://en.wikipedia.org/wiki/Rbtree
  *
@@ -616,3 +618,79 @@ struct rb_node *rb_first_postorder(const struct rb_root *root)
 	return rb_left_deepest_node(root->rb_node);
 }
 EXPORT_SYMBOL(rb_first_postorder);
+
+#else
+
+void rb_insert_color(struct rb_node *node, struct rb_root *root)
+{
+	rust_rb_insert_color(node, root);
+}
+EXPORT_SYMBOL(rb_insert_color);
+
+void rb_erase(struct rb_node *node, struct rb_root *root)
+{
+	rust_rb_erase(node, root);
+}
+EXPORT_SYMBOL(rb_erase);
+
+bool rb_erase_linked(struct rb_node_linked *node, struct rb_root_linked *root)
+{
+	return rust_rb_erase_linked(node, root);
+}
+EXPORT_SYMBOL_GPL(rb_erase_linked);
+
+void __rb_insert_augmented(struct rb_node *node, struct rb_root *root,
+			   void (*augment_rotate)(struct rb_node *old,
+						  struct rb_node *new))
+{
+	rust_rb_insert_augmented(node, root, augment_rotate);
+}
+EXPORT_SYMBOL(__rb_insert_augmented);
+
+void __rb_erase_color(struct rb_node *parent, struct rb_root *root,
+		      void (*augment_rotate)(struct rb_node *old,
+					     struct rb_node *new))
+{
+	rust_rb_erase_color(parent, root, augment_rotate);
+}
+EXPORT_SYMBOL(__rb_erase_color);
+
+struct rb_node *rb_next(const struct rb_node *node)
+{
+	return rust_rb_next(node);
+}
+EXPORT_SYMBOL(rb_next);
+
+struct rb_node *rb_prev(const struct rb_node *node)
+{
+	return rust_rb_prev(node);
+}
+EXPORT_SYMBOL(rb_prev);
+
+void rb_replace_node(struct rb_node *victim, struct rb_node *new,
+		     struct rb_root *root)
+{
+	rust_rb_replace_node(victim, new, root);
+}
+EXPORT_SYMBOL(rb_replace_node);
+
+void rb_replace_node_rcu(struct rb_node *victim, struct rb_node *new,
+			 struct rb_root *root)
+{
+	rust_rb_replace_node_rcu(victim, new, root);
+}
+EXPORT_SYMBOL(rb_replace_node_rcu);
+
+struct rb_node *rb_next_postorder(const struct rb_node *node)
+{
+	return rust_rb_next_postorder(node);
+}
+EXPORT_SYMBOL(rb_next_postorder);
+
+struct rb_node *rb_first_postorder(const struct rb_root *root)
+{
+	return rust_rb_first_postorder(root);
+}
+EXPORT_SYMBOL(rb_first_postorder);
+
+#endif

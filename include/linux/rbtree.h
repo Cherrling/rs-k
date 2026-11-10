@@ -45,6 +45,23 @@ extern void rb_insert_color(struct rb_node *, struct rb_root *);
 extern void rb_erase(struct rb_node *, struct rb_root *);
 extern bool rb_erase_linked(struct rb_node_linked *, struct rb_root_linked *);
 
+#ifdef CONFIG_RUST_RBTREE
+extern void rust_rb_insert_color(struct rb_node *node, struct rb_root *root);
+extern void rust_rb_erase(struct rb_node *node, struct rb_root *root);
+extern bool rust_rb_erase_linked(struct rb_node_linked *node,
+				  struct rb_root_linked *root);
+extern struct rb_node *rust_rb_next(const struct rb_node *node);
+extern struct rb_node *rust_rb_prev(const struct rb_node *node);
+extern void rust_rb_replace_node(struct rb_node *victim,
+				  struct rb_node *new,
+				  struct rb_root *root);
+extern void rust_rb_replace_node_rcu(struct rb_node *victim,
+				      struct rb_node *new,
+				      struct rb_root *root);
+extern struct rb_node *rust_rb_next_postorder(const struct rb_node *node);
+extern struct rb_node *rust_rb_first_postorder(const struct rb_root *root);
+#endif
+
 /* Find logical next and previous nodes in a tree */
 extern struct rb_node *rb_next(const struct rb_node *);
 extern struct rb_node *rb_prev(const struct rb_node *);

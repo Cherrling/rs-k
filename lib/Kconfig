@@ -325,6 +325,31 @@ config TEXTSEARCH_FSM
 config BTREE
 	bool
 
+config RUST_RBTREE
+	bool "Rust implementation of red-black tree operations"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the core red-black tree operations in lib/rbtree.c.
+	  The existing C entry points remain as ABI adapters, but the tree
+	  algorithms execute in Rust.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
+config RBTREE_RUST_KUNIT_TEST
+	bool "KUnit tests for the Rust rbtree implementation"
+	depends on RUST_RBTREE && KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for the C ABI adapters and the
+	  Rust implementation of the core red-black tree operations.
+
+	  These tests are only for development and testing, not for regular
+	  kernel use cases.
+
+	  If unsure, say N.
+
 config INTERVAL_TREE
 	bool
 	help

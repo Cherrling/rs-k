@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 
-#include <linux/rbtree.h>
+#include <linux/rbtree_augmented.h>
 
 __rust_helper void rust_helper_rb_link_node(struct rb_node *node,
 					    struct rb_node *parent,
@@ -17,4 +17,12 @@ __rust_helper struct rb_node *rust_helper_rb_first(const struct rb_root *root)
 __rust_helper struct rb_node *rust_helper_rb_last(const struct rb_root *root)
 {
 	return rb_last(root);
+}
+
+__rust_helper void rust_helper_rb_change_child_rcu(struct rb_node *old,
+						   struct rb_node *new,
+						   struct rb_node *parent,
+						   struct rb_root *root)
+{
+	__rb_change_child_rcu(old, new, parent, root);
 }

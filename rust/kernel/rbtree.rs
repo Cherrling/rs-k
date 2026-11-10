@@ -14,6 +14,9 @@ use core::{
     ptr::{addr_of_mut, from_mut, NonNull},
 };
 
+#[cfg(CONFIG_RUST_RBTREE)]
+mod native;
+
 /// A red-black tree with owned nodes.
 ///
 /// It is backed by the kernel C red-black trees.
