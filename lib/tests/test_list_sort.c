@@ -107,8 +107,51 @@ static void list_sort_test(struct kunit *test)
 			    "list length changed after sorting!");
 }
 
+static void list_sort_edges_test(struct kunit *test)
+{
+	struct debug_el first = {
+		.poison1 = TEST_POISON1,
+		.poison2 = TEST_POISON2,
+		.value = 7,
+		.serial = 0,
+	};
+	struct debug_el second = {
+		.poison1 = TEST_POISON1,
+		.poison2 = TEST_POISON2,
+		.value = 7,
+		.serial = 1,
+	};
+	struct debug_el *elts[] = { &first, &second };
+	struct list_head head = LIST_HEAD_INIT(head);
+
+	test->priv = elts;
+
+	list_sort(test, &head, cmp);
+	KUNIT_EXPECT_PTR_EQ(test, head.next, &head);
+	KUNIT_EXPECT_PTR_EQ(test, head.prev, &head);
+
+	list_add_tail(&first.list, &head);
+	list_sort(test, &head, cmp);
+	KUNIT_EXPECT_PTR_EQ(test, head.next, &first.list);
+	KUNIT_EXPECT_PTR_EQ(test, head.prev, &first.list);
+	KUNIT_EXPECT_PTR_EQ(test, first.list.next, &head);
+	KUNIT_EXPECT_PTR_EQ(test, first.list.prev, &head);
+
+	INIT_LIST_HEAD(&head);
+	list_add_tail(&first.list, &head);
+	list_add_tail(&second.list, &head);
+	list_sort(test, &head, cmp);
+
+	KUNIT_EXPECT_PTR_EQ(test, head.next, &first.list);
+	KUNIT_EXPECT_PTR_EQ(test, head.prev, &second.list);
+	KUNIT_EXPECT_PTR_EQ(test, first.list.next, &second.list);
+	KUNIT_EXPECT_PTR_EQ(test, second.list.prev, &first.list);
+	KUNIT_EXPECT_PTR_EQ(test, second.list.next, &head);
+}
+
 static struct kunit_case list_sort_cases[] = {
 	KUNIT_CASE(list_sort_test),
+	KUNIT_CASE(list_sort_edges_test),
 	{}
 };
 

@@ -4,6 +4,8 @@
 #include <linux/list_sort.h>
 #include <linux/list.h>
 
+#ifndef CONFIG_RUST_LIST_SORT
+
 /*
  * Returns a list organized in an intermediate format suited
  * to chaining of merge() calls: null-terminated, no reserved or
@@ -245,3 +247,13 @@ void list_sort(void *priv, struct list_head *head, list_cmp_func_t cmp)
 	merge_final(priv, cmp, head, pending, list);
 }
 EXPORT_SYMBOL(list_sort);
+
+#else
+
+void list_sort(void *priv, struct list_head *head, list_cmp_func_t cmp)
+{
+	rust_list_sort(priv, head, cmp);
+}
+EXPORT_SYMBOL(list_sort);
+
+#endif

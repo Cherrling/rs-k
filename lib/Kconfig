@@ -325,6 +325,17 @@ config TEXTSEARCH_FSM
 config BTREE
 	bool
 
+config RUST_LIST_SORT
+	bool "Rust implementation of list_sort()"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production implementation of list_sort().
+	  The exported C entry point remains as an ABI adapter.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_RBTREE
 	bool "Rust implementation of red-black tree operations"
 	depends on RUST
