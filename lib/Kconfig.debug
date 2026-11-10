@@ -2296,6 +2296,20 @@ config TEST_LIST_SORT
 
 	  If unsure, say N.
 
+config PERCPU_REFCOUNT_KUNIT_TEST
+	tristate "KUnit test for percpu_ref() lifecycle" if !KUNIT_ALL_TESTS
+	depends on KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for the exported percpu_ref()
+	  lifecycle, including mode switching, kill confirmation,
+	  reinitialization, resurrection, and concurrent switching.
+
+	  The same tests run with either the C implementation or the native
+	  Rust implementation selected.
+
+	  If unsure, say N.
+
 config TEST_SORT
 	tristate "Array-based sort test" if !KUNIT_ALL_TESTS
 	depends on KUNIT

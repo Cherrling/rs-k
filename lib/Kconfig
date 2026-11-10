@@ -336,6 +336,21 @@ config RUST_LIST_SORT
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_PERCPU_REFCOUNT
+	bool "Rust implementation of percpu_ref() lifecycle"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production lifecycle state machine of percpu_ref().
+	  This includes initialization, mode switching, kill confirmation, exit,
+	  reinitialization, and resurrection.
+
+	  The per-CPU get/put fast paths remain inline C because they depend on
+	  architecture-specific atomic and per-CPU primitives.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_RBTREE
 	bool "Rust implementation of red-black tree operations"
 	depends on RUST

@@ -8,6 +8,8 @@
 #include <linux/mm.h>
 #include <linux/percpu-refcount.h>
 
+#ifndef CONFIG_RUST_PERCPU_REFCOUNT
+
 /*
  * Initially, a percpu refcount is just a set of percpu counters. Initially, we
  * don't try to detect the ref hitting 0 - which means that get/put can just
@@ -477,3 +479,284 @@ void percpu_ref_resurrect(struct percpu_ref *ref)
 	spin_unlock_irqrestore(&percpu_ref_switch_lock, flags);
 }
 EXPORT_SYMBOL_GPL(percpu_ref_resurrect);
+
+#else
+
+#include <linux/percpu-refcount-rust.h>
+
+static DEFINE_SPINLOCK(percpu_ref_switch_lock);
+static DECLARE_WAIT_QUEUE_HEAD(percpu_ref_switch_waitq);
+
+int rust_percpu_ref_alloc_percpu(struct percpu_ref *ref, gfp_t gfp)
+{
+	size_t align = max_t(size_t, 1 << __PERCPU_REF_FLAG_BITS,
+			     __alignof__(unsigned long));
+	unsigned long __percpu *percpu;
+
+	percpu = __alloc_percpu_gfp(sizeof(unsigned long), align, gfp);
+	if (!percpu)
+		return -ENOMEM;
+
+	ref->percpu_count_ptr = (unsigned long)percpu;
+	return 0;
+}
+
+struct percpu_ref_data *rust_percpu_ref_alloc_data(gfp_t gfp)
+{
+	return kzalloc_obj(struct percpu_ref_data, gfp);
+}
+
+void rust_percpu_ref_free_percpu(unsigned long percpu)
+{
+	free_percpu((void __percpu *)percpu);
+}
+
+void rust_percpu_ref_free_data(struct percpu_ref_data *data)
+{
+	kfree(data);
+}
+
+unsigned long rust_percpu_ref_lock(void)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&percpu_ref_switch_lock, flags);
+	return flags;
+}
+
+void rust_percpu_ref_unlock(unsigned long flags)
+{
+	spin_unlock_irqrestore(&percpu_ref_switch_lock, flags);
+}
+
+void rust_percpu_ref_assert_locked(void)
+{
+	lockdep_assert_held(&percpu_ref_switch_lock);
+}
+
+void rust_percpu_ref_wait_locked(struct percpu_ref *ref)
+{
+	wait_event_lock_irq(percpu_ref_switch_waitq,
+			    !ref->data->confirm_switch,
+			    percpu_ref_switch_lock);
+}
+
+void rust_percpu_ref_wait_unlocked(struct percpu_ref *ref)
+{
+	wait_event(percpu_ref_switch_waitq, !ref->data->confirm_switch);
+}
+
+void rust_percpu_ref_wake_all(void)
+{
+	wake_up_all(&percpu_ref_switch_waitq);
+}
+
+unsigned long rust_percpu_ref_read_count_ptr(struct percpu_ref *ref)
+{
+	return READ_ONCE(ref->percpu_count_ptr);
+}
+
+void rust_percpu_ref_write_count_ptr(struct percpu_ref *ref, unsigned long value)
+{
+	WRITE_ONCE(ref->percpu_count_ptr, value);
+}
+
+void rust_percpu_ref_store_release_count_ptr(struct percpu_ref *ref,
+					     unsigned long value)
+{
+	/*
+	 * Pairs with the READ_ONCE() in __ref_is_percpu() and makes the
+	 * per-CPU zeroing visible before per-CPU mode becomes observable.
+	 */
+	smp_store_release(&ref->percpu_count_ptr, value);
+}
+
+long rust_percpu_ref_atomic_read(struct percpu_ref_data *data)
+{
+	return atomic_long_read(&data->count);
+}
+
+void rust_percpu_ref_atomic_set(struct percpu_ref_data *data, long value)
+{
+	atomic_long_set(&data->count, value);
+}
+
+void rust_percpu_ref_atomic_add(struct percpu_ref_data *data, long value)
+{
+	atomic_long_add(value, &data->count);
+}
+
+unsigned long rust_percpu_ref_sum_percpu(unsigned long percpu)
+{
+	unsigned long __percpu *count = (void __percpu *)percpu;
+	unsigned long total = 0;
+	int cpu;
+
+	for_each_possible_cpu(cpu)
+		total += per_cpu_ptr(count, cpu)[0];
+	return total;
+}
+
+void rust_percpu_ref_zero_percpu(unsigned long percpu)
+{
+	unsigned long __percpu *count = (void __percpu *)percpu;
+	int cpu;
+
+	for_each_possible_cpu(cpu)
+		per_cpu_ptr(count, cpu)[0] = 0;
+}
+
+bool rust_percpu_ref_read_is_percpu(struct percpu_ref *ref,
+				    unsigned long *percpu)
+{
+	unsigned long __percpu *count = NULL;
+	bool ret = __ref_is_percpu(ref, &count);
+
+	*percpu = (unsigned long)count;
+	return ret;
+}
+
+bool rust_percpu_ref_is_dying_inline(struct percpu_ref *ref)
+{
+	return percpu_ref_is_dying(ref);
+}
+
+void rust_percpu_ref_get(struct percpu_ref *ref)
+{
+	percpu_ref_get(ref);
+}
+
+void rust_percpu_ref_put(struct percpu_ref *ref)
+{
+	percpu_ref_put(ref);
+}
+
+void rust_percpu_ref_call_rcu_hurry(struct percpu_ref_data *data,
+				    rcu_callback_t callback)
+{
+	call_rcu_hurry(&data->rcu, callback);
+}
+
+struct percpu_ref_data *
+rust_percpu_ref_data_from_rcu(struct callback_head *rcu)
+{
+	return container_of(rcu, struct percpu_ref_data, rcu);
+}
+
+void rust_percpu_ref_debug_counts(struct percpu_ref_data *data,
+				  unsigned long count)
+{
+	pr_debug("global %ld percpu %lu\n",
+		 atomic_long_read(&data->count), count);
+}
+
+void rust_percpu_ref_warn_underflow(struct percpu_ref_data *data)
+{
+	static atomic_t underflows;
+
+	if (WARN_ONCE(atomic_long_read(&data->count) <= 0,
+		      "percpu ref (%ps) <= 0 (%ld) after switching to atomic",
+		      data->release, atomic_long_read(&data->count)) &&
+	    atomic_inc_return(&underflows) < 4) {
+		pr_err("percpu_ref_switch_to_atomic_rcu(): percpu_ref underflow");
+		mem_dump_obj(data);
+	}
+}
+
+bool rust_percpu_ref_warn_no_reinit(struct percpu_ref *ref)
+{
+	return WARN_ON_ONCE(!ref->data->allow_reinit);
+}
+
+void rust_percpu_ref_warn_confirm_switch(struct percpu_ref *ref)
+{
+	WARN_ON_ONCE(ref->data && ref->data->confirm_switch);
+}
+
+void rust_percpu_ref_warn_kill_twice(struct percpu_ref *ref)
+{
+	WARN_ONCE(percpu_ref_is_dying(ref),
+		  "%s called more than once on %ps!",
+		  "percpu_ref_kill_and_confirm", ref->data->release);
+}
+
+void rust_percpu_ref_warn_reinit_not_zero(bool not_zero)
+{
+	WARN_ON_ONCE(not_zero);
+}
+
+void rust_percpu_ref_warn_resurrect_not_dying(struct percpu_ref *ref)
+{
+	WARN_ON_ONCE(!percpu_ref_is_dying(ref));
+}
+
+void rust_percpu_ref_warn_resurrect_percpu(struct percpu_ref *ref)
+{
+	unsigned long __percpu *percpu;
+
+	WARN_ON_ONCE(__ref_is_percpu(ref, &percpu));
+}
+
+void rust_percpu_ref_warn_no_percpu(void)
+{
+	WARN_ON_ONCE(true);
+}
+
+int percpu_ref_init(struct percpu_ref *ref, percpu_ref_func_t *release,
+		    unsigned int flags, gfp_t gfp)
+{
+	return rust_percpu_ref_init(ref, release, flags, gfp);
+}
+EXPORT_SYMBOL_GPL(percpu_ref_init);
+
+void percpu_ref_exit(struct percpu_ref *ref)
+{
+	rust_percpu_ref_exit(ref);
+}
+EXPORT_SYMBOL_GPL(percpu_ref_exit);
+
+void percpu_ref_switch_to_atomic(struct percpu_ref *ref,
+				 percpu_ref_func_t *confirm_switch)
+{
+	rust_percpu_ref_switch_to_atomic(ref, confirm_switch);
+}
+EXPORT_SYMBOL_GPL(percpu_ref_switch_to_atomic);
+
+void percpu_ref_switch_to_atomic_sync(struct percpu_ref *ref)
+{
+	rust_percpu_ref_switch_to_atomic_sync(ref);
+}
+EXPORT_SYMBOL_GPL(percpu_ref_switch_to_atomic_sync);
+
+void percpu_ref_switch_to_percpu(struct percpu_ref *ref)
+{
+	rust_percpu_ref_switch_to_percpu(ref);
+}
+EXPORT_SYMBOL_GPL(percpu_ref_switch_to_percpu);
+
+void percpu_ref_kill_and_confirm(struct percpu_ref *ref,
+				 percpu_ref_func_t *confirm_kill)
+{
+	rust_percpu_ref_kill_and_confirm(ref, confirm_kill);
+}
+EXPORT_SYMBOL_GPL(percpu_ref_kill_and_confirm);
+
+bool percpu_ref_is_zero(struct percpu_ref *ref)
+{
+	return rust_percpu_ref_is_zero(ref);
+}
+EXPORT_SYMBOL_GPL(percpu_ref_is_zero);
+
+void percpu_ref_reinit(struct percpu_ref *ref)
+{
+	rust_percpu_ref_reinit(ref);
+}
+EXPORT_SYMBOL_GPL(percpu_ref_reinit);
+
+void percpu_ref_resurrect(struct percpu_ref *ref)
+{
+	rust_percpu_ref_resurrect(ref);
+}
+EXPORT_SYMBOL_GPL(percpu_ref_resurrect);
+
+#endif /* CONFIG_RUST_PERCPU_REFCOUNT */

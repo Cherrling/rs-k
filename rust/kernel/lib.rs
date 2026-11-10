@@ -113,6 +113,8 @@ pub mod opp;
 pub mod page;
 #[cfg(CONFIG_PCI)]
 pub mod pci;
+#[cfg(CONFIG_RUST_PERCPU_REFCOUNT)]
+mod percpu_refcount;
 pub mod pid_namespace;
 pub mod platform;
 pub mod prelude;
