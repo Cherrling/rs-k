@@ -372,6 +372,76 @@ unsafe extern "C" fn rust_waitqueue_woken_wake_bit(
     unsafe { woken_wake_common(wq_entry, mode, sync, key.cast()) }
 }
 
+/// Prepares an interruptible locked wait without sleeping.
+///
+/// # Safety
+///
+/// `wq_head` and `wq_entry` must point to valid objects, and the wait queue lock
+/// must be held.
+unsafe fn prepare_do_wait_intr(wq_head: *mut Head, wq_entry: *mut Entry) -> c_int {
+    // SAFETY: The caller guarantees that the queue lock is held and that both
+    // pointers are valid.
+    if unsafe { bindings::rust_waitqueue_entry_is_empty(wq_entry) } {
+        // SAFETY: The queue lock is held and both pointers are valid.
+        unsafe { add_tail_locked(wq_head, wq_entry) };
+    }
+
+    // SAFETY: The queue lock is held. The helper provides the scheduler store
+    // barrier required before the lock is released.
+    unsafe { bindings::rust_waitqueue_set_current_state(bindings::TASK_INTERRUPTIBLE as c_uint) };
+    // SAFETY: The helper reads the signal state of the current task.
+    if unsafe { bindings::rust_waitqueue_signal_pending() } {
+        -(bindings::ERESTARTSYS as c_int)
+    } else {
+        0
+    }
+}
+
+/// Waits interruptibly while the caller holds the wait queue lock.
+///
+/// # Safety
+///
+/// `wq_head` and `wq_entry` must be valid, and the wait queue lock must be held.
+#[export]
+unsafe extern "C" fn rust_waitqueue_do_wait_intr(
+    wq_head: *mut Head,
+    wq_entry: *mut Entry,
+) -> c_int {
+    // SAFETY: The caller guarantees that the queue lock is held.
+    let ret = unsafe { prepare_do_wait_intr(wq_head, wq_entry) };
+    if ret != 0 {
+        return ret;
+    }
+
+    // SAFETY: The caller guarantees that `wq_head` is valid and its lock is
+    // held.
+    unsafe { bindings::rust_waitqueue_schedule_locked(wq_head) };
+    0
+}
+
+/// Waits interruptibly with interrupts disabled while the caller holds the lock.
+///
+/// # Safety
+///
+/// `wq_head` and `wq_entry` must be valid. The wait queue lock must be held
+/// with interrupts disabled.
+#[export]
+unsafe extern "C" fn rust_waitqueue_do_wait_intr_irq(
+    wq_head: *mut Head,
+    wq_entry: *mut Entry,
+) -> c_int {
+    // SAFETY: The caller guarantees that the queue lock is held.
+    let ret = unsafe { prepare_do_wait_intr(wq_head, wq_entry) };
+    if ret != 0 {
+        return ret;
+    }
+
+    // SAFETY: The caller guarantees that `wq_head` is valid and its lock is
+    // held with interrupts disabled.
+    unsafe { bindings::rust_waitqueue_schedule_locked_irq(wq_head) };
+    0
+}
+
 /// Prepares a normal wait entry and sets the current task state.
 ///
 /// # Safety

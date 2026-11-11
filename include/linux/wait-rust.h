@@ -47,6 +47,10 @@ int rust_waitqueue_woken_wake(struct wait_queue_entry *wq_entry,
 			      unsigned int mode, int sync, void *key);
 int rust_waitqueue_woken_wake_bit(struct wait_queue_entry *wq_entry,
 				  unsigned int mode, int sync, void *key);
+int rust_waitqueue_do_wait_intr(struct wait_queue_head *wq_head,
+				struct wait_queue_entry *wq_entry);
+int rust_waitqueue_do_wait_intr_irq(struct wait_queue_head *wq_head,
+				    struct wait_queue_entry *wq_entry);
 void rust_waitqueue_prepare(struct wait_queue_head *wq_head,
 			    struct wait_queue_entry *wq_entry,
 			    unsigned int state);
@@ -63,6 +67,8 @@ void rust_waitqueue_lock_irqsave(struct wait_queue_head *wq_head,
 				 unsigned long *flags);
 void rust_waitqueue_unlock_irqrestore(struct wait_queue_head *wq_head,
 				      unsigned long flags);
+void rust_waitqueue_schedule_locked(struct wait_queue_head *wq_head);
+void rust_waitqueue_schedule_locked_irq(struct wait_queue_head *wq_head);
 void rust_waitqueue_assert_locked(struct wait_queue_head *wq_head);
 void rust_waitqueue_list_add(struct list_head *head,
 			     struct list_head *entry);
@@ -77,6 +83,7 @@ bool rust_waitqueue_entry_is_empty(struct wait_queue_entry *wq_entry);
 bool rust_waitqueue_entry_is_empty_careful(struct wait_queue_entry *wq_entry);
 void rust_waitqueue_set_current_state(unsigned int state);
 void rust_waitqueue_set_current_state_relaxed(unsigned int state);
+bool rust_waitqueue_signal_pending(void);
 int rust_waitqueue_signal_pending_state(unsigned int state);
 struct wait_queue_entry *
 rust_waitqueue_first_entry(struct wait_queue_head *wq_head);

@@ -298,6 +298,11 @@ void rust_waitqueue_set_current_state_relaxed(unsigned int state)
 	__set_current_state(state);
 }
 
+bool rust_waitqueue_signal_pending(void)
+{
+	return signal_pending(current);
+}
+
 int rust_waitqueue_signal_pending_state(unsigned int state)
 {
 	return signal_pending_state(state, current);
@@ -313,6 +318,20 @@ void rust_waitqueue_unlock_irqrestore(struct wait_queue_head *wq_head,
 				      unsigned long flags)
 {
 	spin_unlock_irqrestore(&wq_head->lock, flags);
+}
+
+void rust_waitqueue_schedule_locked(struct wait_queue_head *wq_head)
+{
+	spin_unlock(&wq_head->lock);
+	schedule();
+	spin_lock(&wq_head->lock);
+}
+
+void rust_waitqueue_schedule_locked_irq(struct wait_queue_head *wq_head)
+{
+	spin_unlock_irq(&wq_head->lock);
+	schedule();
+	spin_lock_irq(&wq_head->lock);
 }
 
 void rust_waitqueue_assert_locked(struct wait_queue_head *wq_head)
@@ -596,6 +615,7 @@ EXPORT_SYMBOL(prepare_to_wait_event);
  * condition in the caller before they add the wait
  * entry to the wake queue.
  */
+#ifndef CONFIG_RUST_WAITQUEUE
 int do_wait_intr(wait_queue_head_t *wq, wait_queue_entry_t *wait)
 {
 	if (likely(list_empty(&wait->entry)))
@@ -611,8 +631,15 @@ int do_wait_intr(wait_queue_head_t *wq, wait_queue_entry_t *wait)
 
 	return 0;
 }
+#else
+int do_wait_intr(wait_queue_head_t *wq, wait_queue_entry_t *wait)
+{
+	return rust_waitqueue_do_wait_intr(wq, wait);
+}
+#endif
 EXPORT_SYMBOL(do_wait_intr);
 
+#ifndef CONFIG_RUST_WAITQUEUE
 int do_wait_intr_irq(wait_queue_head_t *wq, wait_queue_entry_t *wait)
 {
 	if (likely(list_empty(&wait->entry)))
@@ -628,6 +655,12 @@ int do_wait_intr_irq(wait_queue_head_t *wq, wait_queue_entry_t *wait)
 
 	return 0;
 }
+#else
+int do_wait_intr_irq(wait_queue_head_t *wq, wait_queue_entry_t *wait)
+{
+	return rust_waitqueue_do_wait_intr_irq(wq, wait);
+}
+#endif
 EXPORT_SYMBOL(do_wait_intr_irq);
 
 /**

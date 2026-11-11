@@ -18,6 +18,7 @@ The Rust code owns these production decisions:
 * Woken wait flag transitions and barrier sequencing.
 * Variable wait key filtering for woken wakes.
 * Wait preparation and idempotent queue insertion.
+* Interruptible locked-wait preparation and schedule decisions.
 * Current task state transitions for wait preparation and completion.
 * Signal rejection and wait entry removal on return.
 * Callback traversal order.
@@ -29,8 +30,8 @@ The Rust code owns these production decisions:
 * POLLFREE wake traversal and final empty-queue enforcement.
 
 Queue initialization, scheduler state stores, scheduler entry and timeout
-operations, wait condition loops, and the interrupt-locking wait helpers remain
-in C.  Those operations will be separate migration units.
+operations, and wait condition loops remain in C.  Those operations will be
+separate migration units.
 
 Entry points and ownership
 --------------------------
@@ -53,6 +54,7 @@ locking, poll, or intrusive list internals:
 * Current task state stores with the scheduler's required memory barriers.
 * SMP barrier execution and flag stores that require architecture semantics.
 * Scheduler timeout and kthread stop or park predicates.
+* Lock release, scheduling, and lock reacquisition for locked waits.
 * Signal predicate evaluation for the current task.
 * Variable wait key extraction for the current entry.
 * Delivery of the scheduler wake request through ``default_wake_function()``.
@@ -62,7 +64,8 @@ locking, poll, or intrusive list internals:
 These helpers do not select an insertion position, reject signals, update task
 state, select callbacks, decide whether autoremove removes an entry, transition
 the woken flag, select whether to schedule, filter variable wake keys, enforce
-the exclusive budget, or decide when callback traversal stops.
+the exclusive budget, decide when callback traversal stops, or remove a locked
+wait entry after a signal.
 
 Important invariants
 --------------------
@@ -91,6 +94,12 @@ architecture-specific barrier store.  Other wait flags remain unchanged.
 The woken bit callback first verifies that the wait entry's variable address
 and bit number match the wake key.  A mismatch returns zero without changing
 the entry flags or waking the task.
+
+The locked wait functions require the queue lock to be held.  Rust appends an
+unqueued entry to the tail, installs ``TASK_INTERRUPTIBLE``, and rejects a
+pending signal while preserving the caller's lock.  Without a pending signal,
+Rust chooses to sleep and C releases the queue lock, schedules, and reacquires
+the same lock in the matching interrupt mode.
 
 Wait preparation inserts an unqueued entry only once.  The queue insertion
 precedes the scheduler state store so a wakeup sees either the queued entry or
@@ -130,6 +139,7 @@ The migration unit must pass these checks before integration:
 * Wait entry field initialization, callback identity, and list initialization.
 * Successful autoremove and retained entries after failed wakeups.
 * Woken timeout retention, flag clearing, callback wake, and bit-key filtering.
+* Locked signal rejection and successful wake for both lock modes.
 * Idempotent wait preparation, exclusive queue status, signal rejection, and
   finish cleanup.
 * Callback order and wake modes.
@@ -152,16 +162,16 @@ The final source tree passed seven x86_64 KUnit runs on 2026-11-11:
 * One run on four vCPUs with generic inline KASAN enabled.
 * One run on four vCPUs with lockdep, spinlock, and list debugging enabled.
 
-Every run reported sixteen passed tests and no failures, skips, kernel warnings,
+Every run reported eighteen passed tests and no failures, skips, kernel warnings,
 sanitizer reports, lockdep reports, or panic.
 
-All twenty-two public wait, entry-operation, and woken-callback adapters
-disassemble to tail calls into their Rust counterparts.  The initialization
-adapter prepares the current task and autoremove callback ABI arguments before
-its tail call.  The exported symbol names and classes match the C fallback.
-The narrow C boundary helpers are not exported.  The C fallback image and the
-twelve loadable modules from both builds contain no unresolved Rust wait queue
-symbols.
+All twenty-four public wait, entry-operation, woken-callback, and locked-wait
+adapters disassemble to tail calls into their Rust counterparts.  The
+initialization adapter prepares the current task and autoremove callback ABI
+arguments before its tail call.  The exported symbol names and classes match
+the C fallback.  The narrow C boundary helpers are not exported.  The C
+fallback image and the twelve loadable modules from both builds contain no
+unresolved Rust wait queue symbols.
 
 Clippy, rustfmt, strict checkpatch, and ``git diff --check`` completed without
 errors or warnings.

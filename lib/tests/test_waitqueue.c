@@ -36,6 +36,15 @@ struct waitqueue_test_worker {
 	atomic_t done;
 };
 
+struct waitqueue_do_wait_intr_worker {
+	struct wait_queue_head *wq_head;
+	struct wait_queue_entry entry;
+	atomic_t ready;
+	atomic_t done;
+	bool irq;
+	int ret;
+};
+
 static int waitqueue_test_wake_func(struct wait_queue_entry *entry,
 				    unsigned int mode, int wake_flags, void *key)
 {
@@ -75,6 +84,32 @@ static int waitqueue_test_worker_thread(void *data)
 	atomic_inc(&worker->ready);
 	wait_event_interruptible(*worker->wq_head,
 				 atomic_read(&worker->condition));
+	atomic_inc(&worker->done);
+	waitqueue_test_idle_until_stopped();
+	return 0;
+}
+
+static int waitqueue_test_do_wait_intr_worker_thread(void *data)
+{
+	struct waitqueue_do_wait_intr_worker *worker = data;
+
+	init_wait_entry(&worker->entry, 0);
+	if (worker->irq)
+		spin_lock_irq(&worker->wq_head->lock);
+	else
+		spin_lock(&worker->wq_head->lock);
+
+	atomic_inc(&worker->ready);
+	if (worker->irq)
+		worker->ret = do_wait_intr_irq(worker->wq_head, &worker->entry);
+	else
+		worker->ret = do_wait_intr(worker->wq_head, &worker->entry);
+
+	if (worker->irq)
+		spin_unlock_irq(&worker->wq_head->lock);
+	else
+		spin_unlock(&worker->wq_head->lock);
+
 	atomic_inc(&worker->done);
 	waitqueue_test_idle_until_stopped();
 	return 0;
@@ -409,6 +444,101 @@ static void waitqueue_test_woken_wake_bit(struct kunit *test)
 	remove_wait_queue(&wq_head, &wbq_entry.wq_entry);
 }
 
+static void waitqueue_test_do_wait_intr_signal(struct kunit *test)
+{
+	struct waitqueue_test_record record;
+	DECLARE_WAIT_QUEUE_HEAD_ONSTACK(wq_head);
+	int ret;
+
+	allow_kernel_signal(SIGUSR1);
+	memset(&record, 0, sizeof(record));
+	init_wait_entry(&record.entry, WQ_FLAG_EXCLUSIVE);
+	KUNIT_EXPECT_EQ(test, send_sig(SIGUSR1, current, 1), 0);
+
+	spin_lock(&wq_head.lock);
+	ret = do_wait_intr(&wq_head, &record.entry);
+	spin_unlock(&wq_head.lock);
+	flush_signals(current);
+
+	KUNIT_EXPECT_EQ(test, ret, -ERESTARTSYS);
+	KUNIT_EXPECT_EQ(test, record.entry.flags, WQ_FLAG_EXCLUSIVE);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_count(&wq_head), 1);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_position(&wq_head, &record), 0);
+	finish_wait(&wq_head, &record.entry);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_count(&wq_head), 0);
+
+	memset(&record, 0, sizeof(record));
+	init_wait_entry(&record.entry, WQ_FLAG_EXCLUSIVE);
+	KUNIT_EXPECT_EQ(test, send_sig(SIGUSR1, current, 1), 0);
+
+	spin_lock_irq(&wq_head.lock);
+	ret = do_wait_intr_irq(&wq_head, &record.entry);
+	spin_unlock_irq(&wq_head.lock);
+	flush_signals(current);
+
+	KUNIT_EXPECT_EQ(test, ret, -ERESTARTSYS);
+	KUNIT_EXPECT_EQ(test, record.entry.flags, WQ_FLAG_EXCLUSIVE);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_count(&wq_head), 1);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_position(&wq_head, &record), 0);
+	finish_wait(&wq_head, &record.entry);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_count(&wq_head), 0);
+	KUNIT_EXPECT_EQ(test, READ_ONCE(current->__state), TASK_RUNNING);
+
+	disallow_signal(SIGUSR1);
+}
+
+static bool waitqueue_test_run_do_wait_intr(struct kunit *test, bool irq)
+{
+	struct waitqueue_do_wait_intr_worker worker = {
+		.ready = ATOMIC_INIT(0),
+		.done = ATOMIC_INIT(0),
+		.irq = irq,
+	};
+	struct task_struct *task;
+	DECLARE_WAIT_QUEUE_HEAD_ONSTACK(wq_head);
+	unsigned long flags;
+	bool success = false;
+
+	worker.wq_head = &wq_head;
+	task = kthread_run(waitqueue_test_do_wait_intr_worker_thread, &worker,
+			   irq ? "waitqueue-intr-irq" : "waitqueue-intr");
+	if (IS_ERR_OR_NULL(task)) {
+		KUNIT_FAIL(test, "failed to start do_wait_intr worker");
+		return false;
+	}
+
+	if (!waitqueue_test_wait_for(&worker.ready, 1) ||
+	    !waitqueue_test_wait_for_active(&wq_head)) {
+		KUNIT_FAIL(test, "do_wait_intr worker did not become ready");
+		goto cleanup;
+	}
+
+	spin_lock_irqsave(&wq_head.lock, flags);
+	__wake_up_locked(&wq_head, TASK_NORMAL, 1);
+	spin_unlock_irqrestore(&wq_head.lock, flags);
+
+	if (!waitqueue_test_wait_for(&worker.done, 1)) {
+		KUNIT_FAIL(test, "do_wait_intr worker did not wake");
+		goto cleanup;
+	}
+
+	KUNIT_EXPECT_EQ(test, worker.ret, 0);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_count(&wq_head), 0);
+	success = true;
+
+cleanup:
+	wake_up_all(&wq_head);
+	kthread_stop(task);
+	return success;
+}
+
+static void waitqueue_test_do_wait_intr_wake(struct kunit *test)
+{
+	if (!waitqueue_test_run_do_wait_intr(test, false))
+		return;
+	waitqueue_test_run_do_wait_intr(test, true);
+}
+
 static void waitqueue_test_prepare_to_wait(struct kunit *test)
 {
 	struct waitqueue_test_record record;
@@ -710,6 +840,8 @@ static struct kunit_case waitqueue_test_cases[] = {
 	KUNIT_CASE(waitqueue_test_wait_woken),
 	KUNIT_CASE(waitqueue_test_woken_wake),
 	KUNIT_CASE(waitqueue_test_woken_wake_bit),
+	KUNIT_CASE(waitqueue_test_do_wait_intr_signal),
+	KUNIT_CASE(waitqueue_test_do_wait_intr_wake),
 	KUNIT_CASE(waitqueue_test_prepare_to_wait),
 	KUNIT_CASE(waitqueue_test_prepare_to_wait_exclusive),
 	KUNIT_CASE(waitqueue_test_prepare_to_wait_event),

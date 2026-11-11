@@ -930,16 +930,16 @@ config RUST_WAITQUEUE
 	  Use Rust for the production wait queue state machine.  This includes
 	  entry flags and ordering, wait entry initialization and autoremove,
 	  woken wait flag transitions and bit-key filtering, wait preparation,
-	  task state transitions, signal rejection, finish cleanup, callback
-	  traversal, negative callback termination, normal and synchronized wake
-	  flags, current-CPU wakeup, exclusive wake accounting, and POLLFREE
-	  handling.
+	  interruptible locked waits, task state transitions, signal rejection,
+	  finish cleanup, callback traversal, negative callback termination,
+	  normal and synchronized wake flags, current-CPU wakeup, exclusive wake
+	  accounting, and POLLFREE handling.
 
 	  Raw locking, intrusive list primitives, scheduler state stores, SMP
-	  barrier operations, scheduler predicates and timeouts, signal
-	  predicates, lockdep assertions, scheduler flags, and poll key
-	  construction remain in C because they depend on scheduler and locking
-	  internals.
+	  barrier operations, scheduler predicates, timeouts, scheduling while a
+	  lock is released, signal predicates, lockdep assertions, scheduler
+	  flags, and poll key construction remain in C because they depend on
+	  scheduler and locking internals.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
