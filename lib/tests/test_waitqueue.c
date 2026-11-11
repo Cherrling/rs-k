@@ -245,6 +245,59 @@ static void waitqueue_test_priority_exclusive(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, waitqueue_test_count(&wq_head), 0);
 }
 
+static void waitqueue_test_init_wait_entry(struct kunit *test)
+{
+	struct wait_queue_entry entry = {
+		.flags = WQ_FLAG_PRIORITY,
+		.private = NULL,
+		.func = NULL,
+		.entry = { NULL, NULL },
+	};
+
+	init_wait_entry(&entry, WQ_FLAG_EXCLUSIVE);
+
+	KUNIT_EXPECT_EQ(test, entry.flags, WQ_FLAG_EXCLUSIVE);
+	KUNIT_EXPECT_PTR_EQ(test, entry.private, current);
+	KUNIT_EXPECT_TRUE(test, entry.func == autoremove_wake_function);
+	KUNIT_EXPECT_PTR_EQ(test, entry.entry.next, &entry.entry);
+	KUNIT_EXPECT_PTR_EQ(test, entry.entry.prev, &entry.entry);
+	KUNIT_EXPECT_TRUE(test, list_empty(&entry.entry));
+}
+
+static void waitqueue_test_autoremove_wake(struct kunit *test)
+{
+	struct wait_queue_entry entry;
+	DECLARE_WAIT_QUEUE_HEAD_ONSTACK(wq_head);
+	unsigned long flags;
+	int ret;
+
+	init_wait_entry(&entry, WQ_FLAG_EXCLUSIVE);
+	add_wait_queue_exclusive(&wq_head, &entry);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_count(&wq_head), 1);
+
+	set_current_state(TASK_RUNNING);
+	spin_lock_irqsave(&wq_head.lock, flags);
+	ret = autoremove_wake_function(&entry, TASK_NORMAL, 0, NULL);
+	spin_unlock_irqrestore(&wq_head.lock, flags);
+
+	KUNIT_EXPECT_EQ(test, ret, 0);
+	KUNIT_EXPECT_FALSE(test, list_empty(&entry.entry));
+	KUNIT_EXPECT_EQ(test, waitqueue_test_count(&wq_head), 1);
+	remove_wait_queue(&wq_head, &entry);
+
+	init_wait_entry(&entry, WQ_FLAG_EXCLUSIVE);
+	add_wait_queue_exclusive(&wq_head, &entry);
+	set_current_state(TASK_INTERRUPTIBLE);
+	spin_lock_irqsave(&wq_head.lock, flags);
+	ret = autoremove_wake_function(&entry, TASK_NORMAL, 0, NULL);
+	spin_unlock_irqrestore(&wq_head.lock, flags);
+
+	KUNIT_EXPECT_EQ(test, ret, 1);
+	KUNIT_EXPECT_TRUE(test, list_empty(&entry.entry));
+	KUNIT_EXPECT_EQ(test, waitqueue_test_count(&wq_head), 0);
+	KUNIT_EXPECT_EQ(test, READ_ONCE(current->__state), TASK_RUNNING);
+}
+
 static void waitqueue_test_prepare_to_wait(struct kunit *test)
 {
 	struct waitqueue_test_record record;
@@ -541,6 +594,8 @@ cleanup:
 static struct kunit_case waitqueue_test_cases[] = {
 	KUNIT_CASE(waitqueue_test_entry_order),
 	KUNIT_CASE(waitqueue_test_priority_exclusive),
+	KUNIT_CASE(waitqueue_test_init_wait_entry),
+	KUNIT_CASE(waitqueue_test_autoremove_wake),
 	KUNIT_CASE(waitqueue_test_prepare_to_wait),
 	KUNIT_CASE(waitqueue_test_prepare_to_wait_exclusive),
 	KUNIT_CASE(waitqueue_test_prepare_to_wait_event),

@@ -263,6 +263,16 @@ void rust_waitqueue_list_del_init(struct list_head *entry)
 	list_del_init(entry);
 }
 
+void rust_waitqueue_list_del_init_careful(struct list_head *entry)
+{
+	list_del_init_careful(entry);
+}
+
+void rust_waitqueue_list_init(struct list_head *entry)
+{
+	INIT_LIST_HEAD(entry);
+}
+
 bool rust_waitqueue_head_is_empty(struct wait_queue_head *wq_head)
 {
 	return list_empty(&wq_head->head);
@@ -337,6 +347,12 @@ int rust_waitqueue_current_cpu_wake_flags(void)
 int rust_waitqueue_sync_wake_flags(void)
 {
 	return WF_SYNC;
+}
+
+int rust_waitqueue_default_wake(struct wait_queue_entry *wq_entry,
+				unsigned int mode, int sync, void *key)
+{
+	return default_wake_function(wq_entry, mode, sync, key);
 }
 
 void *rust_waitqueue_pollfree_key(void)
@@ -501,6 +517,7 @@ prepare_to_wait_exclusive(struct wait_queue_head *wq_head,
 #endif
 EXPORT_SYMBOL(prepare_to_wait_exclusive);
 
+#ifndef CONFIG_RUST_WAITQUEUE
 void init_wait_entry(struct wait_queue_entry *wq_entry, int flags)
 {
 	wq_entry->flags = flags;
@@ -508,6 +525,13 @@ void init_wait_entry(struct wait_queue_entry *wq_entry, int flags)
 	wq_entry->func = autoremove_wake_function;
 	INIT_LIST_HEAD(&wq_entry->entry);
 }
+#else
+void init_wait_entry(struct wait_queue_entry *wq_entry, int flags)
+{
+	rust_waitqueue_init_entry(wq_entry, flags, current,
+				  autoremove_wake_function);
+}
+#endif
 EXPORT_SYMBOL(init_wait_entry);
 
 #ifndef CONFIG_RUST_WAITQUEUE
@@ -638,6 +662,7 @@ void finish_wait(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_en
 #endif
 EXPORT_SYMBOL(finish_wait);
 
+#ifndef CONFIG_RUST_WAITQUEUE
 int autoremove_wake_function(struct wait_queue_entry *wq_entry, unsigned mode, int sync, void *key)
 {
 	int ret = default_wake_function(wq_entry, mode, sync, key);
@@ -647,6 +672,13 @@ int autoremove_wake_function(struct wait_queue_entry *wq_entry, unsigned mode, i
 
 	return ret;
 }
+#else
+int autoremove_wake_function(struct wait_queue_entry *wq_entry,
+			     unsigned int mode, int sync, void *key)
+{
+	return rust_waitqueue_autoremove(wq_entry, mode, sync, key);
+}
+#endif
 EXPORT_SYMBOL(autoremove_wake_function);
 
 /*

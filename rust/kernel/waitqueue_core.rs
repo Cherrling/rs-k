@@ -2,11 +2,12 @@
 
 //! Native wait queue wake state machine.
 //!
-//! Rust owns entry ordering, entry flags, wait preparation, task state
-//! transitions, signal rejection, finish cleanup, wake traversal, callback
-//! order, exclusive wake accounting, and wake return values. C helpers retain
-//! locking, intrusive list pointer updates, lockdep checks, scheduler state
-//! writes, signal predicates, scheduler wake flags, and poll key construction.
+//! Rust owns entry ordering, entry flags, wait entry lifecycle, wait
+//! preparation, task state transitions, signal rejection, finish cleanup,
+//! wake traversal, callback order, exclusive wake accounting, and wake return
+//! values. C helpers retain locking, intrusive list pointer updates, lockdep
+//! checks, scheduler state writes, signal predicates, scheduler wake flags,
+//! and poll key construction.
 
 use crate::{
     bindings,
@@ -223,6 +224,54 @@ unsafe extern "C" fn rust_waitqueue_remove(wq_head: *mut Head, wq_entry: *mut En
     unsafe { remove_locked(wq_head, wq_entry) };
     // SAFETY: This function acquired the queue lock.
     unsafe { unlock_irqrestore(wq_head, flags) };
+}
+
+/// Initializes a wait entry for the current wait operation.
+///
+/// # Safety
+///
+/// `wq_entry` and `task` must point to valid objects. `autoremove` must be a
+/// valid wait queue callback.
+#[export]
+unsafe extern "C" fn rust_waitqueue_init_entry(
+    wq_entry: *mut Entry,
+    flags: c_uint,
+    task: *mut bindings::task_struct,
+    autoremove: bindings::wait_queue_func_t,
+) {
+    // SAFETY: The caller guarantees that `wq_entry` is valid.
+    unsafe {
+        (*wq_entry).flags = flags;
+        (*wq_entry).private = task.cast();
+        (*wq_entry).func = autoremove;
+    }
+    // SAFETY: The caller guarantees that `wq_entry` is valid.
+    unsafe { bindings::rust_waitqueue_list_init(ptr::addr_of_mut!((*wq_entry).entry)) };
+}
+
+/// Wakes the configured task and removes the entry after a successful wake.
+///
+/// # Safety
+///
+/// `wq_entry` must point to a valid queued entry, and the wait queue lock must
+/// be held.
+#[export]
+unsafe extern "C" fn rust_waitqueue_autoremove(
+    wq_entry: *mut Entry,
+    mode: c_uint,
+    sync: c_int,
+    key: *mut c_void,
+) -> c_int {
+    // SAFETY: The caller guarantees that `wq_entry` is valid.
+    let ret = unsafe { bindings::rust_waitqueue_default_wake(wq_entry, mode, sync, key) };
+    if ret != 0 {
+        // SAFETY: Wake callbacks run under the wait queue lock. The caller
+        // guarantees that `wq_entry` is queued.
+        unsafe {
+            bindings::rust_waitqueue_list_del_init_careful(ptr::addr_of_mut!((*wq_entry).entry))
+        };
+    }
+    ret
 }
 
 /// Prepares a normal wait entry and sets the current task state.

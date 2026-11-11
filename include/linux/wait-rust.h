@@ -36,6 +36,11 @@ int rust_waitqueue_add_priority_exclusive(struct wait_queue_head *wq_head,
 					  struct wait_queue_entry *wq_entry);
 void rust_waitqueue_remove(struct wait_queue_head *wq_head,
 			   struct wait_queue_entry *wq_entry);
+void rust_waitqueue_init_entry(struct wait_queue_entry *wq_entry,
+			       unsigned int flags, struct task_struct *task,
+			       wait_queue_func_t autoremove);
+int rust_waitqueue_autoremove(struct wait_queue_entry *wq_entry,
+			      unsigned int mode, int sync, void *key);
 void rust_waitqueue_prepare(struct wait_queue_head *wq_head,
 			    struct wait_queue_entry *wq_entry,
 			    unsigned int state);
@@ -59,6 +64,8 @@ void rust_waitqueue_list_add_tail(struct list_head *head,
 				  struct list_head *entry);
 void rust_waitqueue_list_del(struct list_head *entry);
 void rust_waitqueue_list_del_init(struct list_head *entry);
+void rust_waitqueue_list_del_init_careful(struct list_head *entry);
+void rust_waitqueue_list_init(struct list_head *entry);
 bool rust_waitqueue_head_is_empty(struct wait_queue_head *wq_head);
 bool rust_waitqueue_entry_is_empty(struct wait_queue_entry *wq_entry);
 bool rust_waitqueue_entry_is_empty_careful(struct wait_queue_entry *wq_entry);
@@ -73,6 +80,8 @@ bool rust_waitqueue_entry_is_head(struct wait_queue_head *wq_head,
 				  struct wait_queue_entry *wq_entry);
 int rust_waitqueue_current_cpu_wake_flags(void);
 int rust_waitqueue_sync_wake_flags(void);
+int rust_waitqueue_default_wake(struct wait_queue_entry *wq_entry,
+				unsigned int mode, int sync, void *key);
 void *rust_waitqueue_pollfree_key(void);
 void rust_waitqueue_assert_pollfree_empty(struct wait_queue_head *wq_head);
 
