@@ -140,6 +140,8 @@ pub mod soc;
 #[doc(hidden)]
 pub mod std_vendor;
 pub mod str;
+#[cfg(CONFIG_RUST_SWAIT)]
+mod swait_core;
 pub mod sync;
 pub mod task;
 pub mod time;

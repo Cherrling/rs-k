@@ -890,6 +890,22 @@ config GENERIC_SCHED_CLOCK
 
 menu "Scheduler features"
 
+config RUST_SWAIT
+	bool "Rust implementation of simple wait queues"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production simple wait queue state machine.  This
+	  includes queue membership, wake selection, signal handling, and
+	  completion of a wait.
+
+	  Raw locking, task state changes, wakeups, and intrusive list
+	  primitives remain in C because they depend on scheduler and
+	  architecture internals.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config UCLAMP_TASK
 	bool "Enable utilization clamping for RT/FAIR tasks"
 	depends on CPU_FREQ_GOV_SCHEDUTIL

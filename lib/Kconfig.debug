@@ -2323,6 +2323,21 @@ config REFCOUNT_KUNIT_TEST
 
 	  If unsure, say N.
 
+config SWAIT_KUNIT_TEST
+	bool "KUnit test for simple wait queues" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for simple wait queue preparation,
+	  wake ordering, wake-all behavior, signal rejection, and completion
+	  cleanup.
+
+	  The same tests run with either the C implementation or the native
+	  Rust implementation selected.  This test must be built-in because it
+	  exercises internal completion entry points.
+
+	  If unsure, say N.
+
 config TEST_SORT
 	tristate "Array-based sort test" if !KUNIT_ALL_TESTS
 	depends on KUNIT

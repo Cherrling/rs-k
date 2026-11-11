@@ -39,6 +39,7 @@ more details.
     testing
     native-percpu-refcount
     refcount
+    swait
 
 You can also find learning materials for Rust in its section in
 :doc:`../process/kernel-docs`.
