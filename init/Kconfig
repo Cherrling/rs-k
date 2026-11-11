@@ -1057,6 +1057,21 @@ config RUST_HRTIMER_BASE_SELECTION
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_HRTIMER_NEXT_EVENT
+	bool "Rust implementation of hrtimer next-event selection"
+	depends on RUST_HRTIMER
+	default y
+	help
+	  Use Rust for the production search across active hard and soft clock
+	  bases.  Rust maintains the next timer pointers and returns the
+	  earliest normalized expiry.
+
+	  CPU base locking, clock event reprogramming, softirq execution, and
+	  public ABI adapters remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_HRTIMER_CANCEL
 	bool "Rust implementation of hrtimer removal and cancellation state"
 	depends on RUST_HRTIMER

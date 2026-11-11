@@ -677,6 +677,7 @@ static __always_inline struct hrtimer *clock_base_next_timer(struct hrtimer_cloc
 	return hrtimer_from_timerqueue_node(next);
 }
 
+#ifndef CONFIG_RUST_HRTIMER_NEXT_EVENT
 /* Find the base with the earliest expiry */
 static void hrtimer_bases_first(struct hrtimer_cpu_base *cpu_base,unsigned int active,
 				ktime_t *expires_next, struct hrtimer **next_timer)
@@ -692,6 +693,7 @@ static void hrtimer_bases_first(struct hrtimer_cpu_base *cpu_base,unsigned int a
 		}
 	}
 }
+#endif
 
 /*
  * Recomputes cpu_base::*next_timer and returns the earliest expires_next
@@ -715,6 +717,9 @@ static void hrtimer_bases_first(struct hrtimer_cpu_base *cpu_base,unsigned int a
  */
 static ktime_t __hrtimer_get_next_event(struct hrtimer_cpu_base *cpu_base, unsigned int active_mask)
 {
+#ifdef CONFIG_RUST_HRTIMER_NEXT_EVENT
+	return rust_hrtimer_get_next_event(cpu_base, active_mask);
+#else
 	struct hrtimer *next_timer = NULL;
 	ktime_t expires_next = KTIME_MAX;
 	unsigned int active;
@@ -735,6 +740,7 @@ static ktime_t __hrtimer_get_next_event(struct hrtimer_cpu_base *cpu_base, unsig
 		cpu_base->next_timer = next_timer;
 	}
 	return max(expires_next, 0);
+#endif
 }
 
 static ktime_t hrtimer_update_next_event(struct hrtimer_cpu_base *cpu_base)
