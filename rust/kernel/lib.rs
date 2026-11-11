@@ -84,6 +84,8 @@ pub mod fs;
 pub mod fwctl;
 #[cfg(CONFIG_GPU_BUDDY = "y")]
 pub mod gpu;
+#[cfg(CONFIG_RUST_HRTIMER)]
+mod hrtimer_core;
 #[cfg(CONFIG_I2C = "y")]
 pub mod i2c;
 pub mod id_pool;

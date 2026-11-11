@@ -1027,6 +1027,22 @@ config RUST_ITIMER
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_HRTIMER
+	bool "Rust implementation of hrtimer queue state"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production local-base enqueue, in-place expiry
+	  update, requeue decision, next-expiry cache, and queued state
+	  transition for high-resolution timers.
+
+	  CPU base locking, clock event reprogramming, debug object tracking,
+	  tracepoints, base migration, callback execution, and public ABI
+	  adapters remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_WAITQUEUE
 	bool "Rust implementation of wait queues"
 	depends on RUST

@@ -27,6 +27,7 @@
 #include <linux/percpu.h>
 #include <linux/hrtimer.h>
 #include <linux/hrtimer_bases.h>
+#include <linux/hrtimer-rust.h>
 #include <linux/notifier.h>
 #include <linux/syscalls.h>
 #include <linux/interrupt.h>
@@ -529,6 +530,41 @@ static inline void debug_activate(struct hrtimer *timer, enum hrtimer_mode mode,
 	debug_hrtimer_activate(timer, mode);
 	trace_hrtimer_start(timer, mode, was_armed);
 }
+
+#ifdef CONFIG_RUST_HRTIMER
+void rust_helper_hrtimer_debug_deactivate(struct hrtimer *timer)
+{
+	debug_hrtimer_deactivate(timer);
+}
+
+void rust_helper_hrtimer_trace_start(struct hrtimer *timer, unsigned int mode,
+				     bool was_armed)
+{
+	trace_hrtimer_start(timer, (enum hrtimer_mode)mode, was_armed);
+}
+
+void rust_helper_hrtimer_debug_activate(struct hrtimer *timer,
+					unsigned int mode, bool was_armed)
+{
+	debug_activate(timer, (enum hrtimer_mode)mode, was_armed);
+}
+
+void rust_helper_hrtimer_set_expires_range_ns(struct hrtimer *timer,
+					      ktime_t expires, u64 delta_ns)
+{
+	hrtimer_set_expires_range_ns(timer, expires, delta_ns);
+}
+
+bool rust_helper_hrtimer_is_queued(struct hrtimer *timer)
+{
+	return READ_ONCE(timer->is_queued);
+}
+
+void rust_helper_hrtimer_set_queued(struct hrtimer *timer, bool queued)
+{
+	WRITE_ONCE(timer->is_queued, queued);
+}
+#endif
 
 #define for_each_active_base(base, cpu_base, active)					\
 	for (unsigned int idx = ffs(active); idx--; idx = ffs((active)))		\
@@ -1232,13 +1268,7 @@ static inline bool remove_hrtimer(struct hrtimer *timer, struct hrtimer_clock_ba
 	return false;
 }
 
-/*
- * Update in place has to retrieve the expiry times of the neighbour nodes
- * if they exist. That is cache line neutral because the dequeue/enqueue
- * operation is going to need the same cache lines. But there is a big win
- * when the dequeue/enqueue can be avoided because the RB tree does not
- * have to be rebalanced twice.
- */
+#ifndef CONFIG_RUST_HRTIMER
 static inline bool
 hrtimer_can_update_in_place(struct hrtimer *timer, struct hrtimer_clock_base *base, ktime_t expires)
 {
@@ -1256,11 +1286,15 @@ hrtimer_can_update_in_place(struct hrtimer *timer, struct hrtimer_clock_base *ba
 	/* Update in place when it does not go ahead of the previous one */
 	return expires >= prev->expires;
 }
+#endif
 
 static inline bool
 remove_and_enqueue_same_base(struct hrtimer *timer, struct hrtimer_clock_base *base,
 			     const enum hrtimer_mode mode, ktime_t expires, u64 delta_ns)
 {
+#ifdef CONFIG_RUST_HRTIMER
+	return rust_hrtimer_requeue_same_base(timer, base, mode, expires, delta_ns);
+#else
 	bool was_first = false;
 
 	/*
@@ -1306,6 +1340,7 @@ remove_and_enqueue_same_base(struct hrtimer *timer, struct hrtimer_clock_base *b
 		base_update_next_timer(base);
 
 	return false;
+#endif
 }
 
 static inline ktime_t hrtimer_update_lowres(struct hrtimer *timer, ktime_t tim,

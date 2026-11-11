@@ -40,6 +40,7 @@ more details.
     cpupri
     itimer
     timerqueue
+    hrtimer
     completion
     mutex
     rwsem

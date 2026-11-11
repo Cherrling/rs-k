@@ -2455,6 +2455,20 @@ config ITIMER_KUNIT_TEST
 
 	  If unsure, say N.
 
+config HRTIMER_KUNIT_TEST
+	bool "KUnit test for hrtimer queue state" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for local-base hrtimer enqueue,
+	  neighbor-bounded in-place expiry updates, first-timer cache updates,
+	  forced linked-tree requeue, and timer expiry.
+
+	  The same tests run with either the C implementation or the native
+	  Rust implementation selected.
+
+	  If unsure, say N.
+
 config WAITQUEUE_KUNIT_TEST
 	bool "KUnit test for wait queue wakeups" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y
