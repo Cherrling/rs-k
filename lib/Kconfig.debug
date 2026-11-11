@@ -2427,6 +2427,19 @@ config CPUPRI_KUNIT_TEST
 
 	  If unsure, say N.
 
+config TIMERQUEUE_KUNIT_TEST
+	bool "KUnit test for timer queues" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for cached and linked timer queues.
+	  The tests cover signed expiration ordering with duplicate values,
+	  insertion, successor traversal, cached-leftmost maintenance,
+	  deletion, and linked-chain maintenance for both the C fallback and
+	  native Rust paths.
+
+	  If unsure, say N.
+
 config ITIMER_KUNIT_TEST
 	bool "KUnit test for interval timers" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y && POSIX_TIMERS

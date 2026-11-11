@@ -377,6 +377,20 @@ config RUST_RBTREE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_TIMERQUEUE
+	bool "Rust implementation of timer queues"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production timer queue insertion, deletion,
+	  successor traversal, and linked-tree insertion operations.
+
+	  Locking and timer callback semantics remain with the existing
+	  callers. The exported C entry points remain as ABI adapters.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RBTREE_RUST_KUNIT_TEST
 	bool "KUnit tests for the Rust rbtree implementation"
 	depends on RUST_RBTREE && KUNIT

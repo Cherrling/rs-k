@@ -10,9 +10,12 @@
  */
 
 #include <linux/bug.h>
-#include <linux/timerqueue.h>
 #include <linux/rbtree.h>
 #include <linux/export.h>
+#include <linux/timerqueue-rust.h>
+#include <linux/timerqueue.h>
+
+#ifndef CONFIG_RUST_TIMERQUEUE
 
 #define __node_2_tq(_n) \
 	rb_entry((_n), struct timerqueue_node, node)
@@ -96,3 +99,32 @@ bool timerqueue_linked_add(struct timerqueue_linked_head *head, struct timerqueu
 	return rb_add_linked(&node->node, &head->rb_root, __tq_linked_less);
 }
 EXPORT_SYMBOL_GPL(timerqueue_linked_add);
+
+#else
+
+bool timerqueue_add(struct timerqueue_head *head, struct timerqueue_node *node)
+{
+	return rust_timerqueue_add(head, node);
+}
+EXPORT_SYMBOL_GPL(timerqueue_add);
+
+bool timerqueue_del(struct timerqueue_head *head, struct timerqueue_node *node)
+{
+	return rust_timerqueue_del(head, node);
+}
+EXPORT_SYMBOL_GPL(timerqueue_del);
+
+struct timerqueue_node *timerqueue_iterate_next(struct timerqueue_node *node)
+{
+	return rust_timerqueue_iterate_next(node);
+}
+EXPORT_SYMBOL_GPL(timerqueue_iterate_next);
+
+bool timerqueue_linked_add(struct timerqueue_linked_head *head,
+			   struct timerqueue_linked_node *node)
+{
+	return rust_timerqueue_linked_add(head, node);
+}
+EXPORT_SYMBOL_GPL(timerqueue_linked_add);
+
+#endif

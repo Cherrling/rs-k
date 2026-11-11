@@ -159,6 +159,8 @@ mod swait_core;
 pub mod sync;
 pub mod task;
 pub mod time;
+#[cfg(CONFIG_RUST_TIMERQUEUE)]
+mod timerqueue_core;
 pub mod tracepoint;
 pub mod transmute;
 pub mod types;

@@ -39,6 +39,7 @@ more details.
     testing
     cpupri
     itimer
+    timerqueue
     completion
     mutex
     rwsem

@@ -4,6 +4,7 @@
 
 #include <linux/rbtree.h>
 #include <linux/timerqueue_types.h>
+#include <linux/timerqueue-rust.h>
 
 bool timerqueue_add(struct timerqueue_head *head, struct timerqueue_node *node);
 bool timerqueue_del(struct timerqueue_head *head, struct timerqueue_node *node);
