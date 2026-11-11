@@ -23977,6 +23977,7 @@ F:	.rustfmt.toml
 F:	Documentation/rust/
 F:	include/linux/completion-rust.h
 F:	include/linux/mutex-rust.h
+F:	include/linux/rwlock-rust.h
 F:	include/linux/rwsem-rust.h
 F:	include/linux/semaphore-rust.h
 F:	include/linux/swait-rust.h
@@ -23985,6 +23986,7 @@ F:	include/linux/wait-rust.h
 F:	include/trace/events/rust_sample.h
 F:	lib/tests/test_completion.c
 F:	lib/tests/test_mutex.c
+F:	lib/tests/test_rwlock.c
 F:	lib/tests/test_rwsem.c
 F:	lib/tests/test_semaphore.c
 F:	lib/tests/test_swait.c

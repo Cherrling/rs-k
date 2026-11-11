@@ -40,6 +40,7 @@ more details.
     completion
     mutex
     rwsem
+    rwlock
     semaphore
     waitqueue
     wait-bit

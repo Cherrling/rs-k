@@ -2398,6 +2398,21 @@ config RWSEM_KUNIT_TEST
 
 	  If unsure, say N.
 
+config RWLOCK_KUNIT_TEST
+	bool "KUnit test for queued read-write spinlocks" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y && QUEUED_RWLOCKS && !PREEMPT_RT
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for queued read-write spinlock fast
+	  paths, trylock behavior, reader and writer slow paths, writer
+	  preference, and concurrent reader/writer exclusion.
+
+	  The same tests run with either the C implementation or the native
+	  Rust count and handoff protocol selected. This test must be built-in
+	  because it inspects queued lock count state.
+
+	  If unsure, say N.
+
 config WAITQUEUE_KUNIT_TEST
 	bool "KUnit test for wait queue wakeups" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y
