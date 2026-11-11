@@ -928,13 +928,15 @@ config RUST_WAITQUEUE
 	default y
 	help
 	  Use Rust for the production wait queue state machine.  This includes
-	  entry flags and ordering, callback traversal, negative callback
-	  termination, normal and synchronized wake flags, current-CPU wakeup,
-	  exclusive wake accounting, and POLLFREE handling.
+	  entry flags and ordering, wait preparation, task state transitions,
+	  signal rejection, finish cleanup, callback traversal, negative
+	  callback termination, normal and synchronized wake flags, current-CPU
+	  wakeup, exclusive wake accounting, and POLLFREE handling.
 
-	  Raw locking, intrusive list primitives, lockdep assertions, scheduler
-	  flags, and poll key construction remain in C because they depend on
-	  scheduler and locking internals.
+	  Raw locking, intrusive list primitives, scheduler state stores, signal
+	  predicates, lockdep assertions, scheduler flags, and poll key
+	  construction remain in C because they depend on scheduler and locking
+	  internals.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

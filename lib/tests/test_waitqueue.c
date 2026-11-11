@@ -7,6 +7,7 @@
 #include <linux/list.h>
 #include <linux/poll.h>
 #include <linux/sched.h>
+#include <linux/sched/signal.h>
 #include <linux/wait.h>
 
 #define WAITQUEUE_TEST_TIMEOUT_MS 30000
@@ -244,6 +245,113 @@ static void waitqueue_test_priority_exclusive(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, waitqueue_test_count(&wq_head), 0);
 }
 
+static void waitqueue_test_prepare_to_wait(struct kunit *test)
+{
+	struct waitqueue_test_record record;
+	DECLARE_WAIT_QUEUE_HEAD_ONSTACK(wq_head);
+
+	waitqueue_test_init_record(&record, 1, 0, NULL, NULL);
+	record.entry.flags = WQ_FLAG_EXCLUSIVE | WQ_FLAG_PRIORITY;
+
+	prepare_to_wait(&wq_head, &record.entry, TASK_INTERRUPTIBLE);
+	KUNIT_EXPECT_EQ(test, record.entry.flags, WQ_FLAG_PRIORITY);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_count(&wq_head), 1);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_position(&wq_head, &record), 0);
+	KUNIT_EXPECT_EQ(test, READ_ONCE(current->__state),
+			TASK_INTERRUPTIBLE);
+
+	prepare_to_wait(&wq_head, &record.entry, TASK_UNINTERRUPTIBLE);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_count(&wq_head), 1);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_position(&wq_head, &record), 0);
+	KUNIT_EXPECT_EQ(test, READ_ONCE(current->__state),
+			TASK_UNINTERRUPTIBLE);
+
+	finish_wait(&wq_head, &record.entry);
+	KUNIT_EXPECT_TRUE(test, list_empty(&record.entry.entry));
+	KUNIT_EXPECT_EQ(test, waitqueue_test_count(&wq_head), 0);
+	KUNIT_EXPECT_EQ(test, READ_ONCE(current->__state), TASK_RUNNING);
+}
+
+static void waitqueue_test_prepare_to_wait_exclusive(struct kunit *test)
+{
+	struct waitqueue_test_record first;
+	struct waitqueue_test_record second;
+	DECLARE_WAIT_QUEUE_HEAD_ONSTACK(wq_head);
+
+	waitqueue_test_init_record(&first, 1, 0, NULL, NULL);
+	waitqueue_test_init_record(&second, 1, 1, NULL, NULL);
+
+	KUNIT_EXPECT_TRUE(test,
+			  prepare_to_wait_exclusive(&wq_head, &first.entry,
+						    TASK_INTERRUPTIBLE));
+	KUNIT_EXPECT_EQ(test, first.entry.flags, WQ_FLAG_EXCLUSIVE);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_position(&wq_head, &first), 0);
+	KUNIT_EXPECT_EQ(test, READ_ONCE(current->__state),
+			TASK_INTERRUPTIBLE);
+
+	KUNIT_EXPECT_FALSE(test,
+			   prepare_to_wait_exclusive(&wq_head, &second.entry,
+						     TASK_UNINTERRUPTIBLE));
+	KUNIT_EXPECT_FALSE(test,
+			   prepare_to_wait_exclusive(&wq_head, &first.entry,
+						     TASK_UNINTERRUPTIBLE));
+	KUNIT_EXPECT_EQ(test, waitqueue_test_count(&wq_head), 2);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_position(&wq_head, &first), 0);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_position(&wq_head, &second), 1);
+	KUNIT_EXPECT_EQ(test, READ_ONCE(current->__state),
+			TASK_UNINTERRUPTIBLE);
+
+	finish_wait(&wq_head, &first.entry);
+	finish_wait(&wq_head, &second.entry);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_count(&wq_head), 0);
+	KUNIT_EXPECT_EQ(test, READ_ONCE(current->__state), TASK_RUNNING);
+}
+
+static void waitqueue_test_prepare_to_wait_event(struct kunit *test)
+{
+	struct waitqueue_test_record normal;
+	struct waitqueue_test_record exclusive;
+	DECLARE_WAIT_QUEUE_HEAD_ONSTACK(wq_head);
+	long ret;
+
+	waitqueue_test_init_record(&normal, 1, 0, NULL, NULL);
+	waitqueue_test_init_record(&exclusive, 1, 1, NULL, NULL);
+	exclusive.entry.flags = WQ_FLAG_EXCLUSIVE;
+
+	KUNIT_EXPECT_EQ(test,
+			prepare_to_wait_event(&wq_head, &normal.entry,
+					      TASK_UNINTERRUPTIBLE), 0);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_position(&wq_head, &normal), 0);
+	KUNIT_EXPECT_EQ(test, READ_ONCE(current->__state),
+			TASK_UNINTERRUPTIBLE);
+
+	KUNIT_EXPECT_EQ(test,
+			prepare_to_wait_event(&wq_head, &exclusive.entry,
+					      TASK_INTERRUPTIBLE), 0);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_position(&wq_head, &exclusive),
+			1);
+	KUNIT_EXPECT_EQ(test, READ_ONCE(current->__state),
+			TASK_INTERRUPTIBLE);
+
+	allow_kernel_signal(SIGUSR1);
+	KUNIT_EXPECT_EQ(test, send_sig(SIGUSR1, current, 1), 0);
+	KUNIT_EXPECT_TRUE(test, signal_pending(current));
+	ret = prepare_to_wait_event(&wq_head, &exclusive.entry,
+				    TASK_INTERRUPTIBLE);
+	flush_signals(current);
+	disallow_signal(SIGUSR1);
+
+	KUNIT_EXPECT_EQ(test, ret, -ERESTARTSYS);
+	KUNIT_EXPECT_TRUE(test, list_empty(&exclusive.entry.entry));
+	KUNIT_EXPECT_EQ(test, waitqueue_test_count(&wq_head), 1);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_position(&wq_head, &normal), 0);
+
+	finish_wait(&wq_head, &exclusive.entry);
+	finish_wait(&wq_head, &normal.entry);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_count(&wq_head), 0);
+	KUNIT_EXPECT_EQ(test, READ_ONCE(current->__state), TASK_RUNNING);
+}
+
 static void waitqueue_test_wake_all_order(struct kunit *test)
 {
 	struct waitqueue_test_record records[4];
@@ -433,6 +541,9 @@ cleanup:
 static struct kunit_case waitqueue_test_cases[] = {
 	KUNIT_CASE(waitqueue_test_entry_order),
 	KUNIT_CASE(waitqueue_test_priority_exclusive),
+	KUNIT_CASE(waitqueue_test_prepare_to_wait),
+	KUNIT_CASE(waitqueue_test_prepare_to_wait_exclusive),
+	KUNIT_CASE(waitqueue_test_prepare_to_wait_event),
 	KUNIT_CASE(waitqueue_test_wake_all_order),
 	KUNIT_CASE(waitqueue_test_exclusive_budget),
 	KUNIT_CASE(waitqueue_test_negative_callback),

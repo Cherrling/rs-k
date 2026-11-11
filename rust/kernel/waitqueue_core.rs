@@ -2,14 +2,15 @@
 
 //! Native wait queue wake state machine.
 //!
-//! Rust owns entry ordering, entry flags, wake traversal, callback order,
-//! exclusive wake accounting, and wake return values. C helpers retain
-//! locking, intrusive list pointer updates, lockdep checks, scheduler wake
-//! flags, and poll key construction.
+//! Rust owns entry ordering, entry flags, wait preparation, task state
+//! transitions, signal rejection, finish cleanup, wake traversal, callback
+//! order, exclusive wake accounting, and wake return values. C helpers retain
+//! locking, intrusive list pointer updates, lockdep checks, scheduler state
+//! writes, signal predicates, scheduler wake flags, and poll key construction.
 
 use crate::{
     bindings,
-    ffi::{c_int, c_uint, c_void},
+    ffi::{c_int, c_long, c_uint, c_void},
 };
 use core::ptr;
 use macros::export;
@@ -222,6 +223,128 @@ unsafe extern "C" fn rust_waitqueue_remove(wq_head: *mut Head, wq_entry: *mut En
     unsafe { remove_locked(wq_head, wq_entry) };
     // SAFETY: This function acquired the queue lock.
     unsafe { unlock_irqrestore(wq_head, flags) };
+}
+
+/// Prepares a normal wait entry and sets the current task state.
+///
+/// # Safety
+///
+/// `wq_head` and `wq_entry` must point to valid objects.
+#[export]
+unsafe extern "C" fn rust_waitqueue_prepare(
+    wq_head: *mut Head,
+    wq_entry: *mut Entry,
+    state: c_uint,
+) {
+    // SAFETY: The caller guarantees that `wq_entry` is valid.
+    unsafe { (*wq_entry).flags &= !WQ_FLAG_EXCLUSIVE };
+    // SAFETY: The caller guarantees that `wq_head` is valid.
+    let flags = unsafe { lock_irqsave(wq_head) };
+    // SAFETY: The queue lock is held and `wq_entry` is valid.
+    if unsafe { bindings::rust_waitqueue_entry_is_empty(wq_entry) } {
+        // SAFETY: The queue lock is held and both pointers are valid.
+        unsafe { add_locked(wq_head, wq_entry) };
+    }
+    // SAFETY: The queue lock is held. The helper provides the required
+    // scheduler store barrier.
+    unsafe { bindings::rust_waitqueue_set_current_state(state) };
+    // SAFETY: This function acquired the queue lock.
+    unsafe { unlock_irqrestore(wq_head, flags) };
+}
+
+/// Prepares an exclusive wait entry and reports whether it led an empty queue.
+///
+/// # Safety
+///
+/// `wq_head` and `wq_entry` must point to valid objects.
+#[export]
+unsafe extern "C" fn rust_waitqueue_prepare_exclusive(
+    wq_head: *mut Head,
+    wq_entry: *mut Entry,
+    state: c_uint,
+) -> bool {
+    // SAFETY: The caller guarantees that `wq_entry` is valid.
+    unsafe { (*wq_entry).flags |= WQ_FLAG_EXCLUSIVE };
+    // SAFETY: The caller guarantees that `wq_head` is valid.
+    let flags = unsafe { lock_irqsave(wq_head) };
+    let mut was_empty = false;
+    // SAFETY: The queue lock is held and `wq_entry` is valid.
+    if unsafe { bindings::rust_waitqueue_entry_is_empty(wq_entry) } {
+        // SAFETY: The queue lock is held and `wq_head` is valid.
+        was_empty = unsafe { bindings::rust_waitqueue_head_is_empty(wq_head) };
+        // SAFETY: The queue lock is held and both pointers are valid.
+        unsafe { add_tail_locked(wq_head, wq_entry) };
+    }
+    // SAFETY: The queue lock is held. The helper provides the required
+    // scheduler store barrier.
+    unsafe { bindings::rust_waitqueue_set_current_state(state) };
+    // SAFETY: This function acquired the queue lock.
+    unsafe { unlock_irqrestore(wq_head, flags) };
+    was_empty
+}
+
+/// Prepares a wait entry unless an eligible signal is pending.
+///
+/// # Safety
+///
+/// `wq_head` and `wq_entry` must point to valid objects.
+#[export]
+unsafe extern "C" fn rust_waitqueue_prepare_event(
+    wq_head: *mut Head,
+    wq_entry: *mut Entry,
+    state: c_uint,
+) -> c_long {
+    // SAFETY: The caller guarantees that `wq_head` is valid.
+    let flags = unsafe { lock_irqsave(wq_head) };
+    // SAFETY: The helper reads the state of the current task.
+    let interrupted = unsafe { bindings::rust_waitqueue_signal_pending_state(state) } != 0;
+    let ret = if interrupted {
+        // SAFETY: `wq_entry` is valid. `list_del_init` accepts a self-linked
+        // entry, which preserves the queued or unqueued state correctly.
+        unsafe { bindings::rust_waitqueue_list_del_init(ptr::addr_of_mut!((*wq_entry).entry)) };
+        -(bindings::ERESTARTSYS as c_long)
+    } else {
+        // SAFETY: The queue lock is held and `wq_entry` is valid.
+        if unsafe { bindings::rust_waitqueue_entry_is_empty(wq_entry) } {
+            // SAFETY: `wq_entry` is valid.
+            if (unsafe { (*wq_entry).flags } & WQ_FLAG_EXCLUSIVE) != 0 {
+                // SAFETY: The queue lock is held and both pointers are valid.
+                unsafe { add_tail_locked(wq_head, wq_entry) };
+            } else {
+                // SAFETY: The queue lock is held and both pointers are valid.
+                unsafe { add_locked(wq_head, wq_entry) };
+            }
+        }
+        // SAFETY: The queue lock is held. The helper provides the required
+        // scheduler store barrier.
+        unsafe { bindings::rust_waitqueue_set_current_state(state) };
+        0
+    };
+    // SAFETY: This function acquired the queue lock.
+    unsafe { unlock_irqrestore(wq_head, flags) };
+    ret
+}
+
+/// Restores the current task state and removes a queued wait entry.
+///
+/// # Safety
+///
+/// `wq_head` and `wq_entry` must point to valid objects.
+#[export]
+unsafe extern "C" fn rust_waitqueue_finish(wq_head: *mut Head, wq_entry: *mut Entry) {
+    // SAFETY: The helper updates the current task state without a barrier as
+    // required by the finish_wait protocol.
+    unsafe { bindings::rust_waitqueue_set_current_state_relaxed(bindings::TASK_RUNNING as c_uint) };
+    // SAFETY: `wq_entry` is valid. The careful emptiness check is the existing
+    // lockless protocol for avoiding half-pending intrusive list updates.
+    if !unsafe { bindings::rust_waitqueue_entry_is_empty_careful(wq_entry) } {
+        // SAFETY: The caller guarantees that `wq_head` is valid.
+        let flags = unsafe { lock_irqsave(wq_head) };
+        // SAFETY: The queue lock is held and `wq_entry` is valid.
+        unsafe { bindings::rust_waitqueue_list_del_init(ptr::addr_of_mut!((*wq_entry).entry)) };
+        // SAFETY: This function acquired the queue lock.
+        unsafe { unlock_irqrestore(wq_head, flags) };
+    }
 }
 
 /// Runs all eligible callbacks while the wait queue lock is held.

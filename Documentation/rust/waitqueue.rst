@@ -13,6 +13,9 @@ the wait queue state machine.  The migration keeps the existing
 The Rust code owns these production decisions:
 
 * Wait entry flags and insertion order.
+* Wait preparation and idempotent queue insertion.
+* Current task state transitions for wait preparation and completion.
+* Signal rejection and wait entry removal on return.
 * Callback traversal order.
 * Negative callback termination.
 * Exclusive and non-exclusive wake eligibility.
@@ -21,9 +24,8 @@ The Rust code owns these production decisions:
 * Wakeup return counts.
 * POLLFREE wake traversal and final empty-queue enforcement.
 
-Queue initialization, wait preparation, task sleep, wait completion, and the
-woken wait helpers remain in C.  Those operations will be separate migration
-units.
+Queue initialization, scheduler dispatch, wait condition loops, and the woken
+wait helpers remain in C.  Those operations will be separate migration units.
 
 Entry points and ownership
 --------------------------
@@ -41,14 +43,16 @@ locking, poll, or intrusive list internals:
 
 * Wait queue spinlock acquisition and interrupt state restoration.
 * Lockdep assertions that require the wait queue lock.
-* Intrusive list pointer insertion, removal, head detection, and next-entry
-  lookup.
+* Intrusive list pointer insertion, removal, emptiness checks, head detection,
+  and next-entry lookup.
+* Current task state stores with the scheduler's required memory barriers.
+* Signal predicate evaluation for the current task.
 * Scheduler wake flags for current-CPU and synchronized wakeups.
 * Poll key construction and the final POLLFREE queue check.
 
 These helpers do not set wait entry flags, select an insertion position,
-select callbacks, enforce the exclusive budget, or decide when callback
-traversal stops.
+reject signals, update task state, select callbacks, enforce the exclusive
+budget, or decide when callback traversal stops.
 
 Important invariants
 --------------------
@@ -57,6 +61,15 @@ Entry insertion and removal run under the wait queue lock.  Normal and priority
 entries are inserted after the existing priority prefix.  Exclusive entries
 are appended to the tail.  A priority-exclusive entry fails with ``-EBUSY``
 when another priority entry already leads the queue.
+
+Wait preparation inserts an unqueued entry only once.  The queue insertion
+precedes the scheduler state store so a wakeup sees either the queued entry or
+the waiter sees the wakeup.  Signal rejection removes an exclusive entry before
+the waiter returns ``-ERESTARTSYS``.
+
+Wait completion restores ``TASK_RUNNING`` before it checks the entry.  The
+lockless emptiness check is careful because another CPU can update the
+intrusive list links.
 
 Wake callbacks run under the wait queue lock.  The traversal reads the next
 list entry before invoking the current callback because the callback may remove
@@ -84,6 +97,8 @@ The migration unit must pass these checks before integration:
 * One-vCPU and repeated four-vCPU Rust KUnit runs.
 * Four-vCPU C fallback, KASAN, and lockdep KUnit runs.
 * Entry insertion order, removal, and priority-exclusive contention.
+* Idempotent wait preparation, exclusive queue status, signal rejection, and
+  finish cleanup.
 * Callback order and wake modes.
 * Exclusive budget and zero-return callback behavior.
 * Negative callback termination.
@@ -104,10 +119,10 @@ The final source tree passed seven x86_64 KUnit runs on 2026-11-11:
 * One run on four vCPUs with generic inline KASAN enabled.
 * One run on four vCPUs with lockdep, spinlock, and list debugging enabled.
 
-Every run reported eight passed tests and no failures, skips, kernel warnings,
+Every run reported eleven passed tests and no failures, skips, kernel warnings,
 sanitizer reports, lockdep reports, or panic.
 
-All thirteen public wait and entry-operation adapters disassemble to direct
+All seventeen public wait and entry-operation adapters disassemble to direct
 jumps into their Rust counterparts.  The exported symbol names and classes
 match the C fallback.  The narrow C boundary helpers are not exported.  The C
 fallback image and loadable modules from both builds contain no unresolved
@@ -125,6 +140,7 @@ Reopen the C boundary decision if any of these conditions changes:
   scheduler flags, poll keys, or intrusive list traversal.
 * The exclusive wake accounting or callback return protocol changes.
 * The wait entry flag or priority ordering contract changes.
+* Scheduler state barriers, signal eligibility, or finish ordering changes.
 * Wake callbacks gain permission to remove entries other than their own.
 * The wake path starts selecting entries by a method other than list order.
 * Benchmarks show that the out-of-line ABI and helper transitions are too

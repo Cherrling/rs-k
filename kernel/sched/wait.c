@@ -258,6 +258,41 @@ void rust_waitqueue_list_del(struct list_head *entry)
 	list_del(entry);
 }
 
+void rust_waitqueue_list_del_init(struct list_head *entry)
+{
+	list_del_init(entry);
+}
+
+bool rust_waitqueue_head_is_empty(struct wait_queue_head *wq_head)
+{
+	return list_empty(&wq_head->head);
+}
+
+bool rust_waitqueue_entry_is_empty(struct wait_queue_entry *wq_entry)
+{
+	return list_empty(&wq_entry->entry);
+}
+
+bool rust_waitqueue_entry_is_empty_careful(struct wait_queue_entry *wq_entry)
+{
+	return list_empty_careful(&wq_entry->entry);
+}
+
+void rust_waitqueue_set_current_state(unsigned int state)
+{
+	set_current_state(state);
+}
+
+void rust_waitqueue_set_current_state_relaxed(unsigned int state)
+{
+	__set_current_state(state);
+}
+
+int rust_waitqueue_signal_pending_state(unsigned int state)
+{
+	return signal_pending_state(state, current);
+}
+
 void rust_waitqueue_lock_irqsave(struct wait_queue_head *wq_head,
 				 unsigned long *flags)
 {
@@ -415,6 +450,7 @@ void __wake_up_pollfree(struct wait_queue_head *wq_head)
  * stops them from bleeding out - it would still allow subsequent
  * loads to move into the critical region).
  */
+#ifndef CONFIG_RUST_WAITQUEUE
 void
 prepare_to_wait(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry, int state)
 {
@@ -427,11 +463,20 @@ prepare_to_wait(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_ent
 	set_current_state(state);
 	spin_unlock_irqrestore(&wq_head->lock, flags);
 }
+#else
+void
+prepare_to_wait(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry, int state)
+{
+	rust_waitqueue_prepare(wq_head, wq_entry, state);
+}
+#endif
 EXPORT_SYMBOL(prepare_to_wait);
 
 /* Returns true if we are the first waiter in the queue, false otherwise. */
+#ifndef CONFIG_RUST_WAITQUEUE
 bool
-prepare_to_wait_exclusive(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry, int state)
+prepare_to_wait_exclusive(struct wait_queue_head *wq_head,
+			  struct wait_queue_entry *wq_entry, int state)
 {
 	unsigned long flags;
 	bool was_empty = false;
@@ -446,6 +491,14 @@ prepare_to_wait_exclusive(struct wait_queue_head *wq_head, struct wait_queue_ent
 	spin_unlock_irqrestore(&wq_head->lock, flags);
 	return was_empty;
 }
+#else
+bool
+prepare_to_wait_exclusive(struct wait_queue_head *wq_head,
+			  struct wait_queue_entry *wq_entry, int state)
+{
+	return rust_waitqueue_prepare_exclusive(wq_head, wq_entry, state);
+}
+#endif
 EXPORT_SYMBOL(prepare_to_wait_exclusive);
 
 void init_wait_entry(struct wait_queue_entry *wq_entry, int flags)
@@ -457,7 +510,9 @@ void init_wait_entry(struct wait_queue_entry *wq_entry, int flags)
 }
 EXPORT_SYMBOL(init_wait_entry);
 
-long prepare_to_wait_event(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry, int state)
+#ifndef CONFIG_RUST_WAITQUEUE
+long prepare_to_wait_event(struct wait_queue_head *wq_head,
+			   struct wait_queue_entry *wq_entry, int state)
 {
 	unsigned long flags;
 	long ret = 0;
@@ -491,6 +546,13 @@ long prepare_to_wait_event(struct wait_queue_head *wq_head, struct wait_queue_en
 
 	return ret;
 }
+#else
+long prepare_to_wait_event(struct wait_queue_head *wq_head,
+			   struct wait_queue_entry *wq_entry, int state)
+{
+	return rust_waitqueue_prepare_event(wq_head, wq_entry, state);
+}
+#endif
 EXPORT_SYMBOL(prepare_to_wait_event);
 
 /*
@@ -543,6 +605,7 @@ EXPORT_SYMBOL(do_wait_intr_irq);
  * the wait descriptor from the given waitqueue if still
  * queued.
  */
+#ifndef CONFIG_RUST_WAITQUEUE
 void finish_wait(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry)
 {
 	unsigned long flags;
@@ -567,6 +630,12 @@ void finish_wait(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_en
 		spin_unlock_irqrestore(&wq_head->lock, flags);
 	}
 }
+#else
+void finish_wait(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry)
+{
+	rust_waitqueue_finish(wq_head, wq_entry);
+}
+#endif
 EXPORT_SYMBOL(finish_wait);
 
 int autoremove_wake_function(struct wait_queue_entry *wq_entry, unsigned mode, int sync, void *key)
