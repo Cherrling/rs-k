@@ -122,6 +122,10 @@ enum refcount_saturation_type {
 	REFCOUNT_DEC_LEAK,
 };
 
+#ifdef CONFIG_RUST_REFCOUNT
+#include <linux/refcount-rust.h>
+#endif
+
 void refcount_warn_saturate(refcount_t *r, enum refcount_saturation_type t);
 
 /**
@@ -170,6 +174,9 @@ static inline unsigned int refcount_read(const refcount_t *r)
 	return atomic_read(&r->refs);
 }
 
+#ifdef CONFIG_RUST_REFCOUNT
+__must_check bool __refcount_add_not_zero(int i, refcount_t *r, int *oldp);
+#else
 static inline __must_check
 bool __refcount_add_not_zero(int i, refcount_t *r, int *oldp)
 {
@@ -188,6 +195,7 @@ bool __refcount_add_not_zero(int i, refcount_t *r, int *oldp)
 
 	return old;
 }
+#endif
 
 /**
  * refcount_add_not_zero - add a value to a refcount unless it is 0
@@ -212,6 +220,10 @@ static inline __must_check bool refcount_add_not_zero(int i, refcount_t *r)
 	return __refcount_add_not_zero(i, r, NULL);
 }
 
+#ifdef CONFIG_RUST_REFCOUNT
+__must_check bool __refcount_add_not_zero_limited_acquire(int i, refcount_t *r,
+							  int *oldp, int limit);
+#else
 static inline __must_check
 bool __refcount_add_not_zero_limited_acquire(int i, refcount_t *r, int *oldp,
 					     int limit)
@@ -237,6 +249,7 @@ bool __refcount_add_not_zero_limited_acquire(int i, refcount_t *r, int *oldp,
 
 	return old;
 }
+#endif
 
 static inline __must_check bool
 __refcount_inc_not_zero_limited_acquire(refcount_t *r, int *oldp, int limit)
@@ -277,6 +290,9 @@ static inline __must_check bool refcount_add_not_zero_acquire(int i, refcount_t 
 	return __refcount_add_not_zero_acquire(i, r, NULL);
 }
 
+#ifdef CONFIG_RUST_REFCOUNT
+void __refcount_add(int i, refcount_t *r, int *oldp);
+#else
 static inline
 void __refcount_add(int i, refcount_t *r, int *oldp)
 {
@@ -290,6 +306,7 @@ void __refcount_add(int i, refcount_t *r, int *oldp)
 	else if (unlikely(old < 0 || old + i < 0))
 		refcount_warn_saturate(r, REFCOUNT_ADD_OVF);
 }
+#endif
 
 /**
  * refcount_add - add a value to a refcount
@@ -383,6 +400,9 @@ static inline void refcount_inc(refcount_t *r)
 	__refcount_inc(r, NULL);
 }
 
+#ifdef CONFIG_RUST_REFCOUNT
+__must_check bool __refcount_sub_and_test(int i, refcount_t *r, int *oldp);
+#else
 static inline __must_check
 bool __refcount_sub_and_test(int i, refcount_t *r, int *oldp)
 {
@@ -401,6 +421,7 @@ bool __refcount_sub_and_test(int i, refcount_t *r, int *oldp)
 
 	return false;
 }
+#endif
 
 /**
  * refcount_sub_and_test - subtract from a refcount and test if it is 0
@@ -450,6 +471,9 @@ static inline __must_check bool refcount_dec_and_test(refcount_t *r)
 	return __refcount_dec_and_test(r, NULL);
 }
 
+#ifdef CONFIG_RUST_REFCOUNT
+void __refcount_dec(refcount_t *r, int *oldp);
+#else
 static inline void __refcount_dec(refcount_t *r, int *oldp)
 {
 	int old = atomic_fetch_sub_release(1, &r->refs);
@@ -460,6 +484,7 @@ static inline void __refcount_dec(refcount_t *r, int *oldp)
 	if (unlikely(old <= 1))
 		refcount_warn_saturate(r, REFCOUNT_DEC_LEAK);
 }
+#endif
 
 /**
  * refcount_dec - decrement a refcount

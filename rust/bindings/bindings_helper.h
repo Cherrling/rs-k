@@ -85,6 +85,7 @@
 #include <linux/pwm.h>
 #include <linux/random.h>
 #include <linux/refcount.h>
+#include <linux/refcount-rust.h>
 #include <linux/regulator/consumer.h>
 #include <linux/sched.h>
 #include <linux/security.h>

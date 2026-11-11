@@ -124,6 +124,8 @@ pub mod ptr;
 #[cfg(CONFIG_RUST_PWM_ABSTRACTIONS)]
 pub mod pwm;
 pub mod rbtree;
+#[cfg(CONFIG_RUST_REFCOUNT)]
+mod refcount_core;
 pub mod regulator;
 pub mod revocable;
 pub mod safety;

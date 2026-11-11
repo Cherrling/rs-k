@@ -351,6 +351,20 @@ config RUST_PERCPU_REFCOUNT
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_REFCOUNT
+	bool "Rust implementation of refcount_t saturation"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production refcount_t increment, decrement,
+	  saturation, limited-acquire, and conditional-locking state machine.
+
+	  Architecture atomics, memory barriers, and kernel locking primitives
+	  remain in C because they depend on the architecture and scheduler.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_RBTREE
 	bool "Rust implementation of red-black tree operations"
 	depends on RUST

@@ -38,6 +38,7 @@ more details.
     arch-support
     testing
     native-percpu-refcount
+    refcount
 
 You can also find learning materials for Rust in its section in
 :doc:`../process/kernel-docs`.

@@ -2310,6 +2310,19 @@ config PERCPU_REFCOUNT_KUNIT_TEST
 
 	  If unsure, say N.
 
+config REFCOUNT_KUNIT_TEST
+	tristate "KUnit test for refcount_t saturation" if !KUNIT_ALL_TESTS
+	depends on KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for refcount_t transitions,
+	  saturation, limited acquire operations, and conditional locking.
+
+	  The same tests run with either the C implementation or the native
+	  Rust implementation selected.
+
+	  If unsure, say N.
+
 config TEST_SORT
 	tristate "Array-based sort test" if !KUNIT_ALL_TESTS
 	depends on KUNIT
