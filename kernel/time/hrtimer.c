@@ -718,6 +718,7 @@ static void hrtimer_bases_first(struct hrtimer_cpu_base *cpu_base,unsigned int a
 static ktime_t __hrtimer_get_next_event(struct hrtimer_cpu_base *cpu_base, unsigned int active_mask)
 {
 #ifdef CONFIG_RUST_HRTIMER_NEXT_EVENT
+	lockdep_assert_held(&cpu_base->lock);
 	return rust_hrtimer_get_next_event(cpu_base, active_mask);
 #else
 	struct hrtimer *next_timer = NULL;
@@ -745,6 +746,10 @@ static ktime_t __hrtimer_get_next_event(struct hrtimer_cpu_base *cpu_base, unsig
 
 static ktime_t hrtimer_update_next_event(struct hrtimer_cpu_base *cpu_base)
 {
+#ifdef CONFIG_RUST_HRTIMER_UPDATE_NEXT_EVENT
+	lockdep_assert_held(&cpu_base->lock);
+	return rust_hrtimer_update_next_event(cpu_base);
+#else
 	ktime_t expires_next, soft = KTIME_MAX;
 
 	/*
@@ -772,6 +777,7 @@ static ktime_t hrtimer_update_next_event(struct hrtimer_cpu_base *cpu_base)
 	}
 
 	return expires_next;
+#endif
 }
 
 static inline ktime_t hrtimer_update_base(struct hrtimer_cpu_base *base)

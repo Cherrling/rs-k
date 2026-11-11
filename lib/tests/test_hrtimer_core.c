@@ -237,6 +237,84 @@ static void hrtimer_core_test_next_event(struct kunit *test)
 }
 #endif
 
+#ifdef CONFIG_RUST_HRTIMER_UPDATE_NEXT_EVENT
+static void hrtimer_core_test_update_next_event(struct kunit *test)
+{
+	struct hrtimer_core_test_next_event *state;
+	struct hrtimer_cpu_base *cpu_base;
+	ktime_t expires;
+
+	state = kunit_kzalloc(test, sizeof(*state), GFP_KERNEL);
+	KUNIT_ASSERT_NOT_NULL(test, state);
+	cpu_base = &state->cpu_base;
+
+	hrtimer_core_test_init_active_base(cpu_base, HRTIMER_BASE_MONOTONIC,
+					   &state->timers[0],
+					   ns_to_ktime(900), ns_to_ktime(0));
+	hrtimer_core_test_init_active_base(cpu_base,
+					   HRTIMER_BASE_MONOTONIC_SOFT,
+					   &state->timers[1],
+					   ns_to_ktime(800), ns_to_ktime(0));
+	expires = rust_hrtimer_update_next_event(cpu_base);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(800), expires);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(800),
+			cpu_base->softirq_expires_next);
+	KUNIT_EXPECT_PTR_EQ(test, &state->timers[1], cpu_base->next_timer);
+
+	memset(state, 0, sizeof(*state));
+	hrtimer_core_test_init_active_base(cpu_base, HRTIMER_BASE_MONOTONIC,
+					   &state->timers[0],
+					   ns_to_ktime(800), ns_to_ktime(0));
+	hrtimer_core_test_init_active_base(cpu_base,
+					   HRTIMER_BASE_MONOTONIC_SOFT,
+					   &state->timers[1],
+					   ns_to_ktime(900), ns_to_ktime(0));
+	expires = rust_hrtimer_update_next_event(cpu_base);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(800), expires);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(900),
+			cpu_base->softirq_expires_next);
+	KUNIT_EXPECT_PTR_EQ(test, &state->timers[0], cpu_base->next_timer);
+
+	memset(state, 0, sizeof(*state));
+	hrtimer_core_test_init_active_base(cpu_base, HRTIMER_BASE_MONOTONIC,
+					   &state->timers[0],
+					   ns_to_ktime(800), ns_to_ktime(0));
+	hrtimer_core_test_init_active_base(cpu_base,
+					   HRTIMER_BASE_MONOTONIC_SOFT,
+					   &state->timers[1],
+					   ns_to_ktime(800), ns_to_ktime(0));
+	expires = rust_hrtimer_update_next_event(cpu_base);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(800), expires);
+	KUNIT_EXPECT_PTR_EQ(test, &state->timers[0], cpu_base->next_timer);
+	KUNIT_EXPECT_PTR_EQ(test, &state->timers[1],
+			    cpu_base->softirq_next_timer);
+
+	memset(state, 0, sizeof(*state));
+	hrtimer_core_test_init_active_base(cpu_base, HRTIMER_BASE_MONOTONIC,
+					   &state->timers[0],
+					   ns_to_ktime(900), ns_to_ktime(0));
+	hrtimer_core_test_init_active_base(cpu_base,
+					   HRTIMER_BASE_MONOTONIC_SOFT,
+					   &state->timers[1],
+					   ns_to_ktime(800), ns_to_ktime(0));
+	cpu_base->softirq_activated = true;
+	cpu_base->softirq_expires_next = ns_to_ktime(1234);
+	expires = rust_hrtimer_update_next_event(cpu_base);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(900), expires);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(1234),
+			cpu_base->softirq_expires_next);
+	KUNIT_EXPECT_PTR_EQ(test, &state->timers[0], cpu_base->next_timer);
+	KUNIT_EXPECT_PTR_EQ(test, NULL, cpu_base->softirq_next_timer);
+
+	memset(state, 0, sizeof(*state));
+	expires = rust_hrtimer_update_next_event(cpu_base);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(KTIME_MAX), expires);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(KTIME_MAX),
+			cpu_base->softirq_expires_next);
+	KUNIT_EXPECT_PTR_EQ(test, NULL, cpu_base->next_timer);
+}
+#endif
+
 static void hrtimer_core_test_assert_order(struct kunit *test,
 					   struct hrtimer_core_test *timers,
 					   int first, int second, int third)
@@ -456,6 +534,9 @@ static struct kunit_case hrtimer_core_test_cases[] = {
 #endif
 #ifdef CONFIG_RUST_HRTIMER_NEXT_EVENT
 	KUNIT_CASE(hrtimer_core_test_next_event),
+#endif
+#ifdef CONFIG_RUST_HRTIMER_UPDATE_NEXT_EVENT
+	KUNIT_CASE(hrtimer_core_test_update_next_event),
 #endif
 	KUNIT_CASE(hrtimer_core_test_same_base_requeue),
 	KUNIT_CASE(hrtimer_core_test_expiry),

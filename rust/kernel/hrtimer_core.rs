@@ -19,6 +19,13 @@ type CpuBase = bindings::hrtimer_cpu_base;
 type TimerLinkedNode = bindings::timerqueue_linked_node;
 type RbNodeLinked = bindings::rb_node_linked;
 
+#[cfg(CONFIG_RUST_HRTIMER_NEXT_EVENT)]
+const HRTIMER_ACTIVE_MASK_SHIFT: u32 = bindings::hrtimer_base_type_HRTIMER_BASE_MONOTONIC_SOFT;
+#[cfg(CONFIG_RUST_HRTIMER_NEXT_EVENT)]
+const HRTIMER_ACTIVE_HARD: u32 = (1_u32 << HRTIMER_ACTIVE_MASK_SHIFT) - 1;
+#[cfg(CONFIG_RUST_HRTIMER_NEXT_EVENT)]
+const HRTIMER_ACTIVE_SOFT: u32 = HRTIMER_ACTIVE_HARD << HRTIMER_ACTIVE_MASK_SHIFT;
+
 /// Returns the timer queue entry that owns a linked-tree node.
 ///
 /// # Safety
@@ -171,17 +178,14 @@ unsafe extern "C" fn rust_hrtimer_get_next_event(
     cpu_base: *mut CpuBase,
     active_mask: u32,
 ) -> bindings::ktime_t {
-    let mask_shift = bindings::hrtimer_base_type_HRTIMER_BASE_MONOTONIC_SOFT;
-    let hard_mask = (1_u32 << mask_shift) - 1;
-    let soft_mask = hard_mask << mask_shift;
     let mut expires_next = bindings::ktime_t::MAX;
     let mut next_timer = ptr::null_mut();
     // SAFETY: The caller guarantees that the CPU base is live.
     let softirq_activated = unsafe { (*cpu_base).softirq_activated };
 
-    if !softirq_activated && active_mask & soft_mask != 0 {
+    if !softirq_activated && active_mask & HRTIMER_ACTIVE_SOFT != 0 {
         // SAFETY: The caller guarantees that the CPU base is live.
-        let active = unsafe { (*cpu_base).active_bases } & soft_mask;
+        let active = unsafe { (*cpu_base).active_bases } & HRTIMER_ACTIVE_SOFT;
         if active != 0 {
             // SAFETY: The caller guarantees that active bits have live queues.
             unsafe { update_next_event(cpu_base, active, &mut expires_next, &mut next_timer) };
@@ -190,9 +194,9 @@ unsafe extern "C" fn rust_hrtimer_get_next_event(
         unsafe { (*cpu_base).softirq_next_timer = next_timer };
     }
 
-    if active_mask & hard_mask != 0 {
+    if active_mask & HRTIMER_ACTIVE_HARD != 0 {
         // SAFETY: The caller guarantees that the CPU base is live.
-        let active = unsafe { (*cpu_base).active_bases } & hard_mask;
+        let active = unsafe { (*cpu_base).active_bases } & HRTIMER_ACTIVE_HARD;
         if active != 0 {
             // SAFETY: The caller guarantees that active bits have live queues.
             unsafe { update_next_event(cpu_base, active, &mut expires_next, &mut next_timer) };
@@ -202,6 +206,41 @@ unsafe extern "C" fn rust_hrtimer_get_next_event(
     }
 
     expires_next.max(0)
+}
+
+/// Combines hard and soft next events for clock event reprogramming.
+///
+/// Rust refreshes the soft expiry unless a softirq is already active, selects
+/// the hard next event, and replaces it with an earlier soft event. The result
+/// does not program the clock event device.
+///
+/// # Safety
+///
+/// `cpu_base` must be live and protected by its CPU base lock. Active clock
+/// base bits must identify nonempty linked timer queues.
+#[cfg(CONFIG_RUST_HRTIMER_UPDATE_NEXT_EVENT)]
+#[export]
+unsafe extern "C" fn rust_hrtimer_update_next_event(cpu_base: *mut CpuBase) -> bindings::ktime_t {
+    let mut soft = bindings::ktime_t::MAX;
+    // SAFETY: The caller guarantees that the CPU base is live.
+    let softirq_activated = unsafe { (*cpu_base).softirq_activated };
+
+    if !softirq_activated {
+        // SAFETY: The caller guarantees that active bits have live queues.
+        soft = unsafe { rust_hrtimer_get_next_event(cpu_base, HRTIMER_ACTIVE_SOFT) };
+        // SAFETY: The caller holds the CPU base lock.
+        unsafe { (*cpu_base).softirq_expires_next = soft };
+    }
+
+    // SAFETY: The caller guarantees that active bits have live queues.
+    let mut expires_next = unsafe { rust_hrtimer_get_next_event(cpu_base, HRTIMER_ACTIVE_HARD) };
+    if expires_next > soft {
+        // SAFETY: The caller holds the CPU base lock.
+        unsafe { (*cpu_base).next_timer = (*cpu_base).softirq_next_timer };
+        expires_next = soft;
+    }
+
+    expires_next
 }
 
 /// Starts or requeues a timer on its current local clock base.

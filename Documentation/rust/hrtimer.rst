@@ -12,6 +12,8 @@ starting and updating an hrtimer on its current local clock base.  The
 that accepts or rejects a selected remote clock base.
 ``CONFIG_RUST_HRTIMER_NEXT_EVENT`` selects Rust for the search across active
 hard and soft clock bases.
+``CONFIG_RUST_HRTIMER_UPDATE_NEXT_EVENT`` selects Rust for combining those
+results and selecting the event used for reprogramming.
 The ``CONFIG_RUST_HRTIMER_CANCEL`` option extends that state machine to queued
 removal and cancellation decisions.  ``CONFIG_RUST_HRTIMER_CANCEL_WAIT``
 selects Rust for the cancellation retry loop.
@@ -29,6 +31,8 @@ Rust owns these production decisions:
   next expiry can meet the timer deadline.
 * Selecting the earliest active hard or soft clock base and updating the
   corresponding next-timer pointers.
+* Combining hard and soft next events, caching the soft expiry, and selecting
+  the event used for clock event reprogramming.
 * Maintaining the clock base's cached first expiry.
 * Maintaining the CPU base's active-clock-base bit.
 * Publishing the lockless ``is_queued`` state.
@@ -60,6 +64,10 @@ The C ``__hrtimer_get_next_event()`` path calls
 ``rust_hrtimer_get_next_event()`` when the next-event option is enabled. The
 original C active-base search and pointer updates are compiled out.
 
+The C ``hrtimer_update_next_event()`` path calls
+``rust_hrtimer_update_next_event()`` when the update option is enabled. The
+original C hard/soft merge and cached soft-expiry update are compiled out.
+
 The C ``hrtimer_cancel()`` entry point calls ``rust_hrtimer_cancel()`` when
 the cancellation-wait option is enabled.  The original C retry loop is
 compiled out.
@@ -78,7 +86,7 @@ Retained C boundary
 
 The following operations remain in C:
 
-* Acquiring and releasing the CPU base lock.
+* Acquiring and releasing the CPU base lock and asserting lock ownership.
 * The lockless inactive fast path in ``hrtimer_try_to_cancel()``.
 * Debug object activation and deactivation.
 * HRTimer tracepoint delivery.
@@ -131,6 +139,12 @@ hard or soft mask.  A pending softirq suppresses the soft search.  The result
 is the minimum normalized expiry across the searched bases and is clamped to
 zero.  When hard and soft expiries are equal, the soft result remains selected.
 
+Next-event updates refresh ``softirq_expires_next`` unless a softirq is
+already active.  The hard result becomes the programming event unless a soft
+event is earlier.  An equal hard and soft deadline keeps the hard timer
+selected, while an earlier soft deadline copies ``softirq_next_timer`` to
+``next_timer``.
+
 Validation gate
 ---------------
 
@@ -140,6 +154,7 @@ The migration unit must pass these checks before integration:
 * Repeated four-vCPU Rust KUnit runs.
 * A four-vCPU C base-selection fallback KUnit run.
 * A four-vCPU C next-event fallback KUnit run.
+* A four-vCPU C next-event update fallback KUnit run.
 * A four-vCPU C cancellation-wait fallback KUnit run.
 * Four-vCPU generic inline KASAN and lockdep KUnit runs.
 * A four-vCPU PREEMPT_RT KUnit run with the Rust implementation enabled.
@@ -148,6 +163,8 @@ The migration unit must pass these checks before integration:
   selection decisions.
 * Hard, soft, combined, suppressed-softirq, equal-expiry, empty, offset, and
   negative next-event selection decisions.
+* Soft-first, hard-first, equal-expiry, suppressed-softirq, and empty-event
+  update decisions.
 * In-place expiry updates and requeues that cross the next neighbor.
 * Queued cancellation, callback-running rejection, and inactive cancellation.
 * Cancellation retry after a callback-running rejection.
@@ -164,31 +181,36 @@ The hrtimer queue, base-selection, next-event, cancellation, and forwarding
 state was validated on 2026-11-11 with x86_64 ``LLVM=1`` builds and QEMU
 11.1.3:
 
-* Three consecutive four-vCPU Rust runs passed all seven KUnit cases.
+* Three consecutive four-vCPU Rust runs passed all eight KUnit cases.
 * The four-vCPU C base-selection fallback passed all five applicable cases
   with ``CONFIG_RUST_HRTIMER_BASE_SELECTION`` disabled.
 * Three consecutive four-vCPU C next-event fallback runs passed all six
   applicable cases with ``CONFIG_RUST_HRTIMER_NEXT_EVENT`` disabled.
+* Three consecutive four-vCPU C next-event update fallback runs passed all
+  seven applicable cases with
+  ``CONFIG_RUST_HRTIMER_UPDATE_NEXT_EVENT`` disabled.
 * The four-vCPU C cancellation-wait fallback passed all five cases with
   ``CONFIG_RUST_HRTIMER_CANCEL_WAIT`` disabled.
 * The four-vCPU C forwarding fallback passed all five cases with
   ``CONFIG_RUST_HRTIMER_FORWARD`` disabled.
 * The four-vCPU generic inline KASAN, lockdep, and PREEMPT_RT images each
-  passed all seven cases with the Rust implementation enabled.
-* The four-vCPU image with ``CONFIG_RUST_RBTREE`` disabled passed all seven
+  passed all eight cases with the Rust implementation enabled.
+* The four-vCPU image with ``CONFIG_RUST_RBTREE`` disabled passed all eight
   cases.
 * The cases covered local, offline-CPU, earlier remote, equal-deadline, and
   later remote base selection, hard, soft, combined, suppressed-softirq,
-  equal-expiry, empty, offset, and negative next-event selection, same-base
-  in-place updates, requeues that cross the next timer, cached first-expiry
-  maintenance, callback-running cancellation rejection, queued cancellation,
-  inactive cancellation, a real expiry callback, partial forwarding overruns,
-  exact interval alignment, and resolution clamping.
+  equal-expiry, empty, offset, and negative next-event selection,
+  soft-first, hard-first, equal-expiry, suppressed-softirq, and empty-event
+  updates, same-base in-place updates, requeues that cross the next timer,
+  cached first-expiry maintenance, callback-running cancellation rejection,
+  queued cancellation, inactive cancellation, a real expiry callback, partial
+  forwarding overruns, exact interval alignment, and resolution clamping.
 * No run reported a ``BUG``, warning, KASAN report, lock dependence
   diagnosis, or panic.
 * The hrtimer start path calls ``rust_hrtimer_requeue_same_base()``. The
   base-selection path calls ``rust_hrtimer_suitable_target()``. The
   next-event path calls ``rust_hrtimer_get_next_event()``. The
+  next-event update path calls ``rust_hrtimer_update_next_event()``. The
   removal and cancellation paths call ``rust_hrtimer_remove()`` and
   ``rust_hrtimer_try_to_cancel_locked()``. The cancellation wait path calls
   ``rust_hrtimer_cancel()``. The forwarding path calls
@@ -207,6 +229,7 @@ Reopen the C boundary decision if any of these conditions changes:
 * The PREEMPT_RT callback wait primitive or expiry-lock protocol changes.
 * Timer queue linked ordering or first-entry maintenance changes.
 * Active-base mask or pending-softirq next-event semantics change.
+* Hard/soft merge precedence or cached soft-expiry ownership changes.
 * Clock event reprogramming becomes a Rust-owned primitive.
 * HRTimer debug or trace hooks gain state-changing behavior.
 * Base migration is included in a later Rust migration unit.

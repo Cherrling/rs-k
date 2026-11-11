@@ -1072,6 +1072,21 @@ config RUST_HRTIMER_NEXT_EVENT
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_HRTIMER_UPDATE_NEXT_EVENT
+	bool "Rust implementation of hrtimer next-event updates"
+	depends on RUST_HRTIMER_NEXT_EVENT
+	default y
+	help
+	  Use Rust to combine hard and soft next events, update the cached
+	  softirq expiry, and select the event used for reprogramming.
+
+	  CPU base locking, next-event searches, clock event reprogramming,
+	  softirq execution, and public ABI adapters remain in C or the lower
+	  Rust next-event unit.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_HRTIMER_CANCEL
 	bool "Rust implementation of hrtimer removal and cancellation state"
 	depends on RUST_HRTIMER
