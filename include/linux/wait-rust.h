@@ -41,6 +41,12 @@ void rust_waitqueue_init_entry(struct wait_queue_entry *wq_entry,
 			       wait_queue_func_t autoremove);
 int rust_waitqueue_autoremove(struct wait_queue_entry *wq_entry,
 			      unsigned int mode, int sync, void *key);
+long rust_waitqueue_wait_woken(struct wait_queue_entry *wq_entry,
+			       unsigned int mode, long timeout);
+int rust_waitqueue_woken_wake(struct wait_queue_entry *wq_entry,
+			      unsigned int mode, int sync, void *key);
+int rust_waitqueue_woken_wake_bit(struct wait_queue_entry *wq_entry,
+				  unsigned int mode, int sync, void *key);
 void rust_waitqueue_prepare(struct wait_queue_head *wq_head,
 			    struct wait_queue_entry *wq_entry,
 			    unsigned int state);
@@ -82,6 +88,8 @@ int rust_waitqueue_current_cpu_wake_flags(void);
 int rust_waitqueue_sync_wake_flags(void);
 int rust_waitqueue_default_wake(struct wait_queue_entry *wq_entry,
 				unsigned int mode, int sync, void *key);
+void rust_waitqueue_store_flags_mb(struct wait_queue_entry *wq_entry,
+				   unsigned int flags);
 void *rust_waitqueue_pollfree_key(void);
 void rust_waitqueue_assert_pollfree_empty(struct wait_queue_head *wq_head);
 

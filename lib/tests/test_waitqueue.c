@@ -9,6 +9,7 @@
 #include <linux/sched.h>
 #include <linux/sched/signal.h>
 #include <linux/wait.h>
+#include <linux/wait_bit.h>
 
 #define WAITQUEUE_TEST_TIMEOUT_MS 30000
 /* Mirror the scheduler-private wake flags checked by this test. */
@@ -296,6 +297,116 @@ static void waitqueue_test_autoremove_wake(struct kunit *test)
 	KUNIT_EXPECT_TRUE(test, list_empty(&entry.entry));
 	KUNIT_EXPECT_EQ(test, waitqueue_test_count(&wq_head), 0);
 	KUNIT_EXPECT_EQ(test, READ_ONCE(current->__state), TASK_RUNNING);
+}
+
+static void waitqueue_test_wait_woken(struct kunit *test)
+{
+	struct wait_queue_entry entry;
+	long timeout;
+
+	memset(&entry, 0, sizeof(entry));
+	entry.flags = WQ_FLAG_WOKEN | WQ_FLAG_EXCLUSIVE;
+	set_current_state(TASK_RUNNING);
+
+	timeout = wait_woken(&entry, TASK_INTERRUPTIBLE, 37);
+
+	KUNIT_EXPECT_EQ(test, timeout, 37);
+	KUNIT_EXPECT_EQ(test, entry.flags, WQ_FLAG_EXCLUSIVE);
+	KUNIT_EXPECT_EQ(test, READ_ONCE(current->__state), TASK_RUNNING);
+
+	entry.flags = WQ_FLAG_PRIORITY;
+	set_current_state(TASK_RUNNING);
+
+	timeout = wait_woken(&entry, TASK_INTERRUPTIBLE, 0);
+
+	KUNIT_EXPECT_EQ(test, timeout, 0);
+	KUNIT_EXPECT_EQ(test, entry.flags, WQ_FLAG_PRIORITY);
+	KUNIT_EXPECT_EQ(test, READ_ONCE(current->__state), TASK_RUNNING);
+}
+
+static void waitqueue_test_woken_wake(struct kunit *test)
+{
+	struct wait_queue_entry entry;
+	DECLARE_WAIT_QUEUE_HEAD_ONSTACK(wq_head);
+	unsigned long flags;
+	long timeout;
+	int ret;
+
+	init_wait_entry(&entry, WQ_FLAG_EXCLUSIVE | WQ_FLAG_PRIORITY);
+	entry.func = woken_wake_function;
+
+	set_current_state(TASK_INTERRUPTIBLE);
+	spin_lock_irqsave(&wq_head.lock, flags);
+	__add_wait_queue_entry_tail(&wq_head, &entry);
+	ret = woken_wake_function(&entry, TASK_NORMAL, 0, NULL);
+	spin_unlock_irqrestore(&wq_head.lock, flags);
+
+	KUNIT_EXPECT_EQ(test, ret, 1);
+	KUNIT_EXPECT_EQ(test, entry.flags,
+			WQ_FLAG_WOKEN | WQ_FLAG_EXCLUSIVE | WQ_FLAG_PRIORITY);
+	KUNIT_EXPECT_EQ(test, READ_ONCE(current->__state), TASK_RUNNING);
+
+	timeout = wait_woken(&entry, TASK_INTERRUPTIBLE, 41);
+
+	KUNIT_EXPECT_EQ(test, timeout, 41);
+	KUNIT_EXPECT_EQ(test, entry.flags,
+			WQ_FLAG_EXCLUSIVE | WQ_FLAG_PRIORITY);
+	KUNIT_EXPECT_EQ(test, READ_ONCE(current->__state), TASK_RUNNING);
+
+	remove_wait_queue(&wq_head, &entry);
+}
+
+static void waitqueue_test_woken_wake_bit(struct kunit *test)
+{
+	struct wait_bit_queue_entry wbq_entry;
+	struct wait_bit_key key = {
+		.flags = NULL,
+		.bit_nr = 3,
+	};
+	struct wait_bit_key mismatch = {
+		.flags = NULL,
+		.bit_nr = 4,
+	};
+	DECLARE_WAIT_QUEUE_HEAD_ONSTACK(wq_head);
+	unsigned long word = 0;
+	unsigned long flags;
+	long timeout;
+	int ret;
+
+	key.flags = &word;
+	mismatch.flags = &word;
+	memset(&wbq_entry, 0, sizeof(wbq_entry));
+	wbq_entry.key = key;
+	wbq_entry.wq_entry.flags = WQ_FLAG_EXCLUSIVE;
+	wbq_entry.wq_entry.private = current;
+	wbq_entry.wq_entry.func = woken_wake_bit_function;
+	INIT_LIST_HEAD(&wbq_entry.wq_entry.entry);
+
+	ret = woken_wake_bit_function(&wbq_entry.wq_entry, TASK_NORMAL, 0,
+				      &mismatch);
+
+	KUNIT_EXPECT_EQ(test, ret, 0);
+	KUNIT_EXPECT_EQ(test, wbq_entry.wq_entry.flags, WQ_FLAG_EXCLUSIVE);
+
+	set_current_state(TASK_INTERRUPTIBLE);
+	spin_lock_irqsave(&wq_head.lock, flags);
+	__add_wait_queue_entry_tail(&wq_head, &wbq_entry.wq_entry);
+	ret = woken_wake_bit_function(&wbq_entry.wq_entry, TASK_NORMAL, 0,
+				      &key);
+	spin_unlock_irqrestore(&wq_head.lock, flags);
+
+	KUNIT_EXPECT_EQ(test, ret, 1);
+	KUNIT_EXPECT_EQ(test, wbq_entry.wq_entry.flags,
+			WQ_FLAG_WOKEN | WQ_FLAG_EXCLUSIVE);
+	KUNIT_EXPECT_EQ(test, READ_ONCE(current->__state), TASK_RUNNING);
+
+	timeout = wait_woken(&wbq_entry.wq_entry, TASK_INTERRUPTIBLE, 23);
+
+	KUNIT_EXPECT_EQ(test, timeout, 23);
+	KUNIT_EXPECT_EQ(test, wbq_entry.wq_entry.flags, WQ_FLAG_EXCLUSIVE);
+	KUNIT_EXPECT_EQ(test, READ_ONCE(current->__state), TASK_RUNNING);
+
+	remove_wait_queue(&wq_head, &wbq_entry.wq_entry);
 }
 
 static void waitqueue_test_prepare_to_wait(struct kunit *test)
@@ -596,6 +707,9 @@ static struct kunit_case waitqueue_test_cases[] = {
 	KUNIT_CASE(waitqueue_test_priority_exclusive),
 	KUNIT_CASE(waitqueue_test_init_wait_entry),
 	KUNIT_CASE(waitqueue_test_autoremove_wake),
+	KUNIT_CASE(waitqueue_test_wait_woken),
+	KUNIT_CASE(waitqueue_test_woken_wake),
+	KUNIT_CASE(waitqueue_test_woken_wake_bit),
 	KUNIT_CASE(waitqueue_test_prepare_to_wait),
 	KUNIT_CASE(waitqueue_test_prepare_to_wait_exclusive),
 	KUNIT_CASE(waitqueue_test_prepare_to_wait_event),

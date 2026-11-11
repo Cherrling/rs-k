@@ -12,6 +12,7 @@
 use crate::{
     bindings,
     ffi::{c_int, c_long, c_uint, c_void},
+    sync::barrier::{smp_mb, Full},
 };
 use core::ptr;
 use macros::export;
@@ -21,6 +22,7 @@ type Entry = bindings::wait_queue_entry;
 
 const WQ_FLAG_EXCLUSIVE: c_uint = bindings::WQ_FLAG_EXCLUSIVE;
 const WQ_FLAG_PRIORITY: c_uint = bindings::WQ_FLAG_PRIORITY;
+const WQ_FLAG_WOKEN: c_uint = bindings::WQ_FLAG_WOKEN;
 
 /// Acquires the wait queue lock and disables interrupts.
 ///
@@ -272,6 +274,102 @@ unsafe extern "C" fn rust_waitqueue_autoremove(
         };
     }
     ret
+}
+
+/// Waits until the entry is marked woken or the timeout expires.
+///
+/// # Safety
+///
+/// `wq_entry` must point to a valid wait entry associated with the current
+/// task.
+#[export]
+unsafe extern "C" fn rust_waitqueue_wait_woken(
+    wq_entry: *mut Entry,
+    mode: c_uint,
+    mut timeout: c_long,
+) -> c_long {
+    // SAFETY: The caller guarantees that `wq_entry` is valid. This helper
+    // installs the task state with the scheduler's required barrier.
+    unsafe { bindings::rust_waitqueue_set_current_state(mode) };
+    // SAFETY: The caller guarantees that `wq_entry` is valid.
+    if (unsafe { (*wq_entry).flags } & WQ_FLAG_WOKEN) == 0
+        // SAFETY: The scheduler predicate has no additional requirements.
+        && !unsafe { bindings::kthread_should_stop_or_park() }
+    {
+        // SAFETY: The current task was placed in the requested wait state.
+        timeout = unsafe { bindings::schedule_timeout(timeout) };
+    }
+    // SAFETY: The wait operation is complete. This helper updates the current
+    // task state without a barrier as required by the woken wait protocol.
+    unsafe { bindings::rust_waitqueue_set_current_state_relaxed(bindings::TASK_RUNNING as c_uint) };
+
+    // SAFETY: The caller guarantees that `wq_entry` is valid.
+    let flags = unsafe { (*wq_entry).flags } & !WQ_FLAG_WOKEN;
+    // SAFETY: Store the flags with the release-side barrier required by the
+    // woken wait protocol.
+    unsafe { bindings::rust_waitqueue_store_flags_mb(wq_entry, flags) };
+
+    timeout
+}
+
+/// Marks an entry woken, emits the pairing barrier, and wakes its task.
+///
+/// # Safety
+///
+/// `wq_entry` must point to a valid queued wait entry, and the wait queue lock
+/// must be held.
+unsafe fn woken_wake_common(
+    wq_entry: *mut Entry,
+    mode: c_uint,
+    sync: c_int,
+    key: *mut c_void,
+) -> c_int {
+    // Pairs with the store barrier in `rust_waitqueue_wait_woken`.
+    smp_mb(Full);
+    // SAFETY: The caller guarantees that `wq_entry` is valid.
+    unsafe { (*wq_entry).flags |= WQ_FLAG_WOKEN };
+    // SAFETY: The caller guarantees that `wq_entry` has a valid task target.
+    unsafe { bindings::rust_waitqueue_default_wake(wq_entry, mode, sync, key) }
+}
+
+/// Marks an entry woken and wakes its task.
+///
+/// # Safety
+///
+/// `wq_entry` must point to a valid queued wait entry, and the wait queue lock
+/// must be held.
+#[export]
+unsafe extern "C" fn rust_waitqueue_woken_wake(
+    wq_entry: *mut Entry,
+    mode: c_uint,
+    sync: c_int,
+    key: *mut c_void,
+) -> c_int {
+    // SAFETY: The caller satisfies the common woken wake requirements.
+    unsafe { woken_wake_common(wq_entry, mode, sync, key) }
+}
+
+/// Marks a matching variable wait entry woken and wakes its task.
+///
+/// # Safety
+///
+/// `wq_entry` must point to a valid queued variable wait entry, `key` must be
+/// a valid wake key, and the wait queue lock must be held.
+#[export]
+unsafe extern "C" fn rust_waitqueue_woken_wake_bit(
+    wq_entry: *mut Entry,
+    mode: c_uint,
+    sync: c_int,
+    key: *mut c_void,
+) -> c_int {
+    // SAFETY: The caller guarantees that `wq_entry` and `key` are valid.
+    let key = unsafe { bindings::__var_wake_key(wq_entry, key) };
+    if key.is_null() {
+        return 0;
+    }
+
+    // SAFETY: `__var_wake_key` verified that this entry matches the wake key.
+    unsafe { woken_wake_common(wq_entry, mode, sync, key.cast()) }
 }
 
 /// Prepares a normal wait entry and sets the current task state.
