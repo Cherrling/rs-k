@@ -49,6 +49,7 @@
 #include <linux/configfs.h>
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
+#include <linux/cpupri-rust.h>
 #include <linux/cpumask.h>
 #include <linux/cred.h>
 #include <linux/debugfs.h>

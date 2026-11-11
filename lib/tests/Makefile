@@ -19,6 +19,7 @@ obj-$(CONFIG_RWLOCK_KUNIT_TEST) += test_rwlock.o
 obj-$(CONFIG_SEMAPHORE_KUNIT_TEST) += test_semaphore.o
 obj-$(CONFIG_WAITQUEUE_KUNIT_TEST) += test_waitqueue.o
 obj-$(CONFIG_WAIT_BIT_KUNIT_TEST) += test_wait_bit.o
+obj-$(CONFIG_CPUPRI_KUNIT_TEST) += test_cpupri.o
 obj-$(CONFIG_CPUMASK_KUNIT_TEST) += cpumask_kunit.o
 obj-$(CONFIG_FFS_KUNIT_TEST) += ffs_kunit.o
 CFLAGS_fortify_kunit.o += $(call cc-disable-warning, unsequenced)

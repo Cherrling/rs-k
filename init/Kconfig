@@ -994,6 +994,23 @@ config RUST_RWLOCK
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_CPUPRI
+	bool "Rust implementation of CPU-priority scheduling state"
+	depends on RUST && SMP
+	default y
+	help
+	  Use Rust for the production CPU-priority scheduling state machine.
+	  This includes scheduler priority conversion, lowest-priority vector
+	  search, task-affinity intersection, active-CPU filtering, capacity
+	  fitness filtering, and ordered CPU transitions between vectors.
+
+	  Cpumask storage allocation and primitives, atomics and memory ordering,
+	  scheduler locks, invalid-priority diagnostics, and public ABI adapters
+	  remain in C because they depend on scheduler and cpumask internals.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_WAITQUEUE
 	bool "Rust implementation of wait queues"
 	depends on RUST

@@ -45,6 +45,27 @@ bool rust_helper_cpumask_empty(struct cpumask *srcp)
 }
 
 __rust_helper
+bool rust_helper_cpumask_and(struct cpumask *dstp,
+			     const struct cpumask *src1p,
+			     const struct cpumask *src2p)
+{
+	return cpumask_and(dstp, src1p, src2p);
+}
+
+__rust_helper
+unsigned int rust_helper_cpumask_any_and(const struct cpumask *src1p,
+					 const struct cpumask *src2p)
+{
+	return cpumask_any_and(src1p, src2p);
+}
+
+__rust_helper
+unsigned int rust_helper_cpumask_next(int n, const struct cpumask *srcp)
+{
+	return cpumask_next(n, srcp);
+}
+
+__rust_helper
 bool rust_helper_cpumask_full(struct cpumask *srcp)
 {
 	return cpumask_full(srcp);

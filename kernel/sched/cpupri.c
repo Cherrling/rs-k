@@ -23,6 +23,8 @@
  *  yields the worst case search is fairly contrived.
  */
 #include "sched.h"
+#include <linux/bug.h>
+#include <linux/cpupri-rust.h>
 
 /*
  * p->rt_priority   p->prio   newpri   cpupri
@@ -40,6 +42,7 @@
  *
  *				 100	  100 (CPUPRI_HIGHER)
  */
+#ifndef CONFIG_RUST_CPUPRI
 static int convert_prio(int prio)
 {
 	int cpupri;
@@ -269,6 +272,42 @@ void cpupri_set(struct cpupri *cp, int cpu, int newpri)
 
 	*currpri = newpri;
 }
+#else /* CONFIG_RUST_CPUPRI */
+
+struct cpumask *rust_cpupri_vec_mask(struct cpupri *cp, int priority)
+{
+	return cp->pri_to_cpu[priority].mask;
+}
+
+void rust_cpupri_warn_bad_task_priority(int priority)
+{
+	WARN_ON_ONCE(priority >= CPUPRI_NR_PRIORITIES);
+}
+
+void rust_cpupri_bug_bad_priority(int priority)
+{
+	BUG_ON(priority < CPUPRI_INVALID || priority >= CPUPRI_NR_PRIORITIES);
+}
+
+int cpupri_find(struct cpupri *cp, struct task_struct *p,
+		struct cpumask *lowest_mask)
+{
+	return rust_cpupri_find(cp, p, lowest_mask);
+}
+
+int cpupri_find_fitness(struct cpupri *cp, struct task_struct *p,
+			struct cpumask *lowest_mask,
+			bool (*fitness_fn)(struct task_struct *p, int cpu))
+{
+	return rust_cpupri_find_fitness(cp, p, lowest_mask, fitness_fn);
+}
+
+void cpupri_set(struct cpupri *cp, int cpu, int newpri)
+{
+	rust_cpupri_set(cp, cpu, newpri);
+}
+
+#endif /* CONFIG_RUST_CPUPRI */
 
 /**
  * cpupri_init - initialize the cpupri structure

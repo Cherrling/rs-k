@@ -2413,6 +2413,20 @@ config RWLOCK_KUNIT_TEST
 
 	  If unsure, say N.
 
+config CPUPRI_KUNIT_TEST
+	bool "KUnit test for CPU-priority scheduling state" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y && SMP
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for CPU-priority conversion,
+	  lowest-priority search, affinity and active-CPU filtering, capacity
+	  fitness fallback, vector transitions, and concurrent lookups.
+
+	  The same tests run with either the C implementation or the native
+	  Rust implementation selected.
+
+	  If unsure, say N.
+
 config WAITQUEUE_KUNIT_TEST
 	bool "KUnit test for wait queue wakeups" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y
