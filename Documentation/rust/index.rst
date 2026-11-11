@@ -39,6 +39,7 @@ more details.
     testing
     completion
     waitqueue
+    wait-bit
     native-percpu-refcount
     refcount
     swait

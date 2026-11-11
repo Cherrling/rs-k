@@ -153,6 +153,8 @@ pub mod types;
 pub mod uaccess;
 #[cfg(CONFIG_USB = "y")]
 pub mod usb;
+#[cfg(CONFIG_RUST_WAIT_BIT)]
+mod wait_bit_core;
 #[cfg(CONFIG_RUST_WAITQUEUE)]
 mod waitqueue_core;
 pub mod workqueue;

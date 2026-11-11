@@ -14,6 +14,7 @@ obj-$(CONFIG_CHECKSUM_KUNIT) += checksum_kunit.o
 obj-$(CONFIG_CMDLINE_KUNIT_TEST) += cmdline_kunit.o
 obj-$(CONFIG_COMPLETION_KUNIT_TEST) += test_completion.o
 obj-$(CONFIG_WAITQUEUE_KUNIT_TEST) += test_waitqueue.o
+obj-$(CONFIG_WAIT_BIT_KUNIT_TEST) += test_wait_bit.o
 obj-$(CONFIG_CPUMASK_KUNIT_TEST) += cpumask_kunit.o
 obj-$(CONFIG_FFS_KUNIT_TEST) += ffs_kunit.o
 CFLAGS_fortify_kunit.o += $(call cc-disable-warning, unsequenced)

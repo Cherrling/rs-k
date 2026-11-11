@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
 #include <linux/sched/debug.h>
+#include <linux/wait-bit-rust.h>
 #include "sched.h"
 
 /*
@@ -12,6 +13,44 @@
 
 static wait_queue_head_t bit_wait_table[WAIT_TABLE_SIZE] __cacheline_aligned;
 
+#ifdef CONFIG_RUST_WAIT_BIT
+wait_queue_head_t *rust_wait_bit_table(void)
+{
+	return bit_wait_table;
+}
+
+unsigned int rust_wait_bit_hash(unsigned long value)
+{
+	return hash_long(value, WAIT_TABLE_BITS);
+}
+
+bool rust_wait_bit_test(struct wait_bit_key *key)
+{
+	return test_bit(key->bit_nr, key->flags);
+}
+
+bool rust_wait_bit_test_acquire(struct wait_bit_key *key)
+{
+	return test_bit_acquire(key->bit_nr, key->flags);
+}
+
+bool rust_wait_bit_test_and_set(struct wait_bit_key *key)
+{
+	return test_and_set_bit(key->bit_nr, key->flags);
+}
+
+void *rust_wait_bit_current_task(void)
+{
+	return current;
+}
+
+unsigned long rust_wait_bit_jiffies(void)
+{
+	return READ_ONCE(jiffies);
+}
+#endif /* CONFIG_RUST_WAIT_BIT */
+
+#ifndef CONFIG_RUST_WAIT_BIT
 wait_queue_head_t *bit_waitqueue(unsigned long *word, int bit)
 {
 	const int shift = BITS_PER_LONG == 32 ? 5 : 6;
@@ -19,8 +58,15 @@ wait_queue_head_t *bit_waitqueue(unsigned long *word, int bit)
 
 	return bit_wait_table + hash_long(val, WAIT_TABLE_BITS);
 }
+#else
+wait_queue_head_t *bit_waitqueue(unsigned long *word, int bit)
+{
+	return rust_wait_bit_waitqueue(word, bit);
+}
+#endif
 EXPORT_SYMBOL(bit_waitqueue);
 
+#ifndef CONFIG_RUST_WAIT_BIT
 int wake_bit_function(struct wait_queue_entry *wq_entry, unsigned mode, int sync, void *arg)
 {
 	struct wait_bit_key *key = arg;
@@ -33,6 +79,13 @@ int wake_bit_function(struct wait_queue_entry *wq_entry, unsigned mode, int sync
 
 	return autoremove_wake_function(wq_entry, mode, sync, key);
 }
+#else
+int wake_bit_function(struct wait_queue_entry *wq_entry, unsigned int mode,
+		      int sync, void *arg)
+{
+	return rust_wait_bit_wake_bit_function(wq_entry, mode, sync, arg);
+}
+#endif
 EXPORT_SYMBOL(wake_bit_function);
 
 /*
@@ -40,6 +93,7 @@ EXPORT_SYMBOL(wake_bit_function);
  * waiting, the actions of __wait_on_bit() and __wait_on_bit_lock() are
  * permitted return codes. Nonzero return codes halt waiting and return.
  */
+#ifndef CONFIG_RUST_WAIT_BIT
 int __sched
 __wait_on_bit(struct wait_queue_head *wq_head, struct wait_bit_queue_entry *wbq_entry,
 	      wait_bit_action_f *action, unsigned mode)
@@ -56,18 +110,35 @@ __wait_on_bit(struct wait_queue_head *wq_head, struct wait_bit_queue_entry *wbq_
 
 	return ret;
 }
+#else
+int __sched
+__wait_on_bit(struct wait_queue_head *wq_head, struct wait_bit_queue_entry *wbq_entry,
+	      wait_bit_action_f *action, unsigned int mode)
+{
+	return rust_wait_bit_wait_on_bit(wq_head, wbq_entry, action, mode);
+}
+#endif
 EXPORT_SYMBOL(__wait_on_bit);
 
+#ifndef CONFIG_RUST_WAIT_BIT
 int __sched out_of_line_wait_on_bit(unsigned long *word, int bit,
-				    wait_bit_action_f *action, unsigned mode)
+				    wait_bit_action_f *action, unsigned int mode)
 {
 	struct wait_queue_head *wq_head = bit_waitqueue(word, bit);
 	DEFINE_WAIT_BIT(wq_entry, word, bit);
 
 	return __wait_on_bit(wq_head, &wq_entry, action, mode);
 }
+#else
+int __sched out_of_line_wait_on_bit(unsigned long *word, int bit,
+				    wait_bit_action_f *action, unsigned int mode)
+{
+	return rust_wait_bit_out_of_line_wait(word, bit, action, mode);
+}
+#endif
 EXPORT_SYMBOL(out_of_line_wait_on_bit);
 
+#ifndef CONFIG_RUST_WAIT_BIT
 int __sched out_of_line_wait_on_bit_timeout(
 	unsigned long *word, int bit, wait_bit_action_f *action,
 	unsigned mode, unsigned long timeout)
@@ -79,8 +150,20 @@ int __sched out_of_line_wait_on_bit_timeout(
 
 	return __wait_on_bit(wq_head, &wq_entry, action, mode);
 }
+#else
+int __sched out_of_line_wait_on_bit_timeout(unsigned long *word,
+					    int bit,
+					    wait_bit_action_f *action,
+					    unsigned int mode,
+					    unsigned long timeout)
+{
+	return rust_wait_bit_out_of_line_wait_timeout(word, bit, action,
+						      mode, timeout);
+}
+#endif
 EXPORT_SYMBOL_GPL(out_of_line_wait_on_bit_timeout);
 
+#ifndef CONFIG_RUST_WAIT_BIT
 int __sched
 __wait_on_bit_lock(struct wait_queue_head *wq_head, struct wait_bit_queue_entry *wbq_entry,
 			wait_bit_action_f *action, unsigned mode)
@@ -109,18 +192,37 @@ __wait_on_bit_lock(struct wait_queue_head *wq_head, struct wait_bit_queue_entry 
 		}
 	}
 }
+#else
+int __sched
+__wait_on_bit_lock(struct wait_queue_head *wq_head, struct wait_bit_queue_entry *wbq_entry,
+		   wait_bit_action_f *action, unsigned int mode)
+{
+	return rust_wait_bit_wait_on_bit_lock(wq_head, wbq_entry, action, mode);
+}
+#endif
 EXPORT_SYMBOL(__wait_on_bit_lock);
 
+#ifndef CONFIG_RUST_WAIT_BIT
 int __sched out_of_line_wait_on_bit_lock(unsigned long *word, int bit,
-					 wait_bit_action_f *action, unsigned mode)
+					 wait_bit_action_f *action,
+					 unsigned int mode)
 {
 	struct wait_queue_head *wq_head = bit_waitqueue(word, bit);
 	DEFINE_WAIT_BIT(wq_entry, word, bit);
 
 	return __wait_on_bit_lock(wq_head, &wq_entry, action, mode);
 }
+#else
+int __sched out_of_line_wait_on_bit_lock(unsigned long *word, int bit,
+					 wait_bit_action_f *action,
+					 unsigned int mode)
+{
+	return rust_wait_bit_out_of_line_wait_lock(word, bit, action, mode);
+}
+#endif
 EXPORT_SYMBOL(out_of_line_wait_on_bit_lock);
 
+#ifndef CONFIG_RUST_WAIT_BIT
 void __wake_up_bit(struct wait_queue_head *wq_head, unsigned long *word, int bit)
 {
 	struct wait_bit_key key = __WAIT_BIT_KEY_INITIALIZER(word, bit);
@@ -128,6 +230,12 @@ void __wake_up_bit(struct wait_queue_head *wq_head, unsigned long *word, int bit
 	if (waitqueue_active(wq_head))
 		__wake_up(wq_head, TASK_NORMAL, 1, &key);
 }
+#else
+void __wake_up_bit(struct wait_queue_head *wq_head, unsigned long *word, int bit)
+{
+	rust_wait_bit_wake_up_bit(wq_head, word, bit);
+}
+#endif
 EXPORT_SYMBOL(__wake_up_bit);
 
 /**
@@ -155,18 +263,33 @@ EXPORT_SYMBOL(__wake_up_bit);
  * cleared are guaranteed to be visible after the matching wait_on_bit()
  * completes.
  */
+#ifndef CONFIG_RUST_WAIT_BIT
 void wake_up_bit(unsigned long *word, int bit)
 {
 	__wake_up_bit(bit_waitqueue(word, bit), word, bit);
 }
+#else
+void wake_up_bit(unsigned long *word, int bit)
+{
+	rust_wait_bit_wake_up(word, bit);
+}
+#endif
 EXPORT_SYMBOL(wake_up_bit);
 
+#ifndef CONFIG_RUST_WAIT_BIT
 wait_queue_head_t *__var_waitqueue(void *p)
 {
 	return bit_wait_table + hash_ptr(p, WAIT_TABLE_BITS);
 }
+#else
+wait_queue_head_t *__var_waitqueue(void *p)
+{
+	return rust_wait_bit_var_waitqueue(p);
+}
+#endif
 EXPORT_SYMBOL(__var_waitqueue);
 
+#ifndef CONFIG_RUST_WAIT_BIT
 struct wait_bit_key *__var_wake_key(struct wait_queue_entry *wq_entry, void *arg)
 {
 	struct wait_bit_key *key = arg;
@@ -189,7 +312,14 @@ static int var_wake_function(struct wait_queue_entry *wq_entry, unsigned int mod
 
 	return autoremove_wake_function(wq_entry, mode, sync, key);
 }
+#else
+struct wait_bit_key *__var_wake_key(struct wait_queue_entry *wq_entry, void *arg)
+{
+	return rust_wait_bit_var_wake_key(wq_entry, arg);
+}
+#endif
 
+#ifndef CONFIG_RUST_WAIT_BIT
 void init_wait_var_entry(struct wait_bit_queue_entry *wbq_entry, void *var, int flags)
 {
 	*wbq_entry = (struct wait_bit_queue_entry){
@@ -205,6 +335,12 @@ void init_wait_var_entry(struct wait_bit_queue_entry *wbq_entry, void *var, int 
 		},
 	};
 }
+#else
+void init_wait_var_entry(struct wait_bit_queue_entry *wbq_entry, void *var, int flags)
+{
+	rust_wait_bit_init_var_entry(wbq_entry, var, flags);
+}
+#endif
 EXPORT_SYMBOL(init_wait_var_entry);
 
 /**
@@ -237,10 +373,17 @@ EXPORT_SYMBOL(init_wait_var_entry);
  * variable was updated are guaranteed to be visible after the matching
  * wait_var_event() completes.
  */
+#ifndef CONFIG_RUST_WAIT_BIT
 void wake_up_var(void *var)
 {
 	__wake_up_bit(__var_waitqueue(var), var, -1);
 }
+#else
+void wake_up_var(void *var)
+{
+	rust_wait_bit_wake_up_var(var);
+}
+#endif
 EXPORT_SYMBOL(wake_up_var);
 
 __sched int bit_wait(struct wait_bit_key *word, int mode)

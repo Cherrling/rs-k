@@ -2366,6 +2366,21 @@ config WAITQUEUE_KUNIT_TEST
 
 	  If unsure, say N.
 
+config WAIT_BIT_KUNIT_TEST
+	bool "KUnit test for bit and variable waits" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for bit and variable wait queue
+	  selection, key matching, normal and locked wait loops, signal and
+	  timeout results, entry initialization, and scheduler integration.
+
+	  The same tests run with either the C implementation or the native
+	  Rust implementation selected.  This test must be built-in because it
+	  exercises internal bit wait entry points.
+
+	  If unsure, say N.
+
 config TEST_SORT
 	tristate "Array-based sort test" if !KUNIT_ALL_TESTS
 	depends on KUNIT

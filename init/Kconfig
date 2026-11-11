@@ -944,6 +944,23 @@ config RUST_WAITQUEUE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_WAIT_BIT
+	bool "Rust implementation of bit and variable waits"
+	depends on RUST_WAITQUEUE
+	default y
+	help
+	  Use Rust for the production bit and variable wait state machines.
+	  This includes shared queue selection, bit and variable key matching,
+	  normal and exclusive wait loops, lock acquisition after waiting,
+	  timed wait setup, wait entry construction, and variable entry setup.
+
+	  Shared table storage, hash and atomic bit primitives, current task and
+	  jiffies reads, scheduler actions, and public ABI wrappers remain in C
+	  because they depend on architecture, scheduler, and linker internals.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config UCLAMP_TASK
 	bool "Enable utilization clamping for RT/FAIR tasks"
 	depends on CPU_FREQ_GOV_SCHEDUTIL
