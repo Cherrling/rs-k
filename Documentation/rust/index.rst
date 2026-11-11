@@ -38,6 +38,7 @@ more details.
     arch-support
     testing
     completion
+    mutex
     semaphore
     waitqueue
     wait-bit

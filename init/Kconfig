@@ -939,6 +939,24 @@ config RUST_SEMAPHORE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_MUTEX
+	bool "Rust implementation of mutex owner protocol"
+	depends on RUST && !PREEMPT_RT
+	default y
+	help
+	  Use Rust for the production mutex task-pointer encoding, fast
+	  acquisition and release, contention trylock, waiter handoff request,
+	  direct ownership transfer, and slow-unlock state selection.
+
+	  Raw atomic operations, scheduler proxy state, intrusive waiter lists,
+	  optimistic spinning, task state and wakeups, lockdep, mutex debugging,
+	  and public ABI adapters remain in C because they depend on locking and
+	  scheduler internals. The PREEMPT_RT rtmutex representation remains on
+	  its existing implementation.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_WAITQUEUE
 	bool "Rust implementation of wait queues"
 	depends on RUST

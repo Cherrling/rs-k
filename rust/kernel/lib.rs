@@ -105,6 +105,8 @@ pub mod maple_tree;
 pub mod miscdevice;
 pub mod mm;
 pub mod module;
+#[cfg(CONFIG_RUST_MUTEX)]
+mod mutex_core;
 pub mod module_param;
 #[cfg(CONFIG_NET)]
 pub mod net;

@@ -62,7 +62,11 @@ static inline struct task_struct *__owner_task(unsigned long owner)
 
 bool mutex_is_locked(struct mutex *lock)
 {
+#ifdef CONFIG_RUST_MUTEX
+	return rust_mutex_is_locked(lock);
+#else
 	return __mutex_owner(lock) != NULL;
+#endif
 }
 EXPORT_SYMBOL(mutex_is_locked);
 
@@ -74,16 +78,66 @@ static inline unsigned long __owner_flags(unsigned long owner)
 /* Do not use the return value as a pointer directly. */
 unsigned long mutex_get_owner(struct mutex *lock)
 {
+#ifdef CONFIG_RUST_MUTEX
+	return rust_mutex_get_owner(lock);
+#else
 	unsigned long owner = atomic_long_read(&lock->owner);
 
 	return (unsigned long)__owner_task(owner);
+#endif
 }
+
+#ifdef CONFIG_RUST_MUTEX
+unsigned long rust_mutex_read_owner(struct mutex *lock)
+{
+	return atomic_long_read(&lock->owner);
+}
+
+bool rust_mutex_try_cmpxchg_owner_acquire(struct mutex *lock,
+					  unsigned long *owner,
+					  unsigned long new)
+{
+	return atomic_long_try_cmpxchg_acquire(&lock->owner, owner, new);
+}
+
+bool rust_mutex_try_cmpxchg_owner_release(struct mutex *lock,
+					  unsigned long *owner,
+					  unsigned long new)
+{
+	return atomic_long_try_cmpxchg_release(&lock->owner, owner, new);
+}
+
+unsigned long rust_mutex_current(void)
+{
+	return (unsigned long)current;
+}
+
+void rust_mutex_warn_bad_trylock_flags(struct mutex *lock,
+				       unsigned long flags)
+{
+	MUTEX_WARN_ON(flags & (MUTEX_FLAG_HANDOFF | MUTEX_FLAG_PICKUP));
+}
+
+void rust_mutex_warn_bad_unlock(struct mutex *lock, unsigned long owner)
+{
+	MUTEX_WARN_ON(__owner_task(owner) != current);
+	MUTEX_WARN_ON(owner & MUTEX_FLAG_PICKUP);
+}
+
+bool rust_mutex_force_handoff(void)
+{
+	return sched_proxy_exec() && current->blocked_donor;
+}
+#endif /* CONFIG_RUST_MUTEX */
 
 /*
  * Returns: __mutex_owner(lock) on failure or NULL on success.
  */
 static inline struct task_struct *__mutex_trylock_common(struct mutex *lock, bool handoff)
 {
+#ifdef CONFIG_RUST_MUTEX
+	return rust_mutex_trylock_common(lock, handoff);
+#else
 	unsigned long owner, curr = (unsigned long)current;
 
 	owner = atomic_long_read(&lock->owner);
@@ -116,6 +170,7 @@ static inline struct task_struct *__mutex_trylock_common(struct mutex *lock, boo
 	}
 
 	return __owner_task(owner);
+#endif
 }
 
 /*
@@ -153,6 +208,9 @@ EXPORT_SYMBOL(mutex_init_generic);
 static __always_inline bool __mutex_trylock_fast(struct mutex *lock)
 	__cond_acquires(true, lock)
 {
+#ifdef CONFIG_RUST_MUTEX
+	return rust_mutex_trylock_fast(lock);
+#else
 	unsigned long curr = (unsigned long)current;
 	unsigned long zero = 0UL;
 
@@ -162,14 +220,19 @@ static __always_inline bool __mutex_trylock_fast(struct mutex *lock)
 		return true;
 
 	return false;
+#endif
 }
 
 static __always_inline bool __mutex_unlock_fast(struct mutex *lock)
 	__cond_releases(true, lock)
 {
+#ifdef CONFIG_RUST_MUTEX
+	return rust_mutex_unlock_fast(lock);
+#else
 	unsigned long curr = (unsigned long)current;
 
 	return atomic_long_try_cmpxchg_release(&lock->owner, &curr, 0UL);
+#endif
 }
 
 #else /* !CONFIG_DEBUG_LOCK_ALLOC */
@@ -260,6 +323,7 @@ __mutex_remove_waiter(struct mutex *lock, struct mutex_waiter *waiter)
  * WAITERS. Provides RELEASE semantics like a regular unlock, the
  * __mutex_trylock() provides a matching ACQUIRE semantics for the handoff.
  */
+#ifndef CONFIG_RUST_MUTEX
 static void __mutex_handoff(struct mutex *lock, struct task_struct *task)
 {
 	unsigned long owner = atomic_long_read(&lock->owner);
@@ -279,6 +343,7 @@ static void __mutex_handoff(struct mutex *lock, struct task_struct *task)
 			break;
 	}
 }
+#endif
 
 #ifndef CONFIG_DEBUG_LOCK_ALLOC
 /*
@@ -1004,6 +1069,10 @@ static noinline void __sched __mutex_unlock_slowpath(struct mutex *lock, unsigne
 	 * Except when HANDOFF, in that case we must not clear the owner field,
 	 * but instead set it to the top waiter.
 	 */
+#ifdef CONFIG_RUST_MUTEX
+	if (rust_mutex_unlock_prepare(lock, &owner))
+		return;
+#else
 	owner = atomic_long_read(&lock->owner);
 	for (;;) {
 		MUTEX_WARN_ON(__owner_task(owner) != current);
@@ -1025,6 +1094,7 @@ static noinline void __sched __mutex_unlock_slowpath(struct mutex *lock, unsigne
 			return;
 		}
 	}
+#endif
 
 	raw_spin_lock_irqsave(&lock->wait_lock, flags);
 	raw_spin_lock(&current->blocked_lock);
@@ -1068,8 +1138,12 @@ static noinline void __sched __mutex_unlock_slowpath(struct mutex *lock, unsigne
 	if (trace_contended_release_enabled() && waiter)
 		trace_call__contended_release(lock);
 
+#ifdef CONFIG_RUST_MUTEX
+	rust_mutex_handoff_if_requested(lock, owner, next);
+#else
 	if (owner & MUTEX_FLAG_HANDOFF)
 		__mutex_handoff(lock, next);
+#endif
 
 	raw_spin_unlock(&current->blocked_lock);
 	raw_spin_unlock_irqrestore(&lock->wait_lock, flags);
