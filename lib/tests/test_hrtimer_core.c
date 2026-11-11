@@ -6,6 +6,7 @@
 #include <linux/delay.h>
 #include <linux/hrtimer.h>
 #include <linux/hrtimer_bases.h>
+#include <linux/hrtimer-rust.h>
 #include <linux/kthread.h>
 #include <linux/ktime.h>
 #include <linux/timerqueue.h>
@@ -23,6 +24,13 @@ struct hrtimer_core_test {
 struct hrtimer_core_test_cancel_wait {
 	struct hrtimer_clock_base *base;
 	struct completion exit;
+};
+
+struct hrtimer_core_test_base_selection {
+	struct hrtimer timer;
+	struct hrtimer_clock_base new_base;
+	struct hrtimer_cpu_base new_cpu_base;
+	struct hrtimer_cpu_base this_cpu_base;
 };
 
 static enum hrtimer_restart hrtimer_core_test_callback(struct hrtimer *timer)
@@ -54,6 +62,58 @@ static void hrtimer_core_test_start_pinned(struct hrtimer_core_test *test,
 			       CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED);
 	hrtimer_start(&test->timer, expires, HRTIMER_MODE_ABS_PINNED);
 }
+
+#ifdef CONFIG_RUST_HRTIMER_BASE_SELECTION
+static void hrtimer_core_test_base_selection(struct kunit *test)
+{
+	struct hrtimer_core_test_base_selection *state;
+	struct hrtimer_cpu_base *new_cpu_base;
+	struct hrtimer_cpu_base *this_cpu_base;
+	struct hrtimer_clock_base *new_base;
+
+	state = kunit_kzalloc(test, sizeof(*state), GFP_KERNEL);
+	KUNIT_ASSERT_NOT_NULL(test, state);
+	new_cpu_base = &state->new_cpu_base;
+	this_cpu_base = &state->this_cpu_base;
+	new_base = &state->new_base;
+
+	new_base->cpu_base = new_cpu_base;
+	new_base->offset = ns_to_ktime(100);
+	new_cpu_base->online = true;
+	this_cpu_base->online = true;
+	hrtimer_set_expires(&state->timer, ns_to_ktime(1000));
+
+	new_cpu_base->expires_next = ns_to_ktime(800);
+	KUNIT_EXPECT_TRUE(test,
+			  rust_hrtimer_suitable_target(&state->timer, new_base,
+						       new_cpu_base,
+						       this_cpu_base));
+
+	new_cpu_base->expires_next = ns_to_ktime(900);
+	KUNIT_EXPECT_TRUE(test,
+			  rust_hrtimer_suitable_target(&state->timer, new_base,
+						       new_cpu_base,
+						       this_cpu_base));
+
+	new_cpu_base->expires_next = ns_to_ktime(901);
+	KUNIT_EXPECT_FALSE(test,
+			   rust_hrtimer_suitable_target(&state->timer, new_base,
+							new_cpu_base,
+							this_cpu_base));
+
+	this_cpu_base->online = false;
+	KUNIT_EXPECT_TRUE(test,
+			  rust_hrtimer_suitable_target(&state->timer, new_base,
+						       new_cpu_base,
+						       this_cpu_base));
+
+	this_cpu_base->online = true;
+	KUNIT_EXPECT_TRUE(test,
+			  rust_hrtimer_suitable_target(&state->timer, new_base,
+						       this_cpu_base,
+						       this_cpu_base));
+}
+#endif
 
 static void hrtimer_core_test_assert_order(struct kunit *test,
 					   struct hrtimer_core_test *timers,
@@ -269,6 +329,9 @@ static void hrtimer_core_test_forward(struct kunit *test)
 }
 
 static struct kunit_case hrtimer_core_test_cases[] = {
+#ifdef CONFIG_RUST_HRTIMER_BASE_SELECTION
+	KUNIT_CASE(hrtimer_core_test_base_selection),
+#endif
 	KUNIT_CASE(hrtimer_core_test_same_base_requeue),
 	KUNIT_CASE(hrtimer_core_test_expiry),
 	KUNIT_CASE(hrtimer_core_test_cancel_states),

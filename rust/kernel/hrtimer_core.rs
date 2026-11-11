@@ -14,6 +14,8 @@ use macros::export;
 
 type Hrtimer = bindings::hrtimer;
 type ClockBase = bindings::hrtimer_clock_base;
+#[cfg(CONFIG_RUST_HRTIMER_BASE_SELECTION)]
+type CpuBase = bindings::hrtimer_cpu_base;
 type TimerLinkedNode = bindings::timerqueue_linked_node;
 type RbNodeLinked = bindings::rb_node_linked;
 
@@ -77,6 +79,41 @@ unsafe fn can_update_in_place(timer: *mut Hrtimer, expires: bindings::ktime_t) -
 
     // SAFETY: A queued neighbor points to a live linked timer entry.
     expires >= unsafe { (*timer_linked_node(prev)).expires }
+}
+
+/// Returns whether a selected clock base can meet the timer deadline.
+///
+/// A local target is always suitable. An offline current CPU keeps the
+/// elected remote target because that target can be reprogrammed by IPI.
+/// Otherwise, the remote target is suitable only when it expires no later
+/// than the timer.
+///
+/// # Safety
+///
+/// `timer`, `new_base`, `new_cpu_base`, and `this_cpu_base` must be live.
+/// `new_base` must belong to `new_cpu_base`, and the caller must hold
+/// `new_cpu_base->lock`.
+#[cfg(CONFIG_RUST_HRTIMER_BASE_SELECTION)]
+#[export]
+unsafe extern "C" fn rust_hrtimer_suitable_target(
+    timer: *mut Hrtimer,
+    new_base: *mut ClockBase,
+    new_cpu_base: *mut CpuBase,
+    this_cpu_base: *mut CpuBase,
+) -> bool {
+    if new_cpu_base == this_cpu_base {
+        return true;
+    }
+
+    // SAFETY: The caller guarantees that the current CPU base is live.
+    if !unsafe { bindings::rust_helper_hrtimer_base_is_online(this_cpu_base) } {
+        return true;
+    }
+
+    // SAFETY: The caller guarantees that the timer and clock base are live.
+    let expires = unsafe { (*timer).node.expires.wrapping_sub((*new_base).offset) };
+    // SAFETY: The caller holds the selected CPU base lock.
+    expires >= unsafe { (*new_cpu_base).expires_next }
 }
 
 /// Starts or requeues a timer on its current local clock base.

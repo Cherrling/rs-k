@@ -1043,6 +1043,20 @@ config RUST_HRTIMER
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_HRTIMER_BASE_SELECTION
+	bool "Rust implementation of hrtimer base selection"
+	depends on RUST_HRTIMER && SMP
+	default y
+	help
+	  Use Rust for the production decision that checks whether a selected
+	  remote clock base can meet a timer's high-resolution deadline.
+
+	  Target CPU selection, migration-base locking, CPU hotplug state
+	  tracking, remote reprogramming, and public ABI adapters remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_HRTIMER_CANCEL
 	bool "Rust implementation of hrtimer removal and cancellation state"
 	depends on RUST_HRTIMER

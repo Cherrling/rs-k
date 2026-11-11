@@ -10,6 +10,7 @@
 #include <linux/types.h>
 
 struct hrtimer_clock_base;
+struct hrtimer_cpu_base;
 
 #ifdef CONFIG_RUST_HRTIMER
 
@@ -29,6 +30,17 @@ bool rust_hrtimer_requeue_same_base(struct hrtimer *timer,
 				    u64 delta_ns);
 
 #endif /* CONFIG_RUST_HRTIMER */
+
+#ifdef CONFIG_RUST_HRTIMER_BASE_SELECTION
+
+bool rust_helper_hrtimer_base_is_online(struct hrtimer_cpu_base *cpu_base);
+
+bool rust_hrtimer_suitable_target(struct hrtimer *timer,
+				  struct hrtimer_clock_base *new_base,
+				  struct hrtimer_cpu_base *new_cpu_base,
+				  struct hrtimer_cpu_base *this_cpu_base);
+
+#endif /* CONFIG_RUST_HRTIMER_BASE_SELECTION */
 
 #ifdef CONFIG_RUST_HRTIMER_CANCEL
 

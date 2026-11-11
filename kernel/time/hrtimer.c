@@ -218,6 +218,9 @@ static bool hrtimer_suitable_target(struct hrtimer *timer, struct hrtimer_clock_
 				    struct hrtimer_cpu_base *new_cpu_base,
 				    struct hrtimer_cpu_base *this_cpu_base)
 {
+#ifdef CONFIG_RUST_HRTIMER_BASE_SELECTION
+	return rust_hrtimer_suitable_target(timer, new_base, new_cpu_base, this_cpu_base);
+#else
 	ktime_t expires;
 
 	/*
@@ -239,6 +242,7 @@ static bool hrtimer_suitable_target(struct hrtimer *timer, struct hrtimer_clock_
 	expires = ktime_sub(hrtimer_get_expires(timer), new_base->offset);
 
 	return expires >= new_base->cpu_base->expires_next;
+#endif
 }
 
 static inline struct hrtimer_cpu_base *get_target_base(struct hrtimer_cpu_base *base, bool pinned)
@@ -563,6 +567,13 @@ bool rust_helper_hrtimer_is_queued(struct hrtimer *timer)
 void rust_helper_hrtimer_set_queued(struct hrtimer *timer, bool queued)
 {
 	WRITE_ONCE(timer->is_queued, queued);
+}
+#endif
+
+#ifdef CONFIG_RUST_HRTIMER_BASE_SELECTION
+bool rust_helper_hrtimer_base_is_online(struct hrtimer_cpu_base *cpu_base)
+{
+	return hrtimer_base_is_online(cpu_base);
 }
 #endif
 
