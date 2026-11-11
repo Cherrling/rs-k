@@ -110,6 +110,28 @@ static bool waitqueue_test_wait_for_active(struct wait_queue_head *wq_head)
 	return waitqueue_test_count(wq_head) > 0;
 }
 
+static int waitqueue_test_position(struct wait_queue_head *wq_head,
+				   struct waitqueue_test_record *record)
+{
+	struct wait_queue_entry *entry;
+	struct waitqueue_test_record *pos;
+	unsigned long flags;
+	int position = -ENOENT;
+	int index = 0;
+
+	spin_lock_irqsave(&wq_head->lock, flags);
+	list_for_each_entry(entry, &wq_head->head, entry) {
+		pos = container_of(entry, struct waitqueue_test_record, entry);
+		if (pos == record) {
+			position = index;
+			break;
+		}
+		index++;
+	}
+	spin_unlock_irqrestore(&wq_head->lock, flags);
+	return position;
+}
+
 static void waitqueue_test_init_record(struct waitqueue_test_record *record,
 				       int wake_ret, int order_index,
 				       int *order, atomic_t *order_counter)
@@ -141,6 +163,85 @@ static void waitqueue_test_remove(struct wait_queue_head *wq_head,
 {
 	if (!list_empty(&record->entry.entry))
 		remove_wait_queue(wq_head, &record->entry);
+}
+
+static void waitqueue_test_entry_order(struct kunit *test)
+{
+	struct waitqueue_test_record normal1;
+	struct waitqueue_test_record normal2;
+	struct waitqueue_test_record priority1;
+	struct waitqueue_test_record priority2;
+	struct waitqueue_test_record exclusive;
+	DECLARE_WAIT_QUEUE_HEAD_ONSTACK(wq_head);
+
+	waitqueue_test_init_record(&normal1, 1, 0, NULL, NULL);
+	waitqueue_test_init_record(&normal2, 1, 1, NULL, NULL);
+	waitqueue_test_init_record(&priority1, 1, 2, NULL, NULL);
+	waitqueue_test_init_record(&priority2, 1, 3, NULL, NULL);
+	waitqueue_test_init_record(&exclusive, 1, 4, NULL, NULL);
+
+	normal1.entry.flags = WQ_FLAG_EXCLUSIVE;
+	add_wait_queue(&wq_head, &normal1.entry);
+	add_wait_queue_priority(&wq_head, &priority1.entry);
+	add_wait_queue_priority(&wq_head, &priority2.entry);
+	normal2.entry.flags = WQ_FLAG_EXCLUSIVE;
+	add_wait_queue(&wq_head, &normal2.entry);
+	add_wait_queue_exclusive(&wq_head, &exclusive.entry);
+
+	KUNIT_EXPECT_EQ(test, normal1.entry.flags, 0);
+	KUNIT_EXPECT_EQ(test, normal2.entry.flags, 0);
+	KUNIT_EXPECT_EQ(test, priority1.entry.flags, WQ_FLAG_PRIORITY);
+	KUNIT_EXPECT_EQ(test, priority2.entry.flags, WQ_FLAG_PRIORITY);
+	KUNIT_EXPECT_EQ(test, exclusive.entry.flags, WQ_FLAG_EXCLUSIVE);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_position(&wq_head, &priority1), 0);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_position(&wq_head, &priority2), 1);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_position(&wq_head, &normal2), 2);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_position(&wq_head, &normal1), 3);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_position(&wq_head, &exclusive), 4);
+
+	remove_wait_queue(&wq_head, &priority1.entry);
+	remove_wait_queue(&wq_head, &priority2.entry);
+	remove_wait_queue(&wq_head, &normal2.entry);
+	remove_wait_queue(&wq_head, &normal1.entry);
+	remove_wait_queue(&wq_head, &exclusive.entry);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_count(&wq_head), 0);
+}
+
+static void waitqueue_test_priority_exclusive(struct kunit *test)
+{
+	struct waitqueue_test_record priority1;
+	struct waitqueue_test_record priority2;
+	struct waitqueue_test_record priority3;
+	struct waitqueue_test_record normal;
+	DECLARE_WAIT_QUEUE_HEAD_ONSTACK(wq_head);
+
+	waitqueue_test_init_record(&priority1, 1, 0, NULL, NULL);
+	waitqueue_test_init_record(&priority2, 1, 1, NULL, NULL);
+	waitqueue_test_init_record(&priority3, 1, 2, NULL, NULL);
+	waitqueue_test_init_record(&normal, 1, 3, NULL, NULL);
+
+	KUNIT_EXPECT_EQ(test,
+			add_wait_queue_priority_exclusive(&wq_head,
+							  &priority1.entry), 0);
+	KUNIT_EXPECT_EQ(test,
+			add_wait_queue_priority_exclusive(&wq_head,
+							  &priority2.entry), -EBUSY);
+	KUNIT_EXPECT_EQ(test, priority2.entry.flags,
+			WQ_FLAG_EXCLUSIVE | WQ_FLAG_PRIORITY);
+	KUNIT_EXPECT_TRUE(test, list_empty(&priority2.entry.entry));
+	KUNIT_EXPECT_EQ(test, waitqueue_test_position(&wq_head, &priority1), 0);
+
+	remove_wait_queue(&wq_head, &priority1.entry);
+	add_wait_queue(&wq_head, &normal.entry);
+	KUNIT_EXPECT_EQ(test,
+			add_wait_queue_priority_exclusive(&wq_head,
+							  &priority3.entry), 0);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_position(&wq_head, &priority3), 0);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_position(&wq_head, &normal), 1);
+
+	remove_wait_queue(&wq_head, &priority3.entry);
+	remove_wait_queue(&wq_head, &normal.entry);
+	KUNIT_EXPECT_EQ(test, waitqueue_test_count(&wq_head), 0);
 }
 
 static void waitqueue_test_wake_all_order(struct kunit *test)
@@ -330,6 +431,8 @@ cleanup:
 }
 
 static struct kunit_case waitqueue_test_cases[] = {
+	KUNIT_CASE(waitqueue_test_entry_order),
+	KUNIT_CASE(waitqueue_test_priority_exclusive),
 	KUNIT_CASE(waitqueue_test_wake_all_order),
 	KUNIT_CASE(waitqueue_test_exclusive_budget),
 	KUNIT_CASE(waitqueue_test_negative_callback),

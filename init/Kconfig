@@ -923,14 +923,14 @@ config RUST_COMPLETION
 	  If unsure, say Y.
 
 config RUST_WAITQUEUE
-	bool "Rust implementation of wait queue wakeups"
+	bool "Rust implementation of wait queues"
 	depends on RUST
 	default y
 	help
-	  Use Rust for the production wait queue wake traversal and exclusive
-	  wake accounting.  This includes callback order, negative callback
+	  Use Rust for the production wait queue state machine.  This includes
+	  entry flags and ordering, callback traversal, negative callback
 	  termination, normal and synchronized wake flags, current-CPU wakeup,
-	  and POLLFREE handling.
+	  exclusive wake accounting, and POLLFREE handling.
 
 	  Raw locking, intrusive list primitives, lockdep assertions, scheduler
 	  flags, and poll key construction remain in C because they depend on

@@ -1,17 +1,18 @@
 .. SPDX-License-Identifier: GPL-2.0
 
-Native Rust Wait Queue Wake Migration
-=====================================
+Native Rust Wait Queue Migration
+================================
 
 Status and scope
 ----------------
 
 The ``CONFIG_RUST_WAITQUEUE`` option selects a native Rust implementation of
-the wait queue wake path.  The migration keeps the existing
+the wait queue state machine.  The migration keeps the existing
 ``wait_queue_head`` and ``wait_queue_entry`` layouts and caller-facing API.
 
 The Rust code owns these production decisions:
 
+* Wait entry flags and insertion order.
 * Callback traversal order.
 * Negative callback termination.
 * Exclusive and non-exclusive wake eligibility.
@@ -20,15 +21,15 @@ The Rust code owns these production decisions:
 * Wakeup return counts.
 * POLLFREE wake traversal and final empty-queue enforcement.
 
-Queue initialization, waiter insertion and removal, wait preparation, task
-sleep, wait completion, and the woken wait helpers remain in C.  Those
-operations will be separate migration units.
+Queue initialization, wait preparation, task sleep, wait completion, and the
+woken wait helpers remain in C.  Those operations will be separate migration
+units.
 
 Entry points and ownership
 --------------------------
 
-The public wake entry points retain their names, signatures, and ordinary
-export classes.  The production wake state machine is in
+The public wake and entry-operation entry points retain their names,
+signatures, and ordinary export classes.  The production state machine is in
 ``rust/kernel/waitqueue_core.rs``.  ``kernel/sched/wait.c`` provides the C ABI
 adapters and the narrow primitive boundary.
 
@@ -40,15 +41,22 @@ locking, poll, or intrusive list internals:
 
 * Wait queue spinlock acquisition and interrupt state restoration.
 * Lockdep assertions that require the wait queue lock.
-* Intrusive list head detection and next-entry lookup.
+* Intrusive list pointer insertion, removal, head detection, and next-entry
+  lookup.
 * Scheduler wake flags for current-CPU and synchronized wakeups.
 * Poll key construction and the final POLLFREE queue check.
 
-These helpers do not select callbacks, enforce the exclusive budget, or decide
-when callback traversal stops.
+These helpers do not set wait entry flags, select an insertion position,
+select callbacks, enforce the exclusive budget, or decide when callback
+traversal stops.
 
 Important invariants
 --------------------
+
+Entry insertion and removal run under the wait queue lock.  Normal and priority
+entries are inserted after the existing priority prefix.  Exclusive entries
+are appended to the tail.  A priority-exclusive entry fails with ``-EBUSY``
+when another priority entry already leads the queue.
 
 Wake callbacks run under the wait queue lock.  The traversal reads the next
 list entry before invoking the current callback because the callback may remove
@@ -75,6 +83,7 @@ The migration unit must pass these checks before integration:
 * Rust-enabled generic inline KASAN build.
 * One-vCPU and repeated four-vCPU Rust KUnit runs.
 * Four-vCPU C fallback, KASAN, and lockdep KUnit runs.
+* Entry insertion order, removal, and priority-exclusive contention.
 * Callback order and wake modes.
 * Exclusive budget and zero-return callback behavior.
 * Negative callback termination.
@@ -95,13 +104,14 @@ The final source tree passed seven x86_64 KUnit runs on 2026-11-11:
 * One run on four vCPUs with generic inline KASAN enabled.
 * One run on four vCPUs with lockdep, spinlock, and list debugging enabled.
 
-Every run reported six passed tests and no failures, skips, kernel warnings,
+Every run reported eight passed tests and no failures, skips, kernel warnings,
 sanitizer reports, lockdep reports, or panic.
 
-All eight public wake adapters disassemble to direct jumps into their Rust
-counterparts.  The exported symbol names and classes match the C fallback.
-The narrow C boundary helpers are not exported.  The C fallback image and its
-loadable modules contain no Rust wait queue symbols.
+All thirteen public wait and entry-operation adapters disassemble to direct
+jumps into their Rust counterparts.  The exported symbol names and classes
+match the C fallback.  The narrow C boundary helpers are not exported.  The C
+fallback image and loadable modules from both builds contain no unresolved
+Rust wait queue symbols.
 
 Clippy, rustfmt, strict checkpatch, and ``git diff --check`` completed without
 errors or warnings.
@@ -114,6 +124,7 @@ Reopen the C boundary decision if any of these conditions changes:
 * Kernel Rust gains safe abstractions for raw spinlocks, lockdep assertions,
   scheduler flags, poll keys, or intrusive list traversal.
 * The exclusive wake accounting or callback return protocol changes.
+* The wait entry flag or priority ordering contract changes.
 * Wake callbacks gain permission to remove entries other than their own.
 * The wake path starts selecting entries by a method other than list order.
 * Benchmarks show that the out-of-line ABI and helper transitions are too

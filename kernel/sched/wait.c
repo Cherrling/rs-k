@@ -17,6 +17,8 @@ void __init_waitqueue_head(struct wait_queue_head *wq_head, const char *name, st
 
 EXPORT_SYMBOL(__init_waitqueue_head);
 
+#ifndef CONFIG_RUST_WAITQUEUE
+
 void add_wait_queue(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry)
 {
 	unsigned long flags;
@@ -77,6 +79,8 @@ void remove_wait_queue(struct wait_queue_head *wq_head, struct wait_queue_entry 
 	spin_unlock_irqrestore(&wq_head->lock, flags);
 }
 EXPORT_SYMBOL(remove_wait_queue);
+
+#endif /* CONFIG_RUST_WAITQUEUE */
 
 #ifndef CONFIG_RUST_WAITQUEUE
 
@@ -238,6 +242,22 @@ void __wake_up_pollfree(struct wait_queue_head *wq_head)
 
 #else
 
+void rust_waitqueue_list_add(struct list_head *head, struct list_head *entry)
+{
+	list_add(entry, head);
+}
+
+void rust_waitqueue_list_add_tail(struct list_head *head,
+				  struct list_head *entry)
+{
+	list_add_tail(entry, head);
+}
+
+void rust_waitqueue_list_del(struct list_head *entry)
+{
+	list_del(entry);
+}
+
 void rust_waitqueue_lock_irqsave(struct wait_queue_head *wq_head,
 				 unsigned long *flags)
 {
@@ -294,6 +314,41 @@ void rust_waitqueue_assert_pollfree_empty(struct wait_queue_head *wq_head)
 	/* POLLFREE must have cleared the queue. */
 	WARN_ON_ONCE(waitqueue_active(wq_head));
 }
+
+void add_wait_queue(struct wait_queue_head *wq_head,
+		    struct wait_queue_entry *wq_entry)
+{
+	rust_waitqueue_add(wq_head, wq_entry);
+}
+EXPORT_SYMBOL(add_wait_queue);
+
+void add_wait_queue_exclusive(struct wait_queue_head *wq_head,
+			      struct wait_queue_entry *wq_entry)
+{
+	rust_waitqueue_add_exclusive(wq_head, wq_entry);
+}
+EXPORT_SYMBOL(add_wait_queue_exclusive);
+
+void add_wait_queue_priority(struct wait_queue_head *wq_head,
+			     struct wait_queue_entry *wq_entry)
+{
+	rust_waitqueue_add_priority(wq_head, wq_entry);
+}
+EXPORT_SYMBOL_GPL(add_wait_queue_priority);
+
+int add_wait_queue_priority_exclusive(struct wait_queue_head *wq_head,
+				      struct wait_queue_entry *wq_entry)
+{
+	return rust_waitqueue_add_priority_exclusive(wq_head, wq_entry);
+}
+EXPORT_SYMBOL_GPL(add_wait_queue_priority_exclusive);
+
+void remove_wait_queue(struct wait_queue_head *wq_head,
+		       struct wait_queue_entry *wq_entry)
+{
+	rust_waitqueue_remove(wq_head, wq_entry);
+}
+EXPORT_SYMBOL(remove_wait_queue);
 
 int __wake_up(struct wait_queue_head *wq_head, unsigned int mode,
 	      int nr_exclusive, void *key)

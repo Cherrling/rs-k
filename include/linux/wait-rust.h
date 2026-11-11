@@ -26,11 +26,27 @@ void rust_waitqueue_wake_sync(struct wait_queue_head *wq_head,
 			      unsigned int mode);
 void rust_waitqueue_wake_pollfree(struct wait_queue_head *wq_head);
 
+void rust_waitqueue_add(struct wait_queue_head *wq_head,
+			struct wait_queue_entry *wq_entry);
+void rust_waitqueue_add_exclusive(struct wait_queue_head *wq_head,
+				  struct wait_queue_entry *wq_entry);
+void rust_waitqueue_add_priority(struct wait_queue_head *wq_head,
+				 struct wait_queue_entry *wq_entry);
+int rust_waitqueue_add_priority_exclusive(struct wait_queue_head *wq_head,
+					  struct wait_queue_entry *wq_entry);
+void rust_waitqueue_remove(struct wait_queue_head *wq_head,
+			   struct wait_queue_entry *wq_entry);
+
 void rust_waitqueue_lock_irqsave(struct wait_queue_head *wq_head,
 				 unsigned long *flags);
 void rust_waitqueue_unlock_irqrestore(struct wait_queue_head *wq_head,
 				      unsigned long flags);
 void rust_waitqueue_assert_locked(struct wait_queue_head *wq_head);
+void rust_waitqueue_list_add(struct list_head *head,
+			     struct list_head *entry);
+void rust_waitqueue_list_add_tail(struct list_head *head,
+				  struct list_head *entry);
+void rust_waitqueue_list_del(struct list_head *entry);
 struct wait_queue_entry *
 rust_waitqueue_first_entry(struct wait_queue_head *wq_head);
 struct wait_queue_entry *
