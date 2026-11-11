@@ -4,8 +4,9 @@
 //!
 //! Rust owns local-base enqueue, in-place expiry updates, requeue decisions,
 //! queued removal, cancellation results, the clock-base next-expiry cache, and
-//! expiry forwarding. Locking, clock event reprogramming, ktime arithmetic,
-//! debug objects, and tracepoint delivery remain outside this module.
+//! expiry forwarding, and the cancellation retry loop. Locking, clock event
+//! reprogramming, ktime arithmetic, callback completion waits, debug objects,
+//! and tracepoint delivery remain outside this module.
 
 use crate::bindings;
 use core::ptr;
@@ -333,4 +334,27 @@ unsafe extern "C" fn rust_hrtimer_forward(
     // SAFETY: The caller guarantees that the timer is live.
     unsafe { bindings::rust_helper_hrtimer_forward_add(timer, interval) };
     overruns
+}
+
+/// Cancels a timer and waits for a running callback to finish.
+///
+/// This implements the production retry loop in `hrtimer_cancel()`.
+///
+/// # Safety
+///
+/// `timer` must be a live timer for the duration of this call.
+#[cfg(CONFIG_RUST_HRTIMER_CANCEL_WAIT)]
+#[export]
+unsafe extern "C" fn rust_hrtimer_cancel(timer: *mut Hrtimer) -> i32 {
+    loop {
+        // SAFETY: The caller guarantees that the timer is live.
+        let result = unsafe { bindings::rust_helper_hrtimer_try_to_cancel(timer) };
+        if result >= 0 {
+            return result;
+        }
+
+        // SAFETY: The caller guarantees that the timer remains live. The helper
+        // performs the context-specific wait for the running callback.
+        unsafe { bindings::rust_helper_hrtimer_cancel_wait_running(timer) };
+    }
 }

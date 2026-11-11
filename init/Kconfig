@@ -1054,7 +1054,23 @@ config RUST_HRTIMER_CANCEL
 
 	  CPU base locking, the lockless inactive fast path, debug hooks,
 	  tracepoints, clock event reprogramming, callback execution, and
-	  cancellation wait loops remain in C.
+	  the callback-running wait primitive remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
+config RUST_HRTIMER_CANCEL_WAIT
+	bool "Rust implementation of hrtimer cancellation waiting"
+	depends on RUST_HRTIMER_CANCEL
+	default y
+	help
+	  Use Rust for the production hrtimer_cancel() retry loop.  Rust
+	  requests a cancellation attempt and waits for a running callback
+	  before retrying.
+
+	  The try-to-cancel entry point, lockless fast path, CPU base locking,
+	  PREEMPT_RT expiry-lock wait primitive, tracepoints, and public ABI
+	  adapter remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

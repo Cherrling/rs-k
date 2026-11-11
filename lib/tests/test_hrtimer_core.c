@@ -3,8 +3,10 @@
 #include <kunit/test.h>
 
 #include <linux/completion.h>
+#include <linux/delay.h>
 #include <linux/hrtimer.h>
 #include <linux/hrtimer_bases.h>
+#include <linux/kthread.h>
 #include <linux/ktime.h>
 #include <linux/timerqueue.h>
 
@@ -18,6 +20,11 @@ struct hrtimer_core_test {
 	atomic_t callback_count;
 };
 
+struct hrtimer_core_test_cancel_wait {
+	struct hrtimer_clock_base *base;
+	struct completion exit;
+};
+
 static enum hrtimer_restart hrtimer_core_test_callback(struct hrtimer *timer)
 {
 	struct hrtimer_core_test *test;
@@ -26,6 +33,18 @@ static enum hrtimer_restart hrtimer_core_test_callback(struct hrtimer *timer)
 	atomic_inc(&test->callback_count);
 	complete(&test->completion);
 	return HRTIMER_NORESTART;
+}
+
+static int hrtimer_core_test_release_callback(void *data)
+{
+	struct hrtimer_core_test_cancel_wait *cancel_wait = data;
+	unsigned long flags;
+
+	msleep(20);
+	raw_spin_lock_irqsave(&cancel_wait->base->cpu_base->lock, flags);
+	cancel_wait->base->running = NULL;
+	raw_spin_unlock_irqrestore(&cancel_wait->base->cpu_base->lock, flags);
+	kthread_complete_and_exit(&cancel_wait->exit, 0);
 }
 
 static void hrtimer_core_test_start_pinned(struct hrtimer_core_test *test,
@@ -157,6 +176,51 @@ static void hrtimer_core_test_cancel_states(struct kunit *test)
 	destroy_hrtimer_on_stack(&timer.timer);
 }
 
+static void hrtimer_core_test_cancel_wait(struct kunit *test)
+{
+	struct hrtimer_core_test_cancel_wait cancel_wait;
+	struct hrtimer_core_test timer;
+	struct task_struct *task;
+	struct hrtimer_clock_base *base;
+	unsigned long flags;
+
+	hrtimer_core_test_start_pinned(&timer, ktime_add_ms(ktime_get(), 100000));
+	KUNIT_ASSERT_TRUE(test, hrtimer_is_queued(&timer.timer));
+	KUNIT_EXPECT_EQ(test, hrtimer_cancel(&timer.timer), 1);
+	KUNIT_EXPECT_FALSE(test, hrtimer_is_queued(&timer.timer));
+	KUNIT_EXPECT_EQ(test, hrtimer_cancel(&timer.timer), 0);
+
+	hrtimer_start(&timer.timer, ktime_add_ms(ktime_get(), 100000),
+		      HRTIMER_MODE_ABS_PINNED);
+	KUNIT_ASSERT_TRUE(test, hrtimer_is_queued(&timer.timer));
+	base = timer.timer.base;
+
+	raw_spin_lock_irqsave(&base->cpu_base->lock, flags);
+	base->running = &timer.timer;
+	raw_spin_unlock_irqrestore(&base->cpu_base->lock, flags);
+
+	KUNIT_EXPECT_EQ(test, hrtimer_try_to_cancel(&timer.timer), -1);
+
+	cancel_wait.base = base;
+	init_completion(&cancel_wait.exit);
+	task = kthread_run(hrtimer_core_test_release_callback, &cancel_wait,
+			   "hrtimer-cancel-release");
+	if (IS_ERR(task)) {
+		KUNIT_FAIL(test, "failed to start callback release thread");
+		raw_spin_lock_irqsave(&base->cpu_base->lock, flags);
+		base->running = NULL;
+		raw_spin_unlock_irqrestore(&base->cpu_base->lock, flags);
+		KUNIT_EXPECT_EQ(test, hrtimer_cancel(&timer.timer), 1);
+		destroy_hrtimer_on_stack(&timer.timer);
+		return;
+	}
+
+	KUNIT_EXPECT_EQ(test, hrtimer_cancel(&timer.timer), 1);
+	wait_for_completion(&cancel_wait.exit);
+	KUNIT_EXPECT_FALSE(test, hrtimer_is_queued(&timer.timer));
+	destroy_hrtimer_on_stack(&timer.timer);
+}
+
 static void hrtimer_core_test_forward(struct kunit *test)
 {
 	struct hrtimer_core_test timer;
@@ -208,6 +272,7 @@ static struct kunit_case hrtimer_core_test_cases[] = {
 	KUNIT_CASE(hrtimer_core_test_same_base_requeue),
 	KUNIT_CASE(hrtimer_core_test_expiry),
 	KUNIT_CASE(hrtimer_core_test_cancel_states),
+	KUNIT_CASE(hrtimer_core_test_cancel_wait),
 	KUNIT_CASE(hrtimer_core_test_forward),
 	{}
 };

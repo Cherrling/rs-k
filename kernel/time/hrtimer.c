@@ -578,6 +578,18 @@ bool rust_helper_hrtimer_base_is_local(struct hrtimer_clock_base *base)
 }
 #endif
 
+#ifdef CONFIG_RUST_HRTIMER_CANCEL_WAIT
+int rust_helper_hrtimer_try_to_cancel(struct hrtimer *timer)
+{
+	return hrtimer_try_to_cancel(timer);
+}
+
+void rust_helper_hrtimer_cancel_wait_running(struct hrtimer *timer)
+{
+	hrtimer_cancel_wait_running(timer);
+}
+#endif
+
 #ifdef CONFIG_RUST_HRTIMER_FORWARD
 bool rust_helper_hrtimer_forward_warn_queued(struct hrtimer *timer)
 {
@@ -1871,6 +1883,9 @@ static inline void hrtimer_sync_wait_running(struct hrtimer_cpu_base *base, unsi
  */
 int hrtimer_cancel(struct hrtimer *timer)
 {
+#ifdef CONFIG_RUST_HRTIMER_CANCEL_WAIT
+	return rust_hrtimer_cancel(timer);
+#else
 	int ret;
 
 	do {
@@ -1880,6 +1895,7 @@ int hrtimer_cancel(struct hrtimer *timer)
 			hrtimer_cancel_wait_running(timer);
 	} while (ret < 0);
 	return ret;
+#endif
 }
 EXPORT_SYMBOL_GPL(hrtimer_cancel);
 

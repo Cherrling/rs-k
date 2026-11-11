@@ -45,6 +45,15 @@ int rust_hrtimer_try_to_cancel_locked(struct hrtimer *timer,
 
 #endif /* CONFIG_RUST_HRTIMER_CANCEL */
 
+#ifdef CONFIG_RUST_HRTIMER_CANCEL_WAIT
+
+int rust_helper_hrtimer_try_to_cancel(struct hrtimer *timer);
+void rust_helper_hrtimer_cancel_wait_running(struct hrtimer *timer);
+
+int rust_hrtimer_cancel(struct hrtimer *timer);
+
+#endif /* CONFIG_RUST_HRTIMER_CANCEL_WAIT */
+
 #ifdef CONFIG_RUST_HRTIMER_FORWARD
 
 bool rust_helper_hrtimer_forward_warn_queued(struct hrtimer *timer);
