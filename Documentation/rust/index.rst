@@ -38,6 +38,7 @@ more details.
     arch-support
     testing
     cpupri
+    itimer
     completion
     mutex
     rwsem

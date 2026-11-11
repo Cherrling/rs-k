@@ -69,6 +69,9 @@
 #include "interrupt.c"
 #include "io.c"
 #include "irq.c"
+#ifdef CONFIG_RUST_ITIMER
+#include "itimer.c"
+#endif
 #include "jump_label.c"
 #include "kunit.c"
 #include "list.c"

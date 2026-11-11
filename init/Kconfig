@@ -1011,6 +1011,22 @@ config RUST_CPUPRI
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_ITIMER
+	bool "Rust implementation of interval timers"
+	depends on RUST && POSIX_TIMERS
+	default y
+	help
+	  Use Rust for the production interval timer state machine. This
+	  includes real and CPU timer transitions, cancellation retry,
+	  remaining-time normalization, period updates, and alarm rounding.
+
+	  User copies, signal locking, hrtimer operations, CPU-time sampling,
+	  tracepoints, and SIGALRM delivery remain in C because they depend on
+	  task, signal, and timer internals.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_WAITQUEUE
 	bool "Rust implementation of wait queues"
 	depends on RUST

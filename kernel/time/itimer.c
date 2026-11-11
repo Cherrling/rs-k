@@ -13,10 +13,18 @@
 #include <linux/sched/cputime.h>
 #include <linux/posix-timers.h>
 #include <linux/hrtimer.h>
+#include <linux/itimer-rust.h>
 #include <trace/events/timer.h>
 #include <linux/compat.h>
 
 #include <linux/uaccess.h>
+
+static inline bool timeval_valid(s64 tv_sec, s64 tv_usec)
+{
+	return tv_sec >= 0 && (u64)tv_usec < USEC_PER_SEC;
+}
+
+#ifndef CONFIG_RUST_ITIMER
 
 /**
  * itimer_get_remtime - get remaining time for the timer
@@ -73,10 +81,15 @@ static void get_cpu_itimer(struct task_struct *tsk, unsigned int clock_id,
 	value->it_interval = ns_to_timespec64(interval);
 }
 
+#endif
+
 static int do_getitimer(int which, struct itimerspec64 *value)
 {
 	struct task_struct *tsk = current;
 
+#ifdef CONFIG_RUST_ITIMER
+	return rust_itimer_get(tsk, which, value);
+#else
 	switch (which) {
 	case ITIMER_REAL:
 		spin_lock_irq(&tsk->sighand->siglock);
@@ -95,6 +108,7 @@ static int do_getitimer(int which, struct itimerspec64 *value)
 		return(-EINVAL);
 	}
 	return 0;
+#endif
 }
 
 static int put_itimerval(struct __kernel_old_itimerval __user *o,
@@ -160,12 +174,16 @@ COMPAT_SYSCALL_DEFINE2(getitimer, int, which,
  */
 void posixtimer_rearm_itimer(struct task_struct *tsk)
 {
+#ifdef CONFIG_RUST_ITIMER
+	rust_itimer_rearm(tsk);
+#else
 	struct hrtimer *tmr = &tsk->signal->real_timer;
 
 	if (!hrtimer_is_queued(tmr) && tsk->signal->it_real_incr != 0) {
 		hrtimer_forward_now(tmr, tsk->signal->it_real_incr);
 		hrtimer_restart(tmr);
 	}
+#endif
 }
 
 /*
@@ -183,6 +201,8 @@ enum hrtimer_restart it_real_fn(struct hrtimer *timer)
 
 	return HRTIMER_NORESTART;
 }
+
+#ifndef CONFIG_RUST_ITIMER
 
 static void set_cpu_itimer(struct task_struct *tsk, unsigned int clock_id,
 			   const struct itimerspec64 *const value,
@@ -215,12 +235,6 @@ static void set_cpu_itimer(struct task_struct *tsk, unsigned int clock_id,
 		ovalue->it_interval = ns_to_timespec64(ointerval);
 	}
 }
-
-/*
- * Returns true if the timeval is in canonical form
- */
-#define timeval_valid(t) \
-	(((t)->tv_sec >= 0) && (((unsigned long) (t)->tv_usec) < USEC_PER_SEC))
 
 static int do_setitimer(int which, struct itimerspec64 *value,
 			struct itimerspec64 *ovalue)
@@ -268,6 +282,16 @@ again:
 	return 0;
 }
 
+#else
+
+static int do_setitimer(int which, struct itimerspec64 *value,
+			struct itimerspec64 *ovalue)
+{
+	return rust_itimer_set(current, which, value, ovalue);
+}
+
+#endif
+
 #ifdef CONFIG_SECURITY_SELINUX
 void clear_itimer(void)
 {
@@ -278,8 +302,6 @@ void clear_itimer(void)
 		do_setitimer(i, &v, NULL);
 }
 #endif
-
-#ifdef __ARCH_WANT_SYS_ALARM
 
 /**
  * alarm_setitimer - set alarm in seconds
@@ -293,8 +315,11 @@ void clear_itimer(void)
  * On 32 bit machines the seconds value is limited to (INT_MAX/2) to avoid
  * negative timeval settings which would cause immediate expiry.
  */
-static unsigned int alarm_setitimer(unsigned int seconds)
+static unsigned int __maybe_unused alarm_setitimer(unsigned int seconds)
 {
+#ifdef CONFIG_RUST_ITIMER
+	return rust_itimer_alarm(current, seconds);
+#else
 	struct itimerspec64 it_new, it_old;
 
 #if BITS_PER_LONG < 64
@@ -316,7 +341,10 @@ static unsigned int alarm_setitimer(unsigned int seconds)
 		it_old.it_value.tv_sec++;
 
 	return it_old.it_value.tv_sec;
+#endif
 }
+
+#ifdef __ARCH_WANT_SYS_ALARM
 
 /*
  * For backwards compatibility?  This can be done in libc so Alpha
@@ -337,8 +365,8 @@ static int get_itimerval(struct itimerspec64 *o, const struct __kernel_old_itime
 		return -EFAULT;
 
 	/* Validate the timevals in value. */
-	if (!timeval_valid(&v.it_value) ||
-	    !timeval_valid(&v.it_interval))
+	if (!timeval_valid(v.it_value.tv_sec, v.it_value.tv_usec) ||
+	    !timeval_valid(v.it_interval.tv_sec, v.it_interval.tv_usec))
 		return -EINVAL;
 
 	o->it_interval.tv_sec = v.it_interval.tv_sec;
@@ -383,8 +411,8 @@ static int get_old_itimerval32(struct itimerspec64 *o, const struct old_itimerva
 		return -EFAULT;
 
 	/* Validate the timevals in value.  */
-	if (!timeval_valid(&v32.it_value) ||
-	    !timeval_valid(&v32.it_interval))
+	if (!timeval_valid(v32.it_value.tv_sec, v32.it_value.tv_usec) ||
+	    !timeval_valid(v32.it_interval.tv_sec, v32.it_interval.tv_usec))
 		return -EINVAL;
 
 	o->it_interval.tv_sec = v32.it_interval.tv_sec;
@@ -418,5 +446,28 @@ COMPAT_SYSCALL_DEFINE3(setitimer, int, which,
 	if (put_old_itimerval32(ovalue, &get_buffer))
 		return -EFAULT;
 	return 0;
+}
+#endif
+
+#ifdef CONFIG_ITIMER_KUNIT_TEST
+int itimer_test_get(int which, struct itimerspec64 *value)
+{
+	return do_getitimer(which, value);
+}
+
+int itimer_test_set(int which, const struct itimerspec64 *value,
+		    struct itimerspec64 *old_value)
+{
+	return do_setitimer(which, (struct itimerspec64 *)value, old_value);
+}
+
+void itimer_test_rearm(void)
+{
+	posixtimer_rearm_itimer(current);
+}
+
+unsigned int itimer_test_alarm(unsigned int seconds)
+{
+	return alarm_setitimer(seconds);
 }
 #endif

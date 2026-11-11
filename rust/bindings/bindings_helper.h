@@ -66,6 +66,7 @@
 #include <linux/fs.h>
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
+#include <linux/itimer-rust.h>
 #include <linux/io-pgtable.h>
 #include <linux/ioport.h>
 #include <linux/iosys-map.h>

@@ -97,6 +97,8 @@ pub mod ioctl;
 pub mod iommu;
 pub mod iov;
 pub mod irq;
+#[cfg(CONFIG_RUST_ITIMER)]
+mod itimer_core;
 pub mod jump_label;
 #[cfg(CONFIG_KUNIT)]
 pub mod kunit;
@@ -107,9 +109,9 @@ pub mod maple_tree;
 pub mod miscdevice;
 pub mod mm;
 pub mod module;
+pub mod module_param;
 #[cfg(CONFIG_RUST_MUTEX)]
 mod mutex_core;
-pub mod module_param;
 #[cfg(CONFIG_NET)]
 pub mod net;
 pub mod num;
@@ -130,14 +132,14 @@ pub mod ptr;
 #[cfg(CONFIG_RUST_PWM_ABSTRACTIONS)]
 pub mod pwm;
 pub mod rbtree;
-#[cfg(CONFIG_RUST_RWSEM)]
-mod rwsem_core;
-#[cfg(CONFIG_RUST_RWLOCK)]
-mod rwlock_core;
 #[cfg(CONFIG_RUST_REFCOUNT)]
 mod refcount_core;
 pub mod regulator;
 pub mod revocable;
+#[cfg(CONFIG_RUST_RWLOCK)]
+mod rwlock_core;
+#[cfg(CONFIG_RUST_RWSEM)]
+mod rwsem_core;
 pub mod safety;
 pub mod scatterlist;
 pub mod security;
