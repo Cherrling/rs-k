@@ -55,6 +55,13 @@ ktime_t rust_hrtimer_update_next_event(struct hrtimer_cpu_base *cpu_base);
 
 #endif /* CONFIG_RUST_HRTIMER_UPDATE_NEXT_EVENT */
 
+#ifdef CONFIG_RUST_HRTIMER_UPDATE_NEEDS_IPI
+
+bool rust_hrtimer_update_needs_ipi(struct hrtimer_cpu_base *cpu_base,
+				   unsigned int active, u32 seq);
+
+#endif /* CONFIG_RUST_HRTIMER_UPDATE_NEEDS_IPI */
+
 #ifdef CONFIG_RUST_HRTIMER_CANCEL
 
 bool rust_helper_hrtimer_callback_running(struct hrtimer *timer);

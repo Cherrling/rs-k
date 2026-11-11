@@ -243,6 +243,76 @@ unsafe extern "C" fn rust_hrtimer_update_next_event(cpu_base: *mut CpuBase) -> b
     expires_next
 }
 
+/// Returns whether a clock change requires a remote CPU timer interrupt.
+///
+/// The caller updates clock offsets before this decision. Rust checks whether
+/// the clock-change sequence moved, records deferred-rearm work, and walks
+/// the affected active clock bases for a hard or soft event that now precedes
+/// the programmed event.
+///
+/// # Safety
+///
+/// `cpu_base` must be live and protected by its CPU base lock after the clock
+/// offset update. Active bits must identify nonempty linked timer queues.
+#[cfg(CONFIG_RUST_HRTIMER_UPDATE_NEEDS_IPI)]
+#[export]
+unsafe extern "C" fn rust_hrtimer_update_needs_ipi(
+    cpu_base: *mut CpuBase,
+    active: u32,
+    seq: u32,
+) -> bool {
+    // SAFETY: The caller guarantees that the CPU base is live.
+    if seq == unsafe { (*cpu_base).clock_was_set_seq } {
+        return false;
+    }
+
+    // SAFETY: The caller guarantees that the CPU base is live.
+    if unsafe { (*cpu_base).deferred_rearm } {
+        // SAFETY: The caller holds the CPU base lock.
+        unsafe { (*cpu_base).deferred_needs_update = true };
+        return false;
+    }
+
+    // SAFETY: The caller guarantees that the CPU base is live.
+    let active = active & unsafe { (*cpu_base).active_bases };
+    // SAFETY: The caller guarantees that the CPU base is live.
+    let expires_next = unsafe { (*cpu_base).expires_next };
+    // SAFETY: The caller guarantees that the CPU base is live.
+    let softirq_activated = unsafe { (*cpu_base).softirq_activated };
+
+    for index in 0..bindings::hrtimer_base_type_HRTIMER_MAX_CLOCK_BASES as usize {
+        if active & (1_u32 << index) == 0 {
+            continue;
+        }
+
+        // SAFETY: The active bit identifies a live clock base.
+        let base = unsafe { ptr::addr_of_mut!((*cpu_base).clock_base[index]) };
+        // SAFETY: The caller guarantees that this active queue is nonempty.
+        let root = unsafe { ptr::addr_of_mut!((*base).active.rb_root) };
+        // SAFETY: A nonempty linked tree has a live leftmost node.
+        let node = unsafe { (*root).rb_leftmost };
+        // SAFETY: The active queue contains only live timer nodes.
+        let timer_node = unsafe { timer_linked_node(node) };
+        // SAFETY: The timer node is live and belongs to this clock base.
+        let expires = unsafe { (*timer_node).expires.wrapping_sub((*base).offset) };
+
+        if expires < expires_next {
+            return true;
+        }
+
+        if index < HRTIMER_ACTIVE_MASK_SHIFT as usize || softirq_activated {
+            continue;
+        }
+
+        // SAFETY: The caller guarantees that the CPU base is live.
+        if expires < unsafe { (*cpu_base).softirq_expires_next } {
+            return true;
+        }
+    }
+
+    false
+}
+
 /// Starts or requeues a timer on its current local clock base.
 ///
 /// This implements the production state machine behind

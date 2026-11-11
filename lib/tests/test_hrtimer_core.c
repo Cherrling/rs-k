@@ -315,6 +315,105 @@ static void hrtimer_core_test_update_next_event(struct kunit *test)
 }
 #endif
 
+#ifdef CONFIG_RUST_HRTIMER_UPDATE_NEEDS_IPI
+static void hrtimer_core_test_update_needs_ipi(struct kunit *test)
+{
+	struct hrtimer_core_test_next_event *state;
+	struct hrtimer_cpu_base *cpu_base;
+	unsigned int active;
+
+	state = kunit_kzalloc(test, sizeof(*state), GFP_KERNEL);
+	KUNIT_ASSERT_NOT_NULL(test, state);
+	cpu_base = &state->cpu_base;
+	active = 1U << HRTIMER_BASE_MONOTONIC;
+
+	hrtimer_core_test_init_active_base(cpu_base, HRTIMER_BASE_MONOTONIC,
+					   &state->timers[0],
+					   ns_to_ktime(100), ns_to_ktime(0));
+	cpu_base->clock_was_set_seq = 1;
+	cpu_base->expires_next = ns_to_ktime(200);
+	KUNIT_EXPECT_FALSE(test,
+			   rust_hrtimer_update_needs_ipi(cpu_base, active, 1));
+	KUNIT_EXPECT_TRUE(test,
+			  rust_hrtimer_update_needs_ipi(cpu_base, active, 0));
+
+	memset(state, 0, sizeof(*state));
+	hrtimer_core_test_init_active_base(cpu_base, HRTIMER_BASE_MONOTONIC,
+					   &state->timers[0],
+					   ns_to_ktime(100), ns_to_ktime(0));
+	cpu_base->clock_was_set_seq = 1;
+	cpu_base->expires_next = ns_to_ktime(200);
+	KUNIT_EXPECT_FALSE(test,
+			   rust_hrtimer_update_needs_ipi(cpu_base,
+							 1U << HRTIMER_BASE_REALTIME,
+							 0));
+
+	memset(state, 0, sizeof(*state));
+	hrtimer_core_test_init_active_base(cpu_base, HRTIMER_BASE_MONOTONIC,
+					   &state->timers[0],
+					   ns_to_ktime(200), ns_to_ktime(0));
+	cpu_base->clock_was_set_seq = 1;
+	cpu_base->expires_next = ns_to_ktime(200);
+	KUNIT_EXPECT_FALSE(test,
+			   rust_hrtimer_update_needs_ipi(cpu_base, active, 0));
+
+	memset(state, 0, sizeof(*state));
+	hrtimer_core_test_init_active_base(cpu_base, HRTIMER_BASE_MONOTONIC,
+					   &state->timers[0],
+					   ns_to_ktime(250), ns_to_ktime(100));
+	cpu_base->clock_was_set_seq = 1;
+	cpu_base->expires_next = ns_to_ktime(200);
+	KUNIT_EXPECT_TRUE(test,
+			  rust_hrtimer_update_needs_ipi(cpu_base, active, 0));
+
+	memset(state, 0, sizeof(*state));
+	hrtimer_core_test_init_active_base(cpu_base, HRTIMER_BASE_MONOTONIC,
+					   &state->timers[0],
+					   ns_to_ktime(100), ns_to_ktime(0));
+	cpu_base->clock_was_set_seq = 1;
+	cpu_base->expires_next = ns_to_ktime(200);
+	cpu_base->deferred_rearm = true;
+	KUNIT_EXPECT_FALSE(test,
+			   rust_hrtimer_update_needs_ipi(cpu_base, active, 0));
+	KUNIT_EXPECT_TRUE(test, cpu_base->deferred_needs_update);
+
+	memset(state, 0, sizeof(*state));
+	active = 1U << HRTIMER_BASE_MONOTONIC_SOFT;
+	hrtimer_core_test_init_active_base(cpu_base,
+					   HRTIMER_BASE_MONOTONIC_SOFT,
+					   &state->timers[0],
+					   ns_to_ktime(800), ns_to_ktime(0));
+	cpu_base->clock_was_set_seq = 1;
+	cpu_base->expires_next = ns_to_ktime(700);
+	cpu_base->softirq_expires_next = ns_to_ktime(900);
+	KUNIT_EXPECT_TRUE(test,
+			  rust_hrtimer_update_needs_ipi(cpu_base, active, 0));
+
+	memset(state, 0, sizeof(*state));
+	hrtimer_core_test_init_active_base(cpu_base,
+					   HRTIMER_BASE_MONOTONIC_SOFT,
+					   &state->timers[0],
+					   ns_to_ktime(800), ns_to_ktime(0));
+	cpu_base->clock_was_set_seq = 1;
+	cpu_base->expires_next = ns_to_ktime(700);
+	cpu_base->softirq_expires_next = ns_to_ktime(900);
+	cpu_base->softirq_activated = true;
+	KUNIT_EXPECT_FALSE(test,
+			   rust_hrtimer_update_needs_ipi(cpu_base, active, 0));
+
+	memset(state, 0, sizeof(*state));
+	hrtimer_core_test_init_active_base(cpu_base,
+					   HRTIMER_BASE_MONOTONIC_SOFT,
+					   &state->timers[0],
+					   ns_to_ktime(800), ns_to_ktime(0));
+	cpu_base->clock_was_set_seq = 1;
+	cpu_base->expires_next = ns_to_ktime(700);
+	cpu_base->softirq_expires_next = ns_to_ktime(700);
+	KUNIT_EXPECT_FALSE(test,
+			   rust_hrtimer_update_needs_ipi(cpu_base, active, 0));
+}
+#endif
+
 static void hrtimer_core_test_assert_order(struct kunit *test,
 					   struct hrtimer_core_test *timers,
 					   int first, int second, int third)
@@ -537,6 +636,9 @@ static struct kunit_case hrtimer_core_test_cases[] = {
 #endif
 #ifdef CONFIG_RUST_HRTIMER_UPDATE_NEXT_EVENT
 	KUNIT_CASE(hrtimer_core_test_update_next_event),
+#endif
+#ifdef CONFIG_RUST_HRTIMER_UPDATE_NEEDS_IPI
+	KUNIT_CASE(hrtimer_core_test_update_needs_ipi),
 #endif
 	KUNIT_CASE(hrtimer_core_test_same_base_requeue),
 	KUNIT_CASE(hrtimer_core_test_expiry),

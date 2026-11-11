@@ -1017,6 +1017,12 @@ static void hrtimer_reprogram(struct hrtimer *timer, bool reprogram)
 
 static bool update_needs_ipi(struct hrtimer_cpu_base *cpu_base, unsigned int active)
 {
+#ifdef CONFIG_RUST_HRTIMER_UPDATE_NEEDS_IPI
+	u32 seq = cpu_base->clock_was_set_seq;
+
+	hrtimer_update_base(cpu_base);
+	return rust_hrtimer_update_needs_ipi(cpu_base, active, seq);
+#else
 	struct hrtimer_clock_base *base;
 	ktime_t expires;
 	u32 seq;
@@ -1072,6 +1078,7 @@ static bool update_needs_ipi(struct hrtimer_cpu_base *cpu_base, unsigned int act
 			return true;
 	}
 	return false;
+#endif
 }
 
 /*

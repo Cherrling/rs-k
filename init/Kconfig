@@ -1087,6 +1087,21 @@ config RUST_HRTIMER_UPDATE_NEXT_EVENT
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_HRTIMER_UPDATE_NEEDS_IPI
+	bool "Rust implementation of hrtimer IPI update decisions"
+	depends on RUST_HRTIMER_NEXT_EVENT
+	default y
+	help
+	  Use Rust for the production decision that determines whether a clock
+	  change requires a remote CPU to reevaluate its high-resolution timers.
+
+	  Clock offset updates, CPU base locking, deferred rearm execution, IPI
+	  delivery, clock event reprogramming, and public ABI adapters remain
+	  in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_HRTIMER_CANCEL
 	bool "Rust implementation of hrtimer removal and cancellation state"
 	depends on RUST_HRTIMER
