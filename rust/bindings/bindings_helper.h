@@ -90,6 +90,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/sched.h>
 #include <linux/security.h>
+#include <linux/semaphore-rust.h>
 #include <linux/serdev.h>
 #include <linux/slab.h>
 #include <linux/swait-rust.h>

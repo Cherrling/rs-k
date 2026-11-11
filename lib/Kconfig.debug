@@ -2352,6 +2352,21 @@ config COMPLETION_KUNIT_TEST
 
 	  If unsure, say N.
 
+config SEMAPHORE_KUNIT_TEST
+	bool "KUnit test for semaphores" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for semaphore count transitions,
+	  trylock behavior, FIFO handoff, timeout and signal results, holder
+	  tracking, and concurrent acquisition.
+
+	  The same tests run with either the C implementation or the native
+	  Rust implementation selected. This test must be built-in because it
+	  exercises internal semaphore state.
+
+	  If unsure, say N.
+
 config WAITQUEUE_KUNIT_TEST
 	bool "KUnit test for wait queue wakeups" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

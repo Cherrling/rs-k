@@ -13,6 +13,7 @@ obj-$(CONFIG_BLACKHOLE_DEV_KUNIT_TEST) += blackhole_dev_kunit.o
 obj-$(CONFIG_CHECKSUM_KUNIT) += checksum_kunit.o
 obj-$(CONFIG_CMDLINE_KUNIT_TEST) += cmdline_kunit.o
 obj-$(CONFIG_COMPLETION_KUNIT_TEST) += test_completion.o
+obj-$(CONFIG_SEMAPHORE_KUNIT_TEST) += test_semaphore.o
 obj-$(CONFIG_WAITQUEUE_KUNIT_TEST) += test_waitqueue.o
 obj-$(CONFIG_WAIT_BIT_KUNIT_TEST) += test_wait_bit.o
 obj-$(CONFIG_CPUMASK_KUNIT_TEST) += cpumask_kunit.o

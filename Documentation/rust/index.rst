@@ -38,6 +38,7 @@ more details.
     arch-support
     testing
     completion
+    semaphore
     waitqueue
     wait-bit
     native-percpu-refcount

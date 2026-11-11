@@ -23976,11 +23976,13 @@ F:	.clippy.toml
 F:	.rustfmt.toml
 F:	Documentation/rust/
 F:	include/linux/completion-rust.h
+F:	include/linux/semaphore-rust.h
 F:	include/linux/swait-rust.h
 F:	include/linux/wait-bit-rust.h
 F:	include/linux/wait-rust.h
 F:	include/trace/events/rust_sample.h
 F:	lib/tests/test_completion.c
+F:	lib/tests/test_semaphore.c
 F:	lib/tests/test_swait.c
 F:	lib/tests/test_wait_bit.c
 F:	lib/tests/test_waitqueue.c

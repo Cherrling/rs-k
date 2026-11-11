@@ -922,6 +922,23 @@ config RUST_COMPLETION
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SEMAPHORE
+	bool "Rust implementation of counting semaphores"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production counting semaphore state machine. This
+	  includes count transitions, fast acquisition, FIFO waiter management,
+	  direct release handoff, timeout and signal results, and contended
+	  acquisition loops.
+
+	  Raw locking, task state, signal queries, scheduling, intrusive list
+	  primitives, wake queues, hung-task accounting, and tracepoint delivery
+	  remain in C because they depend on scheduler and locking internals.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_WAITQUEUE
 	bool "Rust implementation of wait queues"
 	depends on RUST

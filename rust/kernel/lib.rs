@@ -133,6 +133,8 @@ pub mod revocable;
 pub mod safety;
 pub mod scatterlist;
 pub mod security;
+#[cfg(CONFIG_RUST_SEMAPHORE)]
+mod semaphore_core;
 pub mod seq_file;
 #[cfg(CONFIG_RUST_SERIAL_DEV_BUS_ABSTRACTIONS)]
 pub mod serdev;

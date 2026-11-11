@@ -36,11 +36,15 @@
 #include <trace/events/lock.h>
 #include <linux/hung_task.h>
 
+#include <linux/semaphore-rust.h>
+
+#ifndef CONFIG_RUST_SEMAPHORE
 static noinline void __down(struct semaphore *sem);
 static noinline int __down_interruptible(struct semaphore *sem);
 static noinline int __down_killable(struct semaphore *sem);
 static noinline int __down_timeout(struct semaphore *sem, long timeout);
 static noinline void __up(struct semaphore *sem, struct wake_q_head *wake_q);
+#endif
 
 #ifdef CONFIG_DETECT_HUNG_TASK_BLOCKER
 static inline void hung_task_sem_set_holder(struct semaphore *sem)
@@ -71,11 +75,121 @@ unsigned long sem_last_holder(struct semaphore *sem)
 }
 #endif
 
+#ifdef CONFIG_RUST_SEMAPHORE
+void rust_semaphore_lock_irqsave(struct semaphore *sem, unsigned long *flags)
+{
+	raw_spin_lock_irqsave(&sem->lock, *flags);
+}
+
+void rust_semaphore_unlock_irqrestore(struct semaphore *sem,
+				      unsigned long flags)
+{
+	raw_spin_unlock_irqrestore(&sem->lock, flags);
+}
+
+void rust_semaphore_lock_irq(struct semaphore *sem)
+{
+	raw_spin_lock_irq(&sem->lock);
+}
+
+void rust_semaphore_unlock_irq(struct semaphore *sem)
+{
+	raw_spin_unlock_irq(&sem->lock);
+}
+
+void rust_semaphore_unlock_irqrestore_wake(struct semaphore *sem,
+					   unsigned long flags,
+					   struct wake_q_head *wake_q)
+{
+	raw_spin_unlock_irqrestore(&sem->lock, flags);
+	if (!wake_q_empty(wake_q))
+		wake_up_q(wake_q);
+}
+
+struct task_struct *rust_semaphore_current_task(void)
+{
+	return current;
+}
+
+void rust_semaphore_set_current_state(unsigned int state)
+{
+	__set_current_state(state);
+}
+
+int rust_semaphore_signal_pending_state(unsigned int state)
+{
+	return signal_pending_state(state, current);
+}
+
+long rust_semaphore_schedule_timeout(long timeout)
+{
+	return schedule_timeout(timeout);
+}
+
+void rust_semaphore_list_init(struct list_head *list)
+{
+	INIT_LIST_HEAD(list);
+}
+
+void rust_semaphore_list_add_tail(struct list_head *new,
+				  struct list_head *head)
+{
+	list_add_tail(new, head);
+}
+
+void rust_semaphore_list_del(struct list_head *entry)
+{
+	list_del(entry);
+}
+
+bool rust_semaphore_list_empty(const struct list_head *list)
+{
+	return list_empty(list);
+}
+
+void rust_semaphore_set_holder(struct semaphore *sem)
+{
+	hung_task_sem_set_holder(sem);
+}
+
+void rust_semaphore_clear_holder(struct semaphore *sem)
+{
+	hung_task_sem_clear_if_holder(sem);
+}
+
+void rust_semaphore_slow_enter(struct semaphore *sem)
+{
+	hung_task_set_blocker(sem, BLOCKER_TYPE_SEM);
+	trace_contention_begin(sem, 0);
+}
+
+void rust_semaphore_slow_exit(struct semaphore *sem, int ret)
+{
+	trace_contention_end(sem, ret);
+	hung_task_clear_blocker();
+}
+
+void rust_semaphore_wake_q_add(struct wake_q_head *wake_q,
+			       struct task_struct *task)
+{
+	wake_q_add(wake_q, task);
+}
+
+void rust_semaphore_trace_release(struct semaphore *sem,
+				  struct wake_q_head *wake_q)
+{
+	if (trace_contended_release_enabled() && !wake_q_empty(wake_q))
+		trace_call__contended_release(sem);
+}
+#endif /* CONFIG_RUST_SEMAPHORE */
+
+#ifndef CONFIG_RUST_SEMAPHORE
 static inline void __sem_acquire(struct semaphore *sem)
 {
 	sem->count--;
 	hung_task_sem_set_holder(sem);
 }
+#endif
 
 /**
  * down - acquire the semaphore
@@ -90,6 +204,10 @@ static inline void __sem_acquire(struct semaphore *sem)
  */
 void __sched down(struct semaphore *sem)
 {
+#ifdef CONFIG_RUST_SEMAPHORE
+	might_sleep();
+	rust_semaphore_down(sem);
+#else
 	unsigned long flags;
 
 	might_sleep();
@@ -99,6 +217,7 @@ void __sched down(struct semaphore *sem)
 	else
 		__down(sem);
 	raw_spin_unlock_irqrestore(&sem->lock, flags);
+#endif
 }
 EXPORT_SYMBOL(down);
 
@@ -113,6 +232,10 @@ EXPORT_SYMBOL(down);
  */
 int __sched down_interruptible(struct semaphore *sem)
 {
+#ifdef CONFIG_RUST_SEMAPHORE
+	might_sleep();
+	return rust_semaphore_down_interruptible(sem);
+#else
 	unsigned long flags;
 	int result = 0;
 
@@ -125,6 +248,7 @@ int __sched down_interruptible(struct semaphore *sem)
 	raw_spin_unlock_irqrestore(&sem->lock, flags);
 
 	return result;
+#endif
 }
 EXPORT_SYMBOL(down_interruptible);
 
@@ -140,6 +264,10 @@ EXPORT_SYMBOL(down_interruptible);
  */
 int __sched down_killable(struct semaphore *sem)
 {
+#ifdef CONFIG_RUST_SEMAPHORE
+	might_sleep();
+	return rust_semaphore_down_killable(sem);
+#else
 	unsigned long flags;
 	int result = 0;
 
@@ -152,6 +280,7 @@ int __sched down_killable(struct semaphore *sem)
 	raw_spin_unlock_irqrestore(&sem->lock, flags);
 
 	return result;
+#endif
 }
 EXPORT_SYMBOL(down_killable);
 
@@ -170,6 +299,9 @@ EXPORT_SYMBOL(down_killable);
  */
 int __sched down_trylock(struct semaphore *sem)
 {
+#ifdef CONFIG_RUST_SEMAPHORE
+	return rust_semaphore_down_trylock(sem);
+#else
 	unsigned long flags;
 	int count;
 
@@ -180,6 +312,7 @@ int __sched down_trylock(struct semaphore *sem)
 	raw_spin_unlock_irqrestore(&sem->lock, flags);
 
 	return (count < 0);
+#endif
 }
 EXPORT_SYMBOL(down_trylock);
 
@@ -195,6 +328,10 @@ EXPORT_SYMBOL(down_trylock);
  */
 int __sched down_timeout(struct semaphore *sem, long timeout)
 {
+#ifdef CONFIG_RUST_SEMAPHORE
+	might_sleep();
+	return rust_semaphore_down_timeout(sem, timeout);
+#else
 	unsigned long flags;
 	int result = 0;
 
@@ -207,6 +344,7 @@ int __sched down_timeout(struct semaphore *sem, long timeout)
 	raw_spin_unlock_irqrestore(&sem->lock, flags);
 
 	return result;
+#endif
 }
 EXPORT_SYMBOL(down_timeout);
 
@@ -219,8 +357,11 @@ EXPORT_SYMBOL(down_timeout);
  */
 void __sched up(struct semaphore *sem)
 {
-	unsigned long flags;
 	DEFINE_WAKE_Q(wake_q);
+#ifdef CONFIG_RUST_SEMAPHORE
+	rust_semaphore_up(sem, &wake_q);
+#else
+	unsigned long flags;
 
 	raw_spin_lock_irqsave(&sem->lock, flags);
 
@@ -237,16 +378,13 @@ void __sched up(struct semaphore *sem)
 	raw_spin_unlock_irqrestore(&sem->lock, flags);
 	if (!wake_q_empty(&wake_q))
 		wake_up_q(&wake_q);
+#endif
 }
 EXPORT_SYMBOL(up);
 
 /* Functions for the contended case */
 
-struct semaphore_waiter {
-	struct list_head list;
-	struct task_struct *task;
-	bool up;
-};
+#ifndef CONFIG_RUST_SEMAPHORE
 
 static inline
 void sem_del_waiter(struct semaphore *sem, struct semaphore_waiter *waiter)
@@ -352,3 +490,5 @@ static noinline void __sched __up(struct semaphore *sem,
 	waiter->up = true;
 	wake_q_add(wake_q, waiter->task);
 }
+
+#endif /* CONFIG_RUST_SEMAPHORE */
