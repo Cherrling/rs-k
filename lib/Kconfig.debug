@@ -2382,6 +2382,22 @@ config MUTEX_KUNIT_TEST
 
 	  If unsure, say N.
 
+config RWSEM_KUNIT_TEST
+	bool "KUnit test for read-write semaphores" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y && !PREEMPT_RT
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for read-write semaphore fast paths,
+	  non-blocking acquisition, reader optimistic stealing, blocking reader
+	  and writer handoff, interruptible and killable waits, writer FIFO
+	  ordering, downgrade, and concurrent reader/writer exclusion.
+
+	  The same tests run with either the C implementation or the native
+	  Rust count and owner protocol selected. This test must be built-in
+	  because it exercises internal read-write semaphore state.
+
+	  If unsure, say N.
+
 config WAITQUEUE_KUNIT_TEST
 	bool "KUnit test for wait queue wakeups" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

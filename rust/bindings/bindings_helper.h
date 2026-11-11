@@ -89,6 +89,7 @@
 #include <linux/refcount.h>
 #include <linux/refcount-rust.h>
 #include <linux/regulator/consumer.h>
+#include <linux/rwsem-rust.h>
 #include <linux/sched.h>
 #include <linux/security.h>
 #include <linux/semaphore-rust.h>
@@ -131,6 +132,24 @@ const gfp_t RUST_CONST_HELPER_GFP_NOWAIT = GFP_NOWAIT;
 const gfp_t RUST_CONST_HELPER___GFP_ZERO = __GFP_ZERO;
 const gfp_t RUST_CONST_HELPER___GFP_HIGHMEM = ___GFP_HIGHMEM;
 const gfp_t RUST_CONST_HELPER___GFP_NOWARN = ___GFP_NOWARN;
+#ifdef CONFIG_RUST_RWSEM
+const unsigned long RUST_CONST_HELPER_RWSEM_READER_OWNED =
+							RWSEM_READER_OWNED;
+const unsigned long RUST_CONST_HELPER_RWSEM_NONSPINNABLE =
+							RWSEM_NONSPINNABLE;
+const unsigned long RUST_CONST_HELPER_RWSEM_OWNER_FLAGS_MASK =
+							RWSEM_OWNER_FLAGS_MASK;
+const unsigned long RUST_CONST_HELPER_RWSEM_FLAG_WAITERS =
+							RWSEM_FLAG_WAITERS;
+const unsigned long RUST_CONST_HELPER_RWSEM_FLAG_HANDOFF =
+							RWSEM_FLAG_HANDOFF;
+const unsigned long RUST_CONST_HELPER_RWSEM_READER_BIAS =
+							RWSEM_READER_BIAS;
+const unsigned long RUST_CONST_HELPER_RWSEM_RUST_STOLE_LOCK =
+							RWSEM_RUST_STOLE_LOCK;
+const unsigned long RUST_CONST_HELPER_RWSEM_RUST_STEAL_WAKE_READERS =
+							RWSEM_RUST_STEAL_WAKE_READERS;
+#endif
 const blk_features_t RUST_CONST_HELPER_BLK_FEAT_ROTATIONAL = BLK_FEAT_ROTATIONAL;
 const fop_flags_t RUST_CONST_HELPER_FOP_UNSIGNED_OFFSET = FOP_UNSIGNED_OFFSET;
 

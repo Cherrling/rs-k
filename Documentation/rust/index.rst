@@ -39,6 +39,7 @@ more details.
     testing
     completion
     mutex
+    rwsem
     semaphore
     waitqueue
     wait-bit

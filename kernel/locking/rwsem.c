@@ -26,6 +26,7 @@
 #include <linux/sched/clock.h>
 #include <linux/export.h>
 #include <linux/rwsem.h>
+#include <linux/rwsem-rust.h>
 #include <linux/atomic.h>
 #include <linux/hung_task.h>
 #include <trace/events/lock.h>
@@ -61,10 +62,6 @@
  *  - rwsem is not currently writer owned
  *  - the handoff isn't set.
  */
-#define RWSEM_READER_OWNED	(1UL << 0)
-#define RWSEM_NONSPINNABLE	(1UL << 1)
-#define RWSEM_OWNER_FLAGS_MASK	(RWSEM_READER_OWNED | RWSEM_NONSPINNABLE)
-
 #ifdef CONFIG_DEBUG_RWSEMS
 # define DEBUG_RWSEMS_WARN_ON(c, sem)	do {			\
 	if (!debug_locks_silent &&				\
@@ -115,19 +112,6 @@
  * be the first one in the wait_list to be eligible for setting the handoff
  * bit. So concurrent setting/clearing of handoff bit is not possible.
  */
-#define RWSEM_WRITER_LOCKED	(1UL << 0)
-#define RWSEM_FLAG_WAITERS	(1UL << 1)
-#define RWSEM_FLAG_HANDOFF	(1UL << 2)
-#define RWSEM_FLAG_READFAIL	(1UL << (BITS_PER_LONG - 1))
-
-#define RWSEM_READER_SHIFT	8
-#define RWSEM_READER_BIAS	(1UL << RWSEM_READER_SHIFT)
-#define RWSEM_READER_MASK	(~(RWSEM_READER_BIAS - 1))
-#define RWSEM_WRITER_MASK	RWSEM_WRITER_LOCKED
-#define RWSEM_LOCK_MASK		(RWSEM_WRITER_MASK|RWSEM_READER_MASK)
-#define RWSEM_READ_FAILED_MASK	(RWSEM_WRITER_MASK|RWSEM_FLAG_WAITERS|\
-				 RWSEM_FLAG_HANDOFF|RWSEM_FLAG_READFAIL)
-
 /*
  * All writes to owner are protected by WRITE_ONCE() to make sure that
  * store tearing can't happen as optimistic spinners may read and use
@@ -188,8 +172,12 @@ static inline void rwsem_set_reader_owned(struct rw_semaphore *sem)
  */
 struct task_struct *rwsem_owner(struct rw_semaphore *sem)
 {
+#ifdef CONFIG_RUST_RWSEM
+	return rust_rwsem_owner(sem);
+#else
 	return (struct task_struct *)
 		(atomic_long_read(&sem->owner) & ~RWSEM_OWNER_FLAGS_MASK);
+#endif
 }
 
 /*
@@ -197,6 +185,9 @@ struct task_struct *rwsem_owner(struct rw_semaphore *sem)
  */
 bool is_rwsem_reader_owned(struct rw_semaphore *sem)
 {
+#ifdef CONFIG_RUST_RWSEM
+	return rust_rwsem_is_reader_owned(sem);
+#else
 	/*
 	 * Check the count to see if it is write-locked.
 	 */
@@ -205,6 +196,7 @@ bool is_rwsem_reader_owned(struct rw_semaphore *sem)
 	if (count & RWSEM_WRITER_MASK)
 		return false;
 	return rwsem_test_oflags(sem, RWSEM_READER_OWNED);
+#endif
 }
 
 /*
@@ -246,8 +238,81 @@ static inline void rwsem_set_nonspinnable(struct rw_semaphore *sem)
 					  owner | RWSEM_NONSPINNABLE));
 }
 
+#ifdef CONFIG_RUST_RWSEM
+long rust_rwsem_read_count(struct rw_semaphore *sem)
+{
+	return atomic_long_read(&sem->count);
+}
+
+long rust_rwsem_add_return_acquire(struct rw_semaphore *sem, long value)
+{
+	return atomic_long_add_return_acquire(value, &sem->count);
+}
+
+long rust_rwsem_add_return_release(struct rw_semaphore *sem, long value)
+{
+	return atomic_long_add_return_release(value, &sem->count);
+}
+
+long rust_rwsem_fetch_add_release(struct rw_semaphore *sem, long value)
+{
+	return atomic_long_fetch_add_release(value, &sem->count);
+}
+
+bool rust_rwsem_try_cmpxchg_count_acquire(struct rw_semaphore *sem,
+					  long *count, long new)
+{
+	return atomic_long_try_cmpxchg_acquire(&sem->count, count, new);
+}
+
+unsigned long rust_rwsem_read_owner(struct rw_semaphore *sem)
+{
+	return atomic_long_read(&sem->owner);
+}
+
+void rust_rwsem_set_owner_value(struct rw_semaphore *sem, unsigned long owner)
+{
+	atomic_long_set(&sem->owner, owner);
+}
+
+unsigned long rust_rwsem_current(void)
+{
+	return (unsigned long)current;
+}
+
+void rust_rwsem_clear_reader_owned(struct rw_semaphore *sem)
+{
+	rwsem_clear_reader_owned(sem);
+}
+
+void rust_rwsem_set_nonspinnable(struct rw_semaphore *sem)
+{
+	rwsem_set_nonspinnable(sem);
+}
+
+bool rust_rwsem_warn_negative_count(struct rw_semaphore *sem, long count)
+{
+	(void)sem;
+	return WARN_ON_ONCE(count < 0);
+}
+
+void rust_rwsem_warn_release_count(struct rw_semaphore *sem, long count)
+{
+	DEBUG_RWSEMS_WARN_ON(count < 0, sem);
+}
+
+void rust_rwsem_trace_release(struct rw_semaphore *sem)
+{
+	if (trace_contended_release_enabled())
+		trace_call__contended_release(sem);
+}
+#endif /* CONFIG_RUST_RWSEM */
+
 static inline bool rwsem_read_trylock(struct rw_semaphore *sem, long *cntp)
 {
+#ifdef CONFIG_RUST_RWSEM
+	return rust_rwsem_read_fast(sem, cntp);
+#else
 	*cntp = atomic_long_add_return_acquire(RWSEM_READER_BIAS, &sem->count);
 
 	if (WARN_ON_ONCE(*cntp < 0))
@@ -259,10 +324,14 @@ static inline bool rwsem_read_trylock(struct rw_semaphore *sem, long *cntp)
 	}
 
 	return false;
+#endif
 }
 
 static inline bool rwsem_write_trylock(struct rw_semaphore *sem)
 {
+#ifdef CONFIG_RUST_RWSEM
+	return rust_rwsem_write_fast(sem);
+#else
 	long tmp = RWSEM_UNLOCKED_VALUE;
 
 	if (atomic_long_try_cmpxchg_acquire(&sem->count, &tmp, RWSEM_WRITER_LOCKED)) {
@@ -271,6 +340,7 @@ static inline bool rwsem_write_trylock(struct rw_semaphore *sem)
 	}
 
 	return false;
+#endif
 }
 
 /*
@@ -329,19 +399,6 @@ void __init_rwsem(struct rw_semaphore *sem, const char *name,
 #endif
 }
 EXPORT_SYMBOL(__init_rwsem);
-
-enum rwsem_waiter_type {
-	RWSEM_WAITING_FOR_WRITE,
-	RWSEM_WAITING_FOR_READ
-};
-
-struct rwsem_waiter {
-	struct list_head list;
-	struct task_struct *task;
-	enum rwsem_waiter_type type;
-	unsigned long timeout;
-	bool handoff_set;
-};
 
 enum rwsem_wake_type {
 	RWSEM_WAKE_ANY,		/* Wake whatever's at head of wait list */
@@ -627,10 +684,32 @@ static inline bool rwsem_try_write_lock(struct rw_semaphore *sem,
 	__must_hold(&sem->wait_lock)
 {
 	struct rwsem_waiter *first = sem->first_waiter;
+#ifndef CONFIG_RUST_RWSEM
 	long count, new;
+#else
+	unsigned int result;
+#endif
 
 	lockdep_assert_held(&sem->wait_lock);
 
+#ifdef CONFIG_RUST_RWSEM
+	result = rust_rwsem_write_slow(sem,
+				       rt_or_dl_task(waiter->task) ||
+					       time_after(jiffies, waiter->timeout),
+				       waiter == first, first->handoff_set,
+				       list_empty(&first->list));
+	if (result == RWSEM_RUST_WRITE_HANDOFF) {
+		first->handoff_set = true;
+		lockevent_inc(rwsem_wlock_handoff);
+		return false;
+	}
+	if (result != RWSEM_RUST_WRITE_ACQUIRED)
+		return false;
+
+	__rwsem_del_waiter(sem, waiter);
+	rust_rwsem_set_writer_owner(sem);
+	return true;
+#else
 	count = atomic_long_read(&sem->count);
 	do {
 		bool has_handoff = !!(count & RWSEM_FLAG_HANDOFF);
@@ -686,6 +765,7 @@ static inline bool rwsem_try_write_lock(struct rw_semaphore *sem,
 
 	rwsem_set_owner(sem);
 	return true;
+#endif
 }
 
 /*
@@ -712,6 +792,13 @@ enum owner_state {
  */
 static inline bool rwsem_try_write_lock_unqueued(struct rw_semaphore *sem)
 {
+#ifdef CONFIG_RUST_RWSEM
+	bool acquired = rust_rwsem_write_unqueued(sem);
+
+	if (acquired)
+		lockevent_inc(rwsem_opt_lock);
+	return acquired;
+#else
 	long count = atomic_long_read(&sem->count);
 
 	while (!(count & (RWSEM_LOCK_MASK|RWSEM_FLAG_HANDOFF))) {
@@ -723,6 +810,7 @@ static inline bool rwsem_try_write_lock_unqueued(struct rw_semaphore *sem)
 		}
 	}
 	return false;
+#endif
 }
 
 static inline bool rwsem_can_spin_on_owner(struct rw_semaphore *sem)
@@ -985,6 +1073,13 @@ rwsem_spin_on_owner(struct rw_semaphore *sem)
 }
 #endif
 
+#ifdef CONFIG_RUST_RWSEM
+void rust_rwsem_clear_nonspinnable(struct rw_semaphore *sem)
+{
+	clear_nonspinnable(sem);
+}
+#endif
+
 /*
  * Prepare to wake up waiter(s) in the wait queue by putting them into the
  * given wake_q if the rwsem lock owner isn't a writer. If rwsem is likely
@@ -998,6 +1093,21 @@ static inline void rwsem_cond_wake_waiter(struct rw_semaphore *sem, long count,
 {
 	enum rwsem_wake_type wake_type;
 
+#ifdef CONFIG_RUST_RWSEM
+	switch (rust_rwsem_cond_wake(sem, count)) {
+	case RWSEM_RUST_WAKE_NONE:
+		return;
+	case RWSEM_RUST_WAKE_CLASS_READERS:
+		wake_type = RWSEM_WAKE_READERS;
+		break;
+	case RWSEM_RUST_WAKE_ANY:
+		wake_type = RWSEM_WAKE_ANY;
+		break;
+	default:
+		WARN_ON_ONCE(1);
+		return;
+	}
+#else
 	if (count & RWSEM_WRITER_MASK)
 		return;
 
@@ -1007,6 +1117,7 @@ static inline void rwsem_cond_wake_waiter(struct rw_semaphore *sem, long count,
 		wake_type = RWSEM_WAKE_ANY;
 		clear_nonspinnable(sem);
 	}
+#endif
 	rwsem_mark_wake(sem, wake_type, wake_q);
 }
 
@@ -1017,10 +1128,30 @@ static struct rw_semaphore __sched *
 rwsem_down_read_slowpath(struct rw_semaphore *sem, long count, unsigned int state)
 {
 	long adjustment = -RWSEM_READER_BIAS;
+#ifndef CONFIG_RUST_RWSEM
 	long rcnt = (count >> RWSEM_READER_SHIFT);
+#else
+	unsigned int steal_result;
+#endif
 	struct rwsem_waiter waiter, *first;
 	DEFINE_WAKE_Q(wake_q);
 
+#ifdef CONFIG_RUST_RWSEM
+	steal_result = rust_rwsem_reader_slow_steal(sem, count);
+	if (steal_result & RWSEM_RUST_STOLE_LOCK) {
+		lockevent_inc(rwsem_rlock_steal);
+
+		if (steal_result & RWSEM_RUST_STEAL_WAKE_READERS) {
+			raw_spin_lock_irq(&sem->wait_lock);
+			if (sem->first_waiter)
+				rwsem_mark_wake(sem, RWSEM_WAKE_READ_OWNED,
+						&wake_q);
+			raw_spin_unlock_irq(&sem->wait_lock);
+			wake_up_q(&wake_q);
+		}
+		return sem;
+	}
+#else
 	/*
 	 * To prevent a constant stream of readers from starving a sleeping
 	 * writer, don't attempt optimistic lock stealing if the lock is
@@ -1051,8 +1182,11 @@ rwsem_down_read_slowpath(struct rw_semaphore *sem, long count, unsigned int stat
 		}
 		return sem;
 	}
+#endif
 
+#ifndef CONFIG_RUST_RWSEM
 queue:
+#endif
 	waiter.task = current;
 	waiter.type = RWSEM_WAITING_FOR_READ;
 	waiter.timeout = jiffies + RWSEM_WAIT_TIMEOUT;
@@ -1317,11 +1451,17 @@ static __always_inline int __down_read_killable(struct rw_semaphore *sem)
 static inline int __down_read_trylock(struct rw_semaphore *sem)
 {
 	int ret = 0;
+#ifndef CONFIG_RUST_RWSEM
 	long tmp;
+#endif
 
 	DEBUG_RWSEMS_WARN_ON(sem->magic != sem, sem);
 
 	preempt_disable();
+#ifdef CONFIG_RUST_RWSEM
+	if (rust_rwsem_read_trylock(sem))
+		ret = 1;
+#else
 	tmp = atomic_long_read(&sem->count);
 	while (!(tmp & RWSEM_READ_FAILED_MASK)) {
 		if (atomic_long_try_cmpxchg_acquire(&sem->count, &tmp,
@@ -1331,6 +1471,7 @@ static inline int __down_read_trylock(struct rw_semaphore *sem)
 			break;
 		}
 	}
+#endif
 	preempt_enable();
 	return ret;
 }
@@ -1378,12 +1519,18 @@ static inline int __down_write_trylock(struct rw_semaphore *sem)
  */
 static inline void __up_read(struct rw_semaphore *sem)
 {
+#ifndef CONFIG_RUST_RWSEM
 	long tmp;
+#endif
 
 	DEBUG_RWSEMS_WARN_ON(sem->magic != sem, sem);
 	DEBUG_RWSEMS_WARN_ON(!is_rwsem_reader_owned(sem), sem);
 
 	preempt_disable();
+#ifdef CONFIG_RUST_RWSEM
+	if (rust_rwsem_up_read(sem))
+		rwsem_wake(sem);
+#else
 	rwsem_clear_reader_owned(sem);
 	tmp = atomic_long_add_return_release(-RWSEM_READER_BIAS, &sem->count);
 	DEBUG_RWSEMS_WARN_ON(tmp < 0, sem);
@@ -1394,6 +1541,7 @@ static inline void __up_read(struct rw_semaphore *sem)
 		clear_nonspinnable(sem);
 		rwsem_wake(sem);
 	}
+#endif
 	preempt_enable();
 }
 
@@ -1402,7 +1550,9 @@ static inline void __up_read(struct rw_semaphore *sem)
  */
 static inline void __up_write(struct rw_semaphore *sem)
 {
+#ifndef CONFIG_RUST_RWSEM
 	long tmp;
+#endif
 
 	DEBUG_RWSEMS_WARN_ON(sem->magic != sem, sem);
 	/*
@@ -1413,12 +1563,17 @@ static inline void __up_write(struct rw_semaphore *sem)
 			    !rwsem_test_oflags(sem, RWSEM_NONSPINNABLE), sem);
 
 	preempt_disable();
+#ifdef CONFIG_RUST_RWSEM
+	if (rust_rwsem_up_write(sem))
+		rwsem_wake(sem);
+#else
 	rwsem_clear_owner(sem);
 	tmp = atomic_long_fetch_add_release(-RWSEM_WRITER_LOCKED, &sem->count);
 	if (unlikely(tmp & RWSEM_FLAG_WAITERS)) {
 		trace_contended_release(sem);
 		rwsem_wake(sem);
 	}
+#endif
 	preempt_enable();
 }
 
@@ -1427,7 +1582,9 @@ static inline void __up_write(struct rw_semaphore *sem)
  */
 static inline void __downgrade_write(struct rw_semaphore *sem)
 {
+#ifndef CONFIG_RUST_RWSEM
 	long tmp;
+#endif
 
 	/*
 	 * When downgrading from exclusive to shared ownership,
@@ -1438,6 +1595,10 @@ static inline void __downgrade_write(struct rw_semaphore *sem)
 	 */
 	DEBUG_RWSEMS_WARN_ON(rwsem_owner(sem) != current, sem);
 	preempt_disable();
+#ifdef CONFIG_RUST_RWSEM
+	if (rust_rwsem_downgrade_write(sem))
+		rwsem_downgrade_wake(sem);
+#else
 	tmp = atomic_long_fetch_add_release(
 		-RWSEM_WRITER_LOCKED+RWSEM_READER_BIAS, &sem->count);
 	rwsem_set_reader_owned(sem);
@@ -1445,6 +1606,7 @@ static inline void __downgrade_write(struct rw_semaphore *sem)
 		trace_contended_release(sem);
 		rwsem_downgrade_wake(sem);
 	}
+#endif
 	preempt_enable();
 }
 

@@ -14,6 +14,7 @@ obj-$(CONFIG_CHECKSUM_KUNIT) += checksum_kunit.o
 obj-$(CONFIG_CMDLINE_KUNIT_TEST) += cmdline_kunit.o
 obj-$(CONFIG_COMPLETION_KUNIT_TEST) += test_completion.o
 obj-$(CONFIG_MUTEX_KUNIT_TEST) += test_mutex.o
+obj-$(CONFIG_RWSEM_KUNIT_TEST) += test_rwsem.o
 obj-$(CONFIG_SEMAPHORE_KUNIT_TEST) += test_semaphore.o
 obj-$(CONFIG_WAITQUEUE_KUNIT_TEST) += test_waitqueue.o
 obj-$(CONFIG_WAIT_BIT_KUNIT_TEST) += test_wait_bit.o

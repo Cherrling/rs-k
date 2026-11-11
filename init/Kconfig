@@ -957,6 +957,25 @@ config RUST_MUTEX
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_RWSEM
+	bool "Rust implementation of read-write semaphore protocol"
+	depends on RUST && !PREEMPT_RT
+	default y
+	help
+	  Use Rust for the production read-write semaphore count and owner
+	  protocol. This includes reader and writer fast acquisition,
+	  non-blocking acquisition, reader optimistic stealing, contended writer
+	  count transitions, release and downgrade transitions, owner encoding,
+	  and release wake selection.
+
+	  Raw atomics and memory ordering, intrusive waiter lists, optimistic
+	  spinning, task state and wakeups, scheduling, hung-task accounting,
+	  lockdep, tracing, debugging, and public ABI adapters remain in C.
+	  The PREEMPT_RT rwbase implementation remains unchanged.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_WAITQUEUE
 	bool "Rust implementation of wait queues"
 	depends on RUST
