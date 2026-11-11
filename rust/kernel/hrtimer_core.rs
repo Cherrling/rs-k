@@ -4,8 +4,8 @@
 //!
 //! Rust owns local-base enqueue, in-place expiry updates, requeue decisions,
 //! queued removal, cancellation results, the clock-base next-expiry cache, and
-//! the queued state transition. Locking, clock event reprogramming, debug
-//! objects, and tracepoint delivery remain outside this module.
+//! expiry forwarding. Locking, clock event reprogramming, ktime arithmetic,
+//! debug objects, and tracepoint delivery remain outside this module.
 
 use crate::bindings;
 use core::ptr;
@@ -275,4 +275,62 @@ unsafe extern "C" fn rust_hrtimer_try_to_cancel_locked(
     // SAFETY: The caller satisfies the requirements of `remove_locked`.
     unsafe { remove_locked(timer, base, false, reprogram) };
     1
+}
+
+/// Advances an inactive timer past a reference time.
+///
+/// This implements the production overrun and expiry calculation in
+/// `hrtimer_forward()`.
+///
+/// # Safety
+///
+/// `timer` must be a live timer, and the caller must provide the serialization
+/// required by `hrtimer_forward()`.
+#[cfg(CONFIG_RUST_HRTIMER_FORWARD)]
+#[export]
+unsafe extern "C" fn rust_hrtimer_forward(
+    timer: *mut Hrtimer,
+    now: bindings::ktime_t,
+    interval: bindings::ktime_t,
+) -> u64 {
+    // SAFETY: The caller guarantees that the timer is live.
+    let delta = now.wrapping_sub(unsafe { (*timer).node.expires });
+
+    if delta < 0 {
+        return 0;
+    }
+
+    // SAFETY: The caller guarantees that the timer is live.
+    if unsafe { bindings::rust_helper_hrtimer_forward_warn_queued(timer) } {
+        return 0;
+    }
+
+    // SAFETY: The timekeeping core initializes this read-mostly value.
+    let resolution = bindings::ktime_t::from(unsafe { bindings::hrtimer_resolution });
+    let interval = interval.max(resolution);
+    let mut overruns = 1;
+
+    if delta >= interval {
+        let increment = interval;
+        // SAFETY: The interval is positive and fits a signed ktime.
+        overruns = unsafe { bindings::rust_helper_hrtimer_forward_divns(delta, increment) } as u64;
+        // SAFETY: The quotient times the interval does not exceed delta.
+        unsafe {
+            bindings::rust_helper_hrtimer_forward_add_ns(
+                timer,
+                overruns.wrapping_mul(increment as u64),
+            )
+        };
+
+        // SAFETY: The caller guarantees that the timer is live.
+        if unsafe { (*timer).node.expires } > now {
+            return overruns;
+        }
+
+        overruns = overruns.wrapping_add(1);
+    }
+
+    // SAFETY: The caller guarantees that the timer is live.
+    unsafe { bindings::rust_helper_hrtimer_forward_add(timer, interval) };
+    overruns
 }

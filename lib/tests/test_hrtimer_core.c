@@ -157,10 +157,58 @@ static void hrtimer_core_test_cancel_states(struct kunit *test)
 	destroy_hrtimer_on_stack(&timer.timer);
 }
 
+static void hrtimer_core_test_forward(struct kunit *test)
+{
+	struct hrtimer_core_test timer;
+	ktime_t interval = ms_to_ktime(1000);
+	ktime_t now = ktime_get();
+	ktime_t base;
+	unsigned int resolution;
+
+	hrtimer_setup_on_stack(&timer.timer, hrtimer_core_test_callback,
+			       CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED);
+
+	hrtimer_set_expires(&timer.timer, ktime_add_ms(now, 1000));
+	KUNIT_EXPECT_EQ(test, hrtimer_forward(&timer.timer, now, interval), 0);
+	KUNIT_EXPECT_EQ(test, hrtimer_get_expires(&timer.timer),
+			ktime_add_ms(now, 1000));
+	KUNIT_EXPECT_EQ(test, hrtimer_get_softexpires(&timer.timer),
+			ktime_add_ms(now, 1000));
+
+	hrtimer_set_expires(&timer.timer, ktime_sub_ms(now, 2500));
+	KUNIT_EXPECT_EQ(test, hrtimer_forward(&timer.timer, now, interval), 3);
+	KUNIT_EXPECT_EQ(test, hrtimer_get_expires(&timer.timer),
+			ktime_add_ms(now, 500));
+	KUNIT_EXPECT_EQ(test, hrtimer_get_softexpires(&timer.timer),
+			ktime_add_ms(now, 500));
+
+	hrtimer_set_expires(&timer.timer, ktime_sub_ms(now, 2000));
+	KUNIT_EXPECT_EQ(test, hrtimer_forward(&timer.timer, now, interval), 3);
+	KUNIT_EXPECT_EQ(test, hrtimer_get_expires(&timer.timer),
+			ktime_add_ms(now, 1000));
+	KUNIT_EXPECT_EQ(test, hrtimer_get_softexpires(&timer.timer),
+			ktime_add_ms(now, 1000));
+
+	resolution = hrtimer_resolution;
+	base = ns_to_ktime(1000000000);
+	hrtimer_set_expires(&timer.timer, base);
+	KUNIT_EXPECT_EQ(test,
+			hrtimer_forward(&timer.timer,
+					ktime_add_ns(base, 2 * resolution),
+					ns_to_ktime(resolution / 2)), 3);
+	KUNIT_EXPECT_EQ(test, hrtimer_get_expires(&timer.timer),
+			ktime_add_ns(base, 3 * resolution));
+	KUNIT_EXPECT_EQ(test, hrtimer_get_softexpires(&timer.timer),
+			ktime_add_ns(base, 3 * resolution));
+
+	destroy_hrtimer_on_stack(&timer.timer);
+}
+
 static struct kunit_case hrtimer_core_test_cases[] = {
 	KUNIT_CASE(hrtimer_core_test_same_base_requeue),
 	KUNIT_CASE(hrtimer_core_test_expiry),
 	KUNIT_CASE(hrtimer_core_test_cancel_states),
+	KUNIT_CASE(hrtimer_core_test_forward),
 	{}
 };
 

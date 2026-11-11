@@ -578,6 +578,28 @@ bool rust_helper_hrtimer_base_is_local(struct hrtimer_clock_base *base)
 }
 #endif
 
+#ifdef CONFIG_RUST_HRTIMER_FORWARD
+bool rust_helper_hrtimer_forward_warn_queued(struct hrtimer *timer)
+{
+	return WARN_ON(timer->is_queued);
+}
+
+s64 rust_helper_hrtimer_forward_divns(ktime_t delta, s64 interval)
+{
+	return ktime_divns(delta, interval);
+}
+
+void rust_helper_hrtimer_forward_add_ns(struct hrtimer *timer, u64 delta_ns)
+{
+	hrtimer_add_expires_ns(timer, delta_ns);
+}
+
+void rust_helper_hrtimer_forward_add(struct hrtimer *timer, ktime_t delta)
+{
+	hrtimer_add_expires(timer, delta);
+}
+#endif
+
 #define for_each_active_base(base, cpu_base, active)					\
 	for (unsigned int idx = ffs(active); idx--; idx = ffs((active)))		\
 		for (bool done = false; !done; active &= ~(1U << idx))			\
@@ -1143,6 +1165,9 @@ EXPORT_SYMBOL_GPL(hrtimer_update_function);
  */
 u64 hrtimer_forward(struct hrtimer *timer, ktime_t now, ktime_t interval)
 {
+#ifdef CONFIG_RUST_HRTIMER_FORWARD
+	return rust_hrtimer_forward(timer, now, interval);
+#else
 	ktime_t delta;
 	u64 orun = 1;
 
@@ -1173,6 +1198,7 @@ u64 hrtimer_forward(struct hrtimer *timer, ktime_t now, ktime_t interval)
 	hrtimer_add_expires(timer, interval);
 
 	return orun;
+#endif
 }
 EXPORT_SYMBOL_GPL(hrtimer_forward);
 

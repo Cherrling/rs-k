@@ -45,4 +45,16 @@ int rust_hrtimer_try_to_cancel_locked(struct hrtimer *timer,
 
 #endif /* CONFIG_RUST_HRTIMER_CANCEL */
 
+#ifdef CONFIG_RUST_HRTIMER_FORWARD
+
+bool rust_helper_hrtimer_forward_warn_queued(struct hrtimer *timer);
+s64 rust_helper_hrtimer_forward_divns(ktime_t delta, s64 interval);
+void rust_helper_hrtimer_forward_add_ns(struct hrtimer *timer, u64 delta_ns);
+void rust_helper_hrtimer_forward_add(struct hrtimer *timer, ktime_t delta);
+
+u64 rust_hrtimer_forward(struct hrtimer *timer, ktime_t now,
+			 ktime_t interval);
+
+#endif /* CONFIG_RUST_HRTIMER_FORWARD */
+
 #endif /* _LINUX_HRTIMER_RUST_H */

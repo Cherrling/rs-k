@@ -1059,6 +1059,20 @@ config RUST_HRTIMER_CANCEL
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_HRTIMER_FORWARD
+	bool "Rust implementation of hrtimer expiry forwarding"
+	depends on RUST_HRTIMER
+	default y
+	help
+	  Use Rust for the production overrun calculation and expiry update
+	  performed by hrtimer_forward().
+
+	  Resolution clamping, checked ktime division, saturated expiry update,
+	  queue-state warnings, and the public ABI adapter remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_WAITQUEUE
 	bool "Rust implementation of wait queues"
 	depends on RUST
