@@ -37,6 +37,7 @@ more details.
     coding-guidelines
     arch-support
     testing
+    completion
     native-percpu-refcount
     refcount
     swait

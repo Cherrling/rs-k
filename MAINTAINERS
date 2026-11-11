@@ -23975,8 +23975,10 @@ T:	git https://github.com/Rust-for-Linux/linux.git rust-next
 F:	.clippy.toml
 F:	.rustfmt.toml
 F:	Documentation/rust/
+F:	include/linux/completion-rust.h
 F:	include/linux/swait-rust.h
 F:	include/trace/events/rust_sample.h
+F:	lib/tests/test_completion.c
 F:	lib/tests/test_swait.c
 F:	rust/
 F:	samples/rust/

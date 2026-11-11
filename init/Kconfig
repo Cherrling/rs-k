@@ -906,6 +906,22 @@ config RUST_SWAIT
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_COMPLETION
+	bool "Rust implementation of completions"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production completion state machine.  This includes
+	  completion counts, waiter loops, timeout and signal results, single
+	  completion, broadcast completion, and non-blocking consumption.
+
+	  Raw locking, task state changes, scheduler timeouts, signal queries,
+	  and simple wait queue primitives remain in C because they depend on
+	  scheduler and architecture internals.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config UCLAMP_TASK
 	bool "Enable utilization clamping for RT/FAIR tasks"
 	depends on CPU_FREQ_GOV_SCHEDUTIL

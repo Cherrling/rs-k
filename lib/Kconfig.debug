@@ -2338,6 +2338,20 @@ config SWAIT_KUNIT_TEST
 
 	  If unsure, say N.
 
+config COMPLETION_KUNIT_TEST
+	bool "KUnit test for completions" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for completion counting, timeouts,
+	  waiter ordering, signal interruption, broadcast completion, and
+	  concurrent producers.
+
+	  The same tests run with either the C implementation or the native
+	  Rust implementation selected.
+
+	  If unsure, say N.
+
 config TEST_SORT
 	tristate "Array-based sort test" if !KUNIT_ALL_TESTS
 	depends on KUNIT
