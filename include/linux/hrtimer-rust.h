@@ -30,4 +30,19 @@ bool rust_hrtimer_requeue_same_base(struct hrtimer *timer,
 
 #endif /* CONFIG_RUST_HRTIMER */
 
+#ifdef CONFIG_RUST_HRTIMER_CANCEL
+
+bool rust_helper_hrtimer_callback_running(struct hrtimer *timer);
+bool rust_helper_hrtimer_base_is_local(struct hrtimer_clock_base *base);
+void rust_helper_hrtimer_force_reprogram(struct hrtimer_cpu_base *cpu_base,
+					 bool skip_equal);
+
+void rust_hrtimer_remove(struct hrtimer *timer,
+			 struct hrtimer_clock_base *base, bool newstate,
+			 bool reprogram);
+int rust_hrtimer_try_to_cancel_locked(struct hrtimer *timer,
+				      struct hrtimer_clock_base *base);
+
+#endif /* CONFIG_RUST_HRTIMER_CANCEL */
+
 #endif /* _LINUX_HRTIMER_RUST_H */

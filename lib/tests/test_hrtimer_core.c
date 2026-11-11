@@ -131,9 +131,36 @@ static void hrtimer_core_test_expiry(struct kunit *test)
 	destroy_hrtimer_on_stack(&timer.timer);
 }
 
+static void hrtimer_core_test_cancel_states(struct kunit *test)
+{
+	struct hrtimer_core_test timer;
+	struct hrtimer_clock_base *base;
+	unsigned long flags;
+
+	hrtimer_core_test_start_pinned(&timer, ktime_add_ms(ktime_get(), 100000));
+	base = timer.timer.base;
+
+	raw_spin_lock_irqsave(&base->cpu_base->lock, flags);
+	base->running = &timer.timer;
+	raw_spin_unlock_irqrestore(&base->cpu_base->lock, flags);
+
+	KUNIT_EXPECT_EQ(test, hrtimer_try_to_cancel(&timer.timer), -1);
+	KUNIT_EXPECT_TRUE(test, hrtimer_is_queued(&timer.timer));
+
+	raw_spin_lock_irqsave(&base->cpu_base->lock, flags);
+	base->running = NULL;
+	raw_spin_unlock_irqrestore(&base->cpu_base->lock, flags);
+
+	KUNIT_EXPECT_EQ(test, hrtimer_try_to_cancel(&timer.timer), 1);
+	KUNIT_EXPECT_FALSE(test, hrtimer_is_queued(&timer.timer));
+	KUNIT_EXPECT_EQ(test, hrtimer_try_to_cancel(&timer.timer), 0);
+	destroy_hrtimer_on_stack(&timer.timer);
+}
+
 static struct kunit_case hrtimer_core_test_cases[] = {
 	KUNIT_CASE(hrtimer_core_test_same_base_requeue),
 	KUNIT_CASE(hrtimer_core_test_expiry),
+	KUNIT_CASE(hrtimer_core_test_cancel_states),
 	{}
 };
 
@@ -144,5 +171,5 @@ static struct kunit_suite hrtimer_core_test_suite = {
 
 kunit_test_suite(hrtimer_core_test_suite);
 
-MODULE_DESCRIPTION("KUnit tests for hrtimer queue state transitions");
+MODULE_DESCRIPTION("KUnit tests for hrtimer queue and cancellation state");
 MODULE_LICENSE("GPL");

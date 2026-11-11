@@ -566,6 +566,18 @@ void rust_helper_hrtimer_set_queued(struct hrtimer *timer, bool queued)
 }
 #endif
 
+#ifdef CONFIG_RUST_HRTIMER_CANCEL
+bool rust_helper_hrtimer_callback_running(struct hrtimer *timer)
+{
+	return hrtimer_callback_running(timer);
+}
+
+bool rust_helper_hrtimer_base_is_local(struct hrtimer_clock_base *base)
+{
+	return base->cpu_base == this_cpu_ptr(&hrtimer_bases);
+}
+#endif
+
 #define for_each_active_base(base, cpu_base, active)					\
 	for (unsigned int idx = ffs(active); idx--; idx = ffs((active)))		\
 		for (bool done = false; !done; active &= ~(1U << idx))			\
@@ -784,6 +796,14 @@ static void hrtimer_force_reprogram(struct hrtimer_cpu_base *cpu_base, bool skip
 
 	__hrtimer_reprogram(cpu_base, expires_next);
 }
+
+#ifdef CONFIG_RUST_HRTIMER_CANCEL
+void rust_helper_hrtimer_force_reprogram(struct hrtimer_cpu_base *cpu_base,
+					 bool skip_equal)
+{
+	hrtimer_force_reprogram(cpu_base, skip_equal);
+}
+#endif
 
 /* High resolution timer related functions */
 #ifdef CONFIG_HIGH_RES_TIMERS
@@ -1202,6 +1222,11 @@ static inline void base_update_next_timer(struct hrtimer_clock_base *base)
 static void __remove_hrtimer(struct hrtimer *timer, struct hrtimer_clock_base *base,
 			     bool newstate, bool reprogram)
 {
+#ifdef CONFIG_RUST_HRTIMER_CANCEL
+	lockdep_assert_held(&base->cpu_base->lock);
+
+	rust_hrtimer_remove(timer, base, newstate, reprogram);
+#else
 	struct hrtimer_cpu_base *cpu_base = base->cpu_base;
 	bool was_first;
 
@@ -1240,6 +1265,7 @@ static void __remove_hrtimer(struct hrtimer *timer, struct hrtimer_clock_base *b
 		cpu_base->deferred_needs_update = true;
 	else
 		hrtimer_force_reprogram(cpu_base, /* skip_equal */ true);
+#endif
 }
 
 static inline bool remove_hrtimer(struct hrtimer *timer, struct hrtimer_clock_base *base,
@@ -1694,11 +1720,17 @@ int hrtimer_try_to_cancel(struct hrtimer *timer)
 
 	base = lock_hrtimer_base(timer, &flags);
 
+#ifdef CONFIG_RUST_HRTIMER_CANCEL
+	ret = rust_hrtimer_try_to_cancel_locked(timer, base);
+	if (ret > 0)
+		trace_hrtimer_cancel(timer);
+#else
 	if (!hrtimer_callback_running(timer)) {
 		ret = remove_hrtimer(timer, base, HRTIMER_STATE_INACTIVE);
 		if (ret)
 			trace_hrtimer_cancel(timer);
 	}
+#endif
 
 	unlock_hrtimer_base(timer, &flags);
 

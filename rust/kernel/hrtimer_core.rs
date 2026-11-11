@@ -3,9 +3,9 @@
 //! Native hrtimer queue state transitions.
 //!
 //! Rust owns local-base enqueue, in-place expiry updates, requeue decisions,
-//! the clock-base next-expiry cache, and the queued state transition. Locking,
-//! clock event reprogramming, debug objects, and tracepoint delivery remain
-//! outside this module.
+//! queued removal, cancellation results, the clock-base next-expiry cache, and
+//! the queued state transition. Locking, clock event reprogramming, debug
+//! objects, and tracepoint delivery remain outside this module.
 
 use crate::bindings;
 use core::ptr;
@@ -156,4 +156,123 @@ unsafe extern "C" fn rust_hrtimer_requeue_same_base(
         unsafe { update_cached_expiry(base) };
     }
     first
+}
+
+/// Removes a queued timer and maintains the clock-base and CPU-base state.
+///
+/// # Safety
+///
+/// `timer` and `base` must be live, and the caller must hold
+/// `base->cpu_base->lock`. `timer` must belong to `base`.
+#[cfg(CONFIG_RUST_HRTIMER_CANCEL)]
+unsafe fn remove_locked(
+    timer: *mut Hrtimer,
+    base: *mut ClockBase,
+    newstate: bool,
+    reprogram: bool,
+) {
+    // SAFETY: The caller guarantees that the timer is live.
+    if !unsafe { bindings::rust_helper_hrtimer_is_queued(timer) } {
+        return;
+    }
+
+    // SAFETY: The caller guarantees that the timer is live.
+    unsafe { bindings::rust_helper_hrtimer_set_queued(timer, newstate) };
+    // SAFETY: A queued timer has a live linked-tree node.
+    let was_first = unsafe { (*timer).node.node.prev }.is_null();
+    // SAFETY: The timer is queued in the supplied clock base.
+    let active_base_empty = !unsafe {
+        bindings::rb_erase_linked(
+            ptr::addr_of_mut!((*timer).node.node),
+            ptr::addr_of_mut!((*base).active.rb_root),
+        )
+    };
+    // SAFETY: The caller holds the CPU base lock.
+    let cpu_base = unsafe { (*base).cpu_base };
+
+    if active_base_empty {
+        // SAFETY: The caller holds the CPU base lock.
+        let active_bit = 1_u32 << unsafe { (*base).index };
+        // SAFETY: The caller holds the CPU base lock.
+        unsafe { (*cpu_base).active_bases &= !active_bit };
+    }
+
+    if !was_first {
+        return;
+    }
+
+    // SAFETY: The caller holds the CPU base lock.
+    unsafe { update_cached_expiry(base) };
+
+    // SAFETY: The caller holds the CPU base lock.
+    if !reprogram || timer != unsafe { (*cpu_base).next_timer } {
+        return;
+    }
+
+    // SAFETY: The caller holds the CPU base lock.
+    if unsafe { (*timer).is_lazy } {
+        return;
+    }
+
+    // SAFETY: The caller holds the CPU base lock.
+    if unsafe { (*cpu_base).deferred_rearm } {
+        // SAFETY: The caller holds the CPU base lock.
+        unsafe { (*cpu_base).deferred_needs_update = true };
+    } else {
+        // SAFETY: The helper updates the clock event under the CPU base lock.
+        unsafe { bindings::rust_helper_hrtimer_force_reprogram(cpu_base, true) };
+    }
+}
+
+/// Removes a queued timer from a clock base.
+///
+/// This implements the production state machine behind `__remove_hrtimer()`.
+///
+/// # Safety
+///
+/// `timer` and `base` must be live, and the caller must hold
+/// `base->cpu_base->lock`. `timer` must belong to `base`.
+#[cfg(CONFIG_RUST_HRTIMER_CANCEL)]
+#[export]
+unsafe extern "C" fn rust_hrtimer_remove(
+    timer: *mut Hrtimer,
+    base: *mut ClockBase,
+    newstate: bool,
+    reprogram: bool,
+) {
+    // SAFETY: The caller satisfies the requirements of `remove_locked`.
+    unsafe { remove_locked(timer, base, newstate, reprogram) };
+}
+
+/// Attempts to cancel a timer while its clock base is locked.
+///
+/// This implements the state decisions in `hrtimer_try_to_cancel()`.
+///
+/// # Safety
+///
+/// `timer` and `base` must be live, and the caller must hold
+/// `base->cpu_base->lock`. `base` must be the timer's current base.
+#[cfg(CONFIG_RUST_HRTIMER_CANCEL)]
+#[export]
+unsafe extern "C" fn rust_hrtimer_try_to_cancel_locked(
+    timer: *mut Hrtimer,
+    base: *mut ClockBase,
+) -> i32 {
+    // SAFETY: The caller guarantees that the timer is live.
+    if unsafe { bindings::rust_helper_hrtimer_callback_running(timer) } {
+        return -1;
+    }
+
+    // SAFETY: The caller guarantees that the timer is live.
+    if !unsafe { bindings::rust_helper_hrtimer_is_queued(timer) } {
+        return 0;
+    }
+
+    // SAFETY: The caller guarantees that the timer is live.
+    unsafe { bindings::rust_helper_hrtimer_debug_deactivate(timer) };
+    // SAFETY: The caller holds the timer's clock base lock.
+    let reprogram = unsafe { bindings::rust_helper_hrtimer_base_is_local(base) };
+    // SAFETY: The caller satisfies the requirements of `remove_locked`.
+    unsafe { remove_locked(timer, base, false, reprogram) };
+    1
 }

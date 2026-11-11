@@ -1043,6 +1043,22 @@ config RUST_HRTIMER
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_HRTIMER_CANCEL
+	bool "Rust implementation of hrtimer removal and cancellation state"
+	depends on RUST_HRTIMER
+	default y
+	help
+	  Use Rust for the production queued removal, active-clock-base
+	  accounting, next-expiry cache maintenance, cancellation result, and
+	  callback-running guard for high-resolution timers.
+
+	  CPU base locking, the lockless inactive fast path, debug hooks,
+	  tracepoints, clock event reprogramming, callback execution, and
+	  cancellation wait loops remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_WAITQUEUE
 	bool "Rust implementation of wait queues"
 	depends on RUST
