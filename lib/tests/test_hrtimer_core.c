@@ -39,6 +39,12 @@ struct hrtimer_core_test_next_event {
 	struct hrtimer timers[2];
 };
 
+struct hrtimer_core_test_reprogram {
+	struct hrtimer timer;
+	struct hrtimer_cpu_base cpu_base;
+	struct hrtimer_cpu_base remote_cpu_base;
+};
+
 static enum hrtimer_restart hrtimer_core_test_callback(struct hrtimer *timer)
 {
 	struct hrtimer_core_test *test;
@@ -414,6 +420,187 @@ static void hrtimer_core_test_update_needs_ipi(struct kunit *test)
 }
 #endif
 
+#ifdef CONFIG_RUST_HRTIMER_REPROGRAM
+static void
+hrtimer_core_test_init_reprogram(struct hrtimer_core_test_reprogram *state,
+				 struct hrtimer_cpu_base *base_cpu,
+				 ktime_t expires, ktime_t offset)
+{
+	struct hrtimer_clock_base *base =
+		&state->cpu_base.clock_base[HRTIMER_BASE_MONOTONIC];
+
+	base->cpu_base = base_cpu;
+	base->offset = offset;
+	state->timer.base = base;
+	hrtimer_set_expires(&state->timer, expires);
+}
+
+static void hrtimer_core_test_reprogram(struct kunit *test)
+{
+	struct hrtimer_core_test_reprogram *state;
+	struct hrtimer_cpu_base *cpu_base;
+	bool program_device;
+	ktime_t expires;
+
+	state = kunit_kzalloc(test, sizeof(*state), GFP_KERNEL);
+	KUNIT_ASSERT_NOT_NULL(test, state);
+	cpu_base = &state->cpu_base;
+
+	hrtimer_core_test_init_reprogram(state, cpu_base, ns_to_ktime(250),
+					 ns_to_ktime(100));
+	cpu_base->expires_next = ns_to_ktime(200);
+	expires = rust_hrtimer_reprogram(&state->timer, cpu_base, true,
+					 &program_device);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(150), expires);
+	KUNIT_EXPECT_TRUE(test, program_device);
+	KUNIT_EXPECT_PTR_EQ(test, &state->timer, cpu_base->next_timer);
+
+	memset(state, 0, sizeof(*state));
+	hrtimer_core_test_init_reprogram(state, cpu_base, ns_to_ktime(50),
+					 ns_to_ktime(100));
+	cpu_base->expires_next = ns_to_ktime(200);
+	expires = rust_hrtimer_reprogram(&state->timer, cpu_base, true,
+					 &program_device);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(0), expires);
+	KUNIT_EXPECT_TRUE(test, program_device);
+	KUNIT_EXPECT_PTR_EQ(test, &state->timer, cpu_base->next_timer);
+
+	memset(state, 0, sizeof(*state));
+	hrtimer_core_test_init_reprogram(state, cpu_base, ns_to_ktime(200),
+					 ns_to_ktime(0));
+	cpu_base->expires_next = ns_to_ktime(200);
+	expires = rust_hrtimer_reprogram(&state->timer, cpu_base, true,
+					 &program_device);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(200), expires);
+	KUNIT_EXPECT_FALSE(test, program_device);
+	KUNIT_EXPECT_PTR_EQ(test, NULL, cpu_base->next_timer);
+
+	memset(state, 0, sizeof(*state));
+	hrtimer_core_test_init_reprogram(state, cpu_base, ns_to_ktime(300),
+					 ns_to_ktime(0));
+	cpu_base->expires_next = ns_to_ktime(200);
+	expires = rust_hrtimer_reprogram(&state->timer, cpu_base, true,
+					 &program_device);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(300), expires);
+	KUNIT_EXPECT_FALSE(test, program_device);
+	KUNIT_EXPECT_PTR_EQ(test, NULL, cpu_base->next_timer);
+
+	memset(state, 0, sizeof(*state));
+	hrtimer_core_test_init_reprogram(state, &state->remote_cpu_base,
+					 ns_to_ktime(100), ns_to_ktime(0));
+	cpu_base->expires_next = ns_to_ktime(200);
+	expires = rust_hrtimer_reprogram(&state->timer, cpu_base, true,
+					 &program_device);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(100), expires);
+	KUNIT_EXPECT_FALSE(test, program_device);
+	KUNIT_EXPECT_PTR_EQ(test, NULL, cpu_base->next_timer);
+
+	memset(state, 0, sizeof(*state));
+	hrtimer_core_test_init_reprogram(state, cpu_base, ns_to_ktime(100),
+					 ns_to_ktime(0));
+	cpu_base->expires_next = ns_to_ktime(200);
+	cpu_base->deferred_rearm = true;
+	expires = rust_hrtimer_reprogram(&state->timer, cpu_base, true,
+					 &program_device);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(100), expires);
+	KUNIT_EXPECT_FALSE(test, program_device);
+	KUNIT_EXPECT_PTR_EQ(test, NULL, cpu_base->next_timer);
+
+	memset(state, 0, sizeof(*state));
+	state->timer.is_soft = true;
+	hrtimer_core_test_init_reprogram(state, cpu_base, ns_to_ktime(150),
+					 ns_to_ktime(50));
+	cpu_base->expires_next = ns_to_ktime(300);
+	cpu_base->softirq_expires_next = ns_to_ktime(200);
+	expires = rust_hrtimer_reprogram(&state->timer, cpu_base, true,
+					 &program_device);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(100), expires);
+	KUNIT_EXPECT_TRUE(test, program_device);
+	KUNIT_EXPECT_PTR_EQ(test, &state->timer,
+			    cpu_base->softirq_next_timer);
+	KUNIT_EXPECT_PTR_EQ(test, &state->timer, cpu_base->next_timer);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(100),
+			cpu_base->softirq_expires_next);
+
+	memset(state, 0, sizeof(*state));
+	state->timer.is_soft = true;
+	hrtimer_core_test_init_reprogram(state, cpu_base, ns_to_ktime(100),
+					 ns_to_ktime(0));
+	cpu_base->expires_next = ns_to_ktime(300);
+	cpu_base->softirq_expires_next = ns_to_ktime(100);
+	expires = rust_hrtimer_reprogram(&state->timer, cpu_base, true,
+					 &program_device);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(100), expires);
+	KUNIT_EXPECT_FALSE(test, program_device);
+	KUNIT_EXPECT_PTR_EQ(test, NULL, cpu_base->softirq_next_timer);
+	KUNIT_EXPECT_PTR_EQ(test, NULL, cpu_base->next_timer);
+
+	memset(state, 0, sizeof(*state));
+	state->timer.is_soft = true;
+	hrtimer_core_test_init_reprogram(state, cpu_base, ns_to_ktime(100),
+					 ns_to_ktime(0));
+	cpu_base->expires_next = ns_to_ktime(300);
+	cpu_base->softirq_expires_next = ns_to_ktime(200);
+	cpu_base->softirq_activated = true;
+	expires = rust_hrtimer_reprogram(&state->timer, cpu_base, true,
+					 &program_device);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(100), expires);
+	KUNIT_EXPECT_FALSE(test, program_device);
+	KUNIT_EXPECT_PTR_EQ(test, NULL, cpu_base->softirq_next_timer);
+	KUNIT_EXPECT_PTR_EQ(test, NULL, cpu_base->next_timer);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(200),
+			cpu_base->softirq_expires_next);
+
+	memset(state, 0, sizeof(*state));
+	state->timer.is_soft = true;
+	hrtimer_core_test_init_reprogram(state, cpu_base, ns_to_ktime(100),
+					 ns_to_ktime(0));
+	cpu_base->expires_next = ns_to_ktime(300);
+	cpu_base->softirq_expires_next = ns_to_ktime(200);
+	expires = rust_hrtimer_reprogram(&state->timer, cpu_base, false,
+					 &program_device);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(100), expires);
+	KUNIT_EXPECT_FALSE(test, program_device);
+	KUNIT_EXPECT_PTR_EQ(test, &state->timer,
+			    cpu_base->softirq_next_timer);
+	KUNIT_EXPECT_PTR_EQ(test, NULL, cpu_base->next_timer);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(100),
+			cpu_base->softirq_expires_next);
+
+	memset(state, 0, sizeof(*state));
+	state->timer.is_soft = true;
+	hrtimer_core_test_init_reprogram(state, cpu_base, ns_to_ktime(250),
+					 ns_to_ktime(0));
+	cpu_base->expires_next = ns_to_ktime(200);
+	cpu_base->softirq_expires_next = ns_to_ktime(300);
+	expires = rust_hrtimer_reprogram(&state->timer, cpu_base, true,
+					 &program_device);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(250), expires);
+	KUNIT_EXPECT_FALSE(test, program_device);
+	KUNIT_EXPECT_PTR_EQ(test, &state->timer,
+			    cpu_base->softirq_next_timer);
+	KUNIT_EXPECT_PTR_EQ(test, NULL, cpu_base->next_timer);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(250),
+			cpu_base->softirq_expires_next);
+
+	memset(state, 0, sizeof(*state));
+	state->timer.is_soft = true;
+	hrtimer_core_test_init_reprogram(state, &state->remote_cpu_base,
+					 ns_to_ktime(100), ns_to_ktime(0));
+	state->remote_cpu_base.expires_next = ns_to_ktime(300);
+	state->remote_cpu_base.softirq_expires_next = ns_to_ktime(200);
+	expires = rust_hrtimer_reprogram(&state->timer, cpu_base, true,
+					 &program_device);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(100), expires);
+	KUNIT_EXPECT_FALSE(test, program_device);
+	KUNIT_EXPECT_PTR_EQ(test, &state->timer,
+			    state->remote_cpu_base.softirq_next_timer);
+	KUNIT_EXPECT_PTR_EQ(test, NULL, cpu_base->next_timer);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(100),
+			state->remote_cpu_base.softirq_expires_next);
+}
+#endif
+
 static void hrtimer_core_test_assert_order(struct kunit *test,
 					   struct hrtimer_core_test *timers,
 					   int first, int second, int third)
@@ -639,6 +826,9 @@ static struct kunit_case hrtimer_core_test_cases[] = {
 #endif
 #ifdef CONFIG_RUST_HRTIMER_UPDATE_NEEDS_IPI
 	KUNIT_CASE(hrtimer_core_test_update_needs_ipi),
+#endif
+#ifdef CONFIG_RUST_HRTIMER_REPROGRAM
+	KUNIT_CASE(hrtimer_core_test_reprogram),
 #endif
 	KUNIT_CASE(hrtimer_core_test_same_base_requeue),
 	KUNIT_CASE(hrtimer_core_test_expiry),

@@ -960,6 +960,16 @@ static void retrigger_next_event(void *arg)
 static void hrtimer_reprogram(struct hrtimer *timer, bool reprogram)
 {
 	struct hrtimer_cpu_base *cpu_base = this_cpu_ptr(&hrtimer_bases);
+#ifdef CONFIG_RUST_HRTIMER_REPROGRAM
+	ktime_t expires = hrtimer_get_expires(timer);
+	bool program_device;
+
+	WARN_ON_ONCE(expires < 0);
+	expires = rust_hrtimer_reprogram(timer, cpu_base, reprogram,
+					 &program_device);
+	if (program_device)
+		__hrtimer_reprogram(cpu_base, expires);
+#else
 	struct hrtimer_clock_base *base = timer->base;
 	ktime_t expires = hrtimer_get_expires(timer);
 
@@ -1013,6 +1023,7 @@ static void hrtimer_reprogram(struct hrtimer *timer, bool reprogram)
 	cpu_base->next_timer = timer;
 
 	__hrtimer_reprogram(cpu_base, expires);
+#endif
 }
 
 static bool update_needs_ipi(struct hrtimer_cpu_base *cpu_base, unsigned int active)

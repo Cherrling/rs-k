@@ -1102,6 +1102,21 @@ config RUST_HRTIMER_UPDATE_NEEDS_IPI
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_HRTIMER_REPROGRAM
+	bool "Rust implementation of hrtimer reprogram decisions"
+	depends on RUST_HRTIMER
+	default y
+	help
+	  Use Rust for the production decision that updates hard and soft
+	  timer caches and determines whether a newly queued timer requires
+	  clock event reprogramming.
+
+	  Negative-expiry warnings, clock event programming, CPU base locking,
+	  tracing, callback execution, and public ABI adapters remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_HRTIMER_CANCEL
 	bool "Rust implementation of hrtimer removal and cancellation state"
 	depends on RUST_HRTIMER

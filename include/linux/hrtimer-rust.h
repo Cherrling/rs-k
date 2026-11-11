@@ -62,6 +62,14 @@ bool rust_hrtimer_update_needs_ipi(struct hrtimer_cpu_base *cpu_base,
 
 #endif /* CONFIG_RUST_HRTIMER_UPDATE_NEEDS_IPI */
 
+#ifdef CONFIG_RUST_HRTIMER_REPROGRAM
+
+ktime_t rust_hrtimer_reprogram(struct hrtimer *timer,
+			       struct hrtimer_cpu_base *cpu_base,
+			       bool reprogram, bool *program_device);
+
+#endif /* CONFIG_RUST_HRTIMER_REPROGRAM */
+
 #ifdef CONFIG_RUST_HRTIMER_CANCEL
 
 bool rust_helper_hrtimer_callback_running(struct hrtimer *timer);

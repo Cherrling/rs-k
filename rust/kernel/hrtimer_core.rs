@@ -14,7 +14,11 @@ use macros::export;
 
 type Hrtimer = bindings::hrtimer;
 type ClockBase = bindings::hrtimer_clock_base;
-#[cfg(any(CONFIG_RUST_HRTIMER_BASE_SELECTION, CONFIG_RUST_HRTIMER_NEXT_EVENT))]
+#[cfg(any(
+    CONFIG_RUST_HRTIMER_BASE_SELECTION,
+    CONFIG_RUST_HRTIMER_NEXT_EVENT,
+    CONFIG_RUST_HRTIMER_REPROGRAM
+))]
 type CpuBase = bindings::hrtimer_cpu_base;
 type TimerLinkedNode = bindings::timerqueue_linked_node;
 type RbNodeLinked = bindings::rb_node_linked;
@@ -311,6 +315,87 @@ unsafe extern "C" fn rust_hrtimer_update_needs_ipi(
     }
 
     false
+}
+
+/// Decides whether a newly queued timer changes clock event programming.
+///
+/// Rust normalizes the timer expiry, updates a remote or local soft-timer
+/// cache, rejects events that cannot improve the programmed deadline, and
+/// publishes the timer as `next_timer` when reprogramming is required. The
+/// caller programs the clock event device with the returned deadline.
+///
+/// # Safety
+///
+/// `timer` and `cpu_base` must be live, and `timer->base` must identify a live
+/// clock base protected by its CPU base lock. `program_device` must be writable
+/// and must not overlap either input.
+#[cfg(CONFIG_RUST_HRTIMER_REPROGRAM)]
+#[export]
+unsafe extern "C" fn rust_hrtimer_reprogram(
+    timer: *mut Hrtimer,
+    cpu_base: *mut CpuBase,
+    reprogram: bool,
+    program_device: *mut bool,
+) -> bindings::ktime_t {
+    // SAFETY: The caller guarantees that the output is writable.
+    unsafe { *program_device = false };
+
+    // SAFETY: The caller guarantees that the timer and its base are live.
+    let base = unsafe { (*timer).base };
+    // SAFETY: The caller guarantees that the timer is live.
+    let expires = unsafe { (*timer).node.expires };
+    // SAFETY: The caller guarantees that the clock base is live.
+    let expires = expires.wrapping_sub(unsafe { (*base).offset }).max(0);
+
+    // SAFETY: The caller guarantees that the timer is live.
+    if unsafe { (*timer).is_soft } {
+        // SAFETY: The caller guarantees that the clock base is live.
+        let timer_cpu_base = unsafe { (*base).cpu_base };
+
+        // SAFETY: The caller guarantees that the timer CPU base is live.
+        if unsafe { (*timer_cpu_base).softirq_activated } {
+            return expires;
+        }
+
+        // SAFETY: The caller guarantees that the timer CPU base is live.
+        if expires >= unsafe { (*timer_cpu_base).softirq_expires_next } {
+            return expires;
+        }
+
+        // SAFETY: The caller holds the timer CPU base lock.
+        unsafe {
+            (*timer_cpu_base).softirq_next_timer = timer;
+            (*timer_cpu_base).softirq_expires_next = expires;
+        }
+
+        // SAFETY: The caller guarantees that the timer CPU base is live.
+        if !reprogram || expires >= unsafe { (*timer_cpu_base).expires_next } {
+            return expires;
+        }
+    }
+
+    // SAFETY: The caller guarantees that both CPU bases are live.
+    if unsafe { (*base).cpu_base } != cpu_base {
+        return expires;
+    }
+
+    // SAFETY: The caller guarantees that the current CPU base is live.
+    if expires >= unsafe { (*cpu_base).expires_next } {
+        return expires;
+    }
+
+    // SAFETY: The caller guarantees that the current CPU base is live.
+    if unsafe { (*cpu_base).deferred_rearm } {
+        return expires;
+    }
+
+    // SAFETY: The caller holds the current CPU base lock.
+    unsafe {
+        (*cpu_base).next_timer = timer;
+        *program_device = true;
+    }
+
+    expires
 }
 
 /// Starts or requeues a timer on its current local clock base.
