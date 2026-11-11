@@ -2352,6 +2352,20 @@ config COMPLETION_KUNIT_TEST
 
 	  If unsure, say N.
 
+config WAITQUEUE_KUNIT_TEST
+	bool "KUnit test for wait queue wakeups" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for wait queue callback order,
+	  exclusive wake accounting, wake flags, POLLFREE handling, and
+	  scheduler integration.
+
+	  The same tests run with either the C implementation or the native
+	  Rust wake path selected.
+
+	  If unsure, say N.
+
 config TEST_SORT
 	tristate "Array-based sort test" if !KUNIT_ALL_TESTS
 	depends on KUNIT

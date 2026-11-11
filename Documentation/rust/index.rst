@@ -38,6 +38,7 @@ more details.
     arch-support
     testing
     completion
+    waitqueue
     native-percpu-refcount
     refcount
     swait

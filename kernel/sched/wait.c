@@ -6,6 +6,7 @@
  */
 #include "sched.h"
 #include <linux/wait_bit.h>
+#include <linux/wait-rust.h>
 
 void __init_waitqueue_head(struct wait_queue_head *wq_head, const char *name, struct lock_class_key *key)
 {
@@ -76,6 +77,8 @@ void remove_wait_queue(struct wait_queue_head *wq_head, struct wait_queue_entry 
 	spin_unlock_irqrestore(&wq_head->lock, flags);
 }
 EXPORT_SYMBOL(remove_wait_queue);
+
+#ifndef CONFIG_RUST_WAITQUEUE
 
 /*
  * The core wakeup function. Non-exclusive wakeups (nr_exclusive == 0) just
@@ -232,6 +235,118 @@ void __wake_up_pollfree(struct wait_queue_head *wq_head)
 	/* POLLFREE must have cleared the queue. */
 	WARN_ON_ONCE(waitqueue_active(wq_head));
 }
+
+#else
+
+void rust_waitqueue_lock_irqsave(struct wait_queue_head *wq_head,
+				 unsigned long *flags)
+{
+	spin_lock_irqsave(&wq_head->lock, *flags);
+}
+
+void rust_waitqueue_unlock_irqrestore(struct wait_queue_head *wq_head,
+				      unsigned long flags)
+{
+	spin_unlock_irqrestore(&wq_head->lock, flags);
+}
+
+void rust_waitqueue_assert_locked(struct wait_queue_head *wq_head)
+{
+	lockdep_assert_held(&wq_head->lock);
+}
+
+struct wait_queue_entry *
+rust_waitqueue_first_entry(struct wait_queue_head *wq_head)
+{
+	return list_first_entry(&wq_head->head, struct wait_queue_entry,
+				entry);
+}
+
+struct wait_queue_entry *
+rust_waitqueue_next_entry(struct wait_queue_entry *wq_entry)
+{
+	return list_next_entry(wq_entry, entry);
+}
+
+bool rust_waitqueue_entry_is_head(struct wait_queue_head *wq_head,
+				  struct wait_queue_entry *wq_entry)
+{
+	return list_entry_is_head(wq_entry, &wq_head->head, entry);
+}
+
+int rust_waitqueue_current_cpu_wake_flags(void)
+{
+	return WF_CURRENT_CPU;
+}
+
+int rust_waitqueue_sync_wake_flags(void)
+{
+	return WF_SYNC;
+}
+
+void *rust_waitqueue_pollfree_key(void)
+{
+	return poll_to_key(EPOLLHUP | POLLFREE);
+}
+
+void rust_waitqueue_assert_pollfree_empty(struct wait_queue_head *wq_head)
+{
+	/* POLLFREE must have cleared the queue. */
+	WARN_ON_ONCE(waitqueue_active(wq_head));
+}
+
+int __wake_up(struct wait_queue_head *wq_head, unsigned int mode,
+	      int nr_exclusive, void *key)
+{
+	return rust_waitqueue_wake(wq_head, mode, nr_exclusive, key);
+}
+EXPORT_SYMBOL(__wake_up);
+
+void __wake_up_on_current_cpu(struct wait_queue_head *wq_head, unsigned int mode,
+			      void *key)
+{
+	rust_waitqueue_wake_on_current_cpu(wq_head, mode, key);
+}
+
+void __wake_up_locked(struct wait_queue_head *wq_head, unsigned int mode, int nr)
+{
+	rust_waitqueue_wake_locked(wq_head, mode, nr);
+}
+EXPORT_SYMBOL_GPL(__wake_up_locked);
+
+void __wake_up_locked_key(struct wait_queue_head *wq_head, unsigned int mode,
+			  void *key)
+{
+	rust_waitqueue_wake_locked_key(wq_head, mode, key);
+}
+EXPORT_SYMBOL_GPL(__wake_up_locked_key);
+
+void __wake_up_sync_key(struct wait_queue_head *wq_head, unsigned int mode,
+			void *key)
+{
+	rust_waitqueue_wake_sync_key(wq_head, mode, key);
+}
+EXPORT_SYMBOL_GPL(__wake_up_sync_key);
+
+void __wake_up_locked_sync_key(struct wait_queue_head *wq_head,
+			       unsigned int mode, void *key)
+{
+	rust_waitqueue_wake_locked_sync_key(wq_head, mode, key);
+}
+EXPORT_SYMBOL_GPL(__wake_up_locked_sync_key);
+
+void __wake_up_sync(struct wait_queue_head *wq_head, unsigned int mode)
+{
+	rust_waitqueue_wake_sync(wq_head, mode);
+}
+EXPORT_SYMBOL_GPL(__wake_up_sync);
+
+void __wake_up_pollfree(struct wait_queue_head *wq_head)
+{
+	rust_waitqueue_wake_pollfree(wq_head);
+}
+
+#endif /* CONFIG_RUST_WAITQUEUE */
 
 /*
  * Note: we use "set_current_state()" _after_ the wait-queue add,
