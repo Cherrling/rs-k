@@ -1107,6 +1107,24 @@ config RUST_HRTIMER_INTERRUPT
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_HRTIMER_REARM
+	bool "Rust implementation of hrtimer rearm coordination"
+	depends on RUST_HRTIMER_INTERRUPT
+	default y
+	help
+	  Use Rust for the production high-resolution timer rearm state
+	  machine. Rust checks for pending deferred work, selects a cached or
+	  recomputed next event, updates the CPU base deadline, clears the
+	  pending state, applies the hang delay, and selects immediate or
+	  deferred clock event programming.
+
+	  Current CPU lookup, CPU base locking, thread-work flag publication
+	  and clearing, clock sampling, clock offset updates, hardware clock
+	  event programming, tracing, and public ABI adapters remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_HRTIMER_START
 	bool "Rust implementation of hrtimer startup"
 	depends on RUST_HRTIMER

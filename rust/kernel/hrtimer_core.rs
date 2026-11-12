@@ -11,6 +11,7 @@
 //! It also owns the local-base retention decision for the SMP NOHZ path.
 //! It also selects and iterates expired timer queues.
 //! It also owns the high-resolution timer interrupt state machine.
+//! It also owns deferred rearm coordination and clock event rearm state.
 //! It also owns the first-timer startup state machine.
 //! It also validates and removes already expired user timers.
 //! Locking, clock event reprogramming, ktime arithmetic, callback completion
@@ -29,6 +30,7 @@ type ClockBase = bindings::hrtimer_clock_base;
     CONFIG_RUST_HRTIMER_ENQUEUE,
     CONFIG_RUST_HRTIMER_INTERRUPT,
     CONFIG_RUST_HRTIMER_NEXT_EVENT,
+    CONFIG_RUST_HRTIMER_REARM,
     CONFIG_RUST_HRTIMER_REPROGRAM,
     CONFIG_RUST_HRTIMER_RUN_QUEUES,
     CONFIG_RUST_HRTIMER_START,
@@ -1114,10 +1116,42 @@ fn hang_expiry(now: bindings::ktime_t, max_hang_time: u32) -> bindings::ktime_t 
     now.wrapping_add(delay)
 }
 
+/// Programs the selected high-resolution timer rearm.
+///
+/// Rust updates the CPU base deadline, clears the pending state, applies the
+/// hang delay, and calls the narrow clock event programming adapter.
+///
+/// # Safety
+///
+/// `cpu_base` must be live and protected by its CPU base lock.
+#[cfg(CONFIG_RUST_HRTIMER_INTERRUPT)]
+unsafe fn rearm(cpu_base: *mut CpuBase, expires_next: bindings::ktime_t, deferred: bool) {
+    // SAFETY: The caller holds the CPU base lock.
+    let hang_detected = unsafe { (*cpu_base).hang_detected };
+    // SAFETY: The caller holds the CPU base lock.
+    unsafe {
+        (*cpu_base).expires_next = expires_next;
+        (*cpu_base).deferred_rearm = false;
+    }
+
+    let programmed = if hang_detected {
+        // SAFETY: The caller holds the CPU base lock.
+        let max_hang_time = unsafe { (*cpu_base).max_hang_time };
+        // SAFETY: It is safe to sample monotonic time in this context.
+        let now = unsafe { bindings::ktime_get() };
+        hang_expiry(now, max_hang_time)
+    } else {
+        expires_next
+    };
+
+    // SAFETY: The caller holds the CPU base lock and owns the event rearm.
+    unsafe { bindings::rust_helper_hrtimer_interrupt_program_event(programmed, deferred) };
+}
+
 /// Publishes the selected interrupt rearm.
 ///
-/// Immediate rearm updates the programmed deadline and applies any hang delay.
-/// Deferred rearm caches the deadline and requests thread-work execution.
+/// Immediate rearm programs the selected deadline. Deferred rearm caches the
+/// deadline and requests thread-work execution.
 ///
 /// # Safety
 ///
@@ -1138,26 +1172,78 @@ unsafe fn finalize_interrupt_rearm(
         unsafe { bindings::rust_helper_hrtimer_interrupt_defer_rearm() };
     } else {
         // SAFETY: The caller holds the CPU base lock.
-        let hang_detected = unsafe { (*cpu_base).hang_detected };
-        // SAFETY: The caller holds the CPU base lock.
-        unsafe {
-            (*cpu_base).expires_next = expires_next;
-            (*cpu_base).deferred_rearm = false;
-        }
-
-        let programmed = if hang_detected {
-            // SAFETY: The caller holds the CPU base lock.
-            let max_hang_time = unsafe { (*cpu_base).max_hang_time };
-            // SAFETY: It is safe to sample monotonic time in interrupt context.
-            let now = unsafe { bindings::ktime_get() };
-            hang_expiry(now, max_hang_time)
-        } else {
-            expires_next
-        };
-
-        // SAFETY: The caller holds the CPU base lock and owns the event rearm.
-        unsafe { bindings::rust_helper_hrtimer_interrupt_program_event(programmed, false) };
+        unsafe { rearm(cpu_base, expires_next, false) };
     }
+}
+
+/// Selects the expiry used to consume a pending deferred rearm.
+///
+/// Queue changes set `deferred_needs_update`, which requires a fresh clock
+/// update and next-event search. Without a queue change, the interrupt's
+/// cached expiry remains valid.
+///
+/// # Safety
+///
+/// `cpu_base` must be live and protected by its CPU base lock.
+#[cfg(CONFIG_RUST_HRTIMER_REARM)]
+unsafe fn select_deferred_rearm_expiry(cpu_base: *mut CpuBase) -> bindings::ktime_t {
+    // SAFETY: The caller holds the CPU base lock.
+    if unsafe { (*cpu_base).deferred_needs_update } {
+        // SAFETY: The caller holds the CPU base lock.
+        unsafe { bindings::rust_helper_hrtimer_interrupt_update_base(cpu_base) };
+        // SAFETY: The caller holds the CPU base lock.
+        unsafe { bindings::rust_helper_hrtimer_interrupt_update_next_event(cpu_base) }
+    } else {
+        // SAFETY: The caller holds the CPU base lock.
+        unsafe { (*cpu_base).deferred_expires_next }
+    }
+}
+
+/// Returns whether a deferred rearm is pending.
+///
+/// The caller invokes this CPU-local fast-path check before acquiring the CPU
+/// base lock. The state is published by the current CPU, so the volatile read
+/// samples the latest value without claiming cross-CPU synchronization.
+///
+/// # Safety
+///
+/// `cpu_base` must point to a live current-CPU base.
+#[cfg(CONFIG_RUST_HRTIMER_REARM)]
+#[export]
+unsafe extern "C" fn rust_hrtimer_rearm_pending(cpu_base: *mut CpuBase) -> bool {
+    // SAFETY: The caller guarantees that the current-CPU base is live.
+    unsafe { ptr::read_volatile(ptr::addr_of!((*cpu_base).deferred_rearm)) }
+}
+
+/// Consumes a pending deferred rearm under the CPU base lock.
+///
+/// Rust selects the cached or re-evaluated expiry, then updates and programs
+/// the clock event through the common rearm state machine.
+///
+/// # Safety
+///
+/// `cpu_base` must be the live current-CPU base and must be locked.
+#[cfg(CONFIG_RUST_HRTIMER_REARM)]
+#[export]
+unsafe extern "C" fn rust_hrtimer_rearm_deferred_locked(cpu_base: *mut CpuBase) {
+    // SAFETY: The caller holds the CPU base lock.
+    let expires_next = unsafe { select_deferred_rearm_expiry(cpu_base) };
+    // SAFETY: The caller holds the CPU base lock.
+    unsafe { rearm(cpu_base, expires_next, true) };
+}
+
+/// Selects the deferred rearm expiry with an explicit test CPU base.
+///
+/// # Safety
+///
+/// `cpu_base` must be live and isolated from concurrent users.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_HRTIMER_REARM))]
+#[export]
+unsafe extern "C" fn rust_hrtimer_rearm_deferred_select(
+    cpu_base: *mut CpuBase,
+) -> bindings::ktime_t {
+    // SAFETY: The caller guarantees exclusive access to the CPU base.
+    unsafe { select_deferred_rearm_expiry(cpu_base) }
 }
 
 /// Runs the high-resolution timer interrupt state machine.

@@ -109,6 +109,17 @@ unsigned int rust_hrtimer_interrupt_test_retries(unsigned int cpu);
 
 #endif /* CONFIG_RUST_HRTIMER_INTERRUPT */
 
+#ifdef CONFIG_RUST_HRTIMER_REARM
+
+bool rust_hrtimer_rearm_pending(struct hrtimer_cpu_base *cpu_base);
+void rust_hrtimer_rearm_deferred_locked(struct hrtimer_cpu_base *cpu_base);
+
+#ifdef CONFIG_KUNIT
+ktime_t rust_hrtimer_rearm_deferred_select(struct hrtimer_cpu_base *cpu_base);
+#endif
+
+#endif /* CONFIG_RUST_HRTIMER_REARM */
+
 #ifdef CONFIG_RUST_HRTIMER_START
 
 bool rust_helper_hrtimer_keep_base(struct hrtimer *timer, bool is_local,

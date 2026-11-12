@@ -19,7 +19,8 @@ selected clock base.  The
 around an expiry callback.  The
 ``CONFIG_RUST_HRTIMER_RUN_QUEUES`` option selects Rust for the expired clock
 base and timer loops.  ``CONFIG_RUST_HRTIMER_INTERRUPT`` selects Rust for the
-high-resolution timer interrupt state machine.  The
+high-resolution timer interrupt state machine.  ``CONFIG_RUST_HRTIMER_REARM``
+selects Rust for deferred rearm coordination and clock event rearm state.  The
 ``CONFIG_RUST_HRTIMER_BASE_SELECTION`` option selects Rust for the decision
 that accepts or rejects a selected remote clock base.
 ``CONFIG_RUST_HRTIMER_TARGET_BASE`` selects Rust for the target CPU base
@@ -58,6 +59,10 @@ Rust owns these production decisions:
 * Rechecking dropped-lock expiry progress, limiting interrupt retries,
   activating a due softirq, detecting a repeated expired event as a hang,
   updating hang counters, and selecting immediate or deferred rearm.
+* Checking for pending deferred rearm, selecting the cached interrupt expiry
+  or recomputing the next event after a queue change, updating the CPU base
+  deadline, clearing the pending state, applying the hang delay, and
+  selecting immediate or deferred clock event programming.
 * Enqueueing an inactive timer on its current clock base.
 * Updating an active timer in place when its new expiry remains between the
   current neighbors.
@@ -114,12 +119,20 @@ are compiled out.  C keeps the timer device counters, CPU base lock, and
 interrupt entry and exit.
 
 The Rust kernel build currently exports every non-inline symbol from the
-``kernel`` crate with ``EXPORT_SYMBOL_GPL``.  The interrupt entry therefore
-follows this existing build-wide policy.  Narrowing its module visibility
-requires a separate Rust build change and proof that all required code
-generation remains available.  Review this boundary when the Rust compiler
-provides a stable internal-linkage mechanism or the kernel changes its symbol
-export policy.
+``kernel`` crate with ``EXPORT_SYMBOL_GPL``.  The interrupt entry, rearm
+coordinator, and device test hooks therefore follow this existing build-wide
+policy.  Narrowing their module visibility requires a separate Rust build
+change and proof that all required code generation remains available.  Review
+this boundary when the Rust compiler provides a stable internal-linkage
+mechanism or the kernel changes its symbol export policy.
+
+The C ``__hrtimer_rearm_deferred()`` path first calls
+``rust_hrtimer_rearm_pending()``.  When deferred work is pending, C takes the
+CPU base lock and calls ``rust_hrtimer_rearm_deferred_locked()``.  Rust chooses
+between the interrupt's cached expiry and a fresh clock and next-event update.
+It then updates ``expires_next``, clears ``deferred_rearm``, applies any hang
+delay, and calls the narrow clock event programming adapter.  The original C
+deferred rearm and clock event rearm state sequences are compiled out.
 
 The C ``hrtimer_start_range_ns_common()`` path calls
 ``rust_hrtimer_start_range_ns()`` when the startup option is enabled.  The
@@ -245,7 +258,8 @@ The following operations remain in C:
 * Expired callback invocation, lock dropping and reacquisition, tracepoints,
   lockdep context tracking, and softirq waiter synchronization.
 * Clock sampling and offset updates, clock event tracing and programming,
-  deferred-rearm thread-flag publication, and the interrupt-context lock.
+  current-CPU base lookup, deferred-rearm thread-flag publication and
+  clearing, interrupt-context locking, and raw spinlock acquisition.
 * The lockless try-to-cancel entry point and PREEMPT_RT callback wait
   primitive with its expiry-lock synchronization.
 * Checked ktime division, saturated expiry arithmetic, and range
@@ -330,6 +344,12 @@ With immediate rearm, Rust updates ``expires_next`` and clears the pending
 rearm before programming the device.  A detected hang replaces the programmed
 deadline with the capped delay.  With deferred rearm, Rust caches the selected
 expiry, marks it unchanged, and requests thread-work execution.
+
+Deferred rearm consumption uses the cached expiry when no timer was added or
+removed.  A pending update flag requires Rust to refresh clock offsets and
+search the active bases before programming the device.  Consumption updates
+the CPU base deadline and clears the pending marker before calling the clock
+event adapter.
 
 A queued timer returns 1 from ``hrtimer_try_to_cancel()``.  A timer whose
 callback is running returns -1.  An inactive timer returns 0.  Removing the

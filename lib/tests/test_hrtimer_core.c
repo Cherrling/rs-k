@@ -1200,6 +1200,39 @@ static void hrtimer_core_test_interrupt(struct kunit *test)
 }
 #endif
 
+#ifdef CONFIG_RUST_HRTIMER_REARM
+static void hrtimer_core_test_rearm(struct kunit *test)
+{
+	struct hrtimer_cpu_base *cpu_base;
+	unsigned long flags;
+	ktime_t expires;
+
+	cpu_base = kunit_kzalloc(test, sizeof(*cpu_base), GFP_KERNEL);
+	KUNIT_ASSERT_NOT_NULL(test, cpu_base);
+	raw_spin_lock_init(&cpu_base->lock);
+
+	KUNIT_EXPECT_FALSE(test, rust_hrtimer_rearm_pending(cpu_base));
+	cpu_base->deferred_rearm = true;
+	KUNIT_EXPECT_TRUE(test, rust_hrtimer_rearm_pending(cpu_base));
+
+	cpu_base->deferred_needs_update = false;
+	cpu_base->deferred_expires_next = ns_to_ktime(1234);
+	raw_spin_lock_irqsave(&cpu_base->lock, flags);
+	expires = rust_hrtimer_rearm_deferred_select(cpu_base);
+	raw_spin_unlock_irqrestore(&cpu_base->lock, flags);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(1234), expires);
+
+	cpu_base->deferred_needs_update = true;
+	cpu_base->softirq_expires_next = ns_to_ktime(999);
+	raw_spin_lock_irqsave(&cpu_base->lock, flags);
+	expires = rust_hrtimer_rearm_deferred_select(cpu_base);
+	raw_spin_unlock_irqrestore(&cpu_base->lock, flags);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(KTIME_MAX), expires);
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(KTIME_MAX),
+			cpu_base->softirq_expires_next);
+}
+#endif
+
 #ifdef CONFIG_RUST_HRTIMER_START
 static void hrtimer_core_test_start(struct kunit *test)
 {
@@ -1555,6 +1588,9 @@ static struct kunit_case hrtimer_core_test_cases[] = {
 #endif
 #ifdef CONFIG_RUST_HRTIMER_INTERRUPT
 	KUNIT_CASE(hrtimer_core_test_interrupt),
+#endif
+#ifdef CONFIG_RUST_HRTIMER_REARM
+	KUNIT_CASE(hrtimer_core_test_rearm),
 #endif
 #ifdef CONFIG_RUST_HRTIMER_START
 	KUNIT_CASE(hrtimer_core_test_start),

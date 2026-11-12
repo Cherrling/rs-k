@@ -2588,6 +2588,7 @@ void rust_helper_hrtimer_interrupt_defer_rearm(void)
  * Very similar to hrtimer_force_reprogram(), except it deals with
  * deferred_rearm and hang_detected.
  */
+#ifndef CONFIG_RUST_HRTIMER_REARM
 static void hrtimer_rearm(struct hrtimer_cpu_base *cpu_base, ktime_t expires_next, bool deferred)
 {
 	cpu_base->expires_next = expires_next;
@@ -2603,13 +2604,23 @@ static void hrtimer_rearm(struct hrtimer_cpu_base *cpu_base, ktime_t expires_nex
 	}
 	hrtimer_rearm_event(expires_next, deferred);
 }
+#endif
 
 #ifdef CONFIG_HRTIMER_REARM_DEFERRED
 void __hrtimer_rearm_deferred(void)
 {
 	struct hrtimer_cpu_base *cpu_base = this_cpu_ptr(&hrtimer_bases);
+#ifndef CONFIG_RUST_HRTIMER_REARM
 	ktime_t expires_next;
+#endif
 
+#ifdef CONFIG_RUST_HRTIMER_REARM
+	if (!rust_hrtimer_rearm_pending(cpu_base))
+		return;
+
+	guard(raw_spinlock)(&cpu_base->lock);
+	rust_hrtimer_rearm_deferred_locked(cpu_base);
+#else
 	if (!cpu_base->deferred_rearm)
 		return;
 
@@ -2622,6 +2633,7 @@ void __hrtimer_rearm_deferred(void)
 		expires_next = cpu_base->deferred_expires_next;
 	}
 	hrtimer_rearm(cpu_base, expires_next, true);
+#endif
 }
 
 #ifndef CONFIG_RUST_HRTIMER_INTERRUPT
@@ -2634,14 +2646,8 @@ hrtimer_interrupt_rearm(struct hrtimer_cpu_base *cpu_base, ktime_t expires_next)
 	cpu_base->deferred_expires_next = expires_next;
 	set_thread_flag(TIF_HRTIMER_REARM);
 }
-#else  /* CONFIG_HRTIMER_REARM_DEFERRED */
-static __always_inline void
-hrtimer_interrupt_rearm(struct hrtimer_cpu_base *cpu_base, ktime_t expires_next)
-{
-	hrtimer_rearm(cpu_base, expires_next, false);
-}
-#endif  /* !CONFIG_HRTIMER_REARM_DEFERRED */
-#endif /* !CONFIG_RUST_HRTIMER_INTERRUPT */
+#endif
+#endif /* CONFIG_HRTIMER_REARM_DEFERRED */
 
 /*
  * High resolution timer interrupt
