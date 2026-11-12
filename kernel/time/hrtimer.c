@@ -275,6 +275,9 @@ static inline struct hrtimer_cpu_base *get_target_base(struct hrtimer_cpu_base *
 static inline struct hrtimer_clock_base *
 switch_hrtimer_base(struct hrtimer *timer, struct hrtimer_clock_base *base, bool pinned)
 {
+#ifdef CONFIG_RUST_HRTIMER_BASE_MIGRATION
+	return rust_hrtimer_switch_base(timer, base, pinned);
+#else
 	struct hrtimer_cpu_base *new_cpu_base, *this_cpu_base;
 	struct hrtimer_clock_base *new_base;
 	int basenum = base->index;
@@ -316,6 +319,7 @@ again:
 		}
 	}
 	return new_base;
+#endif
 }
 
 #else /* CONFIG_SMP */
@@ -597,12 +601,62 @@ bool rust_helper_hrtimer_base_is_online(struct hrtimer_cpu_base *cpu_base)
 }
 #endif
 
-#ifdef CONFIG_RUST_HRTIMER_CANCEL
+#ifdef CONFIG_RUST_HRTIMER_BASE_MIGRATION
+struct hrtimer_cpu_base *rust_helper_hrtimer_this_cpu_base(void)
+{
+	return this_cpu_ptr(&hrtimer_bases);
+}
+
+struct hrtimer_cpu_base *
+rust_helper_hrtimer_target_cpu_base(struct hrtimer_cpu_base *base, bool pinned)
+{
+	return get_target_base(base, pinned);
+}
+
+bool rust_helper_hrtimer_suitable_target(struct hrtimer *timer,
+					 struct hrtimer_clock_base *new_base,
+					 struct hrtimer_cpu_base *new_cpu_base,
+					 struct hrtimer_cpu_base *this_cpu_base)
+{
+	return hrtimer_suitable_target(timer, new_base, new_cpu_base,
+				       this_cpu_base);
+}
+
+void rust_helper_hrtimer_switch_locks(struct hrtimer *timer,
+				      struct hrtimer_clock_base *base,
+				      struct hrtimer_clock_base *new_base)
+{
+	/* See the comment in lock_hrtimer_base(). */
+	WRITE_ONCE(timer->base, &migration_base);
+	raw_spin_unlock(&base->cpu_base->lock);
+	raw_spin_lock(&new_base->cpu_base->lock);
+}
+
+void rust_helper_hrtimer_switch_rollback(struct hrtimer *timer,
+					 struct hrtimer_clock_base *base,
+					 struct hrtimer_clock_base *new_base)
+{
+	raw_spin_unlock(&new_base->cpu_base->lock);
+	raw_spin_lock(&base->cpu_base->lock);
+	WRITE_ONCE(timer->base, base);
+}
+
+void rust_helper_hrtimer_switch_commit(struct hrtimer *timer,
+				       struct hrtimer_clock_base *new_base)
+{
+	WRITE_ONCE(timer->base, new_base);
+}
+#endif
+
+#if defined(CONFIG_RUST_HRTIMER_CANCEL) || \
+	defined(CONFIG_RUST_HRTIMER_BASE_MIGRATION)
 bool rust_helper_hrtimer_callback_running(struct hrtimer *timer)
 {
 	return hrtimer_callback_running(timer);
 }
+#endif
 
+#ifdef CONFIG_RUST_HRTIMER_CANCEL
 bool rust_helper_hrtimer_base_is_local(struct hrtimer_clock_base *base)
 {
 	return base->cpu_base == this_cpu_ptr(&hrtimer_bases);

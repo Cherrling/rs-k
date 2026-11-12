@@ -17,6 +17,7 @@ use macros::export;
 type Hrtimer = bindings::hrtimer;
 type ClockBase = bindings::hrtimer_clock_base;
 #[cfg(any(
+    CONFIG_RUST_HRTIMER_BASE_MIGRATION,
     CONFIG_RUST_HRTIMER_BASE_SELECTION,
     CONFIG_RUST_HRTIMER_CALLBACK,
     CONFIG_RUST_HRTIMER_ENQUEUE,
@@ -129,6 +130,125 @@ unsafe extern "C" fn rust_hrtimer_suitable_target(
     let expires = unsafe { (*timer).node.expires.wrapping_sub((*new_base).offset) };
     // SAFETY: The caller holds the selected CPU base lock.
     expires >= unsafe { (*new_cpu_base).expires_next }
+}
+
+/// Moves a timer to a selected per-CPU clock base.
+///
+/// The timer remains locked across the old and new CPU base locks. A running
+/// callback keeps the timer on its current base. An unsuitable remote target
+/// returns the migration to the current CPU.
+///
+/// # Safety
+///
+/// `timer` and `base` must be live. The caller must hold
+/// `base->cpu_base->lock`, and `base` must match `timer->base`. The timer must
+/// not be queued. `this_cpu_base` and `new_cpu_base` must be live CPU bases.
+/// The function returns with the lock held for the returned clock base.
+#[cfg(CONFIG_RUST_HRTIMER_BASE_MIGRATION)]
+unsafe fn switch_base_to(
+    timer: *mut Hrtimer,
+    base: *mut ClockBase,
+    this_cpu_base: *mut CpuBase,
+    mut new_cpu_base: *mut CpuBase,
+) -> *mut ClockBase {
+    // SAFETY: The caller guarantees that the current clock base is live.
+    let basenum = unsafe { (*base).index } as usize;
+
+    loop {
+        // SAFETY: The caller guarantees that both CPU bases are live.
+        let new_base = unsafe { ptr::addr_of_mut!((*new_cpu_base).clock_base[basenum]) };
+
+        if new_base != base {
+            // SAFETY: The caller guarantees that the timer is live and locked.
+            if unsafe { bindings::rust_helper_hrtimer_callback_running(timer) } {
+                return base;
+            }
+
+            // SAFETY: Both clock bases and their CPU base locks are live.
+            unsafe { bindings::rust_helper_hrtimer_switch_locks(timer, base, new_base) };
+
+            // SAFETY: The helper acquired the selected CPU base lock.
+            if !unsafe {
+                bindings::rust_helper_hrtimer_suitable_target(
+                    timer,
+                    new_base,
+                    new_cpu_base,
+                    this_cpu_base,
+                )
+            } {
+                // SAFETY: The unselected target is locked and the timer is not
+                // yet published on it.
+                unsafe { bindings::rust_helper_hrtimer_switch_rollback(timer, base, new_base) };
+                new_cpu_base = this_cpu_base;
+                continue;
+            }
+
+            // SAFETY: The selected target is locked and suitable.
+            unsafe { bindings::rust_helper_hrtimer_switch_commit(timer, new_base) };
+        } else {
+            // SAFETY: The current CPU base and selected clock base are locked.
+            if !unsafe {
+                bindings::rust_helper_hrtimer_suitable_target(
+                    timer,
+                    new_base,
+                    new_cpu_base,
+                    this_cpu_base,
+                )
+            } {
+                new_cpu_base = this_cpu_base;
+                continue;
+            }
+        }
+
+        return new_base;
+    }
+}
+
+/// Moves a timer to the selected per-CPU clock base.
+///
+/// Rust owns target migration, callback pinning, deadline suitability retries,
+/// and migration commit or rollback. C owns per-CPU base lookup and the raw
+/// spinlock handoff between the old and new CPU bases.
+///
+/// # Safety
+///
+/// The timer must be live and unlocked from any timer queue. The caller must
+/// hold `base->cpu_base->lock`, and `base` must match `timer->base`. The
+/// function returns with the lock held for the returned clock base.
+#[cfg(CONFIG_RUST_HRTIMER_BASE_MIGRATION)]
+#[export]
+unsafe extern "C" fn rust_hrtimer_switch_base(
+    timer: *mut Hrtimer,
+    base: *mut ClockBase,
+    pinned: bool,
+) -> *mut ClockBase {
+    // SAFETY: The caller guarantees that the timer is live and locked.
+    let this_cpu_base = unsafe { bindings::rust_helper_hrtimer_this_cpu_base() };
+    // SAFETY: The caller guarantees that the current CPU base is live.
+    let new_cpu_base =
+        unsafe { bindings::rust_helper_hrtimer_target_cpu_base(this_cpu_base, pinned) };
+
+    // SAFETY: The caller satisfies the migration safety requirements.
+    unsafe { switch_base_to(timer, base, this_cpu_base, new_cpu_base) }
+}
+
+/// Runs the base migration state machine with explicit test CPU bases.
+///
+/// # Safety
+///
+/// The timer, clock bases, and CPU bases must be live. The caller must hold
+/// `base->cpu_base->lock`, and `base` must match `timer->base`. The timer must
+/// not be queued. The function returns with one selected CPU base lock held.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_HRTIMER_BASE_MIGRATION))]
+#[export]
+unsafe extern "C" fn rust_hrtimer_switch_base_to(
+    timer: *mut Hrtimer,
+    base: *mut ClockBase,
+    this_cpu_base: *mut CpuBase,
+    new_cpu_base: *mut CpuBase,
+) -> *mut ClockBase {
+    // SAFETY: The caller satisfies all migration safety requirements.
+    unsafe { switch_base_to(timer, base, this_cpu_base, new_cpu_base) }
 }
 
 /// Updates the earliest expiry and timer across the active clock bases.

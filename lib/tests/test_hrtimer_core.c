@@ -55,6 +55,12 @@ struct hrtimer_core_test_callback {
 	struct hrtimer timer;
 };
 
+struct hrtimer_core_test_base_migration {
+	struct hrtimer_cpu_base this_cpu_base;
+	struct hrtimer_cpu_base new_cpu_base;
+	struct hrtimer timer;
+};
+
 static enum hrtimer_restart hrtimer_core_test_callback(struct hrtimer *timer)
 {
 	struct hrtimer_core_test *test;
@@ -785,6 +791,76 @@ static void hrtimer_core_test_callback_lifecycle(struct kunit *test)
 }
 #endif
 
+#ifdef CONFIG_RUST_HRTIMER_BASE_MIGRATION
+static void
+hrtimer_core_test_init_migration_cpu(struct hrtimer_cpu_base *cpu_base)
+{
+	struct hrtimer_clock_base initial = {
+		.index = HRTIMER_BASE_MONOTONIC,
+		.clockid = CLOCK_MONOTONIC,
+	};
+	struct hrtimer_clock_base *base;
+
+	raw_spin_lock_init(&cpu_base->lock);
+	base = &cpu_base->clock_base[HRTIMER_BASE_MONOTONIC];
+	memcpy(base, &initial, sizeof(initial));
+	base->cpu_base = cpu_base;
+	cpu_base->online = true;
+	cpu_base->expires_next = ns_to_ktime(KTIME_MAX);
+	timerqueue_linked_init_head(&base->active);
+}
+
+static void hrtimer_core_test_base_migration(struct kunit *test)
+{
+	struct hrtimer_core_test_base_migration *state;
+	struct hrtimer_clock_base *base, *new_base, *selected;
+	unsigned long flags;
+
+	state = kunit_kzalloc(test, sizeof(*state), GFP_KERNEL);
+	KUNIT_ASSERT_NOT_NULL(test, state);
+	hrtimer_core_test_init_migration_cpu(&state->this_cpu_base);
+	hrtimer_core_test_init_migration_cpu(&state->new_cpu_base);
+	base = &state->this_cpu_base.clock_base[HRTIMER_BASE_MONOTONIC];
+	new_base = &state->new_cpu_base.clock_base[HRTIMER_BASE_MONOTONIC];
+
+	hrtimer_setup_on_stack(&state->timer, hrtimer_core_test_callback,
+			       CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED);
+	hrtimer_set_expires(&state->timer, ns_to_ktime(100));
+	state->timer.base = base;
+	state->new_cpu_base.expires_next = ns_to_ktime(50);
+	raw_spin_lock_irqsave(&base->cpu_base->lock, flags);
+	selected = rust_hrtimer_switch_base_to(&state->timer, base,
+					       &state->this_cpu_base,
+					       &state->new_cpu_base);
+	KUNIT_EXPECT_PTR_EQ(test, new_base, selected);
+	KUNIT_EXPECT_PTR_EQ(test, new_base, state->timer.base);
+	raw_spin_unlock_irqrestore(&selected->cpu_base->lock, flags);
+
+	state->timer.base = base;
+	base->running = &state->timer;
+	raw_spin_lock_irqsave(&base->cpu_base->lock, flags);
+	selected = rust_hrtimer_switch_base_to(&state->timer, base,
+					       &state->this_cpu_base,
+					       &state->new_cpu_base);
+	KUNIT_EXPECT_PTR_EQ(test, base, selected);
+	KUNIT_EXPECT_PTR_EQ(test, base, state->timer.base);
+	raw_spin_unlock_irqrestore(&selected->cpu_base->lock, flags);
+	base->running = NULL;
+
+	state->timer.base = base;
+	state->new_cpu_base.expires_next = ns_to_ktime(KTIME_MAX);
+	raw_spin_lock_irqsave(&base->cpu_base->lock, flags);
+	selected = rust_hrtimer_switch_base_to(&state->timer, base,
+					       &state->this_cpu_base,
+					       &state->new_cpu_base);
+	KUNIT_EXPECT_PTR_EQ(test, base, selected);
+	KUNIT_EXPECT_PTR_EQ(test, base, state->timer.base);
+	raw_spin_unlock_irqrestore(&selected->cpu_base->lock, flags);
+
+	destroy_hrtimer_on_stack(&state->timer);
+}
+#endif
+
 static void hrtimer_core_test_assert_order(struct kunit *test,
 					   struct hrtimer_core_test *timers,
 					   int first, int second, int third)
@@ -1019,6 +1095,9 @@ static struct kunit_case hrtimer_core_test_cases[] = {
 #endif
 #ifdef CONFIG_RUST_HRTIMER_CALLBACK
 	KUNIT_CASE(hrtimer_core_test_callback_lifecycle),
+#endif
+#ifdef CONFIG_RUST_HRTIMER_BASE_MIGRATION
+	KUNIT_CASE(hrtimer_core_test_base_migration),
 #endif
 	KUNIT_CASE(hrtimer_core_test_same_base_requeue),
 	KUNIT_CASE(hrtimer_core_test_expiry),

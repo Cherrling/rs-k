@@ -1089,6 +1089,22 @@ config RUST_HRTIMER_BASE_SELECTION
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_HRTIMER_BASE_MIGRATION
+	bool "Rust implementation of hrtimer base migration"
+	depends on RUST_HRTIMER && SMP
+	default y
+	help
+	  Use Rust for the production state machine that moves a timer between
+	  per-CPU clock bases.  Rust uses the selected target, handles callback
+	  pinning, retries when a remote target cannot meet the deadline, and
+	  commits or rolls back the migration state.
+
+	  Raw CPU base locking, per-CPU address calculation, migration-base
+	  publication, and public ABI adapters remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_HRTIMER_NEXT_EVENT
 	bool "Rust implementation of hrtimer next-event selection"
 	depends on RUST_HRTIMER

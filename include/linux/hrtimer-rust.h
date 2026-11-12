@@ -66,6 +66,39 @@ bool rust_hrtimer_suitable_target(struct hrtimer *timer,
 
 #endif /* CONFIG_RUST_HRTIMER_BASE_SELECTION */
 
+#ifdef CONFIG_RUST_HRTIMER_BASE_MIGRATION
+
+bool rust_helper_hrtimer_callback_running(struct hrtimer *timer);
+struct hrtimer_cpu_base *rust_helper_hrtimer_this_cpu_base(void);
+struct hrtimer_cpu_base *
+rust_helper_hrtimer_target_cpu_base(struct hrtimer_cpu_base *base, bool pinned);
+bool rust_helper_hrtimer_suitable_target(struct hrtimer *timer,
+					 struct hrtimer_clock_base *new_base,
+					 struct hrtimer_cpu_base *new_cpu_base,
+					 struct hrtimer_cpu_base *this_cpu_base);
+void rust_helper_hrtimer_switch_locks(struct hrtimer *timer,
+				      struct hrtimer_clock_base *base,
+				      struct hrtimer_clock_base *new_base);
+void rust_helper_hrtimer_switch_rollback(struct hrtimer *timer,
+					 struct hrtimer_clock_base *base,
+					 struct hrtimer_clock_base *new_base);
+void rust_helper_hrtimer_switch_commit(struct hrtimer *timer,
+				       struct hrtimer_clock_base *new_base);
+
+struct hrtimer_clock_base *
+rust_hrtimer_switch_base(struct hrtimer *timer,
+			 struct hrtimer_clock_base *base, bool pinned);
+
+#ifdef CONFIG_KUNIT
+struct hrtimer_clock_base *
+rust_hrtimer_switch_base_to(struct hrtimer *timer,
+			    struct hrtimer_clock_base *base,
+			    struct hrtimer_cpu_base *this_cpu_base,
+			    struct hrtimer_cpu_base *new_cpu_base);
+#endif
+
+#endif /* CONFIG_RUST_HRTIMER_BASE_MIGRATION */
+
 #ifdef CONFIG_RUST_HRTIMER_NEXT_EVENT
 
 ktime_t rust_hrtimer_get_next_event(struct hrtimer_cpu_base *cpu_base,
@@ -94,9 +127,13 @@ ktime_t rust_hrtimer_reprogram(struct hrtimer *timer,
 
 #endif /* CONFIG_RUST_HRTIMER_REPROGRAM */
 
-#ifdef CONFIG_RUST_HRTIMER_CANCEL
+#if defined(CONFIG_RUST_HRTIMER_CANCEL) || \
+	defined(CONFIG_RUST_HRTIMER_BASE_MIGRATION)
 
 bool rust_helper_hrtimer_callback_running(struct hrtimer *timer);
+#endif
+
+#ifdef CONFIG_RUST_HRTIMER_CANCEL
 bool rust_helper_hrtimer_base_is_local(struct hrtimer_clock_base *base);
 void rust_helper_hrtimer_force_reprogram(struct hrtimer_cpu_base *cpu_base,
 					 bool skip_equal);
