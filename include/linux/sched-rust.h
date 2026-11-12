@@ -6,6 +6,7 @@
 
 struct task_struct;
 struct rq;
+struct rq_flags;
 
 #ifdef CONFIG_RUST_SCHED_WAKE_STATE
 
@@ -39,13 +40,50 @@ void rust_helper_sched_ttwu_enqueue_delayed(struct rq *rq,
 bool rust_helper_sched_ttwu_proxy_return(struct rq *rq,
 					 struct task_struct *task);
 bool rust_helper_sched_ttwu_on_cpu(struct rq *rq, struct task_struct *task);
-void rust_helper_sched_ttwu_preempt(struct rq *rq, struct task_struct *task,
-				    int wake_flags);
-void rust_helper_sched_ttwu_wake(struct task_struct *task);
 
 int rust_sched_ttwu_runnable_locked(struct rq *rq, struct task_struct *task,
 				    int wake_flags);
 
 #endif /* CONFIG_RUST_SCHED_TTWU_RUNNABLE */
+
+#if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
+	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE)
+
+void rust_helper_sched_ttwu_preempt(struct rq *rq, struct task_struct *task,
+				    int wake_flags);
+void rust_helper_sched_ttwu_wake(struct task_struct *task);
+
+#endif
+
+#ifdef CONFIG_RUST_SCHED_TTWU_ACTIVATE
+
+#define RUST_SCHED_TTWU_ACTIVATE_DEC_LOAD	0x01
+#define RUST_SCHED_TTWU_ACTIVATE_RQ_SELECTED	0x02
+#define RUST_SCHED_TTWU_ACTIVATE_MIGRATED	0x04
+#define RUST_SCHED_TTWU_ACTIVATE_IO_WAIT	0x08
+
+bool rust_helper_sched_ttwu_contributes_load(struct task_struct *task);
+void rust_helper_sched_ttwu_dec_uninterruptible(struct rq *rq);
+bool rust_helper_sched_ttwu_rq_selected(int wake_flags);
+bool rust_helper_sched_ttwu_migrated(int wake_flags);
+bool rust_helper_sched_ttwu_in_iowait(struct task_struct *task);
+void rust_helper_sched_ttwu_io_wait_end(struct task_struct *task);
+void rust_helper_sched_ttwu_activate(struct rq *rq, struct task_struct *task,
+				     bool rq_selected, bool migrated);
+bool rust_helper_sched_ttwu_has_task_woken(struct task_struct *task);
+void rust_helper_sched_ttwu_task_woken(struct rq *rq,
+				       struct task_struct *task,
+				       struct rq_flags *rf);
+
+void rust_sched_ttwu_activate_locked(struct rq *rq, struct task_struct *task,
+				     int wake_flags, struct rq_flags *rf);
+
+#ifdef CONFIG_KUNIT
+unsigned int rust_sched_ttwu_activate_select(bool contributes_load,
+					     bool rq_selected, bool migrated,
+					    bool in_iowait);
+#endif
+
+#endif /* CONFIG_RUST_SCHED_TTWU_ACTIVATE */
 
 #endif /* _LINUX_SCHED_RUST_H */

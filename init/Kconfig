@@ -1027,6 +1027,23 @@ config RUST_SCHED_TTWU_RUNNABLE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SCHED_TTWU_ACTIVATE
+	bool "Rust implementation of the scheduler wake activation path"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production woke-task activation state machine. Rust
+	  owns load accounting, I/O wait completion, enqueue-flag selection,
+	  task activation and preemption ordering, wake-state publication, and
+	  the optional scheduling-class callback decision.
+
+	  Task runqueue locking and pinning, scheduler queue operations,
+	  preemption, tracing, scheduling-class callbacks, and public scheduler
+	  ABI adapters remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_CPUPRI
 	bool "Rust implementation of CPU-priority scheduling state"
 	depends on RUST && SMP

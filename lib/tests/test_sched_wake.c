@@ -91,6 +91,22 @@ static void sched_wake_test_saved_state_transition(struct kunit *test)
 }
 #endif
 
+#ifdef CONFIG_RUST_SCHED_TTWU_ACTIVATE
+static void sched_wake_test_activate_plan(struct kunit *test)
+{
+	KUNIT_EXPECT_EQ(test,
+			RUST_SCHED_TTWU_ACTIVATE_DEC_LOAD |
+			RUST_SCHED_TTWU_ACTIVATE_RQ_SELECTED |
+			RUST_SCHED_TTWU_ACTIVATE_IO_WAIT,
+			rust_sched_ttwu_activate_select(true, true, false, true));
+	KUNIT_EXPECT_EQ(test,
+			RUST_SCHED_TTWU_ACTIVATE_MIGRATED,
+			rust_sched_ttwu_activate_select(false, false, true, true));
+	KUNIT_EXPECT_EQ(test, 0,
+			rust_sched_ttwu_activate_select(false, false, false, false));
+}
+#endif
+
 static void sched_wake_test_current(struct kunit *test)
 {
 	KUNIT_EXPECT_EQ(test, 0, wake_up_process(current));
@@ -137,6 +153,9 @@ static struct kunit_case sched_wake_test_cases[] = {
 #ifdef CONFIG_RUST_SCHED_WAKE_STATE
 	KUNIT_CASE(sched_wake_test_state_match),
 	KUNIT_CASE(sched_wake_test_saved_state_transition),
+#endif
+#ifdef CONFIG_RUST_SCHED_TTWU_ACTIVATE
+	KUNIT_CASE(sched_wake_test_activate_plan),
 #endif
 	KUNIT_CASE(sched_wake_test_current),
 	KUNIT_CASE(sched_wake_test_stopped_task),

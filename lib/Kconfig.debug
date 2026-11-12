@@ -2476,11 +2476,12 @@ config SCHED_WAKE_KUNIT_TEST
 	help
 	  This option enables KUnit tests for current-state and saved-state
 	  wake matching, saved-state clearing, current-task wakeup rejection,
-	  waking a stopped kernel thread, and updating a queued runnable task.
+	  waking a stopped kernel thread, updating a queued runnable task, and
+	  selecting actions for a woke-task activation.
 
-	  The state-table and saved-state cases run with the native Rust
-	  implementation selected. The real wakeup cases run with either the C
-	  implementation or the native Rust implementation.
+	  The state-table, saved-state, and activation-plan cases run with the
+	  native Rust implementation selected. The real wakeup cases run with
+	  either the C implementation or the native Rust implementation.
 
 	  If unsure, say N.
 

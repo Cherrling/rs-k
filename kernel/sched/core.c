@@ -3890,7 +3890,10 @@ bool rust_helper_sched_ttwu_on_cpu(struct rq *rq, struct task_struct *task)
 {
 	return task_on_cpu(rq, task);
 }
+#endif
 
+#if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
+	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE)
 void rust_helper_sched_ttwu_preempt(struct rq *rq, struct task_struct *task,
 				    int wake_flags)
 {
@@ -3903,10 +3906,73 @@ void rust_helper_sched_ttwu_wake(struct task_struct *task)
 }
 #endif
 
+#ifdef CONFIG_RUST_SCHED_TTWU_ACTIVATE
+bool rust_helper_sched_ttwu_contributes_load(struct task_struct *task)
+{
+	return task->sched_contributes_to_load;
+}
+
+void rust_helper_sched_ttwu_dec_uninterruptible(struct rq *rq)
+{
+	rq->nr_uninterruptible--;
+}
+
+bool rust_helper_sched_ttwu_rq_selected(int wake_flags)
+{
+	return wake_flags & WF_RQ_SELECTED;
+}
+
+bool rust_helper_sched_ttwu_migrated(int wake_flags)
+{
+	return wake_flags & WF_MIGRATED;
+}
+
+bool rust_helper_sched_ttwu_in_iowait(struct task_struct *task)
+{
+	return task->in_iowait;
+}
+
+void rust_helper_sched_ttwu_io_wait_end(struct task_struct *task)
+{
+	delayacct_blkio_end(task);
+	atomic_dec(&task_rq(task)->nr_iowait);
+}
+
+void rust_helper_sched_ttwu_activate(struct rq *rq, struct task_struct *task,
+				     bool rq_selected, bool migrated)
+{
+	int en_flags = ENQUEUE_WAKEUP | ENQUEUE_NOCLOCK;
+
+	if (rq_selected)
+		en_flags |= ENQUEUE_RQ_SELECTED;
+	if (migrated)
+		en_flags |= ENQUEUE_MIGRATED;
+
+	activate_task(rq, task, en_flags);
+}
+
+bool rust_helper_sched_ttwu_has_task_woken(struct task_struct *task)
+{
+	return task->sched_class->task_woken;
+}
+
+void rust_helper_sched_ttwu_task_woken(struct rq *rq, struct task_struct *task,
+				       struct rq_flags *rf)
+{
+	rq_unpin_lock(rq, rf);
+	task->sched_class->task_woken(rq, task);
+	rq_repin_lock(rq, rf);
+}
+#endif
+
 static void
 ttwu_do_activate(struct rq *rq, struct task_struct *p, int wake_flags,
 		 struct rq_flags *rf)
 {
+#ifdef CONFIG_RUST_SCHED_TTWU_ACTIVATE
+	lockdep_assert_rq_held(rq);
+	rust_sched_ttwu_activate_locked(rq, p, wake_flags, rf);
+#else
 	int en_flags = ENQUEUE_WAKEUP | ENQUEUE_NOCLOCK;
 
 	lockdep_assert_rq_held(rq);
@@ -3937,6 +4003,7 @@ ttwu_do_activate(struct rq *rq, struct task_struct *p, int wake_flags,
 		p->sched_class->task_woken(rq, p);
 		rq_repin_lock(rq, rf);
 	}
+#endif
 }
 
 /*

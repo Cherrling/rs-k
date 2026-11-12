@@ -10,7 +10,7 @@ use crate::{bindings, ffi::c_int};
 use macros::export;
 
 type Task = bindings::task_struct;
-#[cfg(CONFIG_RUST_SCHED_TTWU_RUNNABLE)]
+#[cfg(any(CONFIG_RUST_SCHED_TTWU_ACTIVATE, CONFIG_RUST_SCHED_TTWU_RUNNABLE))]
 type Rq = bindings::rq;
 
 /// Classifies a task state against a requested wake mask.
@@ -140,4 +140,105 @@ unsafe extern "C" fn rust_sched_ttwu_runnable_locked(
     // SAFETY: The caller holds the task runqueue lock.
     unsafe { bindings::rust_helper_sched_ttwu_wake(task) };
     1
+}
+
+#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+const ACTIVATE_DEC_LOAD: u32 = 0x01;
+#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+const ACTIVATE_RQ_SELECTED: u32 = 0x02;
+#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+const ACTIVATE_MIGRATED: u32 = 0x04;
+#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+const ACTIVATE_IO_WAIT: u32 = 0x08;
+
+/// Selects the state-changing actions for a woke task activation.
+#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+fn activate_plan(
+    contributes_load: bool,
+    rq_selected: bool,
+    migrated: bool,
+    in_iowait: bool,
+) -> u32 {
+    let mut plan = 0;
+    if contributes_load {
+        plan |= ACTIVATE_DEC_LOAD;
+    }
+    if rq_selected {
+        plan |= ACTIVATE_RQ_SELECTED;
+    }
+    if migrated {
+        plan |= ACTIVATE_MIGRATED;
+    } else if in_iowait {
+        plan |= ACTIVATE_IO_WAIT;
+    }
+    plan
+}
+
+/// Returns the activation action bits for the wake-state KUnit table.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_TTWU_ACTIVATE))]
+#[export]
+extern "C" fn rust_sched_ttwu_activate_select(
+    contributes_load: bool,
+    rq_selected: bool,
+    migrated: bool,
+    in_iowait: bool,
+) -> u32 {
+    activate_plan(contributes_load, rq_selected, migrated, in_iowait)
+}
+
+/// Activates a woke task while its runqueue lock remains held.
+///
+/// Rust owns load accounting, I/O wait completion, enqueue-flag selection,
+/// task activation, preemption, wake publication, and the optional
+/// scheduling-class callback.
+///
+/// # Safety
+///
+/// `task` must remain live, `rq` must be its current runqueue, `rf` must be
+/// the matching lock context, and the caller must hold the runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+#[export]
+unsafe extern "C" fn rust_sched_ttwu_activate_locked(
+    rq: *mut Rq,
+    task: *mut Task,
+    wake_flags: c_int,
+    rf: *mut bindings::rq_flags,
+) {
+    // SAFETY: The caller holds the task runqueue lock.
+    let plan = activate_plan(
+        unsafe { bindings::rust_helper_sched_ttwu_contributes_load(task) },
+        unsafe { bindings::rust_helper_sched_ttwu_rq_selected(wake_flags) },
+        unsafe { bindings::rust_helper_sched_ttwu_migrated(wake_flags) },
+        unsafe { bindings::rust_helper_sched_ttwu_in_iowait(task) },
+    );
+
+    if plan & ACTIVATE_DEC_LOAD != 0 {
+        // SAFETY: The caller holds the task runqueue lock.
+        unsafe { bindings::rust_helper_sched_ttwu_dec_uninterruptible(rq) };
+    }
+    if plan & ACTIVATE_IO_WAIT != 0 {
+        // SAFETY: The task and its current runqueue are locked and live.
+        unsafe { bindings::rust_helper_sched_ttwu_io_wait_end(task) };
+    }
+
+    // SAFETY: The task is locked and ready to enter its runqueue.
+    unsafe {
+        bindings::rust_helper_sched_ttwu_activate(
+            rq,
+            task,
+            plan & ACTIVATE_RQ_SELECTED != 0,
+            plan & ACTIVATE_MIGRATED != 0,
+        )
+    };
+    // SAFETY: The caller holds the task runqueue lock.
+    unsafe { bindings::rust_helper_sched_ttwu_preempt(rq, task, wake_flags) };
+    // SAFETY: The caller holds the task runqueue lock.
+    unsafe { bindings::rust_helper_sched_ttwu_wake(task) };
+
+    // SAFETY: The task and its scheduling class remain stable under the lock.
+    if unsafe { bindings::rust_helper_sched_ttwu_has_task_woken(task) } {
+        // SAFETY: The helper performs the class callback's required unpin and
+        // repin around the callback.
+        unsafe { bindings::rust_helper_sched_ttwu_task_woken(rq, task, rf) };
+    }
 }
