@@ -15,6 +15,8 @@ and selects the clock event action.
 an already expired user-controlled timer.
 ``CONFIG_RUST_HRTIMER_SETUP`` selects Rust for timer initialization, clock
 base selection, and callback installation.
+``CONFIG_RUST_HRTIMER_ACTIVE`` selects Rust for the lockless active-state
+query and its seqcount retry loop.
 ``CONFIG_RUST_HRTIMER_ENQUEUE`` selects Rust for inserting a timer into its
 selected clock base.  The
 ``CONFIG_RUST_HRTIMER_CALLBACK`` option selects Rust for the state transitions
@@ -54,6 +56,8 @@ Rust owns these production decisions:
 * Converting hard, soft, RT, and lazy modes, applying relative realtime
   clock mapping, selecting the per-CPU clock base, clearing the timer,
   initializing its queue node, and installing the callback.
+* Classifying a timer as queued, callback-running, inactive, or requiring a
+  retry after a seqcount or clock-base change.
 * Inserting a timer into an active clock base, publishing the lockless queued
   state, setting the active-clock-base bit, and updating the cached first
   expiry.
@@ -151,6 +155,11 @@ maps the clock ID to a hard or soft clock base, initializes the linked queue
 node, and installs the callback.  C retains debug object initialization,
 tracepoints, missing-callback and invalid-clock diagnostics, the current CPU
 base lookup, and the public API adapters.
+
+The C ``hrtimer_active()`` entry point calls ``rust_hrtimer_active()`` when the
+active-state option is enabled. Rust owns the retry loop and active-state
+decision. Narrow C helpers preserve ``READ_ONCE`` semantics and the seqcount
+acquire and retry operations.
 
 The C ``hrtimer_start_range_ns_common()`` path calls
 ``rust_hrtimer_start_range_ns()`` when the startup option is enabled.  The
@@ -269,6 +278,8 @@ The following operations remain in C:
 * The current CPU base lookup, relative clock sampling, and the soft or hard
   mode assertion in the public startup common path.
 * The lockless inactive fast path in ``hrtimer_try_to_cancel()``.
+* Raw ``READ_ONCE`` access, seqcount acquire, seqcount retry, and clock-base
+  reload operations used by the Rust active-state loop.
 * Debug object activation and deactivation.
 * Debug object setup, setup tracing, missing-callback warnings, invalid clock
   ID warnings, and the current CPU base pointer used during initialization.
@@ -315,6 +326,12 @@ timer without explicit hard mode uses the soft clock base.  The selected
 clock base covers the hard or soft half of the current CPU base's clock array.
 An initialized queue node has a self-parent color value and null neighbor
 links.
+
+A timer is active when its queued state is set or its clock base currently
+identifies it as the running callback. An active observation returns
+immediately even if a write race follows because a false negative is
+forbidden. An inactive observation retries when the clock base sequence
+changed or the timer moved to a different base.
 
 Startup samples the current clock before converting a relative expiry.  The
 conversion uses saturated ktime arithmetic.  A low-resolution system records

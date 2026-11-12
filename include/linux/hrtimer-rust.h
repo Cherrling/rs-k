@@ -53,6 +53,32 @@ unsigned int rust_hrtimer_setup_select(clockid_t clock_id, unsigned int mode,
 
 #endif /* CONFIG_RUST_HRTIMER_SETUP */
 
+#ifdef CONFIG_RUST_HRTIMER_ACTIVE
+
+struct hrtimer_active_snapshot {
+	struct hrtimer_clock_base	*base;
+	unsigned int			seq;
+	bool				queued;
+	bool				running;
+};
+
+struct hrtimer_active_snapshot
+rust_helper_hrtimer_active_begin(const struct hrtimer *timer);
+bool rust_helper_hrtimer_active_retry(const struct hrtimer *timer,
+				      const struct hrtimer_active_snapshot *snapshot);
+bool rust_hrtimer_active(const struct hrtimer *timer);
+
+#ifdef CONFIG_KUNIT
+#define RUST_HRTIMER_ACTIVE_INACTIVE	0
+#define RUST_HRTIMER_ACTIVE_ACTIVE	1
+#define RUST_HRTIMER_ACTIVE_RETRY	2
+
+unsigned int rust_hrtimer_active_select(bool queued, bool running,
+					bool retry);
+#endif
+
+#endif /* CONFIG_RUST_HRTIMER_ACTIVE */
+
 #ifdef CONFIG_RUST_HRTIMER_ENQUEUE
 
 void rust_helper_hrtimer_enqueue_online(struct hrtimer_cpu_base *cpu_base);

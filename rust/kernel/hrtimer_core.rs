@@ -4,6 +4,7 @@
 //!
 //! Rust owns timer initialization, including mode conversion and clock base
 //! selection.
+//! It also owns the lockless active-state query and retry loop.
 //! Rust owns timer insertion, local-base enqueue, in-place expiry updates,
 //! requeue decisions, queued removal, cancellation results, the clock-base
 //! next-expiry cache, expiry forwarding, next-event selection, and the
@@ -232,6 +233,65 @@ unsafe extern "C" fn rust_hrtimer_setup(
         (*node).rb_right = ptr::null_mut();
         (*linked).prev = ptr::null_mut();
         (*linked).next = ptr::null_mut();
+    }
+}
+
+/// Result of one lockless active-state snapshot.
+#[cfg(CONFIG_RUST_HRTIMER_ACTIVE)]
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum ActiveState {
+    Inactive,
+    Active,
+    Retry,
+}
+
+/// Classifies one active-state snapshot.
+#[cfg(CONFIG_RUST_HRTIMER_ACTIVE)]
+fn active_state(queued: bool, running: bool, retry: bool) -> ActiveState {
+    if queued || running {
+        ActiveState::Active
+    } else if retry {
+        ActiveState::Retry
+    } else {
+        ActiveState::Inactive
+    }
+}
+
+/// Runs the active-state classification with explicit test inputs.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_HRTIMER_ACTIVE))]
+#[export]
+extern "C" fn rust_hrtimer_active_select(queued: bool, running: bool, retry: bool) -> u32 {
+    match active_state(queued, running, retry) {
+        ActiveState::Inactive => 0,
+        ActiveState::Active => 1,
+        ActiveState::Retry => 2,
+    }
+}
+
+/// Reports whether a timer is queued, running, or being migrated.
+///
+/// The C helpers preserve `READ_ONCE` semantics and seqcount ordering. Rust
+/// owns the retry loop and state decision.
+///
+/// # Safety
+///
+/// `timer` must remain live for the duration of the call.
+#[cfg(CONFIG_RUST_HRTIMER_ACTIVE)]
+#[export]
+unsafe extern "C" fn rust_hrtimer_active(timer: *const Hrtimer) -> bool {
+    loop {
+        // SAFETY: The caller guarantees that the timer remains live.
+        let snapshot = unsafe { bindings::rust_helper_hrtimer_active_begin(timer) };
+        if active_state(snapshot.queued, snapshot.running, false) == ActiveState::Active {
+            return true;
+        }
+
+        // SAFETY: The snapshot and timer remain valid for the retry check.
+        let retry =
+            unsafe { bindings::rust_helper_hrtimer_active_retry(timer, ptr::from_ref(&snapshot)) };
+        if active_state(false, false, retry) == ActiveState::Inactive {
+            return false;
+        }
     }
 }
 

@@ -1060,6 +1060,22 @@ config RUST_HRTIMER_SETUP
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_HRTIMER_ACTIVE
+	bool "Rust implementation of hrtimer active-state query"
+	depends on RUST_HRTIMER
+	default y
+	help
+	  Use Rust for the production lockless hrtimer active-state query.
+	  Rust owns the retry loop and queued, callback-running, and inactive
+	  decisions.
+
+	  The READ_ONCE accesses and seqcount acquire/retry primitives remain
+	  in narrow C helpers because they preserve the kernel memory model
+	  and the raw lock ordering contract.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_HRTIMER_ENQUEUE
 	bool "Rust implementation of hrtimer insertion"
 	depends on RUST_HRTIMER

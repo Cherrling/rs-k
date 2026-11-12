@@ -231,6 +231,47 @@ static void hrtimer_core_test_setup(struct kunit *test)
 }
 #endif
 
+#ifdef CONFIG_RUST_HRTIMER_ACTIVE
+static void hrtimer_core_test_active(struct kunit *test)
+{
+	struct hrtimer_clock_base *base;
+	struct hrtimer timer;
+	unsigned long flags;
+
+	KUNIT_EXPECT_EQ(test, RUST_HRTIMER_ACTIVE_INACTIVE,
+			rust_hrtimer_active_select(false, false, false));
+	KUNIT_EXPECT_EQ(test, RUST_HRTIMER_ACTIVE_ACTIVE,
+			rust_hrtimer_active_select(true, false, true));
+	KUNIT_EXPECT_EQ(test, RUST_HRTIMER_ACTIVE_ACTIVE,
+			rust_hrtimer_active_select(false, true, true));
+	KUNIT_EXPECT_EQ(test, RUST_HRTIMER_ACTIVE_RETRY,
+			rust_hrtimer_active_select(false, false, true));
+
+	hrtimer_setup_on_stack(&timer, hrtimer_core_test_callback,
+			       CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED);
+	KUNIT_EXPECT_FALSE(test, hrtimer_active(&timer));
+
+	hrtimer_start(&timer, ktime_add_ms(ktime_get(), 1000),
+		      HRTIMER_MODE_ABS_PINNED);
+	KUNIT_EXPECT_TRUE(test, hrtimer_active(&timer));
+	KUNIT_EXPECT_EQ(test, 1, hrtimer_cancel(&timer));
+	KUNIT_EXPECT_FALSE(test, hrtimer_active(&timer));
+
+	base = timer.base;
+	raw_spin_lock_irqsave(&base->cpu_base->lock, flags);
+	base->running = &timer;
+	raw_spin_unlock_irqrestore(&base->cpu_base->lock, flags);
+	KUNIT_EXPECT_TRUE(test, hrtimer_active(&timer));
+
+	raw_spin_lock_irqsave(&base->cpu_base->lock, flags);
+	base->running = NULL;
+	raw_spin_unlock_irqrestore(&base->cpu_base->lock, flags);
+	KUNIT_EXPECT_FALSE(test, hrtimer_active(&timer));
+
+	destroy_hrtimer_on_stack(&timer);
+}
+#endif
+
 #ifdef CONFIG_RUST_HRTIMER_BASE_SELECTION
 static void hrtimer_core_test_base_selection(struct kunit *test)
 {
@@ -1673,6 +1714,9 @@ static void hrtimer_core_test_forward(struct kunit *test)
 static struct kunit_case hrtimer_core_test_cases[] = {
 #ifdef CONFIG_RUST_HRTIMER_SETUP
 	KUNIT_CASE(hrtimer_core_test_setup),
+#endif
+#ifdef CONFIG_RUST_HRTIMER_ACTIVE
+	KUNIT_CASE(hrtimer_core_test_active),
 #endif
 #ifdef CONFIG_RUST_HRTIMER_BASE_SELECTION
 	KUNIT_CASE(hrtimer_core_test_base_selection),

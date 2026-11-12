@@ -2383,8 +2383,33 @@ EXPORT_SYMBOL_GPL(hrtimer_setup_on_stack);
  *
  * It is important for this function to not return a false negative.
  */
+#ifdef CONFIG_RUST_HRTIMER_ACTIVE
+struct hrtimer_active_snapshot
+rust_helper_hrtimer_active_begin(const struct hrtimer *timer)
+{
+	struct hrtimer_active_snapshot snapshot;
+
+	snapshot.base = READ_ONCE(timer->base);
+	snapshot.seq = raw_read_seqcount_begin(&snapshot.base->seq);
+	snapshot.queued = READ_ONCE(timer->is_queued);
+	snapshot.running = READ_ONCE(snapshot.base->running) == timer;
+
+	return snapshot;
+}
+
+bool rust_helper_hrtimer_active_retry(const struct hrtimer *timer,
+				      const struct hrtimer_active_snapshot *snapshot)
+{
+	return read_seqcount_retry(&snapshot->base->seq, snapshot->seq) ||
+	       snapshot->base != READ_ONCE(timer->base);
+}
+#endif
+
 bool hrtimer_active(const struct hrtimer *timer)
 {
+#ifdef CONFIG_RUST_HRTIMER_ACTIVE
+	return rust_hrtimer_active(timer);
+#else
 	struct hrtimer_clock_base *base;
 	unsigned int seq;
 
@@ -2398,6 +2423,7 @@ bool hrtimer_active(const struct hrtimer *timer)
 	} while (read_seqcount_retry(&base->seq, seq) || base != READ_ONCE(timer->base));
 
 	return false;
+#endif
 }
 EXPORT_SYMBOL_GPL(hrtimer_active);
 
