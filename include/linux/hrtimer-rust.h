@@ -73,7 +73,53 @@ rust_hrtimer_clock_base_next_expired(struct hrtimer_clock_base *base,
 
 #endif /* CONFIG_RUST_HRTIMER_RUN_QUEUES */
 
+#ifdef CONFIG_RUST_HRTIMER_START
+
+bool rust_helper_hrtimer_keep_base(struct hrtimer *timer, bool is_local,
+				   bool is_first, bool is_pinned);
+bool rust_helper_hrtimer_remove_timer(struct hrtimer *timer,
+				      struct hrtimer_clock_base *base,
+				      bool newstate);
+struct hrtimer_clock_base *
+rust_helper_hrtimer_switch_base(struct hrtimer *timer,
+				struct hrtimer_clock_base *base, bool pinned);
+bool rust_helper_hrtimer_enqueue_timer(struct hrtimer *timer,
+				       struct hrtimer_clock_base *base,
+				       unsigned int mode, bool was_armed);
+void rust_helper_hrtimer_remote_reprogram(struct hrtimer_cpu_base *cpu_base);
+
+#ifdef CONFIG_TIME_LOW_RES
+ktime_t rust_helper_hrtimer_lowres_resolution(void);
+#endif
+
+int rust_hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim,
+				u64 delta_ns, unsigned int mode,
+				struct hrtimer_clock_base *base);
+
+#ifdef CONFIG_KUNIT
+#define RUST_HRTIMER_START_ACTION_NONE		0
+#define RUST_HRTIMER_START_ACTION_REPROGRAM	1
+#define RUST_HRTIMER_START_ACTION_FORCE		2
+#define RUST_HRTIMER_START_ACTION_REMOTE_WAKE	3
+#define RUST_HRTIMER_START_ACTION_DEFERRED	4
+
+ktime_t rust_hrtimer_prepare_expiry(struct hrtimer *timer, ktime_t tim,
+				    unsigned int mode, ktime_t relative_now);
+int rust_hrtimer_start_reprogram_select(bool deferred, bool was_first,
+					bool same_cpu, bool this_cpu_online,
+					bool first, bool lazy_keep_armed);
+#endif
+
+#endif /* CONFIG_RUST_HRTIMER_START */
+
+#if defined(CONFIG_RUST_HRTIMER_BASE_MIGRATION) || \
+	defined(CONFIG_RUST_HRTIMER_START)
+
+struct hrtimer_cpu_base *rust_helper_hrtimer_this_cpu_base(void);
+#endif
+
 #if defined(CONFIG_RUST_HRTIMER_BASE_SELECTION) || \
+	defined(CONFIG_RUST_HRTIMER_START) || \
 	defined(CONFIG_RUST_HRTIMER_TARGET_BASE)
 
 bool rust_helper_hrtimer_base_is_online(struct hrtimer_cpu_base *cpu_base);
@@ -137,7 +183,6 @@ bool rust_hrtimer_prefer_local_select(bool migration_enabled, bool is_local,
 
 #ifdef CONFIG_RUST_HRTIMER_BASE_MIGRATION
 
-struct hrtimer_cpu_base *rust_helper_hrtimer_this_cpu_base(void);
 struct hrtimer_cpu_base *
 rust_helper_hrtimer_target_cpu_base(struct hrtimer_cpu_base *base, bool pinned);
 bool rust_helper_hrtimer_suitable_target(struct hrtimer *timer,

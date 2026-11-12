@@ -342,6 +342,15 @@ static inline struct hrtimer_clock_base *lock_hrtimer_base(const struct hrtimer 
 
 #endif	/* !CONFIG_SMP */
 
+#ifdef CONFIG_RUST_HRTIMER_START
+struct hrtimer_clock_base *
+rust_helper_hrtimer_switch_base(struct hrtimer *timer,
+				struct hrtimer_clock_base *base, bool pinned)
+{
+	return switch_hrtimer_base(timer, base, pinned);
+}
+#endif
+
 /*
  * Functions for the union type storage format of ktime_t which are
  * too large for inlining:
@@ -599,6 +608,7 @@ bool rust_helper_hrtimer_callback_running_matches(struct hrtimer_clock_base *bas
 #endif
 
 #if defined(CONFIG_RUST_HRTIMER_BASE_SELECTION) || \
+	defined(CONFIG_RUST_HRTIMER_START) || \
 	defined(CONFIG_RUST_HRTIMER_TARGET_BASE)
 bool rust_helper_hrtimer_base_is_online(struct hrtimer_cpu_base *cpu_base)
 {
@@ -652,12 +662,29 @@ bool rust_helper_hrtimer_need_resched(void)
 }
 #endif
 
-#ifdef CONFIG_RUST_HRTIMER_BASE_MIGRATION
+#ifdef CONFIG_RUST_HRTIMER_START
+#ifdef CONFIG_TIME_LOW_RES
+ktime_t rust_helper_hrtimer_lowres_resolution(void)
+{
+	return hrtimer_resolution;
+}
+#endif
+
+void rust_helper_hrtimer_remote_reprogram(struct hrtimer_cpu_base *cpu_base)
+{
+	smp_call_function_single_async(cpu_base->cpu, &cpu_base->csd);
+}
+#endif
+
+#if defined(CONFIG_RUST_HRTIMER_BASE_MIGRATION) || \
+	defined(CONFIG_RUST_HRTIMER_START)
 struct hrtimer_cpu_base *rust_helper_hrtimer_this_cpu_base(void)
 {
 	return this_cpu_ptr(&hrtimer_bases);
 }
+#endif
 
+#ifdef CONFIG_RUST_HRTIMER_BASE_MIGRATION
 struct hrtimer_cpu_base *
 rust_helper_hrtimer_target_cpu_base(struct hrtimer_cpu_base *base, bool pinned)
 {
@@ -1413,6 +1440,15 @@ static bool enqueue_hrtimer(struct hrtimer *timer, struct hrtimer_clock_base *ba
 #endif
 }
 
+#ifdef CONFIG_RUST_HRTIMER_START
+bool rust_helper_hrtimer_enqueue_timer(struct hrtimer *timer,
+				       struct hrtimer_clock_base *base,
+				       unsigned int mode, bool was_armed)
+{
+	return enqueue_hrtimer(timer, base, mode, was_armed);
+}
+#endif
+
 static inline void base_update_next_timer(struct hrtimer_clock_base *base)
 {
 	struct timerqueue_linked_node *next = timerqueue_linked_first(&base->active);
@@ -1502,6 +1538,15 @@ static inline bool remove_hrtimer(struct hrtimer *timer, struct hrtimer_clock_ba
 	}
 	return false;
 }
+
+#ifdef CONFIG_RUST_HRTIMER_START
+bool rust_helper_hrtimer_remove_timer(struct hrtimer *timer,
+				      struct hrtimer_clock_base *base,
+				      bool newstate)
+{
+	return remove_hrtimer(timer, base, newstate);
+}
+#endif
 
 #ifndef CONFIG_RUST_HRTIMER
 static inline bool
@@ -1662,12 +1707,21 @@ static inline bool hrtimer_keep_base(struct hrtimer *timer, bool is_local, bool 
 #endif
 }
 
+#ifdef CONFIG_RUST_HRTIMER_START
+bool rust_helper_hrtimer_keep_base(struct hrtimer *timer, bool is_local,
+				   bool is_first, bool is_pinned)
+{
+	return hrtimer_keep_base(timer, is_local, is_first, is_pinned);
+}
+#endif
+
 enum {
 	HRTIMER_REPROGRAM_NONE,
 	HRTIMER_REPROGRAM,
 	HRTIMER_REPROGRAM_FORCE,
 };
 
+#ifndef CONFIG_RUST_HRTIMER_START
 static int __hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim, u64 delta_ns,
 				    const enum hrtimer_mode mode, struct hrtimer_clock_base *base)
 {
@@ -1773,6 +1827,7 @@ static int __hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim, u64 delt
 	 */
 	return HRTIMER_REPROGRAM_FORCE;
 }
+#endif
 
 static int hrtimer_start_range_ns_common(struct hrtimer *timer, ktime_t tim,
 					 u64 delta_ns, const enum hrtimer_mode mode,
@@ -1788,7 +1843,11 @@ static int hrtimer_start_range_ns_common(struct hrtimer *timer, ktime_t tim,
 	else
 		WARN_ON_ONCE(!(mode & HRTIMER_MODE_HARD) ^ !timer->is_hard);
 
+#ifdef CONFIG_RUST_HRTIMER_START
+	return rust_hrtimer_start_range_ns(timer, tim, delta_ns, mode, base);
+#else
 	return __hrtimer_start_range_ns(timer, tim, delta_ns, mode, base);
+#endif
 }
 
 /**

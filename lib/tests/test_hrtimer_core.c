@@ -77,6 +77,10 @@ struct hrtimer_core_test_run_queues {
 	struct hrtimer timers[2];
 };
 
+struct hrtimer_core_test_start {
+	struct hrtimer timer;
+};
+
 static enum hrtimer_restart hrtimer_core_test_callback(struct hrtimer *timer)
 {
 	struct hrtimer_core_test *test;
@@ -1045,6 +1049,72 @@ static void hrtimer_core_test_soft_expiry(struct kunit *test)
 }
 #endif
 
+#ifdef CONFIG_RUST_HRTIMER_START
+static void hrtimer_core_test_start(struct kunit *test)
+{
+	struct hrtimer_core_test_start *state;
+	ktime_t expected;
+
+	state = kunit_kzalloc(test, sizeof(*state), GFP_KERNEL);
+	KUNIT_ASSERT_NOT_NULL(test, state);
+	hrtimer_setup_on_stack(&state->timer, hrtimer_core_test_callback,
+			       CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
+
+	KUNIT_EXPECT_EQ(test,
+			rust_hrtimer_prepare_expiry(&state->timer, ns_to_ktime(50),
+						    HRTIMER_MODE_ABS,
+						    ns_to_ktime(100)),
+			ns_to_ktime(50));
+	expected = ns_to_ktime(150);
+#ifdef CONFIG_TIME_LOW_RES
+	expected = ktime_add(expected, hrtimer_resolution);
+	KUNIT_EXPECT_FALSE(test, state->timer.is_rel);
+#endif
+	KUNIT_EXPECT_EQ(test,
+			rust_hrtimer_prepare_expiry(&state->timer, ns_to_ktime(50),
+						    HRTIMER_MODE_REL,
+						    ns_to_ktime(100)), expected);
+#ifdef CONFIG_TIME_LOW_RES
+	KUNIT_EXPECT_TRUE(test, state->timer.is_rel);
+#endif
+
+	KUNIT_EXPECT_EQ(test,
+			rust_hrtimer_start_reprogram_select(true, false, false,
+							    false, false, false),
+			RUST_HRTIMER_START_ACTION_DEFERRED);
+	KUNIT_EXPECT_EQ(test,
+			rust_hrtimer_start_reprogram_select(false, false, true,
+							    true, false, false),
+			RUST_HRTIMER_START_ACTION_NONE);
+	KUNIT_EXPECT_EQ(test,
+			rust_hrtimer_start_reprogram_select(false, false, true,
+							    true, true, false),
+			RUST_HRTIMER_START_ACTION_REPROGRAM);
+	KUNIT_EXPECT_EQ(test,
+			rust_hrtimer_start_reprogram_select(false, false, false,
+							    true, true, false),
+			RUST_HRTIMER_START_ACTION_REPROGRAM);
+	KUNIT_EXPECT_EQ(test,
+			rust_hrtimer_start_reprogram_select(false, false, false,
+							    false, false, false),
+			RUST_HRTIMER_START_ACTION_NONE);
+	KUNIT_EXPECT_EQ(test,
+			rust_hrtimer_start_reprogram_select(false, false, false,
+							    false, true, false),
+			RUST_HRTIMER_START_ACTION_REMOTE_WAKE);
+	KUNIT_EXPECT_EQ(test,
+			rust_hrtimer_start_reprogram_select(false, true, true,
+							    true, true, true),
+			RUST_HRTIMER_START_ACTION_NONE);
+	KUNIT_EXPECT_EQ(test,
+			rust_hrtimer_start_reprogram_select(false, true, true,
+							    true, true, false),
+			RUST_HRTIMER_START_ACTION_FORCE);
+
+	destroy_hrtimer_on_stack(&state->timer);
+}
+#endif
+
 static void hrtimer_core_test_assert_order(struct kunit *test,
 					   struct hrtimer_core_test *timers,
 					   int first, int second, int third)
@@ -1283,6 +1353,9 @@ static struct kunit_case hrtimer_core_test_cases[] = {
 #ifdef CONFIG_RUST_HRTIMER_RUN_QUEUES
 	KUNIT_CASE(hrtimer_core_test_run_queues),
 	KUNIT_CASE(hrtimer_core_test_soft_expiry),
+#endif
+#ifdef CONFIG_RUST_HRTIMER_START
+	KUNIT_CASE(hrtimer_core_test_start),
 #endif
 #ifdef CONFIG_RUST_HRTIMER_BASE_MIGRATION
 	KUNIT_CASE(hrtimer_core_test_base_migration),

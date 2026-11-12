@@ -10,6 +10,7 @@
 //! Rust also selects the target CPU base and owns timer base migration.
 //! It also owns the local-base retention decision for the SMP NOHZ path.
 //! It also selects and iterates expired timer queues.
+//! It also owns the first-timer startup state machine.
 //! Locking, clock event reprogramming, ktime arithmetic, callback completion
 //! waits, debug objects, and tracepoint delivery remain outside this module.
 
@@ -27,6 +28,7 @@ type ClockBase = bindings::hrtimer_clock_base;
     CONFIG_RUST_HRTIMER_NEXT_EVENT,
     CONFIG_RUST_HRTIMER_REPROGRAM,
     CONFIG_RUST_HRTIMER_RUN_QUEUES,
+    CONFIG_RUST_HRTIMER_START,
     CONFIG_RUST_HRTIMER_TARGET_BASE
 ))]
 type CpuBase = bindings::hrtimer_cpu_base;
@@ -287,6 +289,356 @@ extern "C" fn rust_hrtimer_prefer_local_select(
         tick_stopped,
         need_resched,
     )
+}
+
+#[cfg(CONFIG_RUST_HRTIMER_START)]
+const START_REPROGRAM_NONE: i32 = 0;
+#[cfg(CONFIG_RUST_HRTIMER_START)]
+const START_REPROGRAM: i32 = 1;
+#[cfg(CONFIG_RUST_HRTIMER_START)]
+const START_REPROGRAM_FORCE: i32 = 2;
+#[cfg(CONFIG_RUST_HRTIMER_START)]
+const START_REMOTE_WAKE: i32 = 3;
+#[cfg(CONFIG_RUST_HRTIMER_START)]
+const START_REPROGRAM_DEFERRED: i32 = 4;
+
+#[cfg(CONFIG_RUST_HRTIMER_START)]
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum StartAction {
+    None,
+    Reprogram,
+    Force,
+    RemoteWake,
+    Deferred,
+}
+
+/// Converts an expiry to absolute time and applies low-resolution policy.
+///
+/// Relative timers use the supplied clock sample. A low-resolution system
+/// records the relative mode on the timer and adds one timer resolution.
+///
+/// # Safety
+///
+/// `timer` must be live for the duration of the call.
+#[cfg(CONFIG_RUST_HRTIMER_START)]
+unsafe fn prepare_expiry(
+    _timer: *mut Hrtimer,
+    tim: bindings::ktime_t,
+    mode: u32,
+    relative_now: bindings::ktime_t,
+) -> bindings::ktime_t {
+    let mut expires = tim;
+    let is_relative = mode & bindings::hrtimer_mode_HRTIMER_MODE_REL != 0;
+    if is_relative {
+        // SAFETY: The safe add wrapper preserves the kernel saturation rule.
+        expires = unsafe { bindings::ktime_add_safe(expires, relative_now) };
+    }
+
+    #[cfg(CONFIG_TIME_LOW_RES)]
+    {
+        // SAFETY: The caller guarantees that the timer is live.
+        unsafe { (*_timer).is_rel = is_relative };
+        if is_relative {
+            // SAFETY: The helper returns the configured timer resolution.
+            let resolution = unsafe { bindings::rust_helper_hrtimer_lowres_resolution() };
+            // SAFETY: The safe add wrapper preserves saturation.
+            expires = unsafe { bindings::ktime_add_safe(expires, resolution) };
+        }
+    }
+
+    expires
+}
+
+/// Selects the clock-event action after a timer startup.
+///
+/// A deferred rearm records that the remote CPU must reevaluate. A local or
+/// online remote startup requests reprogramming only when the timer becomes
+/// first. An offline current CPU wakes the selected remote CPU. A lazy timer
+/// that remains behind the armed event avoids reprogramming.
+#[cfg(CONFIG_RUST_HRTIMER_START)]
+fn select_start_action(
+    deferred: bool,
+    was_first: bool,
+    same_cpu: bool,
+    this_cpu_online: bool,
+    first: bool,
+    lazy_keep_armed: bool,
+) -> StartAction {
+    if deferred {
+        return StartAction::Deferred;
+    }
+
+    if !was_first || !same_cpu {
+        if this_cpu_online {
+            return if first {
+                StartAction::Reprogram
+            } else {
+                StartAction::None
+            };
+        }
+
+        return if first {
+            StartAction::RemoteWake
+        } else {
+            StartAction::None
+        };
+    }
+
+    if lazy_keep_armed {
+        return StartAction::None;
+    }
+
+    StartAction::Force
+}
+
+/// Returns the local-base retention decision.
+///
+/// # Safety
+///
+/// `timer` must be live and its current base must remain stable.
+#[cfg(CONFIG_RUST_HRTIMER_START)]
+unsafe fn start_keep_base(
+    timer: *mut Hrtimer,
+    is_local: bool,
+    is_first: bool,
+    is_pinned: bool,
+) -> bool {
+    #[cfg(CONFIG_RUST_HRTIMER_KEEP_BASE)]
+    {
+        // SAFETY: The caller satisfies the lower-unit requirements.
+        unsafe { rust_hrtimer_keep_base(timer, is_local, is_first, is_pinned) }
+    }
+
+    #[cfg(not(CONFIG_RUST_HRTIMER_KEEP_BASE))]
+    {
+        // SAFETY: The caller satisfies the lower-unit requirements.
+        unsafe { bindings::rust_helper_hrtimer_keep_base(timer, is_local, is_first, is_pinned) }
+    }
+}
+
+/// Removes a timer that is about to change its base.
+///
+/// # Safety
+///
+/// `timer` and `base` must be live, and the caller must hold
+/// `base->cpu_base->lock`.
+#[cfg(CONFIG_RUST_HRTIMER_START)]
+unsafe fn start_remove_timer(
+    timer: *mut Hrtimer,
+    base: *mut ClockBase,
+    _this_cpu_base: *mut CpuBase,
+) -> bool {
+    #[cfg(CONFIG_RUST_HRTIMER_CANCEL)]
+    {
+        // SAFETY: The caller guarantees that the timer is live.
+        if !unsafe { bindings::rust_helper_hrtimer_is_queued(timer) } {
+            return false;
+        }
+
+        // SAFETY: The caller guarantees that the timer is live.
+        unsafe { bindings::rust_helper_hrtimer_debug_deactivate(timer) };
+        // SAFETY: The caller guarantees that both CPU bases are live.
+        let reprogram = unsafe { (*base).cpu_base == _this_cpu_base };
+        // SAFETY: The caller satisfies the lower-unit requirements.
+        unsafe { rust_hrtimer_remove(timer, base, true, reprogram) };
+        true
+    }
+
+    #[cfg(not(CONFIG_RUST_HRTIMER_CANCEL))]
+    {
+        // SAFETY: The caller satisfies the lower-unit requirements.
+        unsafe { bindings::rust_helper_hrtimer_remove_timer(timer, base, true) }
+    }
+}
+
+/// Selects the timer base for startup.
+///
+/// # Safety
+///
+/// `timer` and `base` must be live, and the caller must hold the base lock.
+/// The function returns with the selected base lock held.
+#[cfg(CONFIG_RUST_HRTIMER_START)]
+unsafe fn start_switch_base(
+    timer: *mut Hrtimer,
+    base: *mut ClockBase,
+    pinned: bool,
+) -> *mut ClockBase {
+    #[cfg(CONFIG_RUST_HRTIMER_BASE_MIGRATION)]
+    {
+        // SAFETY: The caller satisfies the lower-unit requirements.
+        unsafe { rust_hrtimer_switch_base(timer, base, pinned) }
+    }
+
+    #[cfg(not(CONFIG_RUST_HRTIMER_BASE_MIGRATION))]
+    {
+        // SAFETY: The caller satisfies the lower-unit requirements.
+        unsafe { bindings::rust_helper_hrtimer_switch_base(timer, base, pinned) }
+    }
+}
+
+/// Inserts a timer during startup.
+///
+/// # Safety
+///
+/// `timer` and `base` must be live, and the caller must hold the base lock.
+#[cfg(CONFIG_RUST_HRTIMER_START)]
+unsafe fn start_enqueue_timer(
+    timer: *mut Hrtimer,
+    base: *mut ClockBase,
+    mode: u32,
+    was_armed: bool,
+) -> bool {
+    #[cfg(CONFIG_RUST_HRTIMER_ENQUEUE)]
+    {
+        // SAFETY: The caller satisfies the lower-unit requirements.
+        unsafe { rust_hrtimer_enqueue(timer, base, mode, was_armed) }
+    }
+
+    #[cfg(not(CONFIG_RUST_HRTIMER_ENQUEUE))]
+    {
+        // SAFETY: The caller satisfies the lower-unit requirements.
+        unsafe { bindings::rust_helper_hrtimer_enqueue_timer(timer, base, mode, was_armed) }
+    }
+}
+
+/// Implements the hrtimer startup state machine.
+///
+/// Rust converts and prepares the expiry, chooses local retention, removes or
+/// requeues the timer, selects its final base, inserts it, and returns the
+/// clock-event action for C to execute.
+///
+/// # Safety
+///
+/// `timer` and `base` must be live, and the caller must hold
+/// `base->cpu_base->lock`. `base` must match `timer->base`. The function may
+/// release the old base lock and return with the selected base lock held.
+#[cfg(CONFIG_RUST_HRTIMER_START)]
+#[export]
+unsafe extern "C" fn rust_hrtimer_start_range_ns(
+    timer: *mut Hrtimer,
+    tim: bindings::ktime_t,
+    delta_ns: u64,
+    mode: u32,
+    mut base: *mut ClockBase,
+) -> i32 {
+    // SAFETY: The helper returns the live current CPU base.
+    let this_cpu_base = unsafe { bindings::rust_helper_hrtimer_this_cpu_base() };
+    // SAFETY: The caller guarantees that the initial base is live.
+    let mut cpu_base = unsafe { (*base).cpu_base };
+    // SAFETY: The caller guarantees that the current CPU base is live.
+    let was_first = unsafe { (*cpu_base).next_timer == timer };
+    let pinned = mode & bindings::hrtimer_mode_HRTIMER_MODE_PINNED != 0;
+    let mut keep_base = false;
+
+    // SAFETY: The caller guarantees that the current CPU base is live.
+    if unsafe { (*this_cpu_base).online } {
+        let is_local = cpu_base == this_cpu_base;
+        // SAFETY: The timer remains locked for this decision.
+        keep_base = unsafe { start_keep_base(timer, is_local, was_first, pinned) };
+    }
+
+    let relative = mode & bindings::hrtimer_mode_HRTIMER_MODE_REL != 0;
+    let relative_now = if relative {
+        // SAFETY: The timer belongs to the locked clock base.
+        unsafe { bindings::hrtimer_cb_get_time(timer) }
+    } else {
+        0
+    };
+    // SAFETY: The caller guarantees that the timer is live.
+    let tim = unsafe { prepare_expiry(timer, tim, mode, relative_now) };
+
+    let first;
+    if keep_base {
+        // SAFETY: The timer remains on the locked base.
+        first = unsafe { rust_hrtimer_requeue_same_base(timer, base, mode, tim, delta_ns) };
+    } else {
+        // SAFETY: The timer is locked while it is removed from its base.
+        let was_armed = unsafe { start_remove_timer(timer, base, this_cpu_base) };
+        // SAFETY: The caller guarantees that the timer is live.
+        unsafe { bindings::rust_helper_hrtimer_set_expires_range_ns(timer, tim, delta_ns) };
+        // SAFETY: The caller remains responsible for the returned base lock.
+        base = unsafe { start_switch_base(timer, base, pinned) };
+        // SAFETY: The selected clock base is live.
+        cpu_base = unsafe { (*base).cpu_base };
+        // SAFETY: The timer is unlocked from any queue and ready to insert.
+        first = unsafe { start_enqueue_timer(timer, base, mode, was_armed) };
+    }
+
+    // SAFETY: The selected CPU base is live and locked.
+    let deferred = unsafe { (*cpu_base).deferred_rearm };
+    // SAFETY: The helper reads the state of the live current CPU base.
+    let this_cpu_online = unsafe { bindings::rust_helper_hrtimer_base_is_online(this_cpu_base) };
+    // SAFETY: The timer and selected CPU base are live and locked.
+    let lazy_keep_armed =
+        unsafe { (*timer).is_lazy && (*cpu_base).expires_next <= (*timer).node.expires };
+    let action = select_start_action(
+        deferred,
+        was_first,
+        cpu_base == this_cpu_base,
+        this_cpu_online,
+        first,
+        lazy_keep_armed,
+    );
+
+    match action {
+        StartAction::None => START_REPROGRAM_NONE,
+        StartAction::Reprogram => START_REPROGRAM,
+        StartAction::Force => START_REPROGRAM_FORCE,
+        StartAction::RemoteWake => {
+            // SAFETY: The selected CPU base is live and owns its callback data.
+            unsafe { bindings::rust_helper_hrtimer_remote_reprogram(cpu_base) };
+            START_REPROGRAM_NONE
+        }
+        StartAction::Deferred => {
+            // SAFETY: The caller holds the selected CPU base lock.
+            unsafe { (*cpu_base).deferred_needs_update = true };
+            START_REPROGRAM_NONE
+        }
+    }
+}
+
+/// Runs expiry preparation with explicit test inputs.
+///
+/// # Safety
+///
+/// `timer` must be live for the duration of the call.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_HRTIMER_START))]
+#[export]
+unsafe extern "C" fn rust_hrtimer_prepare_expiry(
+    timer: *mut Hrtimer,
+    tim: bindings::ktime_t,
+    mode: u32,
+    relative_now: bindings::ktime_t,
+) -> bindings::ktime_t {
+    // SAFETY: The caller guarantees that the timer is live.
+    unsafe { prepare_expiry(timer, tim, mode, relative_now) }
+}
+
+/// Runs the post-startup clock-event action decision with explicit inputs.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_HRTIMER_START))]
+#[export]
+extern "C" fn rust_hrtimer_start_reprogram_select(
+    deferred: bool,
+    was_first: bool,
+    same_cpu: bool,
+    this_cpu_online: bool,
+    first: bool,
+    lazy_keep_armed: bool,
+) -> i32 {
+    match select_start_action(
+        deferred,
+        was_first,
+        same_cpu,
+        this_cpu_online,
+        first,
+        lazy_keep_armed,
+    ) {
+        StartAction::None => START_REPROGRAM_NONE,
+        StartAction::Reprogram => START_REPROGRAM,
+        StartAction::Force => START_REPROGRAM_FORCE,
+        StartAction::RemoteWake => START_REMOTE_WAKE,
+        StartAction::Deferred => START_REPROGRAM_DEFERRED,
+    }
 }
 
 /// Returns whether a selected clock base can meet the timer deadline.

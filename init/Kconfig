@@ -1090,6 +1090,24 @@ config RUST_HRTIMER_RUN_QUEUES
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_HRTIMER_START
+	bool "Rust implementation of hrtimer startup"
+	depends on RUST_HRTIMER
+	default y
+	help
+	  Use Rust for the production startup state machine for high-resolution
+	  timers. This includes relative expiry conversion, low-resolution
+	  adjustment, local-base retention, removal and requeue ordering, base
+	  migration, insertion, deferred rearm, lazy rearm, and reprogram action
+	  selection.
+
+	  Timer base locking, debug initialization checks, current CPU lookup,
+	  clock sampling, async remote reprogramming, tracepoints, lockdep,
+	  and public ABI adapters remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_HRTIMER_BASE_SELECTION
 	bool "Rust implementation of hrtimer base selection"
 	depends on RUST_HRTIMER && SMP
