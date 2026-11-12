@@ -1115,6 +1115,54 @@ static void hrtimer_core_test_start(struct kunit *test)
 }
 #endif
 
+#ifdef CONFIG_RUST_HRTIMER_USER_EXPIRY
+static void hrtimer_core_test_user_expiry(struct kunit *test)
+{
+	struct hrtimer_core_test timer;
+	bool ret;
+
+	KUNIT_EXPECT_TRUE(test,
+			  rust_hrtimer_user_expiry_select(ns_to_ktime(150),
+							  ns_to_ktime(100),
+							  ns_to_ktime(60),
+							  ns_to_ktime(40)));
+	KUNIT_EXPECT_FALSE(test,
+			   rust_hrtimer_user_expiry_select(ns_to_ktime(150),
+							   ns_to_ktime(100),
+							   ns_to_ktime(60),
+							   ns_to_ktime(50)));
+	KUNIT_EXPECT_TRUE(test,
+			  rust_hrtimer_user_expiry_select(ns_to_ktime(150),
+							  ns_to_ktime(100),
+							  ns_to_ktime(50),
+							  ns_to_ktime(100)));
+	KUNIT_EXPECT_FALSE(test,
+			   rust_hrtimer_user_expiry_select(ns_to_ktime(50),
+							   ns_to_ktime(100),
+							   ns_to_ktime(0),
+							   ns_to_ktime(0)));
+
+	atomic_set(&timer.callback_count, 0);
+	init_completion(&timer.completion);
+	hrtimer_setup_on_stack(&timer.timer, hrtimer_core_test_callback,
+			       CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED);
+
+	ret = hrtimer_start_range_ns_user(&timer.timer,
+					  ktime_sub_ms(ktime_get(), 1), 0,
+					  HRTIMER_MODE_ABS_PINNED);
+	KUNIT_EXPECT_FALSE(test, ret);
+	KUNIT_EXPECT_FALSE(test, hrtimer_is_queued(&timer.timer));
+
+	ret = hrtimer_start_range_ns_user(&timer.timer,
+					  ktime_add_ms(ktime_get(), 100000), 0,
+					  HRTIMER_MODE_ABS_PINNED);
+	KUNIT_EXPECT_TRUE(test, ret);
+	KUNIT_EXPECT_TRUE(test, hrtimer_is_queued(&timer.timer));
+	KUNIT_EXPECT_EQ(test, hrtimer_cancel(&timer.timer), 1);
+	destroy_hrtimer_on_stack(&timer.timer);
+}
+#endif
+
 static void hrtimer_core_test_assert_order(struct kunit *test,
 					   struct hrtimer_core_test *timers,
 					   int first, int second, int third)
@@ -1356,6 +1404,9 @@ static struct kunit_case hrtimer_core_test_cases[] = {
 #endif
 #ifdef CONFIG_RUST_HRTIMER_START
 	KUNIT_CASE(hrtimer_core_test_start),
+#endif
+#ifdef CONFIG_RUST_HRTIMER_USER_EXPIRY
+	KUNIT_CASE(hrtimer_core_test_user_expiry),
 #endif
 #ifdef CONFIG_RUST_HRTIMER_BASE_MIGRATION
 	KUNIT_CASE(hrtimer_core_test_base_migration),

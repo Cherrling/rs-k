@@ -11,6 +11,7 @@
 //! It also owns the local-base retention decision for the SMP NOHZ path.
 //! It also selects and iterates expired timer queues.
 //! It also owns the first-timer startup state machine.
+//! It also validates and removes already expired user timers.
 //! Locking, clock event reprogramming, ktime arithmetic, callback completion
 //! waits, debug objects, and tracepoint delivery remain outside this module.
 
@@ -29,7 +30,8 @@ type ClockBase = bindings::hrtimer_clock_base;
     CONFIG_RUST_HRTIMER_REPROGRAM,
     CONFIG_RUST_HRTIMER_RUN_QUEUES,
     CONFIG_RUST_HRTIMER_START,
-    CONFIG_RUST_HRTIMER_TARGET_BASE
+    CONFIG_RUST_HRTIMER_TARGET_BASE,
+    CONFIG_RUST_HRTIMER_USER_EXPIRY
 ))]
 type CpuBase = bindings::hrtimer_cpu_base;
 type TimerLinkedNode = bindings::timerqueue_linked_node;
@@ -638,6 +640,108 @@ extern "C" fn rust_hrtimer_start_reprogram_select(
         StartAction::Force => START_REPROGRAM_FORCE,
         StartAction::RemoteWake => START_REMOTE_WAKE,
         StartAction::Deferred => START_REPROGRAM_DEFERRED,
+    }
+}
+
+/// Returns the user timer deadline when it can be the next expired timer.
+///
+/// The supplied soft expiry is the original user deadline. It is converted to
+/// monotonic time. A deadline at or after the next armed timer does not need a
+/// current-time check.
+#[cfg(CONFIG_RUST_HRTIMER_USER_EXPIRY)]
+fn user_expiry_candidate(
+    soft_expires: bindings::ktime_t,
+    offset: bindings::ktime_t,
+    expires_next: bindings::ktime_t,
+) -> Option<bindings::ktime_t> {
+    let expires = soft_expires.wrapping_sub(offset);
+
+    (expires < expires_next).then_some(expires)
+}
+
+/// Returns whether a candidate user deadline remains in the future.
+#[cfg(CONFIG_RUST_HRTIMER_USER_EXPIRY)]
+fn user_expiry_is_future(expires: bindings::ktime_t, now: bindings::ktime_t) -> bool {
+    expires > now
+}
+
+/// Removes an expired user timer without programming the clock event.
+///
+/// # Safety
+///
+/// `timer` and `base` must be live, and the caller must hold
+/// `base->cpu_base->lock`.
+#[cfg(CONFIG_RUST_HRTIMER_USER_EXPIRY)]
+unsafe fn remove_expired_user_timer(timer: *mut Hrtimer, base: *mut ClockBase) {
+    #[cfg(CONFIG_RUST_HRTIMER_CANCEL)]
+    {
+        // SAFETY: The caller guarantees that the timer is live.
+        unsafe { bindings::rust_helper_hrtimer_debug_deactivate(timer) };
+        // SAFETY: The caller satisfies the removal requirements.
+        unsafe { rust_hrtimer_remove(timer, base, false, false) };
+    }
+
+    #[cfg(not(CONFIG_RUST_HRTIMER_CANCEL))]
+    {
+        // SAFETY: The helper deactivates and removes a queued timer.
+        let _ = unsafe { bindings::rust_helper_hrtimer_remove_timer(timer, base, false) };
+    }
+}
+
+/// Validates and removes an already expired user timer.
+///
+/// Rust uses the timer's soft expiry, converts it to monotonic time, avoids a
+/// clock sample when the timer cannot be first, and compares the remaining
+/// candidate with the current time. An expired candidate is removed and the
+/// caller identifies it with the existing start-expired tracepoint.
+///
+/// # Safety
+///
+/// `timer` must be live, and the caller must hold
+/// `timer->base->cpu_base->lock`. `timer->base` must remain stable for the
+/// duration of the call.
+#[cfg(CONFIG_RUST_HRTIMER_USER_EXPIRY)]
+#[export]
+unsafe extern "C" fn rust_hrtimer_check_user_timer(timer: *mut Hrtimer) -> bool {
+    // SAFETY: The caller guarantees that the timer and clock base are live.
+    let base = unsafe { (*timer).base };
+    // SAFETY: The caller guarantees that the clock and CPU bases are live.
+    let cpu_base = unsafe { (*base).cpu_base };
+    // SAFETY: The caller guarantees that the timer and clock base are live.
+    let expires = match user_expiry_candidate(
+        unsafe { (*timer)._softexpires },
+        unsafe { (*base).offset },
+        // SAFETY: The caller guarantees that the CPU base is live.
+        unsafe { (*cpu_base).expires_next },
+    ) {
+        Some(expires) => expires,
+        None => return true,
+    };
+
+    // SAFETY: It is safe to sample monotonic time in this context.
+    let now = unsafe { bindings::ktime_get() };
+
+    if user_expiry_is_future(expires, now) {
+        return true;
+    }
+
+    // SAFETY: The caller satisfies the removal requirements.
+    unsafe { remove_expired_user_timer(timer, base) };
+    false
+}
+
+/// Runs the user-expiry decision with explicit test inputs.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_HRTIMER_USER_EXPIRY))]
+#[export]
+extern "C" fn rust_hrtimer_user_expiry_select(
+    soft_expires: bindings::ktime_t,
+    offset: bindings::ktime_t,
+    expires_next: bindings::ktime_t,
+    now: bindings::ktime_t,
+) -> bool {
+    match user_expiry_candidate(soft_expires, offset, expires_next) {
+        Some(expires) => user_expiry_is_future(expires, now),
+        None => true,
     }
 }
 

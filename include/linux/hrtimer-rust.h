@@ -77,9 +77,6 @@ rust_hrtimer_clock_base_next_expired(struct hrtimer_clock_base *base,
 
 bool rust_helper_hrtimer_keep_base(struct hrtimer *timer, bool is_local,
 				   bool is_first, bool is_pinned);
-bool rust_helper_hrtimer_remove_timer(struct hrtimer *timer,
-				      struct hrtimer_clock_base *base,
-				      bool newstate);
 struct hrtimer_clock_base *
 rust_helper_hrtimer_switch_base(struct hrtimer *timer,
 				struct hrtimer_clock_base *base, bool pinned);
@@ -111,6 +108,25 @@ int rust_hrtimer_start_reprogram_select(bool deferred, bool was_first,
 #endif
 
 #endif /* CONFIG_RUST_HRTIMER_START */
+
+#if defined(CONFIG_RUST_HRTIMER_START) || \
+	defined(CONFIG_RUST_HRTIMER_USER_EXPIRY)
+
+bool rust_helper_hrtimer_remove_timer(struct hrtimer *timer,
+				      struct hrtimer_clock_base *base,
+				      bool newstate);
+#endif
+
+#ifdef CONFIG_RUST_HRTIMER_USER_EXPIRY
+
+bool rust_hrtimer_check_user_timer(struct hrtimer *timer);
+
+#ifdef CONFIG_KUNIT
+bool rust_hrtimer_user_expiry_select(ktime_t soft_expires, ktime_t offset,
+				     ktime_t expires_next, ktime_t now);
+#endif
+
+#endif /* CONFIG_RUST_HRTIMER_USER_EXPIRY */
 
 #if defined(CONFIG_RUST_HRTIMER_BASE_MIGRATION) || \
 	defined(CONFIG_RUST_HRTIMER_START)

@@ -11,6 +11,8 @@ high-resolution timers.  The ``CONFIG_RUST_HRTIMER_START`` option selects
 Rust for the production startup state machine.  That state machine converts
 the expiry, updates or moves the timer, inserts it, handles deferred rearm,
 and selects the clock event action.
+``CONFIG_RUST_HRTIMER_USER_EXPIRY`` selects Rust for validating and removing
+an already expired user-controlled timer.
 ``CONFIG_RUST_HRTIMER_ENQUEUE`` selects Rust for inserting a timer into its
 selected clock base.  The
 ``CONFIG_RUST_HRTIMER_CALLBACK`` option selects Rust for the state transitions
@@ -76,6 +78,9 @@ Rust owns these production decisions:
   action.
 * Waking an offline current CPU's remote target when needed and retaining an
   already armed lazy event when its new expiry is later.
+* Converting a user timer's soft expiry to monotonic time, avoiding an
+  unnecessary clock sample when it cannot be first, and removing it when it
+  is already expired.
 * Selecting the earliest active hard or soft clock base and updating the
   corresponding next-timer pointers.
 * Combining hard and soft next events, caching the soft expiry, and selecting
@@ -109,6 +114,13 @@ deferred-rearm recording, remote wake selection, lazy-event retention, and the
 final ``NONE``, ``REPROGRAM``, or ``FORCE`` action.  Production startup
 returns only those three actions to C.  Rust performs a remote asynchronous
 wakeup or deferred-rearm update before returning when required.
+
+The C ``hrtimer_check_user_timer()`` path calls
+``rust_hrtimer_check_user_timer()`` when the user-expiry option is enabled.
+The original C soft-expiry conversion, next-timer comparison, future-time
+validation, and expired-removal sequence are compiled out.  C emits the
+existing start-expired tracepoint after Rust reports that the timer was
+removed.
 
 The C ``remove_and_enqueue_same_base()`` path calls
 ``rust_hrtimer_requeue_same_base()`` when the Rust option is enabled.  The
@@ -201,6 +213,8 @@ The following operations remain in C:
 * The lockless inactive fast path in ``hrtimer_try_to_cancel()``.
 * Debug object activation and deactivation.
 * HRTimer tracepoint delivery.
+* The start-expired tracepoint adapter and the C removal fallback used when
+  the cancellation state machine is independently disabled.
 * Clock event reprogramming and the asynchronous remote CPU wakeup
   primitive.
 * Clock offset updates and clock-was-set sequence advancement.
@@ -252,6 +266,13 @@ When the timer was first and remains on the same CPU base, a lazy timer with
 an expiry no earlier than ``expires_next`` keeps the existing armed event.
 Otherwise, startup requests a forced reprogram because removal suppressed the
 normal reprogram.
+
+User-expiry validation uses ``_softexpires`` instead of the slack-adjusted
+hard expiry.  A timer whose converted soft expiry is not earlier than
+``expires_next`` is accepted without sampling the current time.  Otherwise,
+the timer is expired when its soft expiry is less than or equal to the current
+time.  Expired removal publishes the inactive queued state and performs no
+clock event reprogramming.
 
 An in-place update is valid only when the new expiry does not pass the next
 neighbor.  A first timer may move later within that bound.  A non-first timer
@@ -343,8 +364,13 @@ The migration unit must pass these checks before integration:
 * Repeated four-vCPU Rust KUnit runs.
 * Repeated four-vCPU C startup fallback runs with
   ``CONFIG_RUST_HRTIMER_START`` disabled.
+* Repeated four-vCPU C startup fallback runs with Rust user expiry enabled.
 * Repeated four-vCPU startup runs with insertion, cancellation, local-base
   retention, and base migration independently disabled.
+* Repeated four-vCPU Rust user-expiry runs and C fallback runs with
+  ``CONFIG_RUST_HRTIMER_USER_EXPIRY`` disabled.
+* User-expiry runs with the Rust cancellation state machine independently
+  disabled.
 * A four-vCPU C base-selection fallback KUnit run.
 * A four-vCPU C target-selection fallback KUnit run.
 * A four-vCPU C local-base retention fallback KUnit run.
@@ -365,6 +391,8 @@ The migration unit must pass these checks before integration:
 * Absolute and relative expiry conversion, same-base startup, migration
   startup, deferred rearm, local and remote first timers, offline current CPU,
   lazy armed-event retention, and forced reprogram decisions.
+* User-expiry offset conversion, next-timer short-circuiting, future and
+  exactly expired deadlines, expired removal, and a successful restart.
 * Local, offline-CPU, earlier remote, equal-deadline, and later remote base
   selection decisions.
 * Online target retention, NOHZ migration, pinned target retention, and
@@ -404,11 +432,19 @@ The migration unit must pass these checks before integration:
 Validation evidence
 -------------------
 
-The hrtimer startup, queue, base-selection, target-selection,
+The hrtimer startup, user-expiry, queue, base-selection, target-selection,
 base-migration, next-event, reprogramming, insertion, callback lifecycle,
 cancellation, and forwarding state was validated on 2026-11-11 and 2026-11-12
 with x86_64 ``LLVM=1`` builds and QEMU 11.1.3:
 
+* Three consecutive four-vCPU Rust user-expiry runs passed all nineteen KUnit
+  cases.
+* Three consecutive four-vCPU C user-expiry fallback runs passed all eighteen
+  applicable cases with ``CONFIG_RUST_HRTIMER_USER_EXPIRY`` disabled.
+* Three consecutive four-vCPU Rust user-expiry runs passed all eighteen
+  applicable cases with ``CONFIG_RUST_HRTIMER_CANCEL`` disabled.
+* Three consecutive four-vCPU runs with C startup fallback and Rust user
+  expiry enabled passed all eighteen applicable cases.
 * Three consecutive four-vCPU Rust startup runs passed all eighteen KUnit
   cases.
 * Three consecutive four-vCPU C startup fallback runs passed all seventeen
@@ -468,10 +504,13 @@ with x86_64 ``LLVM=1`` builds and QEMU 11.1.3:
 * The four-vCPU C forwarding fallback passed all five cases with
   ``CONFIG_RUST_HRTIMER_FORWARD`` disabled.
 * Three consecutive four-vCPU runs on each generic inline KASAN, lockdep, and
-  PREEMPT_RT image passed all eighteen cases with the Rust implementation
+  PREEMPT_RT image passed all nineteen cases with the Rust implementation
   enabled.
 * Three consecutive four-vCPU images with ``CONFIG_RUST_RBTREE`` disabled
-  passed all eighteen cases.
+  passed all nineteen cases.
+* The user-expiry cases covered soft-expiry offset conversion, the next-timer
+  short-circuit, a future candidate, equality with the current time,
+  expired removal, and a successful restart.
 * The startup cases covered absolute and relative expiry preparation,
   same-base startup, migration startup, deferred rearm, local and remote first
   timers, offline current CPU, lazy armed-event retention, and forced
@@ -525,14 +564,17 @@ with x86_64 ``LLVM=1`` builds and QEMU 11.1.3:
   removal and cancellation paths call ``rust_hrtimer_remove()`` and
   ``rust_hrtimer_try_to_cancel_locked()``. The cancellation wait path calls
   ``rust_hrtimer_cancel()``. The forwarding path calls
-  ``rust_hrtimer_forward()``. The linked vmlinux resolves these functions
-  and the base-selection, target-selection, base-retention, base-migration,
+  ``rust_hrtimer_forward()``. The user-expiry path calls
+  ``rust_hrtimer_check_user_timer()``. The linked vmlinux resolves these
+  functions and the base-selection, target-selection, base-retention,
+  base-migration,
   callback, expiry-selection, and cancellation helpers. The call paths
   resolve from ``hrtimer_start_range_ns_common()`` to
   ``rust_hrtimer_start_range_ns()``, from ``hrtimer_keep_base()`` to
-  ``rust_hrtimer_keep_base()``, and from ``__hrtimer_run_queues()`` to
-  ``rust_hrtimer_run_queues()``. It contains no unresolved hrtimer migration
-  symbols. No module references these internal symbols.
+  ``rust_hrtimer_keep_base()``, from ``hrtimer_start_range_ns_user()`` to
+  ``rust_hrtimer_check_user_timer()``, and from ``__hrtimer_run_queues()``
+  to ``rust_hrtimer_run_queues()``. It contains no unresolved hrtimer
+  migration symbols. No module references these internal symbols.
 * Rustfmt and Clippy pass. Clippy uses the kernel trailing ``-D warnings``
   policy. Strict checkpatch reports no errors, warnings, or checks.
 
@@ -546,6 +588,8 @@ Reopen the C boundary decision if any of these conditions changes:
   granularity, or deferred-rearm ownership changes.
 * Remove and requeue ordering, first-timer snapshots, lazy-event retention,
   or final reprogram action semantics change.
+* User soft-expiry ownership, the strict current-time comparison, or the
+  no-reprogram expired-removal rule changes.
 * The PREEMPT_RT callback wait primitive or expiry-lock protocol changes.
 * Timer queue linked ordering or first-entry maintenance changes.
 * The stable active-base snapshot, clock-base order, offset application, or

@@ -1108,6 +1108,23 @@ config RUST_HRTIMER_START
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_HRTIMER_USER_EXPIRY
+	bool "Rust implementation of user hrtimer expiry checks"
+	depends on RUST_HRTIMER
+	default y
+	help
+	  Use Rust for the production expiry validation and removal state
+	  machine for user-controlled high-resolution timers. Rust converts
+	  the soft expiry to monotonic time, compares it with the next armed
+	  timer, samples the current time only when required, and removes an
+	  already expired timer.
+
+	  Timer base locking, debug object hooks, tracepoints, clock event
+	  reprogramming, and public ABI adapters remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_HRTIMER_BASE_SELECTION
 	bool "Rust implementation of hrtimer base selection"
 	depends on RUST_HRTIMER && SMP

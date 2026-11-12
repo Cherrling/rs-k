@@ -1539,7 +1539,8 @@ static inline bool remove_hrtimer(struct hrtimer *timer, struct hrtimer_clock_ba
 	return false;
 }
 
-#ifdef CONFIG_RUST_HRTIMER_START
+#if defined(CONFIG_RUST_HRTIMER_START) || \
+	defined(CONFIG_RUST_HRTIMER_USER_EXPIRY)
 bool rust_helper_hrtimer_remove_timer(struct hrtimer *timer,
 				      struct hrtimer_clock_base *base,
 				      bool newstate)
@@ -1884,6 +1885,17 @@ void hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim, u64 delta_ns,
 }
 EXPORT_SYMBOL_GPL(hrtimer_start_range_ns);
 
+#ifdef CONFIG_RUST_HRTIMER_USER_EXPIRY
+static inline bool hrtimer_check_user_timer(struct hrtimer *timer)
+{
+	bool queued = rust_hrtimer_check_user_timer(timer);
+
+	if (!queued)
+		trace_hrtimer_start_expired(timer);
+
+	return queued;
+}
+#else
 static inline bool hrtimer_check_user_timer(struct hrtimer *timer)
 {
 	struct hrtimer_cpu_base *cpu_base = timer->base->cpu_base;
@@ -1916,6 +1928,7 @@ static inline bool hrtimer_check_user_timer(struct hrtimer *timer)
 	trace_hrtimer_start_expired(timer);
 	return false;
 }
+#endif
 
 /**
  * hrtimer_start_range_ns_user - (re)start an user controlled hrtimer
