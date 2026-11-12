@@ -157,6 +157,25 @@ static void sched_wake_test_uninterruptible_timeout(struct kunit *test)
 }
 #endif
 
+#ifdef CONFIG_RUST_SCHED_RQ_TRANSITION
+static void sched_wake_test_rq_transition_plan(struct kunit *test)
+{
+	int dequeue_sleep_flag;
+
+	dequeue_sleep_flag = rust_helper_sched_rq_dequeue_sleep_flag();
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_RQ_ADD_MIGRATED,
+			rust_sched_rq_transition_select(true, 0,
+							dequeue_sleep_flag));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_RQ_WARN_DEQUEUE_SLEEP,
+			rust_sched_rq_transition_select(false,
+							dequeue_sleep_flag,
+							dequeue_sleep_flag));
+	KUNIT_EXPECT_EQ(test, 0,
+			rust_sched_rq_transition_select(false, 0,
+							dequeue_sleep_flag));
+}
+#endif
+
 static void sched_wake_test_current(struct kunit *test)
 {
 	KUNIT_EXPECT_EQ(test, 0, wake_up_process(current));
@@ -210,6 +229,9 @@ static struct kunit_case sched_wake_test_cases[] = {
 #ifdef CONFIG_RUST_SCHED_BLOCK_TASK
 	KUNIT_CASE(sched_wake_test_block_plan),
 	KUNIT_CASE(sched_wake_test_uninterruptible_timeout),
+#endif
+#ifdef CONFIG_RUST_SCHED_RQ_TRANSITION
+	KUNIT_CASE(sched_wake_test_rq_transition_plan),
 #endif
 	KUNIT_CASE(sched_wake_test_current),
 	KUNIT_CASE(sched_wake_test_stopped_task),

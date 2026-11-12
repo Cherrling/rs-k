@@ -15,6 +15,8 @@ The ``CONFIG_RUST_SCHED_TTWU_ACTIVATE`` option selects Rust for the production
 woke-task activation state machine.
 The ``CONFIG_RUST_SCHED_BLOCK_TASK`` option selects Rust for the production
 task blocking state machine.
+The ``CONFIG_RUST_SCHED_RQ_TRANSITION`` option selects Rust for the production
+task activation and deactivation state machines.
 
 Rust owns these production decisions:
 
@@ -34,13 +36,16 @@ Rust owns these production decisions:
 * Classifying whether a blocking task contributes to load, classifying whether
   its state is special, updating its load flag, selecting special dequeue,
   and deciding whether dequeue and block accounting run.
+* Detecting migrating tasks, selecting migrated enqueue, rejecting sleeping
+  deactivation, publishing runqueue membership, and ordering dequeue.
 
 Task-state memory accesses, warning delivery, task and runqueue locking,
 scheduler queue and proxy operations, wake-list handling, CPU selection,
 preemption, tracing, statistics, and public scheduler ABI adapters remain in
 C. Runqueue queue operations, the class callback, and its lock unpin and
 repin also remain in C. The task load bitfield write, blocking dequeue, and
-block accounting primitives also remain in C.
+block accounting primitives also remain in C. Task runqueue membership
+writes, writer assertions, warnings, and queue operations also remain in C.
 
 Entry points and ownership
 --------------------------
@@ -65,6 +70,8 @@ The Rust-to-C helper calls are:
   callback.
 * The task contributes-to-load bitfield write, blocking dequeue with selected
   sleep and special flags, and block accounting.
+* Migrating-state queries, migrated enqueue, task runqueue membership writes,
+  the invalid sleeping-dequeue warning, and dequeue.
 
 The C-to-Rust production entries are:
 
@@ -73,6 +80,8 @@ The C-to-Rust production entries are:
 * ``rust_sched_ttwu_runnable_locked()``.
 * ``rust_sched_ttwu_activate_locked()``.
 * ``rust_sched_block_task_locked()``.
+* ``rust_sched_activate_task_locked()``.
+* ``rust_sched_deactivate_task_locked()``.
 
 The caller keeps the existing ``p->pi_lock`` serialization, or the current-task
 preemption exclusion, around the state-match entries. For the runnable entry,
@@ -90,6 +99,12 @@ For the blocking entry, C validates that the task runqueue lock is held and
 passes the task state to Rust. Rust classifies the state and calls the bitfield,
 dequeue, and accounting helpers in order. C retains ownership of the runqueue
 lock across the complete Rust call.
+
+For activation and deactivation, C validates that it holds the runqueue lock
+and passes the operation flags to Rust. Rust owns the transition decision and
+calls the enqueue and dequeue functions directly through the bindgen-generated
+FFI declarations, together with the membership-write and warning helpers. C
+retains the lock across the complete Rust call.
 
 Retained C boundary
 -------------------
@@ -129,6 +144,16 @@ scheduler ABI adapters in C. Rust owns the load and special-state masks, the
 conditions for updating the load flag, the special dequeue decision, and the
 order of dequeue and accounting. The accounting helper runs only after the
 scheduling class accepts the dequeue.
+
+The transition path retains task runqueue membership writes, writer
+assertions, warning delivery, queue operations, tracing, and public scheduler
+ABI adapters in C. Rust owns migrated-state detection, the condition that adds
+``ENQUEUE_MIGRATED``, the condition that warns about ``DEQUEUE_SLEEP``, and
+the order of membership publication and dequeue. Rust composes the enqueue
+flags and calls ``enqueue_task()`` and ``dequeue_task()`` directly. There is
+no runtime C wrapper for either queue operation. C supplies the existing
+declarations to bindgen, the raw membership read and write, writer assertion,
+and warning mechanism.
 
 Important invariants
 --------------------
@@ -173,14 +198,21 @@ the special dequeue flag even when they do not contribute to load. Rust writes
 the load flag before dequeue, requests sleeping dequeue on the current
 runqueue, and requests block accounting only when dequeue succeeds.
 
+Activation checks the migrating state before enqueue. A migrating task is
+enqueued with ``ENQUEUE_MIGRATED`` and becomes queued only after enqueue
+returns. Deactivation warns when ``DEQUEUE_SLEEP`` is present, publishes the
+migrating state before dequeue, and preserves that state until a later
+activation publishes the queued state.
+
 Validation gate
 ---------------
 
 The Rust KUnit cases cover the state-match table, saved-state transition,
 activation action selection, blocking action selection, and a real
-uninterruptible timeout. Real wakeup cases cover current-task rejection,
-waking a stopped kernel thread, and waking a queued runnable task with both
-the Rust and C implementations.
+uninterruptible timeout. The transition action table covers migrated enqueue
+and invalid sleeping dequeue. Real wakeup cases cover current-task rejection,
+waking a stopped kernel thread, waking a queued runnable task, and real
+activation and deactivation traffic with both the Rust and C implementations.
 
 The unit must pass repeated four-vCPU Rust runs, a C fallback run, PREEMPT_RT,
 KASAN, lockdep, and a no-KUnit production build. Static checks include Rustfmt,
@@ -271,6 +303,28 @@ builds and QEMU 11.1.3:
 * The production image contained no unresolved symbols. No run reported a
   ``BUG``, warning, KASAN report, lock dependency diagnosis, Oops, or panic.
 
+The runqueue-transition unit was validated on 2026-11-13 with x86_64
+``LLVM=1`` builds and QEMU 11.1.3:
+
+* Three consecutive four-vCPU Rust runs passed all nine scheduler cases.
+* Three consecutive four-vCPU hrtimer regression runs passed all twenty-five
+  cases on the same image.
+* Three consecutive four-vCPU C fallback runs passed all eight applicable
+  cases with only ``CONFIG_RUST_SCHED_RQ_TRANSITION`` disabled.
+* Three consecutive four-vCPU runs with only this Rust scheduler option
+  enabled passed all four applicable scheduler cases and all twenty-five
+  hrtimer cases.
+* Three consecutive four-vCPU runs each on PREEMPT_RT, KASAN, and lockdep
+  images passed all nine scheduler cases and all twenty-five hrtimer cases.
+* The full Rust image built with Clippy, Rustfmt, and no unresolved symbols.
+* Rust calls ``enqueue_task()`` and ``dequeue_task()`` directly through
+  bindgen and owns their flags and ordering. The runtime C boundary contains
+  only the migrating-state read, membership-state write, writer assertion,
+  and warning mechanism. A separate constant accessor is compiled only for
+  KUnit.
+* No run reported a ``BUG``, warning, KASAN report, lock dependency diagnosis,
+  Oops, or panic.
+
 Review conditions
 -----------------
 
@@ -291,3 +345,7 @@ Reopen this boundary decision if any of these conditions changes:
   blocking dequeue and accounting order changes.
 * Rust gains stable task bitfield access or safe runqueue dequeue and block
   accounting abstractions.
+* Runqueue membership states, migration enqueue flags, sleeping-dequeue
+  validation, or activation and deactivation ordering changes.
+* Rust gains stable task runqueue membership access or safe enqueue and
+  dequeue abstractions.

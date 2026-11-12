@@ -107,4 +107,30 @@ unsigned int rust_sched_block_task_select(unsigned int task_state);
 
 #endif /* CONFIG_RUST_SCHED_BLOCK_TASK */
 
+#ifdef CONFIG_RUST_SCHED_RQ_TRANSITION
+
+#define RUST_SCHED_RQ_ADD_MIGRATED		0x01
+#define RUST_SCHED_RQ_WARN_DEQUEUE_SLEEP	0x02
+
+void enqueue_task(struct rq *rq, struct task_struct *task, int flags);
+bool dequeue_task(struct rq *rq, struct task_struct *task, int flags);
+
+bool rust_helper_sched_rq_on_migrating(struct task_struct *task);
+void rust_helper_sched_rq_set_state(struct task_struct *task, bool migrating);
+void rust_helper_sched_rq_warn_dequeue_sleep(void);
+
+void rust_sched_activate_task_locked(struct rq *rq, struct task_struct *task,
+				     int flags, int enqueue_migrated_flag);
+void rust_sched_deactivate_task_locked(struct rq *rq, struct task_struct *task,
+				       int flags, int dequeue_sleep_flag);
+
+#ifdef CONFIG_KUNIT
+int rust_helper_sched_rq_dequeue_sleep_flag(void);
+unsigned int rust_sched_rq_transition_select(bool migrating,
+					     int deactivate_flags,
+					     int dequeue_sleep_flag);
+#endif
+
+#endif /* CONFIG_RUST_SCHED_RQ_TRANSITION */
+
 #endif /* _LINUX_SCHED_RUST_H */

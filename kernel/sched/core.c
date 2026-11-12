@@ -2227,8 +2227,38 @@ inline bool dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 	return p->sched_class->dequeue_task(rq, p, flags);
 }
 
+#ifdef CONFIG_RUST_SCHED_RQ_TRANSITION
+bool rust_helper_sched_rq_on_migrating(struct task_struct *task)
+{
+	return task_on_rq_migrating(task);
+}
+
+void rust_helper_sched_rq_set_state(struct task_struct *task, bool migrating)
+{
+	WRITE_ONCE(task->on_rq, migrating ? TASK_ON_RQ_MIGRATING :
+					   TASK_ON_RQ_QUEUED);
+	ASSERT_EXCLUSIVE_WRITER(task->on_rq);
+}
+
+void rust_helper_sched_rq_warn_dequeue_sleep(void)
+{
+	WARN_ON_ONCE(1);
+}
+
+#ifdef CONFIG_KUNIT
+int rust_helper_sched_rq_dequeue_sleep_flag(void)
+{
+	return DEQUEUE_SLEEP;
+}
+#endif
+#endif
+
 void activate_task(struct rq *rq, struct task_struct *p, int flags)
 {
+#ifdef CONFIG_RUST_SCHED_RQ_TRANSITION
+	lockdep_assert_rq_held(rq);
+	rust_sched_activate_task_locked(rq, p, flags, ENQUEUE_MIGRATED);
+#else
 	if (task_on_rq_migrating(p))
 		flags |= ENQUEUE_MIGRATED;
 
@@ -2236,10 +2266,15 @@ void activate_task(struct rq *rq, struct task_struct *p, int flags)
 
 	WRITE_ONCE(p->on_rq, TASK_ON_RQ_QUEUED);
 	ASSERT_EXCLUSIVE_WRITER(p->on_rq);
+#endif
 }
 
 void deactivate_task(struct rq *rq, struct task_struct *p, int flags)
 {
+#ifdef CONFIG_RUST_SCHED_RQ_TRANSITION
+	lockdep_assert_rq_held(rq);
+	rust_sched_deactivate_task_locked(rq, p, flags, DEQUEUE_SLEEP);
+#else
 	WARN_ON_ONCE(flags & DEQUEUE_SLEEP);
 
 	WRITE_ONCE(p->on_rq, TASK_ON_RQ_MIGRATING);
@@ -2251,6 +2286,7 @@ void deactivate_task(struct rq *rq, struct task_struct *p, int flags)
 	 */
 
 	dequeue_task(rq, p, flags);
+#endif
 }
 
 #ifdef CONFIG_RUST_SCHED_BLOCK_TASK

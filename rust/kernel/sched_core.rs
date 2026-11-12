@@ -7,13 +7,14 @@
 //! locking, run-queue operations, and task selection.
 
 use crate::bindings;
-#[cfg(CONFIG_RUST_SCHED_WAKE_STATE)]
+#[cfg(any(CONFIG_RUST_SCHED_WAKE_STATE, CONFIG_RUST_SCHED_RQ_TRANSITION))]
 use crate::ffi::c_int;
 use macros::export;
 
 type Task = bindings::task_struct;
 #[cfg(any(
     CONFIG_RUST_SCHED_BLOCK_TASK,
+    CONFIG_RUST_SCHED_RQ_TRANSITION,
     CONFIG_RUST_SCHED_TTWU_ACTIVATE,
     CONFIG_RUST_SCHED_TTWU_RUNNABLE
 ))]
@@ -313,4 +314,97 @@ unsafe extern "C" fn rust_sched_block_task_locked(rq: *mut Rq, task: *mut Task, 
         // SAFETY: Dequeue succeeded and the runqueue lock remains held.
         unsafe { bindings::rust_helper_sched_block_finish(rq, task) };
     }
+}
+
+#[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
+const RQ_ADD_MIGRATED: u32 = 0x01;
+#[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
+const RQ_WARN_DEQUEUE_SLEEP: u32 = 0x02;
+
+/// Selects the actions for a task runqueue activation or deactivation.
+#[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
+fn rq_transition_plan(migrating: bool, deactivate_flags: c_int, dequeue_sleep_flag: c_int) -> u32 {
+    let mut plan = 0;
+
+    if migrating {
+        plan |= RQ_ADD_MIGRATED;
+    }
+    if deactivate_flags & dequeue_sleep_flag != 0 {
+        plan |= RQ_WARN_DEQUEUE_SLEEP;
+    }
+
+    plan
+}
+
+/// Returns the runqueue transition action bits for the scheduler KUnit table.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_RQ_TRANSITION))]
+#[export]
+extern "C" fn rust_sched_rq_transition_select(
+    migrating: bool,
+    deactivate_flags: c_int,
+    dequeue_sleep_flag: c_int,
+) -> u32 {
+    rq_transition_plan(migrating, deactivate_flags, dequeue_sleep_flag)
+}
+
+/// Activates a task while its runqueue lock remains held.
+///
+/// Rust owns migrated-enqueue selection, queue insertion, and queued-state
+/// publication order.
+///
+/// # Safety
+///
+/// `task` must remain live, `rq` must be its current runqueue, and the caller
+/// must hold the runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
+#[export]
+unsafe extern "C" fn rust_sched_activate_task_locked(
+    rq: *mut Rq,
+    task: *mut Task,
+    flags: c_int,
+    enqueue_migrated_flag: c_int,
+) {
+    // SAFETY: The caller holds the task runqueue lock.
+    let migrating = unsafe { bindings::rust_helper_sched_rq_on_migrating(task) };
+    let plan = rq_transition_plan(migrating, 0, 0);
+    let flags = if plan & RQ_ADD_MIGRATED != 0 {
+        flags | enqueue_migrated_flag
+    } else {
+        flags
+    };
+
+    // SAFETY: The task is entering the caller's locked runqueue.
+    unsafe { bindings::enqueue_task(rq, task, flags) };
+    // SAFETY: The scheduling class accepted the queue insertion.
+    unsafe { bindings::rust_helper_sched_rq_set_state(task, false) };
+}
+
+/// Deactivates a task while its runqueue lock remains held.
+///
+/// Rust owns sleeping-dequeue validation and the order of migrating-state
+/// publication and dequeue.
+///
+/// # Safety
+///
+/// `task` must remain live, `rq` must be its current runqueue, and the caller
+/// must hold the runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
+#[export]
+unsafe extern "C" fn rust_sched_deactivate_task_locked(
+    rq: *mut Rq,
+    task: *mut Task,
+    flags: c_int,
+    dequeue_sleep_flag: c_int,
+) {
+    let plan = rq_transition_plan(false, flags, dequeue_sleep_flag);
+
+    if plan & RQ_WARN_DEQUEUE_SLEEP != 0 {
+        // SAFETY: The helper emits the existing scheduler warning.
+        unsafe { bindings::rust_helper_sched_rq_warn_dequeue_sleep() };
+    }
+
+    // SAFETY: The task is leaving the caller's locked runqueue.
+    unsafe { bindings::rust_helper_sched_rq_set_state(task, true) };
+    // SAFETY: The task runqueue lock remains held.
+    unsafe { bindings::dequeue_task(rq, task, flags) };
 }
