@@ -6,6 +6,7 @@
 #ifndef _LINUX_HRTIMER_RUST_H
 #define _LINUX_HRTIMER_RUST_H
 
+#include <linux/bitops.h>
 #include <linux/hrtimer_types.h>
 #include <linux/types.h>
 
@@ -30,6 +31,27 @@ bool rust_hrtimer_requeue_same_base(struct hrtimer *timer,
 				    u64 delta_ns);
 
 #endif /* CONFIG_RUST_HRTIMER */
+
+#ifdef CONFIG_RUST_HRTIMER_SETUP
+
+void rust_helper_hrtimer_setup_invalid_clockid(clockid_t clock_id);
+void rust_hrtimer_setup(struct hrtimer *timer,
+			enum hrtimer_restart (*function)(struct hrtimer *),
+			clockid_t clock_id, unsigned int mode,
+			struct hrtimer_cpu_base *cpu_base);
+
+#ifdef CONFIG_KUNIT
+#define RUST_HRTIMER_SETUP_SOFT		BIT(0)
+#define RUST_HRTIMER_SETUP_HARD		BIT(1)
+#define RUST_HRTIMER_SETUP_LAZY		BIT(2)
+#define RUST_HRTIMER_SETUP_BASE_SHIFT	8
+#define RUST_HRTIMER_SETUP_BASE_MASK	(0xffU << RUST_HRTIMER_SETUP_BASE_SHIFT)
+
+unsigned int rust_hrtimer_setup_select(clockid_t clock_id, unsigned int mode,
+				       bool preempt_rt);
+#endif
+
+#endif /* CONFIG_RUST_HRTIMER_SETUP */
 
 #ifdef CONFIG_RUST_HRTIMER_ENQUEUE
 

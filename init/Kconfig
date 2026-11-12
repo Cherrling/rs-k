@@ -1042,6 +1042,24 @@ config RUST_HRTIMER
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_HRTIMER_SETUP
+	bool "Rust implementation of hrtimer initialization"
+	depends on RUST_HRTIMER
+	default y
+	help
+	  Use Rust for the production hrtimer initialization state. Rust
+	  selects hard or soft expiry mode, applies the PREEMPT_RT conversion,
+	  maps the clock ID and POSIX relative realtime behavior to a clock
+	  base, clears the timer, initializes its queue node, and installs the
+	  callback.
+
+	  Debug object tracking, tracepoints, missing-callback diagnostics,
+	  clock ID diagnostics, the current CPU base lookup, and public ABI
+	  adapters remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_HRTIMER_ENQUEUE
 	bool "Rust implementation of hrtimer insertion"
 	depends on RUST_HRTIMER

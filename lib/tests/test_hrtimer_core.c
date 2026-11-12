@@ -145,6 +145,92 @@ static void hrtimer_core_test_start_pinned(struct hrtimer_core_test *test,
 	hrtimer_start(&test->timer, expires, HRTIMER_MODE_ABS_PINNED);
 }
 
+#ifdef CONFIG_RUST_HRTIMER_SETUP
+#define HRTIMER_SETUP_BASE(action)					\
+	(((action) & RUST_HRTIMER_SETUP_BASE_MASK) >>			\
+	 RUST_HRTIMER_SETUP_BASE_SHIFT)
+
+static void hrtimer_core_test_setup(struct kunit *test)
+{
+	struct hrtimer timer;
+	unsigned int action;
+
+	action = rust_hrtimer_setup_select(CLOCK_MONOTONIC,
+					   HRTIMER_MODE_ABS, false);
+	KUNIT_EXPECT_EQ(test, HRTIMER_BASE_MONOTONIC,
+			HRTIMER_SETUP_BASE(action));
+	KUNIT_EXPECT_EQ(test, 0, action & (RUST_HRTIMER_SETUP_SOFT |
+					   RUST_HRTIMER_SETUP_HARD |
+					   RUST_HRTIMER_SETUP_LAZY));
+
+	action = rust_hrtimer_setup_select(CLOCK_REALTIME,
+					   HRTIMER_MODE_REL, false);
+	KUNIT_EXPECT_EQ(test, HRTIMER_BASE_MONOTONIC,
+			HRTIMER_SETUP_BASE(action));
+
+	action = rust_hrtimer_setup_select(CLOCK_MONOTONIC_RAW,
+					   HRTIMER_MODE_ABS, false);
+	KUNIT_EXPECT_EQ(test, HRTIMER_BASE_MONOTONIC,
+			HRTIMER_SETUP_BASE(action));
+
+	action = rust_hrtimer_setup_select(CLOCK_BOOTTIME,
+					   HRTIMER_MODE_ABS_SOFT |
+					   HRTIMER_MODE_LAZY_REARM, false);
+	KUNIT_EXPECT_EQ(test, HRTIMER_BASE_BOOTTIME_SOFT,
+			HRTIMER_SETUP_BASE(action));
+	KUNIT_EXPECT_EQ(test, RUST_HRTIMER_SETUP_SOFT |
+			RUST_HRTIMER_SETUP_LAZY,
+			action & (RUST_HRTIMER_SETUP_SOFT |
+				  RUST_HRTIMER_SETUP_HARD |
+				  RUST_HRTIMER_SETUP_LAZY));
+
+	action = rust_hrtimer_setup_select(CLOCK_TAI,
+					   HRTIMER_MODE_ABS_HARD, false);
+	KUNIT_EXPECT_EQ(test, HRTIMER_BASE_TAI, HRTIMER_SETUP_BASE(action));
+	KUNIT_EXPECT_EQ(test, RUST_HRTIMER_SETUP_HARD,
+			action & (RUST_HRTIMER_SETUP_SOFT |
+				  RUST_HRTIMER_SETUP_HARD |
+				  RUST_HRTIMER_SETUP_LAZY));
+
+	action = rust_hrtimer_setup_select(CLOCK_REALTIME,
+					   HRTIMER_MODE_ABS, true);
+	KUNIT_EXPECT_EQ(test, HRTIMER_BASE_REALTIME_SOFT,
+			HRTIMER_SETUP_BASE(action));
+	KUNIT_EXPECT_EQ(test, RUST_HRTIMER_SETUP_SOFT,
+			action & (RUST_HRTIMER_SETUP_SOFT |
+				  RUST_HRTIMER_SETUP_HARD));
+
+	action = rust_hrtimer_setup_select(CLOCK_MONOTONIC,
+					   HRTIMER_MODE_ABS_HARD, true);
+	KUNIT_EXPECT_EQ(test, HRTIMER_BASE_MONOTONIC,
+			HRTIMER_SETUP_BASE(action));
+	KUNIT_EXPECT_EQ(test, RUST_HRTIMER_SETUP_HARD,
+			action & (RUST_HRTIMER_SETUP_SOFT |
+				  RUST_HRTIMER_SETUP_HARD));
+
+	memset(&timer, 0xff, sizeof(timer));
+	hrtimer_setup_on_stack(&timer, hrtimer_core_test_callback,
+			       CLOCK_BOOTTIME,
+			       HRTIMER_MODE_ABS_SOFT |
+			       HRTIMER_MODE_LAZY_REARM);
+	KUNIT_ASSERT_NOT_NULL(test, timer.base);
+	KUNIT_EXPECT_EQ(test, HRTIMER_BASE_BOOTTIME_SOFT,
+			timer.base - timer.base->cpu_base->clock_base);
+	KUNIT_EXPECT_TRUE(test, timer.is_soft);
+	KUNIT_EXPECT_FALSE(test, timer.is_hard);
+	KUNIT_EXPECT_TRUE(test, timer.is_lazy);
+	KUNIT_EXPECT_FALSE(test, timer.is_queued);
+	KUNIT_EXPECT_FALSE(test, timer.is_rel);
+	KUNIT_EXPECT_EQ(test, 0, timer._softexpires);
+	KUNIT_EXPECT_EQ(test, 0, timer.node.expires);
+	KUNIT_EXPECT_FALSE(test, timerqueue_linked_node_queued(&timer.node));
+	KUNIT_EXPECT_TRUE(test,
+			  ACCESS_PRIVATE(&timer, function) ==
+			  hrtimer_core_test_callback);
+	destroy_hrtimer_on_stack(&timer);
+}
+#endif
+
 #ifdef CONFIG_RUST_HRTIMER_BASE_SELECTION
 static void hrtimer_core_test_base_selection(struct kunit *test)
 {
@@ -1585,6 +1671,9 @@ static void hrtimer_core_test_forward(struct kunit *test)
 }
 
 static struct kunit_case hrtimer_core_test_cases[] = {
+#ifdef CONFIG_RUST_HRTIMER_SETUP
+	KUNIT_CASE(hrtimer_core_test_setup),
+#endif
 #ifdef CONFIG_RUST_HRTIMER_BASE_SELECTION
 	KUNIT_CASE(hrtimer_core_test_base_selection),
 #endif

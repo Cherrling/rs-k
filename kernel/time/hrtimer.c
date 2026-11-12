@@ -2239,6 +2239,7 @@ ktime_t hrtimer_next_event_without(const struct hrtimer *exclude)
 }
 #endif
 
+#ifndef CONFIG_RUST_HRTIMER_SETUP
 static inline int hrtimer_clockid_to_base(clockid_t clock_id)
 {
 	switch (clock_id) {
@@ -2255,6 +2256,7 @@ static inline int hrtimer_clockid_to_base(clockid_t clock_id)
 		return HRTIMER_BASE_MONOTONIC;
 	}
 }
+#endif
 
 static ktime_t __hrtimer_cb_get_time(clockid_t clock_id)
 {
@@ -2282,6 +2284,11 @@ EXPORT_SYMBOL_GPL(hrtimer_cb_get_time);
 static void __hrtimer_setup(struct hrtimer *timer, enum hrtimer_restart (*fn)(struct hrtimer *),
 			    clockid_t clock_id, enum hrtimer_mode mode)
 {
+#ifdef CONFIG_RUST_HRTIMER_SETUP
+	WARN_ON_ONCE(!fn);
+	rust_hrtimer_setup(timer, fn, clock_id, mode,
+			   raw_cpu_ptr(&hrtimer_bases));
+#else
 	bool softtimer = !!(mode & HRTIMER_MODE_SOFT);
 	struct hrtimer_cpu_base *cpu_base;
 	int base;
@@ -2319,7 +2326,15 @@ static void __hrtimer_setup(struct hrtimer *timer, enum hrtimer_restart (*fn)(st
 		ACCESS_PRIVATE(timer, function) = hrtimer_dummy_timeout;
 	else
 		ACCESS_PRIVATE(timer, function) = fn;
+#endif
 }
+
+#ifdef CONFIG_RUST_HRTIMER_SETUP
+void rust_helper_hrtimer_setup_invalid_clockid(clockid_t clock_id)
+{
+	WARN(1, "Invalid clockid %d. Using MONOTONIC\n", clock_id);
+}
+#endif
 
 /**
  * hrtimer_setup - initialize a timer to the given clock

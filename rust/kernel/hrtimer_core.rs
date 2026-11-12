@@ -2,6 +2,8 @@
 
 //! Native hrtimer queue state transitions.
 //!
+//! Rust owns timer initialization, including mode conversion and clock base
+//! selection.
 //! Rust owns timer insertion, local-base enqueue, in-place expiry updates,
 //! requeue decisions, queued removal, cancellation results, the clock-base
 //! next-expiry cache, expiry forwarding, next-event selection, and the
@@ -35,6 +37,7 @@ type ClockBase = bindings::hrtimer_clock_base;
     CONFIG_RUST_HRTIMER_REARM,
     CONFIG_RUST_HRTIMER_REPROGRAM,
     CONFIG_RUST_HRTIMER_RUN_QUEUES,
+    CONFIG_RUST_HRTIMER_SETUP,
     CONFIG_RUST_HRTIMER_START,
     CONFIG_RUST_HRTIMER_TARGET_BASE,
     CONFIG_RUST_HRTIMER_USER_EXPIRY
@@ -49,6 +52,188 @@ const HRTIMER_ACTIVE_MASK_SHIFT: u32 = bindings::hrtimer_base_type_HRTIMER_BASE_
 const HRTIMER_ACTIVE_HARD: u32 = (1_u32 << HRTIMER_ACTIVE_MASK_SHIFT) - 1;
 #[cfg(any(CONFIG_RUST_HRTIMER_NEXT_EVENT, CONFIG_RUST_HRTIMER_RUN_QUEUES))]
 const HRTIMER_ACTIVE_SOFT: u32 = HRTIMER_ACTIVE_HARD << HRTIMER_ACTIVE_MASK_SHIFT;
+
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_HRTIMER_SETUP))]
+const SETUP_SOFT: u32 = 1 << 0;
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_HRTIMER_SETUP))]
+const SETUP_HARD: u32 = 1 << 1;
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_HRTIMER_SETUP))]
+const SETUP_LAZY: u32 = 1 << 2;
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_HRTIMER_SETUP))]
+const SETUP_BASE_SHIFT: u32 = 8;
+
+/// Initial hrtimer mode and clock base selection.
+#[cfg(CONFIG_RUST_HRTIMER_SETUP)]
+#[derive(Clone, Copy)]
+struct SetupAction {
+    base: usize,
+    softtimer: bool,
+    hardtimer: bool,
+    lazy: bool,
+}
+
+/// Maps a user-visible clock ID to its hard clock base index.
+#[cfg(CONFIG_RUST_HRTIMER_SETUP)]
+fn clockid_to_base(clock_id: bindings::clockid_t) -> Option<usize> {
+    match clock_id as u32 {
+        bindings::CLOCK_MONOTONIC => {
+            Some(bindings::hrtimer_base_type_HRTIMER_BASE_MONOTONIC as usize)
+        }
+        bindings::CLOCK_REALTIME => {
+            Some(bindings::hrtimer_base_type_HRTIMER_BASE_REALTIME as usize)
+        }
+        bindings::CLOCK_BOOTTIME => {
+            Some(bindings::hrtimer_base_type_HRTIMER_BASE_BOOTTIME as usize)
+        }
+        bindings::CLOCK_TAI => Some(bindings::hrtimer_base_type_HRTIMER_BASE_TAI as usize),
+        _ => None,
+    }
+}
+
+/// Converts hrtimer mode and clock ID into the initial timer state.
+#[cfg(CONFIG_RUST_HRTIMER_SETUP)]
+fn setup_action(
+    clock_id: bindings::clockid_t,
+    mode: bindings::hrtimer_mode,
+    preempt_rt: bool,
+) -> Option<SetupAction> {
+    let hardtimer = mode & bindings::hrtimer_mode_HRTIMER_MODE_HARD != 0;
+    let mut softtimer = mode & bindings::hrtimer_mode_HRTIMER_MODE_SOFT != 0;
+    if preempt_rt && !hardtimer {
+        softtimer = true;
+    }
+
+    // POSIX relative realtime timers must not move with the realtime clock.
+    let clock_id = if clock_id as u32 == bindings::CLOCK_REALTIME
+        && mode & bindings::hrtimer_mode_HRTIMER_MODE_REL != 0
+    {
+        bindings::CLOCK_MONOTONIC as bindings::clockid_t
+    } else {
+        clock_id
+    };
+    let clock_base = clockid_to_base(clock_id)?;
+    let soft_base_count = bindings::hrtimer_base_type_HRTIMER_MAX_CLOCK_BASES / 2;
+    let base = if softtimer {
+        soft_base_count as usize + clock_base
+    } else {
+        clock_base
+    };
+
+    Some(SetupAction {
+        base,
+        softtimer,
+        hardtimer,
+        lazy: mode & bindings::hrtimer_mode_HRTIMER_MODE_LAZY_REARM != 0,
+    })
+}
+
+/// Returns the action bits observed by the selection KUnit test.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_HRTIMER_SETUP))]
+fn setup_action_bits(action: SetupAction) -> u32 {
+    let mut bits = (action.base as u32) << SETUP_BASE_SHIFT;
+    if action.softtimer {
+        bits |= SETUP_SOFT;
+    }
+    if action.hardtimer {
+        bits |= SETUP_HARD;
+    }
+    if action.lazy {
+        bits |= SETUP_LAZY;
+    }
+    bits
+}
+
+/// Runs the initialization selection with explicit RT policy.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_HRTIMER_SETUP))]
+#[export]
+extern "C" fn rust_hrtimer_setup_select(
+    clock_id: bindings::clockid_t,
+    mode: bindings::hrtimer_mode,
+    preempt_rt: bool,
+) -> u32 {
+    setup_action(clock_id, mode, preempt_rt).map_or_else(
+        || {
+            setup_action(
+                bindings::CLOCK_MONOTONIC as bindings::clockid_t,
+                mode,
+                preempt_rt,
+            )
+            .map_or(0, setup_action_bits)
+        },
+        setup_action_bits,
+    )
+}
+
+/// Default callback installed when the caller supplies a null function.
+///
+/// # Safety
+///
+/// The callback ABI supplies a timer pointer, but this fallback does not
+/// access it.
+#[cfg(CONFIG_RUST_HRTIMER_SETUP)]
+unsafe extern "C" fn rust_hrtimer_dummy_timeout(_timer: *mut Hrtimer) -> bindings::hrtimer_restart {
+    bindings::hrtimer_restart::HRTIMER_NORESTART
+}
+
+/// Initializes an hrtimer and selects its per-CPU clock base.
+///
+/// # Safety
+///
+/// `timer` must point to writable storage for an hrtimer that is not active.
+/// `cpu_base` must identify the current CPU's live hrtimer base.
+#[cfg(CONFIG_RUST_HRTIMER_SETUP)]
+#[export]
+unsafe extern "C" fn rust_hrtimer_setup(
+    timer: *mut Hrtimer,
+    function: Option<unsafe extern "C" fn(*mut Hrtimer) -> bindings::hrtimer_restart>,
+    clock_id: bindings::clockid_t,
+    mode: bindings::hrtimer_mode,
+    cpu_base: *mut CpuBase,
+) {
+    let action = match setup_action(clock_id, mode, cfg!(CONFIG_PREEMPT_RT)) {
+        Some(action) => action,
+        None => {
+            // SAFETY: The clock ID requires the existing diagnostic hook.
+            unsafe { bindings::rust_helper_hrtimer_setup_invalid_clockid(clock_id) };
+            // SAFETY: MONOTONIC is a valid clock ID.
+            unsafe {
+                setup_action(
+                    bindings::CLOCK_MONOTONIC as bindings::clockid_t,
+                    mode,
+                    cfg!(CONFIG_PREEMPT_RT),
+                )
+                .unwrap_unchecked()
+            }
+        }
+    };
+    let function = function.unwrap_or(rust_hrtimer_dummy_timeout);
+
+    // SAFETY: The caller provides writable, inactive timer storage.
+    unsafe { ptr::write(timer, Hrtimer::default()) };
+    // SAFETY: The caller guarantees a live current-CPU base.
+    let base = unsafe { ptr::addr_of_mut!((*cpu_base).clock_base[action.base]) };
+    // SAFETY: The timer is writable and the selected base is live.
+    unsafe {
+        (*timer).base = base;
+        (*timer).is_soft = action.softtimer;
+        (*timer).is_hard = action.hardtimer;
+        (*timer).is_lazy = action.lazy;
+        (*timer).function = Some(function);
+    }
+
+    // SAFETY: The timer is writable and owns its linked-tree node.
+    let linked = unsafe { ptr::addr_of_mut!((*timer).node.node) };
+    // SAFETY: `linked` is the live linked-tree node owned by `timer`.
+    let node = unsafe { ptr::addr_of_mut!((*linked).node) };
+    // SAFETY: Initialize the linked node to the empty self-parent state.
+    unsafe {
+        (*node).__rb_parent_color = node as usize;
+        (*node).rb_left = ptr::null_mut();
+        (*node).rb_right = ptr::null_mut();
+        (*linked).prev = ptr::null_mut();
+        (*linked).next = ptr::null_mut();
+    }
+}
 
 /// Returns the timer queue entry that owns a linked-tree node.
 ///
@@ -204,7 +389,7 @@ unsafe extern "C" fn rust_hrtimer_target_base_select(
 /// CPU after the tick stops. A first or pinned timer remains local. When the
 /// timer migration static branch is disabled, the base is retained only when
 /// it is already local.
-#[cfg(CONFIG_RUST_HRTIMER_KEEP_BASE)]
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_HRTIMER_KEEP_BASE))]
 fn prefer_local(
     migration_enabled: bool,
     is_local: bool,
@@ -305,9 +490,9 @@ const START_REPROGRAM_NONE: i32 = 0;
 const START_REPROGRAM: i32 = 1;
 #[cfg(CONFIG_RUST_HRTIMER_START)]
 const START_REPROGRAM_FORCE: i32 = 2;
-#[cfg(CONFIG_RUST_HRTIMER_START)]
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_HRTIMER_START))]
 const START_REMOTE_WAKE: i32 = 3;
-#[cfg(CONFIG_RUST_HRTIMER_START)]
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_HRTIMER_START))]
 const START_REPROGRAM_DEFERRED: i32 = 4;
 
 #[cfg(CONFIG_RUST_HRTIMER_START)]

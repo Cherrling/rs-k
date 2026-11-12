@@ -13,6 +13,8 @@ the expiry, updates or moves the timer, inserts it, handles deferred rearm,
 and selects the clock event action.
 ``CONFIG_RUST_HRTIMER_USER_EXPIRY`` selects Rust for validating and removing
 an already expired user-controlled timer.
+``CONFIG_RUST_HRTIMER_SETUP`` selects Rust for timer initialization, clock
+base selection, and callback installation.
 ``CONFIG_RUST_HRTIMER_ENQUEUE`` selects Rust for inserting a timer into its
 selected clock base.  The
 ``CONFIG_RUST_HRTIMER_CALLBACK`` option selects Rust for the state transitions
@@ -49,6 +51,9 @@ The public hrtimer API and device driver scope remain unchanged.
 
 Rust owns these production decisions:
 
+* Converting hard, soft, RT, and lazy modes, applying relative realtime
+  clock mapping, selecting the per-CPU clock base, clearing the timer,
+  initializing its queue node, and installing the callback.
 * Inserting a timer into an active clock base, publishing the lockless queued
   state, setting the active-clock-base bit, and updating the cached first
   expiry.
@@ -139,6 +144,13 @@ between the interrupt's cached expiry and a fresh clock and next-event update.
 It then updates ``expires_next``, clears ``deferred_rearm``, applies any hang
 delay, and calls the narrow clock event programming adapter.  The original C
 deferred rearm and clock event rearm state sequences are compiled out.
+
+The C ``__hrtimer_setup()`` path calls ``rust_hrtimer_setup()`` when the
+initialization option is enabled.  Rust clears the timer, converts its mode,
+maps the clock ID to a hard or soft clock base, initializes the linked queue
+node, and installs the callback.  C retains debug object initialization,
+tracepoints, missing-callback and invalid-clock diagnostics, the current CPU
+base lookup, and the public API adapters.
 
 The C ``hrtimer_start_range_ns_common()`` path calls
 ``rust_hrtimer_start_range_ns()`` when the startup option is enabled.  The
@@ -258,6 +270,8 @@ The following operations remain in C:
   mode assertion in the public startup common path.
 * The lockless inactive fast path in ``hrtimer_try_to_cancel()``.
 * Debug object activation and deactivation.
+* Debug object setup, setup tracing, missing-callback warnings, invalid clock
+  ID warnings, and the current CPU base pointer used during initialization.
 * HRTimer tracepoint delivery.
 * The start-expired tracepoint adapter and the C removal fallback used when
   the cancellation state machine is independently disabled.
@@ -294,6 +308,13 @@ Important invariants
 
 All queue state transitions are serialized by ``cpu_base->lock``.  The
 lockless queued snapshot pairs its read with the Rust-controlled write.
+
+Initialization clears the complete timer before publishing any state.  A
+relative realtime timer maps to the monotonic clock base.  On PREEMPT_RT, a
+timer without explicit hard mode uses the soft clock base.  The selected
+clock base covers the hard or soft half of the current CPU base's clock array.
+An initialized queue node has a self-parent color value and null neighbor
+links.
 
 Startup samples the current clock before converting a relative expiry.  The
 conversion uses saturated ktime arithmetic.  A low-resolution system records
