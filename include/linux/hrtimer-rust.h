@@ -31,6 +31,16 @@ bool rust_hrtimer_requeue_same_base(struct hrtimer *timer,
 
 #endif /* CONFIG_RUST_HRTIMER */
 
+#ifdef CONFIG_RUST_HRTIMER_ENQUEUE
+
+void rust_helper_hrtimer_enqueue_online(struct hrtimer_cpu_base *cpu_base);
+
+bool rust_hrtimer_enqueue(struct hrtimer *timer,
+			  struct hrtimer_clock_base *base,
+			  unsigned int mode, bool was_armed);
+
+#endif /* CONFIG_RUST_HRTIMER_ENQUEUE */
+
 #ifdef CONFIG_RUST_HRTIMER_BASE_SELECTION
 
 bool rust_helper_hrtimer_base_is_online(struct hrtimer_cpu_base *cpu_base);

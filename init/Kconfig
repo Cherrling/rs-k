@@ -1043,6 +1043,22 @@ config RUST_HRTIMER
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_HRTIMER_ENQUEUE
+	bool "Rust implementation of hrtimer insertion"
+	depends on RUST_HRTIMER
+	default y
+	help
+	  Use Rust for the production insertion of a timer into a clock base.
+	  This includes active-base accounting, lockless queued publication,
+	  linked timer insertion, and first-expiry cache updates.
+
+	  CPU base locking, debug object tracking, tracepoints, base selection,
+	  clock event reprogramming, callback execution, and public ABI
+	  adapters remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_HRTIMER_BASE_SELECTION
 	bool "Rust implementation of hrtimer base selection"
 	depends on RUST_HRTIMER && SMP

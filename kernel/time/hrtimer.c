@@ -570,6 +570,13 @@ void rust_helper_hrtimer_set_queued(struct hrtimer *timer, bool queued)
 }
 #endif
 
+#ifdef CONFIG_RUST_HRTIMER_ENQUEUE
+void rust_helper_hrtimer_enqueue_online(struct hrtimer_cpu_base *cpu_base)
+{
+	WARN_ON_ONCE(!cpu_base->online);
+}
+#endif
+
 #ifdef CONFIG_RUST_HRTIMER_BASE_SELECTION
 bool rust_helper_hrtimer_base_is_online(struct hrtimer_cpu_base *cpu_base)
 {
@@ -1268,6 +1275,9 @@ static bool enqueue_hrtimer(struct hrtimer *timer, struct hrtimer_clock_base *ba
 {
 	lockdep_assert_held(&base->cpu_base->lock);
 
+#ifdef CONFIG_RUST_HRTIMER_ENQUEUE
+	return rust_hrtimer_enqueue(timer, base, mode, was_armed);
+#else
 	debug_activate(timer, mode, was_armed);
 	WARN_ON_ONCE(!base->cpu_base->online);
 
@@ -1281,6 +1291,7 @@ static bool enqueue_hrtimer(struct hrtimer *timer, struct hrtimer_clock_base *ba
 
 	base->expires_next = hrtimer_get_expires(timer);
 	return true;
+#endif
 }
 
 static inline void base_update_next_timer(struct hrtimer_clock_base *base)

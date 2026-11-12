@@ -2,9 +2,10 @@
 
 //! Native hrtimer queue state transitions.
 //!
-//! Rust owns local-base enqueue, in-place expiry updates, requeue decisions,
-//! queued removal, cancellation results, the clock-base next-expiry cache, and
-//! expiry forwarding, next-event selection, and the cancellation retry loop.
+//! Rust owns timer insertion, local-base enqueue, in-place expiry updates,
+//! requeue decisions, queued removal, cancellation results, the clock-base
+//! next-expiry cache, expiry forwarding, next-event selection, and the
+//! cancellation retry loop.
 //! Locking, clock event reprogramming, ktime arithmetic, callback completion
 //! waits, debug objects, and tracepoint delivery remain outside this module.
 
@@ -16,6 +17,7 @@ type Hrtimer = bindings::hrtimer;
 type ClockBase = bindings::hrtimer_clock_base;
 #[cfg(any(
     CONFIG_RUST_HRTIMER_BASE_SELECTION,
+    CONFIG_RUST_HRTIMER_ENQUEUE,
     CONFIG_RUST_HRTIMER_NEXT_EVENT,
     CONFIG_RUST_HRTIMER_REPROGRAM
 ))]
@@ -396,6 +398,55 @@ unsafe extern "C" fn rust_hrtimer_reprogram(
     }
 
     expires
+}
+
+/// Inserts a timer into a clock base and publishes its queued state.
+///
+/// Rust performs the debug and trace adapter calls, marks the CPU base active,
+/// publishes the lockless queued state, inserts the linked timer entry, and
+/// updates the cached first expiry when the timer becomes the leftmost entry.
+///
+/// # Safety
+///
+/// `timer` and `base` must be live, and the caller must hold
+/// `base->cpu_base->lock`. The timer must belong to `base` and must not already
+/// be linked into its timer queue.
+#[cfg(CONFIG_RUST_HRTIMER_ENQUEUE)]
+#[export]
+unsafe extern "C" fn rust_hrtimer_enqueue(
+    timer: *mut Hrtimer,
+    base: *mut ClockBase,
+    mode: u32,
+    was_armed: bool,
+) -> bool {
+    // SAFETY: The caller guarantees that the timer is live.
+    unsafe { bindings::rust_helper_hrtimer_debug_activate(timer, mode, was_armed) };
+
+    // SAFETY: The caller holds the CPU base lock.
+    let cpu_base = unsafe { (*base).cpu_base };
+    // SAFETY: The caller guarantees that the CPU base is live.
+    unsafe { bindings::rust_helper_hrtimer_enqueue_online(cpu_base) };
+
+    // SAFETY: The caller holds the CPU base lock.
+    let active_bit = 1_u32 << unsafe { (*base).index };
+    // SAFETY: The caller holds the CPU base lock.
+    unsafe { (*cpu_base).active_bases |= active_bit };
+    // SAFETY: The caller holds the CPU base lock.
+    unsafe { bindings::rust_helper_hrtimer_set_queued(timer, true) };
+
+    // SAFETY: The caller guarantees the queue and timer belong to this clock base.
+    if !unsafe {
+        bindings::timerqueue_linked_add(
+            ptr::addr_of_mut!((*base).active),
+            ptr::addr_of_mut!((*timer).node),
+        )
+    } {
+        return false;
+    }
+
+    // SAFETY: The inserted timer is live and is the first queue entry.
+    unsafe { (*base).expires_next = (*timer).node.expires };
+    true
 }
 
 /// Starts or requeues a timer on its current local clock base.

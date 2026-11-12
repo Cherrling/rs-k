@@ -7,7 +7,9 @@ Status and scope
 ----------------
 
 The ``CONFIG_RUST_HRTIMER`` option selects a native Rust state machine for
-starting and updating an hrtimer on its current local clock base.  The
+starting and updating an hrtimer on its current local clock base.
+``CONFIG_RUST_HRTIMER_ENQUEUE`` selects Rust for inserting a timer into its
+selected clock base.  The
 ``CONFIG_RUST_HRTIMER_BASE_SELECTION`` option selects Rust for the decision
 that accepts or rejects a selected remote clock base.
 ``CONFIG_RUST_HRTIMER_NEXT_EVENT`` selects Rust for the search across active
@@ -27,6 +29,9 @@ The public hrtimer API and device driver scope remain unchanged.
 
 Rust owns these production decisions:
 
+* Inserting a timer into an active clock base, publishing the lockless queued
+  state, setting the active-clock-base bit, and updating the cached first
+  expiry.
 * Enqueueing an inactive timer on its current clock base.
 * Updating an active timer in place when its new expiry remains between the
   current neighbors.
@@ -59,6 +64,11 @@ Entry points and state ownership
 The C ``remove_and_enqueue_same_base()`` path calls
 ``rust_hrtimer_requeue_same_base()`` when the Rust option is enabled.  The
 original C neighbor decision and update sequence are compiled out.
+
+The C ``enqueue_hrtimer()`` path calls ``rust_hrtimer_enqueue()`` when the
+insertion option is enabled.  The original C active-base accounting,
+queued-state publication, linked insertion, and first-expiry cache update are
+compiled out.
 
 The C ``__remove_hrtimer()`` path calls ``rust_hrtimer_remove()`` when the
 cancellation option is enabled.  The C ``hrtimer_try_to_cancel()`` path calls
@@ -133,6 +143,10 @@ An in-place update is valid only when the new expiry does not pass the next
 neighbor.  A first timer may move later within that bound.  A non-first timer
 must not move ahead of its previous neighbor.
 
+Inserting a timer publishes its queued state before linked insertion.  The
+clock base's active bit remains set after a non-first insertion.  The cached
+first expiry changes only when the inserted timer becomes the leftmost entry.
+
 When the first timer is removed and requeued, the clock base's cached expiry
 must be recomputed from the new linked-tree leftmost entry.  The CPU base
 active bit remains set across a same-base dequeue and enqueue.
@@ -203,6 +217,9 @@ The migration unit must pass these checks before integration:
 * Normalized hard and soft reprogramming deadlines, strict deadline
   comparisons, remote timer rejection, deferred rearm, suppressed softirq,
   and local and remote soft-timer cache updates.
+* First and non-first linked insertions, insertion before the current first
+  timer, active-base accounting, queued-state publication, and first-expiry
+  cache maintenance.
 * In-place expiry updates and requeues that cross the next neighbor.
 * Queued cancellation, callback-running rejection, and inactive cancellation.
 * Cancellation retry after a callback-running rejection.
@@ -215,12 +232,14 @@ The migration unit must pass these checks before integration:
 Validation evidence
 -------------------
 
-The hrtimer queue, base-selection, next-event, reprogramming, cancellation,
-and forwarding state was validated on 2026-11-11 with x86_64 ``LLVM=1``
-builds and QEMU 11.1.3:
+The hrtimer queue, base-selection, next-event, reprogramming, insertion,
+cancellation, and forwarding state was validated on 2026-11-11 and
+2026-11-12 with x86_64 ``LLVM=1`` builds and QEMU 11.1.3:
 
 * Three consecutive four-vCPU Rust runs passed all nine KUnit cases.
 * Three consecutive four-vCPU Rust reprogramming runs passed all ten KUnit
+  cases.
+* Three consecutive four-vCPU Rust insertion runs passed all eleven KUnit
   cases.
 * The four-vCPU C base-selection fallback passed all five applicable cases
   with ``CONFIG_RUST_HRTIMER_BASE_SELECTION`` disabled.
@@ -233,14 +252,16 @@ builds and QEMU 11.1.3:
   applicable cases with ``CONFIG_RUST_HRTIMER_UPDATE_NEEDS_IPI`` disabled.
 * Three consecutive four-vCPU C reprogramming fallback runs passed all nine
   applicable cases with ``CONFIG_RUST_HRTIMER_REPROGRAM`` disabled.
+* Three consecutive four-vCPU C insertion fallback runs passed all ten
+  applicable cases with ``CONFIG_RUST_HRTIMER_ENQUEUE`` disabled.
 * The four-vCPU C cancellation-wait fallback passed all five cases with
   ``CONFIG_RUST_HRTIMER_CANCEL_WAIT`` disabled.
 * The four-vCPU C forwarding fallback passed all five cases with
   ``CONFIG_RUST_HRTIMER_FORWARD`` disabled.
 * The four-vCPU generic inline KASAN, lockdep, and PREEMPT_RT images each
-  passed all ten cases with the Rust implementation enabled.
+  passed all eleven cases with the Rust implementation enabled.
 * Three consecutive four-vCPU images with ``CONFIG_RUST_RBTREE`` disabled
-  passed all ten cases.
+  passed all eleven cases.
 * The cases covered local, offline-CPU, earlier remote, equal-deadline, and
   later remote base selection, hard, soft, combined, suppressed-softirq,
   equal-expiry, empty, offset, and negative next-event selection,
@@ -250,14 +271,18 @@ builds and QEMU 11.1.3:
   normalized hard and soft reprogramming deadlines, strict deadline
   comparisons, remote timer rejection, suppressed softirq, deferred rearm,
   and local and remote soft-timer cache updates,
+  first and non-first linked insertions, insertion before the current first
+  timer, active-base accounting, queued-state publication, and first-expiry
+  cache maintenance,
   same-base in-place updates, requeues that cross the next timer, cached
   first-expiry maintenance, callback-running cancellation rejection, queued
   cancellation, inactive cancellation, a real expiry callback, partial
   forwarding overruns, exact interval alignment, and resolution clamping.
 * No run reported a ``BUG``, warning, KASAN report, lock dependence
   diagnosis, or panic.
-* The hrtimer start path calls ``rust_hrtimer_requeue_same_base()``. The
-  base-selection path calls ``rust_hrtimer_suitable_target()``. The
+* The hrtimer insertion path calls ``rust_hrtimer_enqueue()``. The hrtimer
+  start path calls ``rust_hrtimer_requeue_same_base()``. The base-selection
+  path calls ``rust_hrtimer_suitable_target()``. The
   next-event path calls ``rust_hrtimer_get_next_event()``. The
   next-event update path calls ``rust_hrtimer_update_next_event()``. The
   IPI decision path calls ``rust_hrtimer_update_needs_ipi()``. The
