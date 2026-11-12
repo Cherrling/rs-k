@@ -1073,6 +1073,23 @@ config RUST_HRTIMER_CALLBACK
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_HRTIMER_RUN_QUEUES
+	bool "Rust implementation of hrtimer expiry queue selection"
+	depends on RUST_HRTIMER
+	default y
+	help
+	  Use Rust for the production selection and iteration of expired
+	  high-resolution timers. Rust owns the stable active-base snapshot,
+	  clock-base order, clock offset application, soft-expiry comparison,
+	  and per-base timer loop.
+
+	  Callback invocation, CPU base locking, lock dropping and reacquisition,
+	  tracepoints, lockdep context tracking, softirq waiter synchronization,
+	  and public ABI adapters remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_HRTIMER_BASE_SELECTION
 	bool "Rust implementation of hrtimer base selection"
 	depends on RUST_HRTIMER && SMP

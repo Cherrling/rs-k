@@ -2396,9 +2396,24 @@ static void __run_hrtimer(struct hrtimer_cpu_base *cpu_base, struct hrtimer_cloc
 #endif
 }
 
+#ifdef CONFIG_RUST_HRTIMER_RUN_QUEUES
+void rust_helper_hrtimer_run_expired(struct hrtimer_cpu_base *cpu_base,
+				     struct hrtimer_clock_base *base,
+				     struct hrtimer *timer, ktime_t basenow,
+				     unsigned long flags, bool sync_waiting)
+{
+	__run_hrtimer(cpu_base, base, timer, basenow, flags);
+	if (sync_waiting)
+		hrtimer_sync_wait_running(cpu_base, flags);
+}
+#endif
+
 static void __hrtimer_run_queues(struct hrtimer_cpu_base *cpu_base, ktime_t now,
 				 unsigned long flags, unsigned int active_mask)
 {
+#ifdef CONFIG_RUST_HRTIMER_RUN_QUEUES
+	rust_hrtimer_run_queues(cpu_base, now, flags, active_mask);
+#else
 	unsigned int active = cpu_base->active_bases & active_mask;
 	struct hrtimer_clock_base *base;
 
@@ -2427,6 +2442,7 @@ static void __hrtimer_run_queues(struct hrtimer_cpu_base *cpu_base, ktime_t now,
 				hrtimer_sync_wait_running(cpu_base, flags);
 		}
 	}
+#endif
 }
 
 static __latent_entropy void hrtimer_run_softirq(void)

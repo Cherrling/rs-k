@@ -55,6 +55,24 @@ void rust_hrtimer_callback_exit(struct hrtimer *timer,
 
 #endif /* CONFIG_RUST_HRTIMER_CALLBACK */
 
+#ifdef CONFIG_RUST_HRTIMER_RUN_QUEUES
+
+void rust_helper_hrtimer_run_expired(struct hrtimer_cpu_base *cpu_base,
+				     struct hrtimer_clock_base *base,
+				     struct hrtimer *timer, ktime_t basenow,
+				     unsigned long flags, bool sync_waiting);
+
+void rust_hrtimer_run_queues(struct hrtimer_cpu_base *cpu_base, ktime_t now,
+			     unsigned long flags, unsigned int active_mask);
+
+#ifdef CONFIG_KUNIT
+struct hrtimer *
+rust_hrtimer_clock_base_next_expired(struct hrtimer_clock_base *base,
+				     ktime_t basenow);
+#endif
+
+#endif /* CONFIG_RUST_HRTIMER_RUN_QUEUES */
+
 #if defined(CONFIG_RUST_HRTIMER_BASE_SELECTION) || \
 	defined(CONFIG_RUST_HRTIMER_TARGET_BASE)
 

@@ -9,6 +9,7 @@
 //! before and after an expiry callback.
 //! Rust also selects the target CPU base and owns timer base migration.
 //! It also owns the local-base retention decision for the SMP NOHZ path.
+//! It also selects and iterates expired timer queues.
 //! Locking, clock event reprogramming, ktime arithmetic, callback completion
 //! waits, debug objects, and tracepoint delivery remain outside this module.
 
@@ -25,17 +26,18 @@ type ClockBase = bindings::hrtimer_clock_base;
     CONFIG_RUST_HRTIMER_ENQUEUE,
     CONFIG_RUST_HRTIMER_NEXT_EVENT,
     CONFIG_RUST_HRTIMER_REPROGRAM,
+    CONFIG_RUST_HRTIMER_RUN_QUEUES,
     CONFIG_RUST_HRTIMER_TARGET_BASE
 ))]
 type CpuBase = bindings::hrtimer_cpu_base;
 type TimerLinkedNode = bindings::timerqueue_linked_node;
 type RbNodeLinked = bindings::rb_node_linked;
 
-#[cfg(CONFIG_RUST_HRTIMER_NEXT_EVENT)]
+#[cfg(any(CONFIG_RUST_HRTIMER_NEXT_EVENT, CONFIG_RUST_HRTIMER_RUN_QUEUES))]
 const HRTIMER_ACTIVE_MASK_SHIFT: u32 = bindings::hrtimer_base_type_HRTIMER_BASE_MONOTONIC_SOFT;
-#[cfg(CONFIG_RUST_HRTIMER_NEXT_EVENT)]
+#[cfg(any(CONFIG_RUST_HRTIMER_NEXT_EVENT, CONFIG_RUST_HRTIMER_RUN_QUEUES))]
 const HRTIMER_ACTIVE_HARD: u32 = (1_u32 << HRTIMER_ACTIVE_MASK_SHIFT) - 1;
-#[cfg(CONFIG_RUST_HRTIMER_NEXT_EVENT)]
+#[cfg(any(CONFIG_RUST_HRTIMER_NEXT_EVENT, CONFIG_RUST_HRTIMER_RUN_QUEUES))]
 const HRTIMER_ACTIVE_SOFT: u32 = HRTIMER_ACTIVE_HARD << HRTIMER_ACTIVE_MASK_SHIFT;
 
 /// Returns the timer queue entry that owns a linked-tree node.
@@ -443,6 +445,112 @@ unsafe extern "C" fn rust_hrtimer_switch_base_to(
 ) -> *mut ClockBase {
     // SAFETY: The caller satisfies all migration safety requirements.
     unsafe { switch_base_to(timer, base, this_cpu_base, new_cpu_base) }
+}
+
+/// Returns the first timer on a clock base when its soft expiry has passed.
+///
+/// The clock base must be protected by its CPU base lock. A missing first
+/// timer or a soft expiry after `basenow` returns a null pointer.
+///
+/// # Safety
+///
+/// `base` must be live and protected by its CPU base lock. A nonempty active
+/// queue must contain live hrtimer nodes.
+#[cfg(CONFIG_RUST_HRTIMER_RUN_QUEUES)]
+unsafe fn clock_base_next_expired(
+    base: *mut ClockBase,
+    basenow: bindings::ktime_t,
+) -> *mut Hrtimer {
+    // SAFETY: The caller guarantees that the clock base is live.
+    let root = unsafe { ptr::addr_of_mut!((*base).active.rb_root) };
+    // SAFETY: The caller holds the CPU base lock that protects the queue.
+    let node = unsafe { (*root).rb_leftmost };
+    if node.is_null() {
+        return ptr::null_mut();
+    }
+
+    // SAFETY: A nonempty linked tree has a live leftmost timer node.
+    let timer_node = unsafe { timer_linked_node(node) };
+    // SAFETY: A timerqueue node is embedded in its owning timer.
+    let timer = unsafe { crate::container_of!(timer_node, Hrtimer, node) };
+    // SAFETY: The caller guarantees that the selected timer is live.
+    if basenow < unsafe { (*timer)._softexpires } {
+        return ptr::null_mut();
+    }
+
+    timer
+}
+
+/// Runs the expired timer loops across a stable active-base snapshot.
+///
+/// Rust owns base traversal, clock offset application, soft-expiry checks,
+/// and repeated selection after each callback. C executes the callback and
+/// performs the required lock and softirq waiter handling.
+///
+/// # Safety
+///
+/// `cpu_base` must be live and protected by its CPU base lock. Every active
+/// bit selected at entry must identify a linked timer queue that remains
+/// valid across the run.
+#[cfg(CONFIG_RUST_HRTIMER_RUN_QUEUES)]
+#[export]
+unsafe extern "C" fn rust_hrtimer_run_queues(
+    cpu_base: *mut CpuBase,
+    now: bindings::ktime_t,
+    flags: usize,
+    active_mask: u32,
+) {
+    // SAFETY: The caller guarantees that the CPU base is live.
+    let active = unsafe { (*cpu_base).active_bases } & active_mask;
+    let max_bases = bindings::hrtimer_base_type_HRTIMER_MAX_CLOCK_BASES as usize;
+
+    for index in 0..max_bases {
+        if active & (1_u32 << index) == 0 {
+            continue;
+        }
+
+        // SAFETY: The entry snapshot only selects live clock bases.
+        let base = unsafe { ptr::addr_of_mut!((*cpu_base).clock_base[index]) };
+        // SAFETY: The clock offset remains valid while the CPU lock is held.
+        let basenow = now.wrapping_add(unsafe { (*base).offset });
+
+        loop {
+            // SAFETY: The active queue is protected by the CPU base lock.
+            let timer = unsafe { clock_base_next_expired(base, basenow) };
+            if timer.is_null() {
+                break;
+            }
+
+            // SAFETY: The selected timer is queued on this live clock base,
+            // and the CPU base lock protects both objects.
+            unsafe {
+                bindings::rust_helper_hrtimer_run_expired(
+                    cpu_base,
+                    base,
+                    timer,
+                    basenow,
+                    flags,
+                    active_mask == HRTIMER_ACTIVE_SOFT,
+                )
+            };
+        }
+    }
+}
+
+/// Runs the per-base expired timer decision with explicit test input.
+///
+/// # Safety
+///
+/// `base` must be live and protected by its CPU base lock. A nonempty active
+/// queue must contain live hrtimer nodes.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_HRTIMER_RUN_QUEUES))]
+#[export]
+unsafe extern "C" fn rust_hrtimer_clock_base_next_expired(
+    base: *mut ClockBase,
+    basenow: bindings::ktime_t,
+) -> *mut Hrtimer {
+    // SAFETY: The caller satisfies the queue and lock requirements.
+    unsafe { clock_base_next_expired(base, basenow) }
 }
 
 /// Updates the earliest expiry and timer across the active clock bases.
