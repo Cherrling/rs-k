@@ -1011,6 +1011,22 @@ config RUST_SCHED_WAKE_STATE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SCHED_TTWU_RUNNABLE
+	bool "Rust implementation of the scheduler runnable wake path"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production task_rq-locked runnable wake path. Rust
+	  owns the queued check, clock update, delayed-enqueue and proxy-return
+	  ordering, preemption decision, and final wake-state publication.
+
+	  Task runqueue lock acquisition and release, scheduler queue and proxy
+	  operations, preemption, tracing, and public scheduler ABI adapters
+	  remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_CPUPRI
 	bool "Rust implementation of CPU-priority scheduling state"
 	depends on RUST && SMP

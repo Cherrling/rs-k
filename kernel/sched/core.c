@@ -3853,6 +3853,56 @@ static inline bool proxy_needs_return(struct rq *rq, struct task_struct *p)
 }
 #endif /* CONFIG_SCHED_PROXY_EXEC */
 
+#ifdef CONFIG_RUST_SCHED_TTWU_RUNNABLE
+bool rust_helper_sched_ttwu_rq_queued(struct task_struct *task)
+{
+	return task_on_rq_queued(task);
+}
+
+void rust_helper_sched_ttwu_update_clock(struct rq *rq)
+{
+	update_rq_clock(rq);
+}
+
+bool rust_helper_sched_ttwu_is_blocked(struct task_struct *task)
+{
+	return task->is_blocked;
+}
+
+bool rust_helper_sched_ttwu_is_delayed(struct task_struct *task)
+{
+	return task->se.sched_delayed;
+}
+
+void rust_helper_sched_ttwu_enqueue_delayed(struct rq *rq,
+					    struct task_struct *task)
+{
+	enqueue_task(rq, task, ENQUEUE_NOCLOCK | ENQUEUE_DELAYED);
+}
+
+bool rust_helper_sched_ttwu_proxy_return(struct rq *rq,
+					 struct task_struct *task)
+{
+	return proxy_needs_return(rq, task);
+}
+
+bool rust_helper_sched_ttwu_on_cpu(struct rq *rq, struct task_struct *task)
+{
+	return task_on_cpu(rq, task);
+}
+
+void rust_helper_sched_ttwu_preempt(struct rq *rq, struct task_struct *task,
+				    int wake_flags)
+{
+	wakeup_preempt(rq, task, wake_flags);
+}
+
+void rust_helper_sched_ttwu_wake(struct task_struct *task)
+{
+	ttwu_do_wakeup(task);
+}
+#endif
+
 static void
 ttwu_do_activate(struct rq *rq, struct task_struct *p, int wake_flags,
 		 struct rq_flags *rf)
@@ -3916,6 +3966,16 @@ ttwu_do_activate(struct rq *rq, struct task_struct *p, int wake_flags,
  */
 static int ttwu_runnable(struct task_struct *p, int wake_flags)
 {
+#ifdef CONFIG_RUST_SCHED_TTWU_RUNNABLE
+	struct rq_flags rf;
+	struct rq *rq;
+	int ret;
+
+	rq = __task_rq_lock(p, &rf);
+	ret = rust_sched_ttwu_runnable_locked(rq, p, wake_flags);
+	__task_rq_unlock(rq, p, &rf);
+	return ret;
+#else
 	ACQUIRE(__task_rq_lock, guard)(p);
 	struct rq *rq = guard.rq;
 
@@ -3938,6 +3998,7 @@ static int ttwu_runnable(struct task_struct *p, int wake_flags)
 	}
 	ttwu_do_wakeup(p);
 	return 1;
+#endif
 }
 
 void sched_ttwu_pending(void *arg)

@@ -3,7 +3,10 @@
 #include <kunit/test.h>
 
 #include <linux/completion.h>
+#include <linux/cpu.h>
 #include <linux/kthread.h>
+#include <linux/preempt.h>
+#include <linux/processor.h>
 #include <linux/sched.h>
 #include <linux/sched-rust.h>
 #include <linux/slab.h>
@@ -15,6 +18,21 @@ static int sched_wake_test_thread(void *data)
 	complete(started);
 	while (!kthread_should_stop())
 		schedule_timeout_interruptible(msecs_to_jiffies(10));
+
+	return 0;
+}
+
+static int sched_wake_test_runnable_thread(void *data)
+{
+	struct completion *started = data;
+
+	preempt_disable();
+	__set_current_state(TASK_INTERRUPTIBLE);
+	complete(started);
+	while (!kthread_should_stop())
+		cpu_relax();
+	__set_current_state(TASK_RUNNING);
+	preempt_enable();
 
 	return 0;
 }
@@ -94,6 +112,27 @@ static void sched_wake_test_stopped_task(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, 0, kthread_stop(task));
 }
 
+static void sched_wake_test_runnable_task(struct kunit *test)
+{
+	struct task_struct *task;
+	struct completion started;
+
+	if (num_online_cpus() < 2)
+		kunit_skip(test, "runnable wake test needs two online CPUs");
+
+	init_completion(&started);
+	task = kthread_create(sched_wake_test_runnable_thread, &started,
+			      "sched-runnable-test");
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, task);
+
+	KUNIT_EXPECT_EQ(test, 1, wake_up_process(task));
+	wait_for_completion(&started);
+
+	KUNIT_EXPECT_EQ(test, 1, wake_up_process(task));
+	KUNIT_EXPECT_EQ(test, TASK_RUNNING, READ_ONCE(task->__state));
+	KUNIT_EXPECT_EQ(test, 0, kthread_stop(task));
+}
+
 static struct kunit_case sched_wake_test_cases[] = {
 #ifdef CONFIG_RUST_SCHED_WAKE_STATE
 	KUNIT_CASE(sched_wake_test_state_match),
@@ -101,6 +140,7 @@ static struct kunit_case sched_wake_test_cases[] = {
 #endif
 	KUNIT_CASE(sched_wake_test_current),
 	KUNIT_CASE(sched_wake_test_stopped_task),
+	KUNIT_CASE(sched_wake_test_runnable_task),
 	{}
 };
 

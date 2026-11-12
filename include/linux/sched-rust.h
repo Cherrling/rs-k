@@ -5,6 +5,7 @@
 #include <linux/types.h>
 
 struct task_struct;
+struct rq;
 
 #ifdef CONFIG_RUST_SCHED_WAKE_STATE
 
@@ -26,5 +27,25 @@ int rust_sched_state_match_select(unsigned int task_state,
 #endif
 
 #endif /* CONFIG_RUST_SCHED_WAKE_STATE */
+
+#ifdef CONFIG_RUST_SCHED_TTWU_RUNNABLE
+
+bool rust_helper_sched_ttwu_rq_queued(struct task_struct *task);
+void rust_helper_sched_ttwu_update_clock(struct rq *rq);
+bool rust_helper_sched_ttwu_is_blocked(struct task_struct *task);
+bool rust_helper_sched_ttwu_is_delayed(struct task_struct *task);
+void rust_helper_sched_ttwu_enqueue_delayed(struct rq *rq,
+					    struct task_struct *task);
+bool rust_helper_sched_ttwu_proxy_return(struct rq *rq,
+					 struct task_struct *task);
+bool rust_helper_sched_ttwu_on_cpu(struct rq *rq, struct task_struct *task);
+void rust_helper_sched_ttwu_preempt(struct rq *rq, struct task_struct *task,
+				    int wake_flags);
+void rust_helper_sched_ttwu_wake(struct task_struct *task);
+
+int rust_sched_ttwu_runnable_locked(struct rq *rq, struct task_struct *task,
+				    int wake_flags);
+
+#endif /* CONFIG_RUST_SCHED_TTWU_RUNNABLE */
 
 #endif /* _LINUX_SCHED_RUST_H */
