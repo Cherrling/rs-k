@@ -7,6 +7,7 @@
 //! next-expiry cache, expiry forwarding, next-event selection, and the
 //! cancellation retry loop. It also owns the state transitions immediately
 //! before and after an expiry callback.
+//! Rust also selects the target CPU base and owns timer base migration.
 //! Locking, clock event reprogramming, ktime arithmetic, callback completion
 //! waits, debug objects, and tracepoint delivery remain outside this module.
 
@@ -22,7 +23,8 @@ type ClockBase = bindings::hrtimer_clock_base;
     CONFIG_RUST_HRTIMER_CALLBACK,
     CONFIG_RUST_HRTIMER_ENQUEUE,
     CONFIG_RUST_HRTIMER_NEXT_EVENT,
-    CONFIG_RUST_HRTIMER_REPROGRAM
+    CONFIG_RUST_HRTIMER_REPROGRAM,
+    CONFIG_RUST_HRTIMER_TARGET_BASE
 ))]
 type CpuBase = bindings::hrtimer_cpu_base;
 type TimerLinkedNode = bindings::timerqueue_linked_node;
@@ -95,6 +97,92 @@ unsafe fn can_update_in_place(timer: *mut Hrtimer, expires: bindings::ktime_t) -
 
     // SAFETY: A queued neighbor points to a live linked timer entry.
     expires >= unsafe { (*timer_linked_node(prev)).expires }
+}
+
+/// Selects the target CPU base for a timer.
+///
+/// An offline timer base uses the online housekeeping target. An unpinned
+/// timer can use the NOHZ timer target when migration is enabled. All other
+/// timers stay on their current base.
+#[cfg(CONFIG_RUST_HRTIMER_TARGET_BASE)]
+fn select_target_base(
+    base: *mut CpuBase,
+    pinned: bool,
+    offline: *mut CpuBase,
+    nohz: *mut CpuBase,
+    online: bool,
+    migration_enabled: bool,
+) -> *mut CpuBase {
+    if !online {
+        offline
+    } else if migration_enabled && !pinned {
+        nohz
+    } else {
+        base
+    }
+}
+
+/// Selects the target CPU base for a timer.
+///
+/// Rust owns the offline, pinned, and NOHZ migration decisions. C owns CPU
+/// mask policy and per-CPU base lookup.
+///
+/// # Safety
+///
+/// `base` must identify a live CPU base. CPU hotplug and NOHZ state must
+/// remain stable for the duration of the selection.
+#[cfg(CONFIG_RUST_HRTIMER_TARGET_BASE)]
+#[export]
+unsafe extern "C" fn rust_hrtimer_target_base(base: *mut CpuBase, pinned: bool) -> *mut CpuBase {
+    // SAFETY: The caller guarantees that the supplied CPU base is live.
+    let online = unsafe { bindings::rust_helper_hrtimer_base_is_online(base) };
+    if !online {
+        // SAFETY: CPU hotplug state defines a valid housekeeping target.
+        let cpu = unsafe { bindings::rust_helper_hrtimer_offline_target_cpu() };
+        // SAFETY: The selected CPU owns a live per-CPU timer base.
+        let offline = unsafe { bindings::rust_helper_hrtimer_percpu_base(cpu) };
+        return select_target_base(base, pinned, offline, base, false, false);
+    }
+
+    #[cfg(CONFIG_NO_HZ_COMMON)]
+    {
+        // SAFETY: The caller keeps the timer base state stable.
+        let migration_enabled =
+            !pinned && unsafe { bindings::rust_helper_hrtimer_migration_enabled() };
+        let nohz = if migration_enabled {
+            // SAFETY: NOHZ migration selects a live per-CPU timer base.
+            let cpu = unsafe { bindings::rust_helper_hrtimer_nohz_target_cpu() };
+            // SAFETY: The selected CPU owns a live per-CPU timer base.
+            unsafe { bindings::rust_helper_hrtimer_percpu_base(cpu) }
+        } else {
+            base
+        };
+
+        select_target_base(base, pinned, base, nohz, true, migration_enabled)
+    }
+
+    #[cfg(not(CONFIG_NO_HZ_COMMON))]
+    {
+        select_target_base(base, pinned, base, base, true, false)
+    }
+}
+
+/// Runs the target-base decision with explicit test inputs.
+///
+/// # Safety
+///
+/// Each CPU base pointer must remain valid for the duration of the call.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_HRTIMER_TARGET_BASE))]
+#[export]
+unsafe extern "C" fn rust_hrtimer_target_base_select(
+    base: *mut CpuBase,
+    pinned: bool,
+    offline: *mut CpuBase,
+    nohz: *mut CpuBase,
+    online: bool,
+    migration_enabled: bool,
+) -> *mut CpuBase {
+    select_target_base(base, pinned, offline, nohz, online, migration_enabled)
 }
 
 /// Returns whether a selected clock base can meet the timer deadline.
@@ -224,6 +312,10 @@ unsafe extern "C" fn rust_hrtimer_switch_base(
 ) -> *mut ClockBase {
     // SAFETY: The caller guarantees that the timer is live and locked.
     let this_cpu_base = unsafe { bindings::rust_helper_hrtimer_this_cpu_base() };
+    #[cfg(CONFIG_RUST_HRTIMER_TARGET_BASE)]
+    // SAFETY: The caller guarantees that the current CPU base is live.
+    let new_cpu_base = unsafe { rust_hrtimer_target_base(this_cpu_base, pinned) };
+    #[cfg(not(CONFIG_RUST_HRTIMER_TARGET_BASE))]
     // SAFETY: The caller guarantees that the current CPU base is live.
     let new_cpu_base =
         unsafe { bindings::rust_helper_hrtimer_target_cpu_base(this_cpu_base, pinned) };

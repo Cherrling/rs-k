@@ -1089,6 +1089,21 @@ config RUST_HRTIMER_BASE_SELECTION
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_HRTIMER_TARGET_BASE
+	bool "Rust implementation of hrtimer target selection"
+	depends on RUST_HRTIMER && SMP
+	default y
+	help
+	  Use Rust for the production decision that selects the CPU base for
+	  a timer.  Rust handles offline bases, pinned timers, and NOHZ timer
+	  migration.
+
+	  CPU masks, housekeeping policy, per-CPU base lookup, and public ABI
+	  adapters remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_HRTIMER_BASE_MIGRATION
 	bool "Rust implementation of hrtimer base migration"
 	depends on RUST_HRTIMER && SMP

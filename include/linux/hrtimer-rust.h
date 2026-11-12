@@ -55,9 +55,13 @@ void rust_hrtimer_callback_exit(struct hrtimer *timer,
 
 #endif /* CONFIG_RUST_HRTIMER_CALLBACK */
 
-#ifdef CONFIG_RUST_HRTIMER_BASE_SELECTION
+#if defined(CONFIG_RUST_HRTIMER_BASE_SELECTION) || \
+	defined(CONFIG_RUST_HRTIMER_TARGET_BASE)
 
 bool rust_helper_hrtimer_base_is_online(struct hrtimer_cpu_base *cpu_base);
+#endif
+
+#ifdef CONFIG_RUST_HRTIMER_BASE_SELECTION
 
 bool rust_hrtimer_suitable_target(struct hrtimer *timer,
 				  struct hrtimer_clock_base *new_base,
@@ -65,6 +69,29 @@ bool rust_hrtimer_suitable_target(struct hrtimer *timer,
 				  struct hrtimer_cpu_base *this_cpu_base);
 
 #endif /* CONFIG_RUST_HRTIMER_BASE_SELECTION */
+
+#ifdef CONFIG_RUST_HRTIMER_TARGET_BASE
+
+int rust_helper_hrtimer_offline_target_cpu(void);
+struct hrtimer_cpu_base *rust_helper_hrtimer_percpu_base(int cpu);
+
+struct hrtimer_cpu_base *
+rust_hrtimer_target_base(struct hrtimer_cpu_base *base, bool pinned);
+
+#ifdef CONFIG_NO_HZ_COMMON
+bool rust_helper_hrtimer_migration_enabled(void);
+int rust_helper_hrtimer_nohz_target_cpu(void);
+#endif
+
+#ifdef CONFIG_KUNIT
+struct hrtimer_cpu_base *
+rust_hrtimer_target_base_select(struct hrtimer_cpu_base *base, bool pinned,
+				struct hrtimer_cpu_base *offline,
+				struct hrtimer_cpu_base *nohz, bool online,
+				bool migration_enabled);
+#endif
+
+#endif /* CONFIG_RUST_HRTIMER_TARGET_BASE */
 
 #ifdef CONFIG_RUST_HRTIMER_BASE_MIGRATION
 

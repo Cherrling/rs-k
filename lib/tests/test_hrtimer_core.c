@@ -61,6 +61,12 @@ struct hrtimer_core_test_base_migration {
 	struct hrtimer timer;
 };
 
+struct hrtimer_core_test_target_base {
+	struct hrtimer_cpu_base base;
+	struct hrtimer_cpu_base offline;
+	struct hrtimer_cpu_base nohz;
+};
+
 static enum hrtimer_restart hrtimer_core_test_callback(struct hrtimer *timer)
 {
 	struct hrtimer_core_test *test;
@@ -861,6 +867,38 @@ static void hrtimer_core_test_base_migration(struct kunit *test)
 }
 #endif
 
+#ifdef CONFIG_RUST_HRTIMER_TARGET_BASE
+static void hrtimer_core_test_target_base(struct kunit *test)
+{
+	struct hrtimer_core_test_target_base *state;
+	struct hrtimer_cpu_base *selected;
+
+	state = kunit_kzalloc(test, sizeof(*state), GFP_KERNEL);
+	KUNIT_ASSERT_NOT_NULL(test, state);
+
+	selected = rust_hrtimer_target_base_select(&state->base, false,
+						   &state->offline,
+						   &state->nohz, true, false);
+	KUNIT_EXPECT_PTR_EQ(test, &state->base, selected);
+	selected = rust_hrtimer_target_base_select(&state->base, false,
+						   &state->offline,
+						   &state->nohz, true, true);
+	KUNIT_EXPECT_PTR_EQ(test, &state->nohz, selected);
+	selected = rust_hrtimer_target_base_select(&state->base, true,
+						   &state->offline,
+						   &state->nohz, true, true);
+	KUNIT_EXPECT_PTR_EQ(test, &state->base, selected);
+	selected = rust_hrtimer_target_base_select(&state->base, false,
+						   &state->offline,
+						   &state->nohz, false, true);
+	KUNIT_EXPECT_PTR_EQ(test, &state->offline, selected);
+	selected = rust_hrtimer_target_base_select(&state->base, true,
+						   &state->offline,
+						   &state->nohz, false, false);
+	KUNIT_EXPECT_PTR_EQ(test, &state->offline, selected);
+}
+#endif
+
 static void hrtimer_core_test_assert_order(struct kunit *test,
 					   struct hrtimer_core_test *timers,
 					   int first, int second, int third)
@@ -1098,6 +1136,9 @@ static struct kunit_case hrtimer_core_test_cases[] = {
 #endif
 #ifdef CONFIG_RUST_HRTIMER_BASE_MIGRATION
 	KUNIT_CASE(hrtimer_core_test_base_migration),
+#endif
+#ifdef CONFIG_RUST_HRTIMER_TARGET_BASE
+	KUNIT_CASE(hrtimer_core_test_target_base),
 #endif
 	KUNIT_CASE(hrtimer_core_test_same_base_requeue),
 	KUNIT_CASE(hrtimer_core_test_expiry),

@@ -247,6 +247,9 @@ static bool hrtimer_suitable_target(struct hrtimer *timer, struct hrtimer_clock_
 
 static inline struct hrtimer_cpu_base *get_target_base(struct hrtimer_cpu_base *base, bool pinned)
 {
+#ifdef CONFIG_RUST_HRTIMER_TARGET_BASE
+	return rust_hrtimer_target_base(base, pinned);
+#else
 	if (!hrtimer_base_is_online(base)) {
 		int cpu = cpumask_any_and(cpu_online_mask, housekeeping_cpumask(HK_TYPE_TIMER));
 
@@ -258,6 +261,7 @@ static inline struct hrtimer_cpu_base *get_target_base(struct hrtimer_cpu_base *
 		return &per_cpu(hrtimer_bases, get_nohz_timer_target());
 #endif
 	return base;
+#endif
 }
 
 /*
@@ -594,11 +598,37 @@ bool rust_helper_hrtimer_callback_running_matches(struct hrtimer_clock_base *bas
 }
 #endif
 
-#ifdef CONFIG_RUST_HRTIMER_BASE_SELECTION
+#if defined(CONFIG_RUST_HRTIMER_BASE_SELECTION) || \
+	defined(CONFIG_RUST_HRTIMER_TARGET_BASE)
 bool rust_helper_hrtimer_base_is_online(struct hrtimer_cpu_base *cpu_base)
 {
 	return hrtimer_base_is_online(cpu_base);
 }
+#endif
+
+#ifdef CONFIG_RUST_HRTIMER_TARGET_BASE
+int rust_helper_hrtimer_offline_target_cpu(void)
+{
+	return cpumask_any_and(cpu_online_mask,
+			       housekeeping_cpumask(HK_TYPE_TIMER));
+}
+
+struct hrtimer_cpu_base *rust_helper_hrtimer_percpu_base(int cpu)
+{
+	return &per_cpu(hrtimer_bases, cpu);
+}
+
+#ifdef CONFIG_NO_HZ_COMMON
+bool rust_helper_hrtimer_migration_enabled(void)
+{
+	return static_branch_likely(&timers_migration_enabled);
+}
+
+int rust_helper_hrtimer_nohz_target_cpu(void)
+{
+	return get_nohz_timer_target();
+}
+#endif
 #endif
 
 #ifdef CONFIG_RUST_HRTIMER_BASE_MIGRATION

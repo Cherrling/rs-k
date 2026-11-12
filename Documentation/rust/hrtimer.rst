@@ -14,6 +14,8 @@ selected clock base.  The
 around an expiry callback.  The
 ``CONFIG_RUST_HRTIMER_BASE_SELECTION`` option selects Rust for the decision
 that accepts or rejects a selected remote clock base.
+``CONFIG_RUST_HRTIMER_TARGET_BASE`` selects Rust for the target CPU base
+decision.
 ``CONFIG_RUST_HRTIMER_BASE_MIGRATION`` selects Rust for moving a timer between
 per-CPU clock bases.
 ``CONFIG_RUST_HRTIMER_NEXT_EVENT`` selects Rust for the search across active
@@ -47,6 +49,8 @@ Rust owns these production decisions:
   neighbor.
 * Accepting a local target, an offline-CPU fallback, or a remote target whose
   next expiry can meet the timer deadline.
+* Selecting an offline housekeeping target, preserving a pinned timer's base,
+  or applying NOHZ timer migration.
 * Migrating a timer between CPU clock bases, keeping a running callback on its
   current base, and retrying on the local CPU when a remote target cannot meet
   the timer deadline.
@@ -97,6 +101,11 @@ The C ``hrtimer_suitable_target()`` path calls
 ``rust_hrtimer_suitable_target()`` when the base-selection option is enabled.
 The original C suitability decision is compiled out.
 
+The C ``get_target_base()`` path calls ``rust_hrtimer_target_base()`` when the
+target-selection option is enabled.  The original C offline, pinned, and NOHZ
+decision sequence is compiled out.  C supplies CPU masks, housekeeping policy,
+and per-CPU base addresses.
+
 The C ``switch_hrtimer_base()`` path calls ``rust_hrtimer_switch_base()``
 when the base-migration option is enabled.  The original C migration loop,
 callback-running check, suitability retry, and migration commit are compiled
@@ -145,7 +154,8 @@ The following operations remain in C:
 * HRTimer tracepoint delivery.
 * Clock event reprogramming and remote CPU notification.
 * Clock offset updates and clock-was-set sequence advancement.
-* Per-CPU target selection and target-online checks.
+* CPU mask and housekeeping policy, NOHZ target computation, per-CPU address
+  lookup, and target-online checks.
 * Raw CPU base lock handoff, migration-base publication, and callback
   execution.
 * The lockless try-to-cancel entry point and PREEMPT_RT callback wait
@@ -185,6 +195,10 @@ active bit remains set across a same-base dequeue and enqueue.
 A queued timer returns 1 from ``hrtimer_try_to_cancel()``.  A timer whose
 callback is running returns -1.  An inactive timer returns 0.  Removing the
 last timer in a clock base clears its active-base bit.
+
+An offline timer base selects an online housekeeping CPU.  An online unpinned
+timer can use the NOHZ timer target only when timer migration is enabled.  A
+pinned timer remains on its current CPU base.
 
 Base migration publishes the special migration base before dropping the old
 CPU base lock.  The timer remains locked while Rust acquires the target CPU
@@ -237,6 +251,7 @@ The migration unit must pass these checks before integration:
 * Rust-enabled and C fallback x86_64 builds.
 * Repeated four-vCPU Rust KUnit runs.
 * A four-vCPU C base-selection fallback KUnit run.
+* A four-vCPU C target-selection fallback KUnit run.
 * A four-vCPU C base-migration fallback KUnit run.
 * A four-vCPU C next-event fallback KUnit run.
 * A four-vCPU C next-event update fallback KUnit run.
@@ -247,6 +262,8 @@ The migration unit must pass these checks before integration:
 * A four-vCPU run with ``CONFIG_RUST_RBTREE`` disabled.
 * Local, offline-CPU, earlier remote, equal-deadline, and later remote base
   selection decisions.
+* Online target retention, NOHZ migration, pinned target retention, and
+  offline housekeeping fallback decisions.
 * Successful base migration, callback-running base retention, and remote
   target rollback when the local CPU must own an earlier timer.
 * Hard, soft, combined, suppressed-softirq, equal-expiry, empty, offset, and
@@ -276,10 +293,10 @@ The migration unit must pass these checks before integration:
 Validation evidence
 -------------------
 
-The hrtimer queue, base-selection, base-migration, next-event, reprogramming,
-insertion, callback lifecycle, cancellation, and forwarding state was
-validated on 2026-11-11 and 2026-11-12 with x86_64 ``LLVM=1`` builds and
-QEMU 11.1.3:
+The hrtimer queue, base-selection, target-selection, base-migration,
+next-event, reprogramming, insertion, callback lifecycle, cancellation, and
+forwarding state was validated on 2026-11-11 and 2026-11-12 with x86_64
+``LLVM=1`` builds and QEMU 11.1.3:
 
 * Three consecutive four-vCPU Rust runs passed all nine KUnit cases.
 * Three consecutive four-vCPU Rust reprogramming runs passed all ten KUnit
@@ -290,8 +307,13 @@ QEMU 11.1.3:
   KUnit cases.
 * Three consecutive four-vCPU Rust base-migration runs passed all thirteen
   KUnit cases.
+* Three consecutive four-vCPU Rust target-selection runs passed all fourteen
+  KUnit cases.
 * The four-vCPU C base-selection fallback passed all five applicable cases
   with ``CONFIG_RUST_HRTIMER_BASE_SELECTION`` disabled.
+* Three consecutive four-vCPU C target-selection fallback runs passed all
+  thirteen applicable cases with ``CONFIG_RUST_HRTIMER_TARGET_BASE``
+  disabled.
 * Three consecutive four-vCPU C base-migration fallback runs passed all
   twelve applicable cases with ``CONFIG_RUST_HRTIMER_BASE_MIGRATION``
   disabled.
@@ -311,10 +333,10 @@ QEMU 11.1.3:
 * The four-vCPU C forwarding fallback passed all five cases with
   ``CONFIG_RUST_HRTIMER_FORWARD`` disabled.
 * Three consecutive four-vCPU runs on each generic inline KASAN, lockdep, and
-  PREEMPT_RT image passed all thirteen cases with the Rust implementation
+  PREEMPT_RT image passed all fourteen cases with the Rust implementation
   enabled.
 * Three consecutive four-vCPU images with ``CONFIG_RUST_RBTREE`` disabled
-  passed all thirteen cases.
+  passed all fourteen cases.
 * The cases covered local, offline-CPU, earlier remote, equal-deadline, and
   later remote base selection, hard, soft, combined, suppressed-softirq,
   equal-expiry, empty, offset, and negative next-event selection,
@@ -330,6 +352,8 @@ QEMU 11.1.3:
   callback-running publication, queue removal, automatic restart,
   callback-side rearming, no-restart completion, sequence barriers, and
   running-state clearing,
+  online target retention, NOHZ migration, pinned target retention, and
+  offline housekeeping fallback,
   successful base migration, callback-running base retention, remote target
   rollback, and lock-safe migration completion,
   same-base in-place updates, requeues that cross the next timer, cached
@@ -342,6 +366,7 @@ QEMU 11.1.3:
   start path calls ``rust_hrtimer_requeue_same_base()``. The base-selection
   path calls ``rust_hrtimer_suitable_target()``. The callback path calls
   ``rust_hrtimer_callback_enter()`` and ``rust_hrtimer_callback_exit()``.
+  The target-selection path calls ``rust_hrtimer_target_base()``.
   The base-migration path calls ``rust_hrtimer_switch_base()``. The
   next-event path calls ``rust_hrtimer_get_next_event()``. The
   next-event update path calls ``rust_hrtimer_update_next_event()``. The
@@ -351,9 +376,9 @@ QEMU 11.1.3:
   ``rust_hrtimer_try_to_cancel_locked()``. The cancellation wait path calls
   ``rust_hrtimer_cancel()``. The forwarding path calls
   ``rust_hrtimer_forward()``. The linked vmlinux resolves these functions
-  and the base-selection, base-migration, callback, and cancellation helpers.
-  It contains no unresolved hrtimer migration symbols. No module references
-  these internal symbols.
+  and the base-selection, target-selection, base-migration, callback, and
+  cancellation helpers. It contains no unresolved hrtimer migration symbols.
+  No module references these internal symbols.
 * Rustfmt and Clippy pass. Clippy uses the kernel trailing ``-D warnings``
   policy. Strict checkpatch reports no errors, warnings, or checks.
 
@@ -372,4 +397,5 @@ Reopen the C boundary decision if any of these conditions changes:
   hard/soft event precedence changes.
 * Clock event reprogramming becomes a Rust-owned primitive.
 * HRTimer debug or trace hooks gain state-changing behavior.
-* Raw CPU base lock handoff or per-CPU target selection changes.
+* Raw CPU base lock handoff, CPU mask policy, housekeeping policy, or NOHZ
+  target computation changes.
