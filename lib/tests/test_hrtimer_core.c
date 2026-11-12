@@ -50,6 +50,11 @@ struct hrtimer_core_test_enqueue {
 	struct hrtimer timers[3];
 };
 
+struct hrtimer_core_test_callback {
+	struct hrtimer_cpu_base cpu_base;
+	struct hrtimer timer;
+};
+
 static enum hrtimer_restart hrtimer_core_test_callback(struct hrtimer *timer)
 {
 	struct hrtimer_core_test *test;
@@ -672,6 +677,114 @@ static void hrtimer_core_test_enqueue(struct kunit *test)
 }
 #endif
 
+#ifdef CONFIG_RUST_HRTIMER_CALLBACK
+static void
+hrtimer_core_test_init_callback(struct hrtimer_core_test_callback *state)
+{
+	struct hrtimer_cpu_base *cpu_base = &state->cpu_base;
+	struct hrtimer_clock_base *base;
+
+	raw_spin_lock_init(&cpu_base->lock);
+	seqcount_raw_spinlock_init(&cpu_base->clock_base[HRTIMER_BASE_MONOTONIC].seq,
+				   &cpu_base->lock);
+	cpu_base->online = true;
+	base = &cpu_base->clock_base[HRTIMER_BASE_MONOTONIC];
+	base->cpu_base = cpu_base;
+	base->expires_next = ns_to_ktime(KTIME_MAX);
+	timerqueue_linked_init_head(&base->active);
+	hrtimer_setup_on_stack(&state->timer, hrtimer_core_test_callback,
+			       CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED);
+	state->timer.base = base;
+	hrtimer_set_expires(&state->timer, ns_to_ktime(100));
+}
+
+static void
+hrtimer_core_test_enqueue_callback_timer(struct kunit *test,
+					 struct hrtimer_core_test_callback *state)
+{
+	struct hrtimer_clock_base *base =
+		&state->cpu_base.clock_base[HRTIMER_BASE_MONOTONIC];
+
+	KUNIT_EXPECT_TRUE(test,
+			  rust_hrtimer_enqueue(&state->timer, base,
+					       HRTIMER_MODE_ABS, false));
+}
+
+static void
+hrtimer_core_test_cleanup_callback(struct hrtimer_core_test_callback *state)
+{
+	struct hrtimer_cpu_base *cpu_base = &state->cpu_base;
+	struct hrtimer_clock_base *base =
+		&cpu_base->clock_base[HRTIMER_BASE_MONOTONIC];
+	unsigned long flags;
+
+	raw_spin_lock_irqsave(&cpu_base->lock, flags);
+	if (state->timer.is_queued) {
+		rust_helper_hrtimer_debug_deactivate(&state->timer);
+		rust_hrtimer_remove(&state->timer, base, false, false);
+	}
+	raw_spin_unlock_irqrestore(&cpu_base->lock, flags);
+	destroy_hrtimer_on_stack(&state->timer);
+}
+
+static void hrtimer_core_test_callback_lifecycle(struct kunit *test)
+{
+	struct hrtimer_core_test_callback *state;
+	struct hrtimer_clock_base *base;
+	unsigned long flags;
+
+	state = kunit_kzalloc(test, sizeof(*state), GFP_KERNEL);
+	KUNIT_ASSERT_NOT_NULL(test, state);
+	base = &state->cpu_base.clock_base[HRTIMER_BASE_MONOTONIC];
+
+	hrtimer_core_test_init_callback(state);
+	raw_spin_lock_irqsave(&state->cpu_base.lock, flags);
+	hrtimer_core_test_enqueue_callback_timer(test, state);
+	rust_helper_hrtimer_debug_deactivate(&state->timer);
+	rust_hrtimer_callback_enter(&state->timer, base);
+	KUNIT_EXPECT_PTR_EQ(test, &state->timer, base->running);
+	KUNIT_EXPECT_FALSE(test, state->timer.is_queued);
+	KUNIT_EXPECT_EQ(test, 0U, state->cpu_base.active_bases);
+	rust_hrtimer_callback_exit(&state->timer, base, HRTIMER_RESTART);
+	KUNIT_EXPECT_TRUE(test, state->timer.is_queued);
+	KUNIT_EXPECT_PTR_EQ(test, NULL, base->running);
+	KUNIT_EXPECT_EQ(test, 1U << HRTIMER_BASE_MONOTONIC,
+			state->cpu_base.active_bases);
+	raw_spin_unlock_irqrestore(&state->cpu_base.lock, flags);
+	hrtimer_core_test_cleanup_callback(state);
+
+	memset(state, 0, sizeof(*state));
+	hrtimer_core_test_init_callback(state);
+	raw_spin_lock_irqsave(&state->cpu_base.lock, flags);
+	hrtimer_core_test_enqueue_callback_timer(test, state);
+	rust_helper_hrtimer_debug_deactivate(&state->timer);
+	rust_hrtimer_callback_enter(&state->timer, base);
+	rust_hrtimer_callback_exit(&state->timer, base, HRTIMER_NORESTART);
+	KUNIT_EXPECT_FALSE(test, state->timer.is_queued);
+	KUNIT_EXPECT_PTR_EQ(test, NULL, base->running);
+	KUNIT_EXPECT_EQ(test, 0U, state->cpu_base.active_bases);
+	raw_spin_unlock_irqrestore(&state->cpu_base.lock, flags);
+	hrtimer_core_test_cleanup_callback(state);
+
+	memset(state, 0, sizeof(*state));
+	hrtimer_core_test_init_callback(state);
+	raw_spin_lock_irqsave(&state->cpu_base.lock, flags);
+	hrtimer_core_test_enqueue_callback_timer(test, state);
+	rust_helper_hrtimer_debug_deactivate(&state->timer);
+	rust_hrtimer_callback_enter(&state->timer, base);
+	KUNIT_EXPECT_TRUE(test,
+			  rust_hrtimer_enqueue(&state->timer, base,
+					       HRTIMER_MODE_ABS, false));
+	rust_hrtimer_callback_exit(&state->timer, base, HRTIMER_RESTART);
+	KUNIT_EXPECT_TRUE(test, state->timer.is_queued);
+	KUNIT_EXPECT_PTR_EQ(test, NULL, base->running);
+	KUNIT_EXPECT_PTR_EQ(test, &state->timer.node,
+			    timerqueue_linked_first(&base->active));
+	raw_spin_unlock_irqrestore(&state->cpu_base.lock, flags);
+	hrtimer_core_test_cleanup_callback(state);
+}
+#endif
+
 static void hrtimer_core_test_assert_order(struct kunit *test,
 					   struct hrtimer_core_test *timers,
 					   int first, int second, int third)
@@ -903,6 +1016,9 @@ static struct kunit_case hrtimer_core_test_cases[] = {
 #endif
 #ifdef CONFIG_RUST_HRTIMER_ENQUEUE
 	KUNIT_CASE(hrtimer_core_test_enqueue),
+#endif
+#ifdef CONFIG_RUST_HRTIMER_CALLBACK
+	KUNIT_CASE(hrtimer_core_test_callback_lifecycle),
 #endif
 	KUNIT_CASE(hrtimer_core_test_same_base_requeue),
 	KUNIT_CASE(hrtimer_core_test_expiry),

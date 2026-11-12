@@ -577,6 +577,19 @@ void rust_helper_hrtimer_enqueue_online(struct hrtimer_cpu_base *cpu_base)
 }
 #endif
 
+#ifdef CONFIG_RUST_HRTIMER_CALLBACK
+void rust_helper_hrtimer_callback_barrier(struct hrtimer_clock_base *base)
+{
+	raw_write_seqcount_barrier(&base->seq);
+}
+
+bool rust_helper_hrtimer_callback_running_matches(struct hrtimer_clock_base *base,
+						  struct hrtimer *timer)
+{
+	return !WARN_ON_ONCE(base->running != timer);
+}
+#endif
+
 #ifdef CONFIG_RUST_HRTIMER_BASE_SELECTION
 bool rust_helper_hrtimer_base_is_online(struct hrtimer_cpu_base *cpu_base)
 {
@@ -2201,6 +2214,9 @@ static void __run_hrtimer(struct hrtimer_cpu_base *cpu_base, struct hrtimer_cloc
 	lockdep_assert_held(&cpu_base->lock);
 
 	debug_hrtimer_deactivate(timer);
+#ifdef CONFIG_RUST_HRTIMER_CALLBACK
+	rust_hrtimer_callback_enter(timer, base);
+#else
 	base->running = timer;
 
 	/*
@@ -2213,7 +2229,6 @@ static void __run_hrtimer(struct hrtimer_cpu_base *cpu_base, struct hrtimer_cloc
 	raw_write_seqcount_barrier(&base->seq);
 
 	__remove_hrtimer(timer, base, HRTIMER_STATE_INACTIVE, false);
-	fn = ACCESS_PRIVATE(timer, function);
 
 	/*
 	 * Clear the 'is relative' flag for the TIME_LOW_RES case. If the
@@ -2222,6 +2237,8 @@ static void __run_hrtimer(struct hrtimer_cpu_base *cpu_base, struct hrtimer_cloc
 	 */
 	if (IS_ENABLED(CONFIG_TIME_LOW_RES))
 		timer->is_rel = false;
+#endif
+	fn = ACCESS_PRIVATE(timer, function);
 
 	/*
 	 * The timer is marked as running in the CPU base, so it is
@@ -2247,6 +2264,9 @@ static void __run_hrtimer(struct hrtimer_cpu_base *cpu_base, struct hrtimer_cloc
 	 * hrtimer_start_range_ns() can have popped in and enqueued the timer
 	 * for us already.
 	 */
+#ifdef CONFIG_RUST_HRTIMER_CALLBACK
+	rust_hrtimer_callback_exit(timer, base, restart);
+#else
 	if (restart == HRTIMER_RESTART && !timer->is_queued)
 		enqueue_hrtimer(timer, base, HRTIMER_MODE_ABS, false);
 
@@ -2261,6 +2281,7 @@ static void __run_hrtimer(struct hrtimer_cpu_base *cpu_base, struct hrtimer_cloc
 
 	WARN_ON_ONCE(base->running != timer);
 	base->running = NULL;
+#endif
 }
 
 static void __hrtimer_run_queues(struct hrtimer_cpu_base *cpu_base, ktime_t now,

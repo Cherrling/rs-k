@@ -41,6 +41,20 @@ bool rust_hrtimer_enqueue(struct hrtimer *timer,
 
 #endif /* CONFIG_RUST_HRTIMER_ENQUEUE */
 
+#ifdef CONFIG_RUST_HRTIMER_CALLBACK
+
+void rust_helper_hrtimer_callback_barrier(struct hrtimer_clock_base *base);
+bool rust_helper_hrtimer_callback_running_matches(struct hrtimer_clock_base *base,
+						  struct hrtimer *timer);
+
+void rust_hrtimer_callback_enter(struct hrtimer *timer,
+				 struct hrtimer_clock_base *base);
+void rust_hrtimer_callback_exit(struct hrtimer *timer,
+				struct hrtimer_clock_base *base,
+				unsigned int restart);
+
+#endif /* CONFIG_RUST_HRTIMER_CALLBACK */
+
 #ifdef CONFIG_RUST_HRTIMER_BASE_SELECTION
 
 bool rust_helper_hrtimer_base_is_online(struct hrtimer_cpu_base *cpu_base);

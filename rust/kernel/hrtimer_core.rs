@@ -5,7 +5,8 @@
 //! Rust owns timer insertion, local-base enqueue, in-place expiry updates,
 //! requeue decisions, queued removal, cancellation results, the clock-base
 //! next-expiry cache, expiry forwarding, next-event selection, and the
-//! cancellation retry loop.
+//! cancellation retry loop. It also owns the state transitions immediately
+//! before and after an expiry callback.
 //! Locking, clock event reprogramming, ktime arithmetic, callback completion
 //! waits, debug objects, and tracepoint delivery remain outside this module.
 
@@ -17,6 +18,7 @@ type Hrtimer = bindings::hrtimer;
 type ClockBase = bindings::hrtimer_clock_base;
 #[cfg(any(
     CONFIG_RUST_HRTIMER_BASE_SELECTION,
+    CONFIG_RUST_HRTIMER_CALLBACK,
     CONFIG_RUST_HRTIMER_ENQUEUE,
     CONFIG_RUST_HRTIMER_NEXT_EVENT,
     CONFIG_RUST_HRTIMER_REPROGRAM
@@ -447,6 +449,69 @@ unsafe extern "C" fn rust_hrtimer_enqueue(
     // SAFETY: The inserted timer is live and is the first queue entry.
     unsafe { (*base).expires_next = (*timer).node.expires };
     true
+}
+
+/// Enters the callback-running state and removes the expired timer.
+///
+/// Rust publishes the running timer, separates the running and queued state
+/// sections, removes the timer without clock event reprogramming, and clears
+/// the low-resolution relative flag.
+///
+/// # Safety
+///
+/// `timer` and `base` must be live, and the caller must hold
+/// `base->cpu_base->lock`. The timer must be queued on `base`.
+#[cfg(CONFIG_RUST_HRTIMER_CALLBACK)]
+#[export]
+unsafe extern "C" fn rust_hrtimer_callback_enter(timer: *mut Hrtimer, base: *mut ClockBase) {
+    // SAFETY: The caller holds the clock base lock.
+    unsafe { (*base).running = timer };
+    // SAFETY: The caller holds the clock base lock.
+    unsafe { bindings::rust_helper_hrtimer_callback_barrier(base) };
+    // SAFETY: The caller satisfies the requirements of `remove_locked`.
+    unsafe { remove_locked(timer, base, false, false) };
+
+    #[cfg(CONFIG_TIME_LOW_RES)]
+    // SAFETY: The caller guarantees that the timer is live.
+    unsafe {
+        (*timer).is_rel = false
+    };
+}
+
+/// Completes the callback-running state and queues a restarting timer.
+///
+/// Rust queues the timer when the callback requested a restart and another
+/// context did not already queue it. Rust then separates the callback and
+/// post-callback state sections, validates the running timer, and clears the
+/// running marker.
+///
+/// # Safety
+///
+/// `timer` and `base` must be live, and the caller must hold
+/// `base->cpu_base->lock`. `base->running` must identify `timer`.
+#[cfg(CONFIG_RUST_HRTIMER_CALLBACK)]
+#[export]
+unsafe extern "C" fn rust_hrtimer_callback_exit(
+    timer: *mut Hrtimer,
+    base: *mut ClockBase,
+    restart: u32,
+) {
+    // SAFETY: The caller guarantees that the timer is live and locked.
+    let queued = unsafe { bindings::rust_helper_hrtimer_is_queued(timer) };
+
+    if restart == bindings::hrtimer_restart::HRTIMER_RESTART.0 && !queued {
+        // SAFETY: The callback cannot migrate the running timer.
+        unsafe {
+            rust_hrtimer_enqueue(timer, base, bindings::hrtimer_mode_HRTIMER_MODE_ABS, false)
+        };
+    }
+
+    // SAFETY: The caller holds the clock base lock.
+    unsafe { bindings::rust_helper_hrtimer_callback_barrier(base) };
+    // SAFETY: The caller holds the clock base lock.
+    let _ = unsafe { bindings::rust_helper_hrtimer_callback_running_matches(base, timer) };
+    // SAFETY: The caller holds the clock base lock.
+    unsafe { (*base).running = ptr::null_mut() };
 }
 
 /// Starts or requeues a timer on its current local clock base.

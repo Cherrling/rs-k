@@ -1059,6 +1059,22 @@ config RUST_HRTIMER_ENQUEUE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_HRTIMER_CALLBACK
+	bool "Rust implementation of hrtimer callback lifecycle"
+	depends on RUST_HRTIMER_CANCEL && RUST_HRTIMER_ENQUEUE
+	default y
+	help
+	  Use Rust for the production state transitions around an expired
+	  high-resolution timer callback. This includes running-state
+	  publication, queue removal, automatic restart, and running-state
+	  clearing.
+
+	  CPU base locking, callback execution, tracepoints, lockdep context
+	  tracking, and public ABI adapters remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_HRTIMER_BASE_SELECTION
 	bool "Rust implementation of hrtimer base selection"
 	depends on RUST_HRTIMER && SMP
