@@ -1282,6 +1282,23 @@ config RUST_HRTIMER_REPROGRAM
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_HRTIMER_FORCE_REPROGRAM
+	bool "Rust implementation of the hrtimer force reprogram state"
+	depends on RUST_HRTIMER_INTERRUPT
+	default y
+	help
+	  Use Rust for the production force-reprogram and clock event
+	  reprogramming state machine. Rust re-evaluates the next event,
+	  applies the skip-equal optimization, updates the CPU base deadline,
+	  checks high-resolution mode and hang state, and selects whether the
+	  clock event device needs programming.
+
+	  CPU base locking, next-event queue traversal, clock event tracing,
+	  hardware programming, and public ABI adapters remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_HRTIMER_CANCEL
 	bool "Rust implementation of hrtimer removal and cancellation state"
 	depends on RUST_HRTIMER

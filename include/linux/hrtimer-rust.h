@@ -303,6 +303,28 @@ ktime_t rust_hrtimer_reprogram(struct hrtimer *timer,
 
 #endif /* CONFIG_RUST_HRTIMER_REPROGRAM */
 
+#ifdef CONFIG_RUST_HRTIMER_FORCE_REPROGRAM
+
+ktime_t rust_helper_hrtimer_force_reprogram_next_event(struct hrtimer_cpu_base *cpu_base);
+void rust_hrtimer_force_reprogram(struct hrtimer_cpu_base *cpu_base,
+				  bool skip_equal);
+void rust_hrtimer_reprogram_device(struct hrtimer_cpu_base *cpu_base,
+				   ktime_t expires_next);
+
+#ifdef CONFIG_KUNIT
+#define RUST_HRTIMER_FORCE_REPROGRAM_SKIP	0
+#define RUST_HRTIMER_FORCE_REPROGRAM_UPDATE	1
+#define RUST_HRTIMER_FORCE_REPROGRAM_PROGRAM	2
+
+unsigned int rust_hrtimer_force_reprogram_select(ktime_t expires_next,
+						 ktime_t current_expires,
+						 bool skip_equal,
+						 bool hres_active,
+						 bool hang_detected);
+#endif
+
+#endif /* CONFIG_RUST_HRTIMER_FORCE_REPROGRAM */
+
 #if defined(CONFIG_RUST_HRTIMER_CANCEL) || \
 	defined(CONFIG_RUST_HRTIMER_BASE_MIGRATION) || \
 	defined(CONFIG_RUST_HRTIMER_KEEP_BASE)
@@ -312,8 +334,10 @@ bool rust_helper_hrtimer_callback_running(struct hrtimer *timer);
 
 #ifdef CONFIG_RUST_HRTIMER_CANCEL
 bool rust_helper_hrtimer_base_is_local(struct hrtimer_clock_base *base);
+#ifndef CONFIG_RUST_HRTIMER_FORCE_REPROGRAM
 void rust_helper_hrtimer_force_reprogram(struct hrtimer_cpu_base *cpu_base,
 					 bool skip_equal);
+#endif
 
 void rust_hrtimer_remove(struct hrtimer *timer,
 			 struct hrtimer_clock_base *base, bool newstate,

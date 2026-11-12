@@ -1233,6 +1233,30 @@ static void hrtimer_core_test_rearm(struct kunit *test)
 }
 #endif
 
+#ifdef CONFIG_RUST_HRTIMER_FORCE_REPROGRAM
+static void hrtimer_core_test_force_reprogram(struct kunit *test)
+{
+	ktime_t expires = ns_to_ktime(200);
+
+	KUNIT_EXPECT_EQ(test, RUST_HRTIMER_FORCE_REPROGRAM_SKIP,
+			rust_hrtimer_force_reprogram_select(expires, expires,
+							    true, true, false));
+	KUNIT_EXPECT_EQ(test, RUST_HRTIMER_FORCE_REPROGRAM_PROGRAM,
+			rust_hrtimer_force_reprogram_select(expires,
+							    ns_to_ktime(300),
+							    true, true, false));
+	KUNIT_EXPECT_EQ(test, RUST_HRTIMER_FORCE_REPROGRAM_UPDATE,
+			rust_hrtimer_force_reprogram_select(expires, expires,
+							    false, false, false));
+	KUNIT_EXPECT_EQ(test, RUST_HRTIMER_FORCE_REPROGRAM_UPDATE,
+			rust_hrtimer_force_reprogram_select(expires, expires,
+							    false, true, true));
+	KUNIT_EXPECT_EQ(test, RUST_HRTIMER_FORCE_REPROGRAM_PROGRAM,
+			rust_hrtimer_force_reprogram_select(expires, expires,
+							    false, true, false));
+}
+#endif
+
 #ifdef CONFIG_RUST_HRTIMER_START
 static void hrtimer_core_test_start(struct kunit *test)
 {
@@ -1591,6 +1615,9 @@ static struct kunit_case hrtimer_core_test_cases[] = {
 #endif
 #ifdef CONFIG_RUST_HRTIMER_REARM
 	KUNIT_CASE(hrtimer_core_test_rearm),
+#endif
+#ifdef CONFIG_RUST_HRTIMER_FORCE_REPROGRAM
+	KUNIT_CASE(hrtimer_core_test_force_reprogram),
 #endif
 #ifdef CONFIG_RUST_HRTIMER_START
 	KUNIT_CASE(hrtimer_core_test_start),

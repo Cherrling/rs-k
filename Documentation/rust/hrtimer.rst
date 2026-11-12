@@ -38,6 +38,9 @@ clock change requires remote timer reevaluation.
 ``CONFIG_RUST_HRTIMER_REPROGRAM`` selects Rust for deciding whether a newly
 queued timer changes the soft-timer caches or requires clock event
 reprogramming.
+``CONFIG_RUST_HRTIMER_FORCE_REPROGRAM`` selects Rust for reevaluating all clock
+bases, applying the force-reprogram equality shortcut, and selecting whether
+the shared clock event deadline is updated or programmed.
 The ``CONFIG_RUST_HRTIMER_CANCEL`` option extends that state machine to queued
 removal and cancellation decisions.  ``CONFIG_RUST_HRTIMER_CANCEL_WAIT``
 selects Rust for the cancellation retry loop.
@@ -63,6 +66,9 @@ Rust owns these production decisions:
   or recomputing the next event after a queue change, updating the CPU base
   deadline, clearing the pending state, applying the hang delay, and
   selecting immediate or deferred clock event programming.
+* Reevaluating all clock bases for a forced reprogram, suppressing an equal
+  deadline when requested, updating ``expires_next``, and respecting the
+  high-resolution and hang-recovery gates before programming the device.
 * Enqueueing an inactive timer on its current clock base.
 * Updating an active timer in place when its new expiry remains between the
   current neighbors.
@@ -220,6 +226,15 @@ reprogramming option is enabled.  The original C soft-timer cache updates,
 remote-CPU check, deadline comparison, deferred-rearm check, and
 ``next_timer`` update are compiled out.
 
+The C ``hrtimer_force_reprogram()`` path calls
+``rust_hrtimer_force_reprogram()`` when the force-reprogram option is enabled.
+Rust reevaluates the next event through a narrow C helper, applies the
+skip-equal rule, updates ``expires_next``, and checks ``hres_active`` and
+``hang_detected`` before programming the clock event.  The C
+``__hrtimer_reprogram()`` adapter also calls
+``rust_hrtimer_reprogram_device()``, so direct reprogram calls share the Rust
+device state before reaching the hardware adapter.
+
 The C ``hrtimer_cancel()`` entry point calls ``rust_hrtimer_cancel()`` when
 the cancellation-wait option is enabled.  The original C retry loop is
 compiled out.
@@ -344,6 +359,12 @@ With immediate rearm, Rust updates ``expires_next`` and clears the pending
 rearm before programming the device.  A detected hang replaces the programmed
 deadline with the capped delay.  With deferred rearm, Rust caches the selected
 expiry, marks it unchanged, and requests thread-work execution.
+
+Force reprogram reevaluates all clock bases even when no timer queue changed.
+The equal-deadline shortcut suppresses both the CPU base update and hardware
+programming.  A different deadline is always stored in ``expires_next``.
+Hardware programming occurs only when high-resolution mode is active and no
+hang recovery delay remains in effect.
 
 Deferred rearm consumption uses the cached expiry when no timer was added or
 removed.  A pending update flag requires Rust to refresh clock offsets and

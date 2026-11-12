@@ -12,6 +12,7 @@
 //! It also selects and iterates expired timer queues.
 //! It also owns the high-resolution timer interrupt state machine.
 //! It also owns deferred rearm coordination and clock event rearm state.
+//! It also owns force-reprogram and clock event reprogramming state.
 //! It also owns the first-timer startup state machine.
 //! It also validates and removes already expired user timers.
 //! Locking, clock event reprogramming, ktime arithmetic, callback completion
@@ -28,6 +29,7 @@ type ClockBase = bindings::hrtimer_clock_base;
     CONFIG_RUST_HRTIMER_BASE_SELECTION,
     CONFIG_RUST_HRTIMER_CALLBACK,
     CONFIG_RUST_HRTIMER_ENQUEUE,
+    CONFIG_RUST_HRTIMER_FORCE_REPROGRAM,
     CONFIG_RUST_HRTIMER_INTERRUPT,
     CONFIG_RUST_HRTIMER_NEXT_EVENT,
     CONFIG_RUST_HRTIMER_REARM,
@@ -1507,6 +1509,142 @@ unsafe extern "C" fn rust_hrtimer_update_next_event(cpu_base: *mut CpuBase) -> b
     expires_next
 }
 
+/// The clock event action selected after reevaluating the next timer.
+#[cfg(CONFIG_RUST_HRTIMER_FORCE_REPROGRAM)]
+enum ForceReprogramAction {
+    Skip,
+    Update,
+    Program,
+}
+
+/// Selects the force-reprogram action without touching the clock device.
+#[cfg(CONFIG_RUST_HRTIMER_FORCE_REPROGRAM)]
+fn force_reprogram_action(
+    expires_next: bindings::ktime_t,
+    current_expires: bindings::ktime_t,
+    skip_equal: bool,
+    hres_active: bool,
+    hang_detected: bool,
+) -> ForceReprogramAction {
+    if skip_equal && expires_next == current_expires {
+        return ForceReprogramAction::Skip;
+    }
+
+    if hres_active && !hang_detected {
+        ForceReprogramAction::Program
+    } else {
+        ForceReprogramAction::Update
+    }
+}
+
+/// Applies a force-reprogram action to the CPU base.
+///
+/// # Safety
+///
+/// `cpu_base` must be live and protected by its CPU base lock.
+#[cfg(CONFIG_RUST_HRTIMER_FORCE_REPROGRAM)]
+unsafe fn apply_force_reprogram(
+    cpu_base: *mut CpuBase,
+    expires_next: bindings::ktime_t,
+    action: ForceReprogramAction,
+) {
+    if matches!(action, ForceReprogramAction::Skip) {
+        return;
+    }
+
+    // SAFETY: The caller holds the CPU base lock.
+    unsafe { (*cpu_base).expires_next = expires_next };
+
+    if matches!(action, ForceReprogramAction::Program) {
+        // SAFETY: The caller holds the CPU base lock and owns the event update.
+        unsafe { bindings::rust_helper_hrtimer_interrupt_program_event(expires_next, false) };
+    }
+}
+
+/// Updates the shared clock event state after a caller selected a new expiry.
+///
+/// Rust records the expiry, leaves the active hardware deadline unchanged
+/// while high-resolution mode is inactive or a hang is being recovered, and
+/// programs the clock event device only when those conditions permit.
+///
+/// # Safety
+///
+/// `cpu_base` must be live and protected by its CPU base lock.
+#[cfg(CONFIG_RUST_HRTIMER_FORCE_REPROGRAM)]
+#[export]
+unsafe extern "C" fn rust_hrtimer_reprogram_device(
+    cpu_base: *mut CpuBase,
+    expires_next: bindings::ktime_t,
+) {
+    // SAFETY: The caller holds the CPU base lock.
+    let hres_active = unsafe { (*cpu_base).hres_active };
+    // SAFETY: The caller holds the CPU base lock.
+    let hang_detected = unsafe { (*cpu_base).hang_detected };
+    let action = force_reprogram_action(
+        expires_next,
+        expires_next,
+        false,
+        hres_active,
+        hang_detected,
+    );
+
+    // SAFETY: The caller holds the CPU base lock.
+    unsafe { apply_force_reprogram(cpu_base, expires_next, action) };
+}
+
+/// Reevaluates all clock bases and reprograms the clock event device.
+///
+/// # Safety
+///
+/// `cpu_base` must be live and protected by its CPU base lock. Active clock
+/// base bits must identify nonempty linked timer queues.
+#[cfg(CONFIG_RUST_HRTIMER_FORCE_REPROGRAM)]
+#[export]
+unsafe extern "C" fn rust_hrtimer_force_reprogram(cpu_base: *mut CpuBase, skip_equal: bool) {
+    // SAFETY: The caller holds the CPU base lock.
+    let expires_next =
+        unsafe { bindings::rust_helper_hrtimer_force_reprogram_next_event(cpu_base) };
+    // SAFETY: The caller holds the CPU base lock.
+    let current_expires = unsafe { (*cpu_base).expires_next };
+    // SAFETY: The caller holds the CPU base lock.
+    let hres_active = unsafe { (*cpu_base).hres_active };
+    // SAFETY: The caller holds the CPU base lock.
+    let hang_detected = unsafe { (*cpu_base).hang_detected };
+    let action = force_reprogram_action(
+        expires_next,
+        current_expires,
+        skip_equal,
+        hres_active,
+        hang_detected,
+    );
+
+    // SAFETY: The caller holds the CPU base lock.
+    unsafe { apply_force_reprogram(cpu_base, expires_next, action) };
+}
+
+/// Selects a force-reprogram action with explicit test inputs.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_HRTIMER_FORCE_REPROGRAM))]
+#[export]
+extern "C" fn rust_hrtimer_force_reprogram_select(
+    expires_next: bindings::ktime_t,
+    current_expires: bindings::ktime_t,
+    skip_equal: bool,
+    hres_active: bool,
+    hang_detected: bool,
+) -> u32 {
+    match force_reprogram_action(
+        expires_next,
+        current_expires,
+        skip_equal,
+        hres_active,
+        hang_detected,
+    ) {
+        ForceReprogramAction::Skip => 0,
+        ForceReprogramAction::Update => 1,
+        ForceReprogramAction::Program => 2,
+    }
+}
+
 /// Returns whether a clock change requires a remote CPU timer interrupt.
 ///
 /// The caller updates clock offsets before this decision. Rust checks whether
@@ -1850,6 +1988,28 @@ unsafe extern "C" fn rust_hrtimer_requeue_same_base(
     first
 }
 
+/// Reprograms the clock event after timer removal with the Rust force state.
+///
+/// # Safety
+///
+/// `cpu_base` must be live and protected by its CPU base lock.
+#[cfg(all(CONFIG_RUST_HRTIMER_CANCEL, CONFIG_RUST_HRTIMER_FORCE_REPROGRAM))]
+unsafe fn force_reprogram_after_remove(cpu_base: *mut CpuBase) {
+    // SAFETY: The caller holds the CPU base lock.
+    unsafe { bindings::rust_hrtimer_force_reprogram(cpu_base, true) };
+}
+
+/// Reprograms the clock event after timer removal with the C fallback.
+///
+/// # Safety
+///
+/// `cpu_base` must be live and protected by its CPU base lock.
+#[cfg(all(CONFIG_RUST_HRTIMER_CANCEL, not(CONFIG_RUST_HRTIMER_FORCE_REPROGRAM)))]
+unsafe fn force_reprogram_after_remove(cpu_base: *mut CpuBase) {
+    // SAFETY: The helper updates the clock event under the CPU base lock.
+    unsafe { bindings::rust_helper_hrtimer_force_reprogram(cpu_base, true) };
+}
+
 /// Removes a queued timer and maintains the clock-base and CPU-base state.
 ///
 /// # Safety
@@ -1911,8 +2071,8 @@ unsafe fn remove_locked(
         // SAFETY: The caller holds the CPU base lock.
         unsafe { (*cpu_base).deferred_needs_update = true };
     } else {
-        // SAFETY: The helper updates the clock event under the CPU base lock.
-        unsafe { bindings::rust_helper_hrtimer_force_reprogram(cpu_base, true) };
+        // SAFETY: The caller holds the CPU base lock.
+        unsafe { force_reprogram_after_remove(cpu_base) };
     }
 }
 

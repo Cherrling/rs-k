@@ -968,9 +968,19 @@ static inline void hrtimer_rearm_event(ktime_t expires_next, bool deferred)
 	tick_program_event(expires_next, 1);
 }
 
+#ifdef CONFIG_RUST_HRTIMER_FORCE_REPROGRAM
+ktime_t rust_helper_hrtimer_force_reprogram_next_event(struct hrtimer_cpu_base *cpu_base)
+{
+	return hrtimer_update_next_event(cpu_base);
+}
+#endif
+
 static void __hrtimer_reprogram(struct hrtimer_cpu_base *cpu_base,
 				ktime_t expires_next)
 {
+#ifdef CONFIG_RUST_HRTIMER_FORCE_REPROGRAM
+	rust_hrtimer_reprogram_device(cpu_base, expires_next);
+#else
 	cpu_base->expires_next = expires_next;
 
 	/*
@@ -994,20 +1004,26 @@ static void __hrtimer_reprogram(struct hrtimer_cpu_base *cpu_base,
 		return;
 
 	hrtimer_rearm_event(expires_next, false);
+#endif
 }
 
 /* Reprogram the event source with a evaluation of all clock bases */
 static void hrtimer_force_reprogram(struct hrtimer_cpu_base *cpu_base, bool skip_equal)
 {
+#ifdef CONFIG_RUST_HRTIMER_FORCE_REPROGRAM
+	rust_hrtimer_force_reprogram(cpu_base, skip_equal);
+#else
 	ktime_t expires_next = hrtimer_update_next_event(cpu_base);
 
 	if (skip_equal && expires_next == cpu_base->expires_next)
 		return;
 
 	__hrtimer_reprogram(cpu_base, expires_next);
+#endif
 }
 
-#ifdef CONFIG_RUST_HRTIMER_CANCEL
+#if defined(CONFIG_RUST_HRTIMER_CANCEL) && \
+	!defined(CONFIG_RUST_HRTIMER_FORCE_REPROGRAM)
 void rust_helper_hrtimer_force_reprogram(struct hrtimer_cpu_base *cpu_base,
 					 bool skip_equal)
 {
