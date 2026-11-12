@@ -1037,8 +1037,7 @@ config RUST_HRTIMER
 	  transition for high-resolution timers.
 
 	  CPU base locking, clock event reprogramming, debug object tracking,
-	  tracepoints, base migration, callback execution, and public ABI
-	  adapters remain in C.
+	  tracepoints, callback execution, and public ABI adapters remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -1052,9 +1051,8 @@ config RUST_HRTIMER_ENQUEUE
 	  This includes active-base accounting, lockless queued publication,
 	  linked timer insertion, and first-expiry cache updates.
 
-	  CPU base locking, debug object tracking, tracepoints, base selection,
-	  clock event reprogramming, callback execution, and public ABI
-	  adapters remain in C.
+	  CPU base locking, debug object tracking, tracepoints, clock event
+	  reprogramming, callback execution, and public ABI adapters remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -1100,6 +1098,23 @@ config RUST_HRTIMER_TARGET_BASE
 
 	  CPU masks, housekeeping policy, per-CPU base lookup, and public ABI
 	  adapters remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
+config RUST_HRTIMER_KEEP_BASE
+	bool "Rust implementation of hrtimer local base retention"
+	depends on RUST_HRTIMER && SMP && NO_HZ_COMMON
+	default y
+	help
+	  Use Rust for the production decision that keeps an hrtimer on its
+	  local clock base. This includes callback-running retention, migration
+	  policy, first and pinned timer retention, NOHZ housekeeping checks,
+	  stopped-tick handling, and rescheduling checks.
+
+	  The migration static branch, housekeeping CPU query, stopped-tick state,
+	  rescheduling state, and public ABI adapters remain in C. Non-SMP and
+	  non-NOHZ configurations keep their trivial local-base decision in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

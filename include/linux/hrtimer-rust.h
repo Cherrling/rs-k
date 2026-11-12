@@ -79,7 +79,6 @@ struct hrtimer_cpu_base *
 rust_hrtimer_target_base(struct hrtimer_cpu_base *base, bool pinned);
 
 #ifdef CONFIG_NO_HZ_COMMON
-bool rust_helper_hrtimer_migration_enabled(void);
 int rust_helper_hrtimer_nohz_target_cpu(void);
 #endif
 
@@ -93,9 +92,33 @@ rust_hrtimer_target_base_select(struct hrtimer_cpu_base *base, bool pinned,
 
 #endif /* CONFIG_RUST_HRTIMER_TARGET_BASE */
 
+#if defined(CONFIG_RUST_HRTIMER_KEEP_BASE) || \
+	(defined(CONFIG_RUST_HRTIMER_TARGET_BASE) && \
+	 defined(CONFIG_NO_HZ_COMMON))
+
+bool rust_helper_hrtimer_migration_enabled(void);
+#endif
+
+#ifdef CONFIG_RUST_HRTIMER_KEEP_BASE
+
+bool rust_helper_hrtimer_local_housekeeping(void);
+bool rust_helper_hrtimer_tick_stopped(void);
+bool rust_helper_hrtimer_need_resched(void);
+
+bool rust_hrtimer_keep_base(struct hrtimer *timer, bool is_local,
+			    bool is_first, bool is_pinned);
+
+#ifdef CONFIG_KUNIT
+bool rust_hrtimer_prefer_local_select(bool migration_enabled, bool is_local,
+				      bool is_first, bool is_pinned,
+				      bool housekeeping, bool tick_stopped,
+				      bool need_resched);
+#endif
+
+#endif /* CONFIG_RUST_HRTIMER_KEEP_BASE */
+
 #ifdef CONFIG_RUST_HRTIMER_BASE_MIGRATION
 
-bool rust_helper_hrtimer_callback_running(struct hrtimer *timer);
 struct hrtimer_cpu_base *rust_helper_hrtimer_this_cpu_base(void);
 struct hrtimer_cpu_base *
 rust_helper_hrtimer_target_cpu_base(struct hrtimer_cpu_base *base, bool pinned);
@@ -155,7 +178,8 @@ ktime_t rust_hrtimer_reprogram(struct hrtimer *timer,
 #endif /* CONFIG_RUST_HRTIMER_REPROGRAM */
 
 #if defined(CONFIG_RUST_HRTIMER_CANCEL) || \
-	defined(CONFIG_RUST_HRTIMER_BASE_MIGRATION)
+	defined(CONFIG_RUST_HRTIMER_BASE_MIGRATION) || \
+	defined(CONFIG_RUST_HRTIMER_KEEP_BASE)
 
 bool rust_helper_hrtimer_callback_running(struct hrtimer *timer);
 #endif

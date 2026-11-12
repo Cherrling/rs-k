@@ -619,16 +619,37 @@ struct hrtimer_cpu_base *rust_helper_hrtimer_percpu_base(int cpu)
 }
 
 #ifdef CONFIG_NO_HZ_COMMON
-bool rust_helper_hrtimer_migration_enabled(void)
-{
-	return static_branch_likely(&timers_migration_enabled);
-}
-
 int rust_helper_hrtimer_nohz_target_cpu(void)
 {
 	return get_nohz_timer_target();
 }
 #endif
+#endif
+
+#if defined(CONFIG_RUST_HRTIMER_KEEP_BASE) || \
+	(defined(CONFIG_RUST_HRTIMER_TARGET_BASE) && \
+	 defined(CONFIG_NO_HZ_COMMON))
+bool rust_helper_hrtimer_migration_enabled(void)
+{
+	return static_branch_likely(&timers_migration_enabled);
+}
+#endif
+
+#ifdef CONFIG_RUST_HRTIMER_KEEP_BASE
+bool rust_helper_hrtimer_local_housekeeping(void)
+{
+	return housekeeping_cpu(smp_processor_id(), HK_TYPE_KERNEL_NOISE);
+}
+
+bool rust_helper_hrtimer_tick_stopped(void)
+{
+	return tick_nohz_tick_stopped();
+}
+
+bool rust_helper_hrtimer_need_resched(void)
+{
+	return need_resched();
+}
 #endif
 
 #ifdef CONFIG_RUST_HRTIMER_BASE_MIGRATION
@@ -679,7 +700,8 @@ void rust_helper_hrtimer_switch_commit(struct hrtimer *timer,
 #endif
 
 #if defined(CONFIG_RUST_HRTIMER_CANCEL) || \
-	defined(CONFIG_RUST_HRTIMER_BASE_MIGRATION)
+	defined(CONFIG_RUST_HRTIMER_BASE_MIGRATION) || \
+	defined(CONFIG_RUST_HRTIMER_KEEP_BASE)
 bool rust_helper_hrtimer_callback_running(struct hrtimer *timer)
 {
 	return hrtimer_callback_running(timer);
@@ -1591,6 +1613,7 @@ static void hrtimer_update_softirq_timer(struct hrtimer_cpu_base *cpu_base, bool
 	hrtimer_reprogram(cpu_base->softirq_next_timer, reprogram);
 }
 
+#if !defined(CONFIG_RUST_HRTIMER_KEEP_BASE)
 #if defined(CONFIG_SMP) && defined(CONFIG_NO_HZ_COMMON)
 static __always_inline bool hrtimer_prefer_local(bool is_local, bool is_first, bool is_pinned)
 {
@@ -1623,15 +1646,20 @@ static __always_inline bool hrtimer_prefer_local(bool is_local, bool is_first, b
 	return is_local;
 }
 #endif
+#endif
 
 static inline bool hrtimer_keep_base(struct hrtimer *timer, bool is_local, bool is_first,
 				     bool is_pinned)
 {
+#ifdef CONFIG_RUST_HRTIMER_KEEP_BASE
+	return rust_hrtimer_keep_base(timer, is_local, is_first, is_pinned);
+#else
 	/* If the timer is running the callback it has to stay on its CPU base. */
 	if (unlikely(timer->base->running == timer))
 		return true;
 
 	return hrtimer_prefer_local(is_local, is_first, is_pinned);
+#endif
 }
 
 enum {

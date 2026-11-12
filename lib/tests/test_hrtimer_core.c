@@ -67,6 +67,11 @@ struct hrtimer_core_test_target_base {
 	struct hrtimer_cpu_base nohz;
 };
 
+struct hrtimer_core_test_keep_base {
+	struct hrtimer_cpu_base cpu_base;
+	struct hrtimer timer;
+};
+
 static enum hrtimer_restart hrtimer_core_test_callback(struct hrtimer *timer)
 {
 	struct hrtimer_core_test *test;
@@ -899,6 +904,78 @@ static void hrtimer_core_test_target_base(struct kunit *test)
 }
 #endif
 
+#ifdef CONFIG_RUST_HRTIMER_KEEP_BASE
+static void hrtimer_core_test_keep_base(struct kunit *test)
+{
+	struct hrtimer_core_test_keep_base *state;
+	struct hrtimer_clock_base *base;
+
+	state = kunit_kzalloc(test, sizeof(*state), GFP_KERNEL);
+	KUNIT_ASSERT_NOT_NULL(test, state);
+	base = &state->cpu_base.clock_base[HRTIMER_BASE_MONOTONIC];
+	base->cpu_base = &state->cpu_base;
+
+	hrtimer_setup_on_stack(&state->timer, hrtimer_core_test_callback,
+			       CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
+	state->timer.base = base;
+
+	base->running = &state->timer;
+	KUNIT_EXPECT_TRUE(test,
+			  rust_hrtimer_keep_base(&state->timer, false, false,
+						 false));
+	base->running = NULL;
+
+	KUNIT_EXPECT_FALSE(test,
+			   rust_hrtimer_keep_base(&state->timer, false, false,
+						  false));
+	KUNIT_EXPECT_TRUE(test,
+			  rust_hrtimer_keep_base(&state->timer, true, true,
+						 false));
+	KUNIT_EXPECT_TRUE(test,
+			  rust_hrtimer_keep_base(&state->timer, true, false,
+						 true));
+
+	KUNIT_EXPECT_TRUE(test,
+			  rust_hrtimer_prefer_local_select(false, true, false,
+							   false, false, true,
+							   false));
+	KUNIT_EXPECT_FALSE(test,
+			   rust_hrtimer_prefer_local_select(false, false, true,
+							    true, true, false,
+							    true));
+	KUNIT_EXPECT_FALSE(test,
+			   rust_hrtimer_prefer_local_select(true, false, true,
+							    true, true, false,
+							    true));
+	KUNIT_EXPECT_TRUE(test,
+			  rust_hrtimer_prefer_local_select(true, true, true,
+							   false, false, true,
+							   false));
+	KUNIT_EXPECT_TRUE(test,
+			  rust_hrtimer_prefer_local_select(true, true, false,
+							   true, false, true,
+							   false));
+	KUNIT_EXPECT_FALSE(test,
+			   rust_hrtimer_prefer_local_select(true, true, false,
+							    false, false, false,
+							    false));
+	KUNIT_EXPECT_TRUE(test,
+			  rust_hrtimer_prefer_local_select(true, true, false,
+							   false, true, false,
+							   false));
+	KUNIT_EXPECT_FALSE(test,
+			   rust_hrtimer_prefer_local_select(true, true, false,
+							    false, true, true,
+							    false));
+	KUNIT_EXPECT_TRUE(test,
+			  rust_hrtimer_prefer_local_select(true, true, false,
+							   false, true, true,
+							   true));
+
+	destroy_hrtimer_on_stack(&state->timer);
+}
+#endif
+
 static void hrtimer_core_test_assert_order(struct kunit *test,
 					   struct hrtimer_core_test *timers,
 					   int first, int second, int third)
@@ -1139,6 +1216,9 @@ static struct kunit_case hrtimer_core_test_cases[] = {
 #endif
 #ifdef CONFIG_RUST_HRTIMER_TARGET_BASE
 	KUNIT_CASE(hrtimer_core_test_target_base),
+#endif
+#ifdef CONFIG_RUST_HRTIMER_KEEP_BASE
+	KUNIT_CASE(hrtimer_core_test_keep_base),
 #endif
 	KUNIT_CASE(hrtimer_core_test_same_base_requeue),
 	KUNIT_CASE(hrtimer_core_test_expiry),

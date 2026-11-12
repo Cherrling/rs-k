@@ -8,6 +8,7 @@
 //! cancellation retry loop. It also owns the state transitions immediately
 //! before and after an expiry callback.
 //! Rust also selects the target CPU base and owns timer base migration.
+//! It also owns the local-base retention decision for the SMP NOHZ path.
 //! Locking, clock event reprogramming, ktime arithmetic, callback completion
 //! waits, debug objects, and tracepoint delivery remain outside this module.
 
@@ -183,6 +184,107 @@ unsafe extern "C" fn rust_hrtimer_target_base_select(
     migration_enabled: bool,
 ) -> *mut CpuBase {
     select_target_base(base, pinned, offline, nohz, online, migration_enabled)
+}
+
+/// Returns whether an active timer can keep its local clock base.
+///
+/// Migration can move an unpinned timer away from a local non-housekeeping
+/// CPU after the tick stops. A first or pinned timer remains local. When the
+/// timer migration static branch is disabled, the base is retained only when
+/// it is already local.
+#[cfg(CONFIG_RUST_HRTIMER_KEEP_BASE)]
+fn prefer_local(
+    migration_enabled: bool,
+    is_local: bool,
+    is_first: bool,
+    is_pinned: bool,
+    housekeeping: bool,
+    tick_stopped: bool,
+    need_resched: bool,
+) -> bool {
+    if !migration_enabled {
+        return is_local;
+    }
+    if !is_local {
+        return false;
+    }
+    if is_first || is_pinned {
+        return true;
+    }
+    if !housekeeping {
+        return false;
+    }
+
+    !tick_stopped || need_resched
+}
+
+/// Keeps a running callback on its current base and selects local retention.
+///
+/// Rust owns the callback-running check, migration policy, first and pinned
+/// timer retention, and NOHZ decision. C supplies the migration static
+/// branch, housekeeping state, stopped-tick state, and scheduling state.
+///
+/// # Safety
+///
+/// `timer` must be live and its current clock base must remain stable for the
+/// duration of the call.
+#[cfg(CONFIG_RUST_HRTIMER_KEEP_BASE)]
+#[export]
+unsafe extern "C" fn rust_hrtimer_keep_base(
+    timer: *mut Hrtimer,
+    is_local: bool,
+    is_first: bool,
+    is_pinned: bool,
+) -> bool {
+    // SAFETY: The caller guarantees that the timer and base are live.
+    if unsafe { bindings::rust_helper_hrtimer_callback_running(timer) } {
+        return true;
+    }
+
+    // SAFETY: The caller keeps the timer migration policy stable for the call.
+    let migration_enabled = unsafe { bindings::rust_helper_hrtimer_migration_enabled() };
+    if !migration_enabled {
+        return is_local;
+    }
+    if !is_local {
+        return false;
+    }
+    if is_first || is_pinned {
+        return true;
+    }
+
+    // SAFETY: The helper reads the current CPU housekeeping state.
+    if !unsafe { bindings::rust_helper_hrtimer_local_housekeeping() } {
+        return false;
+    }
+
+    // SAFETY: The helper reads the current CPU NOHZ tick state.
+    !unsafe { bindings::rust_helper_hrtimer_tick_stopped() }
+        // SAFETY: The helper reads the current task rescheduling state.
+        || unsafe { bindings::rust_helper_hrtimer_need_resched() }
+}
+
+/// Runs the local-base preference decision with explicit test inputs.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_HRTIMER_KEEP_BASE))]
+#[export]
+extern "C" fn rust_hrtimer_prefer_local_select(
+    migration_enabled: bool,
+    is_local: bool,
+    is_first: bool,
+    is_pinned: bool,
+    housekeeping: bool,
+    tick_stopped: bool,
+    need_resched: bool,
+) -> bool {
+    prefer_local(
+        migration_enabled,
+        is_local,
+        is_first,
+        is_pinned,
+        housekeeping,
+        tick_stopped,
+        need_resched,
+    )
 }
 
 /// Returns whether a selected clock base can meet the timer deadline.

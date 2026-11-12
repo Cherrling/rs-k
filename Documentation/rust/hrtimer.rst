@@ -16,6 +16,8 @@ around an expiry callback.  The
 that accepts or rejects a selected remote clock base.
 ``CONFIG_RUST_HRTIMER_TARGET_BASE`` selects Rust for the target CPU base
 decision.
+``CONFIG_RUST_HRTIMER_KEEP_BASE`` selects Rust for deciding whether an online
+SMP NOHZ timer can remain on its local clock base.
 ``CONFIG_RUST_HRTIMER_BASE_MIGRATION`` selects Rust for moving a timer between
 per-CPU clock bases.
 ``CONFIG_RUST_HRTIMER_NEXT_EVENT`` selects Rust for the search across active
@@ -51,6 +53,9 @@ Rust owns these production decisions:
   next expiry can meet the timer deadline.
 * Selecting an offline housekeeping target, preserving a pinned timer's base,
   or applying NOHZ timer migration.
+* Keeping a running callback on its current base and applying migration,
+  first-timer, pinned-timer, housekeeping, stopped-tick, and rescheduling
+  conditions to local-base retention.
 * Migrating a timer between CPU clock bases, keeping a running callback on its
   current base, and retrying on the local CPU when a remote target cannot meet
   the timer deadline.
@@ -106,6 +111,12 @@ target-selection option is enabled.  The original C offline, pinned, and NOHZ
 decision sequence is compiled out.  C supplies CPU masks, housekeeping policy,
 and per-CPU base addresses.
 
+The C ``hrtimer_keep_base()`` path calls ``rust_hrtimer_keep_base()`` when the
+local-base retention option is enabled.  The original C callback-running,
+migration, first-timer, pinned-timer, housekeeping, stopped-tick, and
+rescheduling decision sequence is compiled out.  C supplies read-only
+migration, housekeeping, tick, and scheduling state.
+
 The C ``switch_hrtimer_base()`` path calls ``rust_hrtimer_switch_base()``
 when the base-migration option is enabled.  The original C migration loop,
 callback-running check, suitability retry, and migration commit are compiled
@@ -156,12 +167,16 @@ The following operations remain in C:
 * Clock offset updates and clock-was-set sequence advancement.
 * CPU mask and housekeeping policy, NOHZ target computation, per-CPU address
   lookup, and target-online checks.
+* The migration static branch, housekeeping CPU query, stopped-tick state, and
+  current task rescheduling state used by local-base retention.
 * Raw CPU base lock handoff, migration-base publication, and callback
   execution.
 * The lockless try-to-cancel entry point and PREEMPT_RT callback wait
   primitive with its expiry-lock synchronization.
 * Checked ktime division, saturated expiry arithmetic, and range
   initialization.
+* The trivial local-base retention decision in non-SMP and non-NOHZ
+  configurations.
 * Public hrtimer ABI adapters.
 
 Thin C helpers preserve ``READ_ONCE()`` and ``WRITE_ONCE()`` semantics for
@@ -199,6 +214,12 @@ last timer in a clock base clears its active-base bit.
 An offline timer base selects an online housekeeping CPU.  An online unpinned
 timer can use the NOHZ timer target only when timer migration is enabled.  A
 pinned timer remains on its current CPU base.
+
+A timer whose callback is running keeps its current base.  With migration
+disabled, local retention is accepted only for a local base.  With migration
+enabled, a local first or pinned timer stays local.  Other local timers leave
+a non-housekeeping CPU and leave a housekeeping CPU only when its tick has
+stopped and rescheduling is not pending.
 
 Base migration publishes the special migration base before dropping the old
 CPU base lock.  The timer remains locked while Rust acquires the target CPU
@@ -252,6 +273,9 @@ The migration unit must pass these checks before integration:
 * Repeated four-vCPU Rust KUnit runs.
 * A four-vCPU C base-selection fallback KUnit run.
 * A four-vCPU C target-selection fallback KUnit run.
+* A four-vCPU C local-base retention fallback KUnit run.
+* A four-vCPU run with target selection disabled while local-base retention
+  remains enabled.
 * A four-vCPU C base-migration fallback KUnit run.
 * A four-vCPU C next-event fallback KUnit run.
 * A four-vCPU C next-event update fallback KUnit run.
@@ -266,6 +290,9 @@ The migration unit must pass these checks before integration:
   offline housekeeping fallback decisions.
 * Successful base migration, callback-running base retention, and remote
   target rollback when the local CPU must own an earlier timer.
+* Callback-running retention, disabled migration, remote rejection,
+  first-timer retention, pinned retention, non-housekeeping rejection, tick
+  activity, stopped tick, and pending rescheduling decisions.
 * Hard, soft, combined, suppressed-softirq, equal-expiry, empty, offset, and
   negative next-event selection decisions.
 * Soft-first, hard-first, equal-expiry, suppressed-softirq, and empty-event
@@ -309,11 +336,19 @@ forwarding state was validated on 2026-11-11 and 2026-11-12 with x86_64
   KUnit cases.
 * Three consecutive four-vCPU Rust target-selection runs passed all fourteen
   KUnit cases.
+* Three consecutive four-vCPU Rust local-base retention runs passed all
+  fifteen KUnit cases.
 * The four-vCPU C base-selection fallback passed all five applicable cases
   with ``CONFIG_RUST_HRTIMER_BASE_SELECTION`` disabled.
 * Three consecutive four-vCPU C target-selection fallback runs passed all
   thirteen applicable cases with ``CONFIG_RUST_HRTIMER_TARGET_BASE``
   disabled.
+* Three consecutive four-vCPU C local-base retention fallback runs passed all
+  fourteen applicable cases with ``CONFIG_RUST_HRTIMER_KEEP_BASE`` disabled.
+* Three consecutive four-vCPU runs with
+  ``CONFIG_RUST_HRTIMER_TARGET_BASE`` disabled and
+  ``CONFIG_RUST_HRTIMER_KEEP_BASE`` enabled passed all fourteen applicable
+  cases.
 * Three consecutive four-vCPU C base-migration fallback runs passed all
   twelve applicable cases with ``CONFIG_RUST_HRTIMER_BASE_MIGRATION``
   disabled.
@@ -333,10 +368,10 @@ forwarding state was validated on 2026-11-11 and 2026-11-12 with x86_64
 * The four-vCPU C forwarding fallback passed all five cases with
   ``CONFIG_RUST_HRTIMER_FORWARD`` disabled.
 * Three consecutive four-vCPU runs on each generic inline KASAN, lockdep, and
-  PREEMPT_RT image passed all fourteen cases with the Rust implementation
+  PREEMPT_RT image passed all fifteen cases with the Rust implementation
   enabled.
 * Three consecutive four-vCPU images with ``CONFIG_RUST_RBTREE`` disabled
-  passed all fourteen cases.
+  passed all fifteen cases.
 * The cases covered local, offline-CPU, earlier remote, equal-deadline, and
   later remote base selection, hard, soft, combined, suppressed-softirq,
   equal-expiry, empty, offset, and negative next-event selection,
@@ -354,6 +389,9 @@ forwarding state was validated on 2026-11-11 and 2026-11-12 with x86_64
   running-state clearing,
   online target retention, NOHZ migration, pinned target retention, and
   offline housekeeping fallback,
+  callback-running retention, disabled migration, remote rejection,
+  first-timer retention, pinned retention, non-housekeeping rejection, active
+  tick retention, stopped-tick migration, and pending-rescheduling retention,
   successful base migration, callback-running base retention, remote target
   rollback, and lock-safe migration completion,
   same-base in-place updates, requeues that cross the next timer, cached
@@ -367,6 +405,7 @@ forwarding state was validated on 2026-11-11 and 2026-11-12 with x86_64
   path calls ``rust_hrtimer_suitable_target()``. The callback path calls
   ``rust_hrtimer_callback_enter()`` and ``rust_hrtimer_callback_exit()``.
   The target-selection path calls ``rust_hrtimer_target_base()``.
+  The local-base retention path calls ``rust_hrtimer_keep_base()``.
   The base-migration path calls ``rust_hrtimer_switch_base()``. The
   next-event path calls ``rust_hrtimer_get_next_event()``. The
   next-event update path calls ``rust_hrtimer_update_next_event()``. The
@@ -376,9 +415,11 @@ forwarding state was validated on 2026-11-11 and 2026-11-12 with x86_64
   ``rust_hrtimer_try_to_cancel_locked()``. The cancellation wait path calls
   ``rust_hrtimer_cancel()``. The forwarding path calls
   ``rust_hrtimer_forward()``. The linked vmlinux resolves these functions
-  and the base-selection, target-selection, base-migration, callback, and
-  cancellation helpers. It contains no unresolved hrtimer migration symbols.
-  No module references these internal symbols.
+  and the base-selection, target-selection, base-retention, base-migration,
+  callback, and cancellation helpers. The call path resolves from
+  ``hrtimer_keep_base()`` to ``rust_hrtimer_keep_base()``. It contains no
+  unresolved hrtimer migration symbols. No module references these internal
+  symbols.
 * Rustfmt and Clippy pass. Clippy uses the kernel trailing ``-D warnings``
   policy. Strict checkpatch reports no errors, warnings, or checks.
 
@@ -399,3 +440,5 @@ Reopen the C boundary decision if any of these conditions changes:
 * HRTimer debug or trace hooks gain state-changing behavior.
 * Raw CPU base lock handoff, CPU mask policy, housekeeping policy, or NOHZ
   target computation changes.
+* Migration static-branch policy, housekeeping CPU classification, NOHZ
+  stopped-tick state, or rescheduling semantics change.
