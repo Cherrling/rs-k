@@ -37,6 +37,18 @@ static int sched_wake_test_runnable_thread(void *data)
 	return 0;
 }
 
+#ifdef CONFIG_RUST_SCHED_BLOCK_TASK
+static int sched_block_test_thread(void *data)
+{
+	struct completion *finished = data;
+
+	schedule_timeout_uninterruptible(msecs_to_jiffies(1));
+	complete(finished);
+
+	return 0;
+}
+#endif
+
 #ifdef CONFIG_RUST_SCHED_WAKE_STATE
 static void sched_wake_test_state_match(struct kunit *test)
 {
@@ -107,6 +119,44 @@ static void sched_wake_test_activate_plan(struct kunit *test)
 }
 #endif
 
+#ifdef CONFIG_RUST_SCHED_BLOCK_TASK
+static void sched_wake_test_block_plan(struct kunit *test)
+{
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_BLOCK_CONTRIBUTES_LOAD,
+			rust_sched_block_task_select(TASK_UNINTERRUPTIBLE));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_BLOCK_CONTRIBUTES_LOAD,
+			rust_sched_block_task_select(TASK_UNINTERRUPTIBLE |
+						     TASK_FREEZABLE));
+	KUNIT_EXPECT_EQ(test, 0,
+			rust_sched_block_task_select(TASK_UNINTERRUPTIBLE |
+						     TASK_NOLOAD));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_BLOCK_SPECIAL,
+			rust_sched_block_task_select(TASK_UNINTERRUPTIBLE |
+						     TASK_FROZEN));
+	KUNIT_EXPECT_EQ(test, 0,
+			rust_sched_block_task_select(TASK_INTERRUPTIBLE));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_BLOCK_SPECIAL,
+			rust_sched_block_task_select(TASK_WAKING));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_BLOCK_SPECIAL,
+			rust_sched_block_task_select(TASK_PARKED));
+}
+
+static void sched_wake_test_uninterruptible_timeout(struct kunit *test)
+{
+	struct task_struct *task;
+	struct completion finished;
+
+	init_completion(&finished);
+	task = kthread_create(sched_block_test_thread, &finished,
+			      "sched-block-test");
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, task);
+
+	KUNIT_EXPECT_EQ(test, 1, wake_up_process(task));
+	wait_for_completion(&finished);
+	KUNIT_EXPECT_EQ(test, 0, kthread_stop(task));
+}
+#endif
+
 static void sched_wake_test_current(struct kunit *test)
 {
 	KUNIT_EXPECT_EQ(test, 0, wake_up_process(current));
@@ -156,6 +206,10 @@ static struct kunit_case sched_wake_test_cases[] = {
 #endif
 #ifdef CONFIG_RUST_SCHED_TTWU_ACTIVATE
 	KUNIT_CASE(sched_wake_test_activate_plan),
+#endif
+#ifdef CONFIG_RUST_SCHED_BLOCK_TASK
+	KUNIT_CASE(sched_wake_test_block_plan),
+	KUNIT_CASE(sched_wake_test_uninterruptible_timeout),
 #endif
 	KUNIT_CASE(sched_wake_test_current),
 	KUNIT_CASE(sched_wake_test_stopped_task),

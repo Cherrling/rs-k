@@ -1,19 +1,26 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
-//! Native scheduler wake-state matching.
+//! Native scheduler core state machines.
 //!
-//! Rust owns the task-state match result and the saved-state transition used
-//! by task wakeups. C retains task-state memory accesses, warning delivery,
-//! task locking, run-queue operations, and task selection.
+//! Rust owns task-state matching, wake activation, and task blocking
+//! decisions. C retains task-state memory accesses, warning delivery, task
+//! locking, run-queue operations, and task selection.
 
-use crate::{bindings, ffi::c_int};
+use crate::bindings;
+#[cfg(CONFIG_RUST_SCHED_WAKE_STATE)]
+use crate::ffi::c_int;
 use macros::export;
 
 type Task = bindings::task_struct;
-#[cfg(any(CONFIG_RUST_SCHED_TTWU_ACTIVATE, CONFIG_RUST_SCHED_TTWU_RUNNABLE))]
+#[cfg(any(
+    CONFIG_RUST_SCHED_BLOCK_TASK,
+    CONFIG_RUST_SCHED_TTWU_ACTIVATE,
+    CONFIG_RUST_SCHED_TTWU_RUNNABLE
+))]
 type Rq = bindings::rq;
 
 /// Classifies a task state against a requested wake mask.
+#[cfg(CONFIG_RUST_SCHED_WAKE_STATE)]
 fn state_match(task_state: u32, saved_state: u32, requested_state: u32) -> c_int {
     if task_state & requested_state != 0 {
         1
@@ -240,5 +247,70 @@ unsafe extern "C" fn rust_sched_ttwu_activate_locked(
         // SAFETY: The helper performs the class callback's required unpin and
         // repin around the callback.
         unsafe { bindings::rust_helper_sched_ttwu_task_woken(rq, task, rf) };
+    }
+}
+
+#[cfg(CONFIG_RUST_SCHED_BLOCK_TASK)]
+const BLOCK_CONTRIBUTES_LOAD: u32 = 0x01;
+#[cfg(CONFIG_RUST_SCHED_BLOCK_TASK)]
+const BLOCK_SPECIAL: u32 = 0x02;
+
+/// Selects the state-changing actions for a task that is about to block.
+#[cfg(CONFIG_RUST_SCHED_BLOCK_TASK)]
+fn block_plan(task_state: u32) -> u32 {
+    let special = bindings::__TASK_STOPPED
+        | bindings::__TASK_TRACED
+        | bindings::TASK_PARKED
+        | bindings::TASK_DEAD
+        | bindings::TASK_WAKING
+        | bindings::TASK_FROZEN;
+    let mut plan = 0;
+
+    if task_state & bindings::TASK_UNINTERRUPTIBLE != 0
+        && task_state & bindings::TASK_NOLOAD == 0
+        && task_state & bindings::TASK_FROZEN == 0
+    {
+        plan |= BLOCK_CONTRIBUTES_LOAD;
+    }
+    if task_state & special != 0 {
+        plan |= BLOCK_SPECIAL;
+    }
+
+    plan
+}
+
+/// Returns the blocking action bits for the scheduler KUnit table.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_BLOCK_TASK))]
+#[export]
+extern "C" fn rust_sched_block_task_select(task_state: u32) -> u32 {
+    block_plan(task_state)
+}
+
+/// Blocks a task while its runqueue lock remains held.
+///
+/// Rust owns load and special-state classification, the contributes-to-load
+/// transition, dequeue-flag selection, and the ordering of dequeue and block
+/// accounting.
+///
+/// # Safety
+///
+/// `task` must remain live, `rq` must be its current runqueue, and the caller
+/// must hold the runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_BLOCK_TASK)]
+#[export]
+unsafe extern "C" fn rust_sched_block_task_locked(rq: *mut Rq, task: *mut Task, task_state: u32) {
+    let plan = block_plan(task_state);
+
+    // SAFETY: The caller holds the task runqueue lock.
+    unsafe {
+        bindings::rust_helper_sched_block_set_contributes_load(
+            task,
+            plan & BLOCK_CONTRIBUTES_LOAD != 0,
+        )
+    };
+    // SAFETY: The task is queued on the caller's locked runqueue.
+    if unsafe { bindings::rust_helper_sched_block_dequeue(rq, task, plan & BLOCK_SPECIAL != 0) } {
+        // SAFETY: Dequeue succeeded and the runqueue lock remains held.
+        unsafe { bindings::rust_helper_sched_block_finish(rq, task) };
     }
 }

@@ -1,6 +1,6 @@
 .. SPDX-License-Identifier: GPL-2.0
 
-Native Rust Scheduler Wake State
+Native Rust Scheduler Core Paths
 ================================
 
 Status and scope
@@ -13,6 +13,8 @@ The ``CONFIG_RUST_SCHED_TTWU_RUNNABLE`` option selects Rust for the runqueue
 locked path that handles a wake target which is still queued.
 The ``CONFIG_RUST_SCHED_TTWU_ACTIVATE`` option selects Rust for the production
 woke-task activation state machine.
+The ``CONFIG_RUST_SCHED_BLOCK_TASK`` option selects Rust for the production
+task blocking state machine.
 
 Rust owns these production decisions:
 
@@ -29,12 +31,16 @@ Rust owns these production decisions:
   selecting enqueue flags, activating the task, selecting preemption,
   publishing the wakeup, and deciding whether to invoke the scheduling-class
   ``task_woken`` callback.
+* Classifying whether a blocking task contributes to load, classifying whether
+  its state is special, updating its load flag, selecting special dequeue,
+  and deciding whether dequeue and block accounting run.
 
 Task-state memory accesses, warning delivery, task and runqueue locking,
 scheduler queue and proxy operations, wake-list handling, CPU selection,
 preemption, tracing, statistics, and public scheduler ABI adapters remain in
 C. Runqueue queue operations, the class callback, and its lock unpin and
-repin also remain in C.
+repin also remain in C. The task load bitfield write, blocking dequeue, and
+block accounting primitives also remain in C.
 
 Entry points and ownership
 --------------------------
@@ -57,6 +63,8 @@ The Rust-to-C helper calls are:
   scheduling-class callback used by the activation path.
 * Runqueue lock unpin and repin around a scheduling-class ``task_woken``
   callback.
+* The task contributes-to-load bitfield write, blocking dequeue with selected
+  sleep and special flags, and block accounting.
 
 The C-to-Rust production entries are:
 
@@ -64,6 +72,7 @@ The C-to-Rust production entries are:
 * ``rust_sched_ttwu_state_match()``.
 * ``rust_sched_ttwu_runnable_locked()``.
 * ``rust_sched_ttwu_activate_locked()``.
+* ``rust_sched_block_task_locked()``.
 
 The caller keeps the existing ``p->pi_lock`` serialization, or the current-task
 preemption exclusion, around the state-match entries. For the runnable entry,
@@ -76,6 +85,11 @@ passes the matching lock context to Rust. Rust selects and orders all state
 changes and scheduler helpers. The C ``task_woken`` helper temporarily
 unpins and repins the lock exactly as the original C path did to preserve the
 scheduling-class callback lock contract.
+
+For the blocking entry, C validates that the task runqueue lock is held and
+passes the task state to Rust. Rust classifies the state and calls the bitfield,
+dequeue, and accounting helpers in order. C retains ownership of the runqueue
+lock across the complete Rust call.
 
 Retained C boundary
 -------------------
@@ -108,6 +122,13 @@ accounting, I/O wait completion, task activation, preemption, wake
 publication, and callback selection. The C lock-unpin helper preserves the
 existing callback lock contract while Rust still owns the caller's state
 machine.
+
+The blocking path retains task-state and bitfield writes, runqueue locking,
+scheduler queue operations, accounting primitives, tracing, and public
+scheduler ABI adapters in C. Rust owns the load and special-state masks, the
+conditions for updating the load flag, the special dequeue decision, and the
+order of dequeue and accounting. The accounting helper runs only after the
+scheduling class accepts the dequeue.
 
 Important invariants
 --------------------
@@ -145,11 +166,19 @@ activates the task before requesting preemption, publishes the wakeup before
 the scheduling-class callback, and invokes that callback only when the
 scheduling class supplies one.
 
+The blocking path marks a task as contributing to load only when its state
+contains ``TASK_UNINTERRUPTIBLE`` and lacks ``TASK_NOLOAD`` and
+``TASK_FROZEN``. Stopped, traced, parked, dead, waking, and frozen states use
+the special dequeue flag even when they do not contribute to load. Rust writes
+the load flag before dequeue, requests sleeping dequeue on the current
+runqueue, and requests block accounting only when dequeue succeeds.
+
 Validation gate
 ---------------
 
-The Rust KUnit cases cover the state-match table, saved-state transition, and
-activation action selection. Real wakeup cases cover current-task rejection,
+The Rust KUnit cases cover the state-match table, saved-state transition,
+activation action selection, blocking action selection, and a real
+uninterruptible timeout. Real wakeup cases cover current-task rejection,
 waking a stopped kernel thread, and waking a queued runnable task with both
 the Rust and C implementations.
 
@@ -221,6 +250,27 @@ builds and QEMU 11.1.3:
 * The production image contained no unresolved symbols. No run reported a
   ``BUG``, warning, KASAN report, lock dependency diagnosis, Oops, or panic.
 
+The blocking-path unit was validated on 2026-11-12 with x86_64 ``LLVM=1``
+builds and QEMU 11.1.3:
+
+* Three consecutive four-vCPU Rust runs passed all eight scheduler cases.
+* Three consecutive four-vCPU hrtimer regression runs passed all twenty-five
+  cases on the same image.
+* Three consecutive four-vCPU C fallback runs passed all six applicable cases
+  with ``CONFIG_RUST_SCHED_BLOCK_TASK`` disabled.
+* A build with only the blocking Rust option enabled passed three consecutive
+  scheduler runs with all five applicable cases and three hrtimer runs with
+  all twenty-five cases.
+* Three consecutive four-vCPU runs each on PREEMPT_RT, KASAN, and lockdep
+  images passed all eight scheduler cases and all twenty-five hrtimer cases.
+* The no-KUnit production image built with Clippy while all four scheduler
+  Rust options were enabled.
+* ``__schedule()`` calls ``rust_sched_block_task_locked()``. Rust calls the
+  load-flag write, blocking dequeue, and block-accounting helpers in the
+  original order. The accounting helper runs only if dequeue succeeds.
+* The production image contained no unresolved symbols. No run reported a
+  ``BUG``, warning, KASAN report, lock dependency diagnosis, Oops, or panic.
+
 Review conditions
 -----------------
 
@@ -237,3 +287,7 @@ Reopen this boundary decision if any of these conditions changes:
   scheduling-class callback contract.
 * Rust gains stable runqueue state accessors or safe scheduling-class callback
   abstractions.
+* Task-state masks, load accounting, special-state classification, or the
+  blocking dequeue and accounting order changes.
+* Rust gains stable task bitfield access or safe runqueue dequeue and block
+  accounting abstractions.

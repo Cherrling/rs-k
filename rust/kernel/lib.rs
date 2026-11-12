@@ -144,7 +144,12 @@ mod rwlock_core;
 mod rwsem_core;
 pub mod safety;
 pub mod scatterlist;
-#[cfg(CONFIG_RUST_SCHED_WAKE_STATE)]
+#[cfg(any(
+    CONFIG_RUST_SCHED_WAKE_STATE,
+    CONFIG_RUST_SCHED_TTWU_RUNNABLE,
+    CONFIG_RUST_SCHED_TTWU_ACTIVATE,
+    CONFIG_RUST_SCHED_BLOCK_TASK
+))]
 mod sched_core;
 pub mod security;
 #[cfg(CONFIG_RUST_SEMAPHORE)]

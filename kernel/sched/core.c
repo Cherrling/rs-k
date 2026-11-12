@@ -2253,8 +2253,36 @@ void deactivate_task(struct rq *rq, struct task_struct *p, int flags)
 	dequeue_task(rq, p, flags);
 }
 
+#ifdef CONFIG_RUST_SCHED_BLOCK_TASK
+void rust_helper_sched_block_set_contributes_load(struct task_struct *task,
+						  bool contributes_load)
+{
+	task->sched_contributes_to_load = contributes_load;
+}
+
+bool rust_helper_sched_block_dequeue(struct rq *rq, struct task_struct *task,
+				     bool special)
+{
+	int flags = DEQUEUE_NOCLOCK;
+
+	if (special)
+		flags |= DEQUEUE_SPECIAL;
+
+	return dequeue_task(rq, task, DEQUEUE_SLEEP | flags);
+}
+
+void rust_helper_sched_block_finish(struct rq *rq, struct task_struct *task)
+{
+	__block_task(rq, task);
+}
+#endif
+
 static void block_task(struct rq *rq, struct task_struct *p, unsigned long task_state)
 {
+#ifdef CONFIG_RUST_SCHED_BLOCK_TASK
+	lockdep_assert_rq_held(rq);
+	rust_sched_block_task_locked(rq, p, (unsigned int)task_state);
+#else
 	int flags = DEQUEUE_NOCLOCK;
 
 	p->sched_contributes_to_load =
@@ -2278,6 +2306,7 @@ static void block_task(struct rq *rq, struct task_struct *p, unsigned long task_
 	 */
 	if (dequeue_task(rq, p, DEQUEUE_SLEEP | flags))
 		__block_task(rq, p);
+#endif
 }
 
 /**

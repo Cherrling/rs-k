@@ -86,4 +86,25 @@ unsigned int rust_sched_ttwu_activate_select(bool contributes_load,
 
 #endif /* CONFIG_RUST_SCHED_TTWU_ACTIVATE */
 
+#ifdef CONFIG_RUST_SCHED_BLOCK_TASK
+
+#define RUST_SCHED_BLOCK_CONTRIBUTES_LOAD	0x01
+#define RUST_SCHED_BLOCK_SPECIAL		0x02
+
+void rust_helper_sched_block_set_contributes_load(struct task_struct *task,
+						  bool contributes_load);
+bool rust_helper_sched_block_dequeue(struct rq *rq,
+				     struct task_struct *task, bool special);
+void rust_helper_sched_block_finish(struct rq *rq,
+				    struct task_struct *task);
+
+void rust_sched_block_task_locked(struct rq *rq, struct task_struct *task,
+				  unsigned int task_state);
+
+#ifdef CONFIG_KUNIT
+unsigned int rust_sched_block_task_select(unsigned int task_state);
+#endif
+
+#endif /* CONFIG_RUST_SCHED_BLOCK_TASK */
+
 #endif /* _LINUX_SCHED_RUST_H */

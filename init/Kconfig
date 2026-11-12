@@ -1044,6 +1044,23 @@ config RUST_SCHED_TTWU_ACTIVATE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SCHED_BLOCK_TASK
+	bool "Rust implementation of the scheduler task blocking path"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production task blocking state machine. Rust owns
+	  load-state classification, special-state classification, the
+	  contributes-to-load update, dequeue-flag selection, and the decision
+	  and order of dequeue and block accounting.
+
+	  Task-state and bitfield writes, runqueue locking, scheduler queue
+	  operations, blocking accounting primitives, tracepoints, and public
+	  scheduler ABI adapters remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_CPUPRI
 	bool "Rust implementation of CPU-priority scheduling state"
 	depends on RUST && SMP
