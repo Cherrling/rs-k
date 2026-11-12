@@ -5,6 +5,7 @@
 //! Rust owns timer initialization, including mode conversion and clock base
 //! selection.
 //! It also owns the lockless active-state query and retry loop.
+//! It also owns the lockless try-to-cancel entry and lock handoff sequence.
 //! Rust owns timer insertion, local-base enqueue, in-place expiry updates,
 //! requeue decisions, queued removal, cancellation results, the clock-base
 //! next-expiry cache, expiry forwarding, next-event selection, and the
@@ -2372,6 +2373,42 @@ unsafe extern "C" fn rust_hrtimer_try_to_cancel_locked(
     // SAFETY: The caller satisfies the requirements of `remove_locked`.
     unsafe { remove_locked(timer, base, false, reprogram) };
     1
+}
+
+/// Attempts to cancel a timer.
+///
+/// Rust performs the lockless inactive fast path and owns the sequence around
+/// the locked cancellation decision. C helpers acquire and release the timer
+/// base lock and deliver the cancellation tracepoint.
+///
+/// # Safety
+///
+/// `timer` must remain live for the duration of the call.
+#[cfg(CONFIG_RUST_HRTIMER_TRY_TO_CANCEL)]
+#[export]
+unsafe extern "C" fn rust_hrtimer_try_to_cancel(timer: *mut Hrtimer) -> i32 {
+    // SAFETY: The caller guarantees that the timer remains live.
+    if !unsafe { rust_hrtimer_active(timer) } {
+        return 0;
+    }
+
+    let mut lock = core::mem::MaybeUninit::<bindings::hrtimer_try_to_cancel_lock>::uninit();
+    // SAFETY: The helper initializes the lock context and returns with the
+    // timer's current clock base locked.
+    unsafe { bindings::rust_helper_hrtimer_try_to_cancel_lock(timer, lock.as_mut_ptr()) };
+    // SAFETY: The lock helper initialized every field.
+    let lock = unsafe { lock.assume_init() };
+
+    // SAFETY: The helper holds the lock for the timer's current base.
+    let result = unsafe { rust_hrtimer_try_to_cancel_locked(timer, lock.base) };
+    if result > 0 {
+        // SAFETY: The caller guarantees that the timer remains live.
+        unsafe { bindings::rust_helper_hrtimer_try_to_cancel_trace(timer) };
+    }
+
+    // SAFETY: The lock context comes from the matching lock helper.
+    unsafe { bindings::rust_helper_hrtimer_try_to_cancel_unlock(ptr::from_ref(&lock)) };
+    result
 }
 
 /// Advances an inactive timer past a reference time.

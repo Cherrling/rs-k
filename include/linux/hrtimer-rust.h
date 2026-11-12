@@ -395,6 +395,22 @@ int rust_hrtimer_try_to_cancel_locked(struct hrtimer *timer,
 
 #endif /* CONFIG_RUST_HRTIMER_CANCEL */
 
+#ifdef CONFIG_RUST_HRTIMER_TRY_TO_CANCEL
+
+struct hrtimer_try_to_cancel_lock {
+	struct hrtimer_clock_base	*base;
+	unsigned long			flags;
+};
+
+void rust_helper_hrtimer_try_to_cancel_lock(const struct hrtimer *timer,
+					    struct hrtimer_try_to_cancel_lock *lock);
+void rust_helper_hrtimer_try_to_cancel_unlock(const struct hrtimer_try_to_cancel_lock *lock);
+void rust_helper_hrtimer_try_to_cancel_trace(struct hrtimer *timer);
+
+int rust_hrtimer_try_to_cancel(struct hrtimer *timer);
+
+#endif /* CONFIG_RUST_HRTIMER_TRY_TO_CANCEL */
+
 #ifdef CONFIG_RUST_HRTIMER_CANCEL_WAIT
 
 int rust_helper_hrtimer_try_to_cancel(struct hrtimer *timer);

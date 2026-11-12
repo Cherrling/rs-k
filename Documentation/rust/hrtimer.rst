@@ -46,8 +46,10 @@ reprogramming.
 bases, applying the force-reprogram equality shortcut, and selecting whether
 the shared clock event deadline is updated or programmed.
 The ``CONFIG_RUST_HRTIMER_CANCEL`` option extends that state machine to queued
-removal and cancellation decisions.  ``CONFIG_RUST_HRTIMER_CANCEL_WAIT``
-selects Rust for the cancellation retry loop.
+removal and cancellation decisions.  ``CONFIG_RUST_HRTIMER_TRY_TO_CANCEL``
+selects Rust for the lockless entry and lock handoff around those decisions.
+``CONFIG_RUST_HRTIMER_CANCEL_WAIT`` selects Rust for the cancellation retry
+loop.
 ``CONFIG_RUST_HRTIMER_FORWARD`` selects Rust for periodic expiry advancement.
 The public hrtimer API and device driver scope remain unchanged.
 
@@ -118,6 +120,9 @@ Rust owns these production decisions:
 * Publishing the lockless ``is_queued`` state.
 * Removing queued timers and clearing an empty active clock base.
 * Returning the inactive, queued, and callback-running cancellation results.
+* Returning inactive cancellation without taking the clock base lock,
+  requesting the lock for an active timer, and delivering the trace event
+  before unlocking after queued removal.
 * Waiting and retrying cancellation until the timer is inactive.
 * Calculating overruns and advancing inactive timer expiries.
 
@@ -204,9 +209,12 @@ calls a narrow C helper for each selected timer.  That helper invokes
 ``__run_hrtimer()`` and performs the softirq waiter synchronization.
 
 The C ``__remove_hrtimer()`` path calls ``rust_hrtimer_remove()`` when the
-cancellation option is enabled.  The C ``hrtimer_try_to_cancel()`` path calls
-``rust_hrtimer_try_to_cancel_locked()`` after acquiring the timer base lock.
-The original C removal and cancellation decision sequences are compiled out.
+cancellation option is enabled.  The C ``hrtimer_try_to_cancel()`` entry calls
+``rust_hrtimer_try_to_cancel()`` when the try-to-cancel option is enabled.
+Rust performs the lockless inactive check, requests the timer base lock,
+calls the locked cancellation decision, requests trace delivery before unlock,
+and releases the lock.  The original C entry, removal, and cancellation
+decision sequences are compiled out.
 
 The C ``hrtimer_suitable_target()`` path calls
 ``rust_hrtimer_suitable_target()`` when the base-selection option is enabled.
@@ -277,7 +285,6 @@ The following operations remain in C:
 * Acquiring and releasing the CPU base lock and asserting lock ownership.
 * The current CPU base lookup, relative clock sampling, and the soft or hard
   mode assertion in the public startup common path.
-* The lockless inactive fast path in ``hrtimer_try_to_cancel()``.
 * Raw ``READ_ONCE`` access, seqcount acquire, seqcount retry, and clock-base
   reload operations used by the Rust active-state loop.
 * Debug object activation and deactivation.
@@ -300,8 +307,9 @@ The following operations remain in C:
 * Clock sampling and offset updates, clock event tracing and programming,
   current-CPU base lookup, deferred-rearm thread-flag publication and
   clearing, interrupt-context locking, and raw spinlock acquisition.
-* The lockless try-to-cancel entry point and PREEMPT_RT callback wait
-  primitive with its expiry-lock synchronization.
+* The timer base lock acquisition and release helpers, tracepoint delivery,
+  and PREEMPT_RT callback wait primitive with its expiry-lock
+  synchronization.
 * Checked ktime division, saturated expiry arithmetic, and range
   initialization.
 * The trivial local-base retention decision in non-SMP and non-NOHZ
@@ -413,6 +421,11 @@ event adapter.
 A queued timer returns 1 from ``hrtimer_try_to_cancel()``.  A timer whose
 callback is running returns -1.  An inactive timer returns 0.  Removing the
 last timer in a clock base clears its active-base bit.
+
+An inactive timer returns without acquiring its clock base lock. An active
+observation requests the lock once, then repeats the queued and
+callback-running decision under that lock. A removed timer requests trace
+delivery before the lock is released.
 
 An offline timer base selects an online housekeeping CPU.  An online unpinned
 timer can use the NOHZ timer target only when timer migration is enabled.  A
@@ -641,6 +654,19 @@ with x86_64 ``LLVM=1`` builds and QEMU 11.1.3:
   cases with ``CONFIG_RUST_HRTIMER_RUN_QUEUES`` and
   ``CONFIG_RUST_HRTIMER_NEXT_EVENT`` disabled.  Kconfig disabled the dependent
   next-event update and IPI options.
+* Three consecutive four-vCPU runs on the final Rust try-to-cancel image
+  passed all twenty-five cases.
+* Three consecutive four-vCPU runs on the final try-to-cancel KASAN image
+  passed all twenty-five cases.
+* Three consecutive four-vCPU runs on the final try-to-cancel lockdep image
+  passed all twenty-five cases.
+* Three consecutive four-vCPU runs on the final try-to-cancel PREEMPT_RT image
+  passed all twenty-five cases.
+* Three consecutive four-vCPU C try-to-cancel fallback runs passed all
+  twenty-four applicable cases with
+  ``CONFIG_RUST_HRTIMER_TRY_TO_CANCEL`` disabled.
+* The no-KUnit production image built with Clippy while the try-to-cancel
+  option and both Rust dependencies were enabled.
 * The user-expiry cases covered soft-expiry offset conversion, the next-timer
   short-circuit, a future candidate, equality with the current time,
   expired removal, and a successful restart.
@@ -675,8 +701,9 @@ with x86_64 ``LLVM=1`` builds and QEMU 11.1.3:
   rollback, and lock-safe migration completion,
   same-base in-place updates, requeues that cross the next timer, cached
   first-expiry maintenance, callback-running cancellation rejection, queued
-  cancellation, inactive cancellation, a real expiry callback, partial
-  forwarding overruns, exact interval alignment, and resolution clamping.
+  cancellation, inactive cancellation, inactive cancellation while its base
+  lock is already held, a real expiry callback, partial forwarding overruns,
+  exact interval alignment, and resolution clamping.
 * No run reported a ``BUG``, warning, KASAN report, lock dependence
   diagnosis, or panic.
 * The high-resolution interrupt path calls ``rust_hrtimer_interrupt()``. The
@@ -696,8 +723,11 @@ with x86_64 ``LLVM=1`` builds and QEMU 11.1.3:
   IPI decision path calls ``rust_hrtimer_update_needs_ipi()``. The
   reprogramming path calls ``rust_hrtimer_reprogram()``. The
   removal and cancellation paths call ``rust_hrtimer_remove()`` and
-  ``rust_hrtimer_try_to_cancel_locked()``. The cancellation wait path calls
-  ``rust_hrtimer_cancel()``. The forwarding path calls
+  ``rust_hrtimer_try_to_cancel_locked()``. The try-to-cancel path calls
+  ``rust_hrtimer_try_to_cancel()``, which calls the lock helper, the locked
+  cancellation decision, the conditional trace helper, and the unlock helper
+  in that order. The cancellation wait path calls ``rust_hrtimer_cancel()``.
+  The forwarding path calls
   ``rust_hrtimer_forward()``. The user-expiry path calls
   ``rust_hrtimer_check_user_timer()``. The linked vmlinux resolves these
   functions and the base-selection, target-selection, base-retention,
@@ -725,6 +755,8 @@ Reopen the C boundary decision if any of these conditions changes:
 * User soft-expiry ownership, the strict current-time comparison, or the
   no-reprogram expired-removal rule changes.
 * The PREEMPT_RT callback wait primitive or expiry-lock protocol changes.
+* The timer base lock helper context, raw spinlock acquisition and release, or
+  trace-before-unlock ordering changes.
 * Timer queue linked ordering or first-entry maintenance changes.
 * The stable active-base snapshot, clock-base order, offset application, or
   soft-expiry comparison changes.

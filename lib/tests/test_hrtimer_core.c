@@ -1619,6 +1619,29 @@ static void hrtimer_core_test_cancel_states(struct kunit *test)
 	destroy_hrtimer_on_stack(&timer.timer);
 }
 
+#ifdef CONFIG_RUST_HRTIMER_TRY_TO_CANCEL
+static void hrtimer_core_test_try_to_cancel_lockless(struct kunit *test)
+{
+	struct hrtimer timer;
+	struct hrtimer_clock_base *base;
+	unsigned long flags;
+
+	hrtimer_setup_on_stack(&timer, hrtimer_core_test_callback,
+			       CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED);
+	base = timer.base;
+
+	/*
+	 * Holding the base lock proves that the Rust inactive fast path does
+	 * not recurse into the non-recursive raw spinlock.
+	 */
+	raw_spin_lock_irqsave(&base->cpu_base->lock, flags);
+	KUNIT_EXPECT_EQ(test, hrtimer_try_to_cancel(&timer), 0);
+	raw_spin_unlock_irqrestore(&base->cpu_base->lock, flags);
+
+	destroy_hrtimer_on_stack(&timer);
+}
+#endif
+
 static void hrtimer_core_test_cancel_wait(struct kunit *test)
 {
 	struct hrtimer_core_test_cancel_wait cancel_wait;
@@ -1770,6 +1793,9 @@ static struct kunit_case hrtimer_core_test_cases[] = {
 	KUNIT_CASE(hrtimer_core_test_same_base_requeue),
 	KUNIT_CASE(hrtimer_core_test_expiry),
 	KUNIT_CASE(hrtimer_core_test_cancel_states),
+#ifdef CONFIG_RUST_HRTIMER_TRY_TO_CANCEL
+	KUNIT_CASE(hrtimer_core_test_try_to_cancel_lockless),
+#endif
 	KUNIT_CASE(hrtimer_core_test_cancel_wait),
 	KUNIT_CASE(hrtimer_core_test_forward),
 	{}

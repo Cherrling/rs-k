@@ -742,6 +742,24 @@ bool rust_helper_hrtimer_base_is_local(struct hrtimer_clock_base *base)
 }
 #endif
 
+#ifdef CONFIG_RUST_HRTIMER_TRY_TO_CANCEL
+void rust_helper_hrtimer_try_to_cancel_lock(const struct hrtimer *timer,
+					    struct hrtimer_try_to_cancel_lock *lock)
+{
+	lock->base = lock_hrtimer_base(timer, &lock->flags);
+}
+
+void rust_helper_hrtimer_try_to_cancel_unlock(const struct hrtimer_try_to_cancel_lock *lock)
+{
+	raw_spin_unlock_irqrestore(&lock->base->cpu_base->lock, lock->flags);
+}
+
+void rust_helper_hrtimer_try_to_cancel_trace(struct hrtimer *timer)
+{
+	trace_hrtimer_cancel(timer);
+}
+#endif
+
 #ifdef CONFIG_RUST_HRTIMER_CANCEL_WAIT
 int rust_helper_hrtimer_try_to_cancel(struct hrtimer *timer)
 {
@@ -2008,6 +2026,9 @@ EXPORT_SYMBOL_GPL(hrtimer_start_range_ns_user);
  */
 int hrtimer_try_to_cancel(struct hrtimer *timer)
 {
+#ifdef CONFIG_RUST_HRTIMER_TRY_TO_CANCEL
+	return rust_hrtimer_try_to_cancel(timer);
+#else
 	struct hrtimer_clock_base *base;
 	unsigned long flags;
 	int ret = -1;
@@ -2038,7 +2059,7 @@ int hrtimer_try_to_cancel(struct hrtimer *timer)
 	unlock_hrtimer_base(timer, &flags);
 
 	return ret;
-
+#endif
 }
 EXPORT_SYMBOL_GPL(hrtimer_try_to_cancel);
 
