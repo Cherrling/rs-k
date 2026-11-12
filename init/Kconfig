@@ -994,6 +994,23 @@ config RUST_RWLOCK
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SCHED_WAKE_STATE
+	bool "Rust implementation of scheduler wake-state matching"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production task-state match used by task wakeups
+	  and inactive-task waits. Rust distinguishes a current-state match
+	  from a saved-state match, reports wake success, and clears a matched
+	  saved state before the task restores its blocking state.
+
+	  Task-state memory accesses, warning delivery, task and run-queue
+	  locking, wake-list handling, CPU selection, enqueue, and public
+	  scheduler ABI adapters remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_CPUPRI
 	bool "Rust implementation of CPU-priority scheduling state"
 	depends on RUST && SMP

@@ -37,6 +37,7 @@ more details.
     coding-guidelines
     arch-support
     testing
+    sched
     cpupri
     itimer
     timerqueue

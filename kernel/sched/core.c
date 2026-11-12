@@ -9,6 +9,7 @@
  */
 #define INSTANTIATE_EXPORTED_MIGRATE_DISABLE
 #include <linux/sched.h>
+#include <linux/sched-rust.h>
 #include <linux/highmem.h>
 #include <linux/hrtimer_api.h>
 #include <linux/ktime_api.h>
@@ -2311,9 +2312,36 @@ void wakeup_preempt(struct rq *rq, struct task_struct *p, int flags)
 		rq_clock_skip_update(rq);
 }
 
+#ifdef CONFIG_RUST_SCHED_WAKE_STATE
+int rust_helper_sched_task_state(const struct task_struct *task)
+{
+	return READ_ONCE(task->__state);
+}
+
+int rust_helper_sched_task_saved_state(const struct task_struct *task)
+{
+	return READ_ONCE(task->saved_state);
+}
+
+void rust_helper_sched_set_task_saved_state(struct task_struct *task,
+					    unsigned int state)
+{
+	task->saved_state = state;
+}
+
+void rust_helper_sched_warn_ttwu_state(unsigned int state)
+{
+	WARN_ON_ONCE((state & TASK_RTLOCK_WAIT) &&
+		     state != TASK_RTLOCK_WAIT);
+}
+#endif
+
 static __always_inline
 int __task_state_match(struct task_struct *p, unsigned int state)
 {
+#ifdef CONFIG_RUST_SCHED_WAKE_STATE
+	return rust_sched_task_state_match(p, state);
+#else
 	if (READ_ONCE(p->__state) & state)
 		return 1;
 
@@ -2321,6 +2349,7 @@ int __task_state_match(struct task_struct *p, unsigned int state)
 		return -1;
 
 	return 0;
+#endif
 }
 
 static __always_inline
@@ -4122,6 +4151,9 @@ static void ttwu_queue(struct task_struct *p, int cpu, int wake_flags)
 static __always_inline
 bool ttwu_state_match(struct task_struct *p, unsigned int state, int *success)
 {
+#ifdef CONFIG_RUST_SCHED_WAKE_STATE
+	return rust_sched_ttwu_state_match(p, state, success);
+#else
 	int match;
 
 	if (IS_ENABLED(CONFIG_DEBUG_PREEMPT)) {
@@ -4149,6 +4181,7 @@ bool ttwu_state_match(struct task_struct *p, unsigned int state, int *success)
 		p->saved_state = TASK_RUNNING;
 
 	return match > 0;
+#endif
 }
 
 /*

@@ -144,6 +144,8 @@ mod rwlock_core;
 mod rwsem_core;
 pub mod safety;
 pub mod scatterlist;
+#[cfg(CONFIG_RUST_SCHED_WAKE_STATE)]
+mod sched_core;
 pub mod security;
 #[cfg(CONFIG_RUST_SEMAPHORE)]
 mod semaphore_core;

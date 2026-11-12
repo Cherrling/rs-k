@@ -96,6 +96,7 @@
 #include <linux/rwsem-rust.h>
 #include <linux/rwlock-rust.h>
 #include <linux/sched.h>
+#include <linux/sched-rust.h>
 #include <linux/security.h>
 #include <linux/semaphore-rust.h>
 #include <linux/serdev.h>
