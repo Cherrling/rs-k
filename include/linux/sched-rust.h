@@ -85,7 +85,7 @@ void rust_helper_sched_ttwu_wake(struct task_struct *task);
 #define RUST_SCHED_ENQUEUE_NOCLOCK		0x0008
 #define RUST_SCHED_ENQUEUE_RQ_SELECTED		0x00100000
 
-void rust_helper_sched_ttwu_io_wait_end(struct task_struct *task);
+void rust_helper_sched_ttwu_delayacct_blkio_end(struct task_struct *task);
 bool rust_helper_sched_ttwu_has_task_woken(struct task_struct *task);
 void rust_helper_sched_ttwu_task_woken(struct rq *rq,
 				       struct task_struct *task,
@@ -105,6 +105,7 @@ unsigned int rust_sched_ttwu_wake_flags_select(int wake_flags);
 int rust_sched_ttwu_activate_flags_select(bool rq_selected,
 					  bool migrated);
 unsigned long rust_sched_ttwu_dec_uninterruptible_select(unsigned long initial);
+int rust_sched_ttwu_dec_iowait_select(int initial);
 #endif
 
 #endif /* CONFIG_RUST_SCHED_TTWU_ACTIVATE */

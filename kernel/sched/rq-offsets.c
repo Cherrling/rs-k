@@ -9,6 +9,7 @@ int main(void)
 	DEFINE(RQ_nr_pinned, offsetof(struct rq, nr_pinned));
 	DEFINE(RQ_nr_uninterruptible,
 	       offsetof(struct rq, nr_uninterruptible));
+	DEFINE(RQ_nr_iowait, offsetof(struct rq, nr_iowait));
 
 	return 0;
 }

@@ -183,6 +183,11 @@ static void sched_wake_test_dec_uninterruptible(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, 1,
 			rust_sched_ttwu_dec_uninterruptible_select(2));
 }
+
+static void sched_wake_test_dec_iowait(struct kunit *test)
+{
+	KUNIT_EXPECT_EQ(test, 1, rust_sched_ttwu_dec_iowait_select(2));
+}
 #endif
 
 #ifdef CONFIG_RUST_SCHED_BLOCK_TASK
@@ -340,6 +345,7 @@ static struct kunit_case sched_wake_test_cases[] = {
 	KUNIT_CASE(sched_wake_test_wake_flags),
 	KUNIT_CASE(sched_wake_test_activate_enqueue_flags),
 	KUNIT_CASE(sched_wake_test_dec_uninterruptible),
+	KUNIT_CASE(sched_wake_test_dec_iowait),
 #endif
 #ifdef CONFIG_RUST_SCHED_BLOCK_TASK
 	KUNIT_CASE(sched_wake_test_block_plan),

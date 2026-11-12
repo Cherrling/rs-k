@@ -149,6 +149,9 @@ static_assert(RUST_SCHED_ENQUEUE_NOCLOCK == ENQUEUE_NOCLOCK);
 static_assert(RUST_SCHED_ENQUEUE_RQ_SELECTED == ENQUEUE_RQ_SELECTED);
 static_assert(sizeof_field(struct rq, nr_uninterruptible) ==
 	      sizeof(unsigned long));
+static_assert(sizeof_field(struct rq, nr_iowait) == sizeof(atomic_t));
+static_assert(sizeof(atomic_t) == sizeof(int));
+static_assert(__alignof__(atomic_t) == __alignof__(int));
 static_assert(RUST_SCHED_WF_MIGRATED == WF_MIGRATED);
 static_assert(RUST_SCHED_WF_RQ_SELECTED == WF_RQ_SELECTED);
 #endif
@@ -3942,10 +3945,9 @@ void rust_helper_sched_ttwu_wake(struct task_struct *task)
 #endif
 
 #ifdef CONFIG_RUST_SCHED_TTWU_ACTIVATE
-void rust_helper_sched_ttwu_io_wait_end(struct task_struct *task)
+void rust_helper_sched_ttwu_delayacct_blkio_end(struct task_struct *task)
 {
 	delayacct_blkio_end(task);
-	atomic_dec(&task_rq(task)->nr_iowait);
 }
 
 bool rust_helper_sched_ttwu_has_task_woken(struct task_struct *task)

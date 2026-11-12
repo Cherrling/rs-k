@@ -16,10 +16,18 @@ use crate::bindings;
 use crate::ffi::c_int;
 #[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
 use crate::ffi::c_ulong;
+#[cfg(any(CONFIG_RUST_SCHED_TTWU_RUNNABLE, CONFIG_RUST_SCHED_RQ_TRANSITION))]
+use crate::sync::atomic::atomic_load;
 #[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
 use crate::sync::atomic::atomic_store;
-#[cfg(any(CONFIG_RUST_SCHED_TTWU_RUNNABLE, CONFIG_RUST_SCHED_RQ_TRANSITION))]
-use crate::sync::atomic::{atomic_load, Relaxed};
+#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+use crate::sync::atomic::Atomic;
+#[cfg(any(
+    CONFIG_RUST_SCHED_TTWU_ACTIVATE,
+    CONFIG_RUST_SCHED_TTWU_RUNNABLE,
+    CONFIG_RUST_SCHED_RQ_TRANSITION
+))]
+use crate::sync::atomic::Relaxed;
 use macros::export;
 
 type Task = bindings::task_struct;
@@ -410,6 +418,32 @@ unsafe fn dec_rq_uninterruptible(rq: *mut Rq) {
     unsafe { count.write_volatile(value.wrapping_sub(1)) };
 }
 
+/// Returns a pointer to the runqueue's I/O wait count.
+///
+/// # Safety
+///
+/// `rq` must remain live and point to the start of a C `struct rq`.
+#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+unsafe fn rq_iowait_ptr(rq: *mut Rq) -> *mut i32 {
+    // SAFETY: The generated offset comes from `offsetof(struct rq, nr_iowait)`
+    // and the caller provides the live base pointer.
+    unsafe { rq.cast::<u8>().add(bindings::RQ_nr_iowait as usize).cast() }
+}
+
+/// Decrements the runqueue's I/O wait count.
+///
+/// # Safety
+///
+/// `rq` must remain live and the caller must hold the runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+unsafe fn dec_rq_iowait(rq: *mut Rq) {
+    // SAFETY: The caller guarantees that the runqueue remains live and locked.
+    let count = unsafe { rq_iowait_ptr(rq) };
+    // SAFETY: The generated offset points to a live `atomic_t`, and all access
+    // to the counter is atomic.
+    unsafe { Atomic::from_ptr(count) }.fetch_sub(1, Relaxed);
+}
+
 /// Constructs the enqueue flags for a woke task.
 #[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
 fn activation_flags(rq_selected: bool, migrated: bool) -> c_int {
@@ -534,6 +568,28 @@ extern "C" fn rust_sched_ttwu_dec_uninterruptible_select(initial: c_ulong) -> c_
     unsafe { count.read_volatile() }
 }
 
+/// Decrements a runqueue I/O wait counter for the scheduler KUnit test.
+///
+/// Returns the counter value after the decrement.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_TTWU_ACTIVATE))]
+#[export]
+extern "C" fn rust_sched_ttwu_dec_iowait_select(initial: c_int) -> c_int {
+    const OFFSET: usize = bindings::RQ_nr_iowait as usize;
+    const WORDS: usize =
+        (OFFSET + core::mem::size_of::<c_int>()).div_ceil(core::mem::size_of::<u64>());
+    let mut storage = [0_u64; WORDS];
+    let rq = storage.as_mut_ptr().cast::<Rq>();
+    // SAFETY: The storage contains the generated counter offset.
+    let count = unsafe { rq_iowait_ptr(rq) };
+
+    // SAFETY: The aligned storage contains the initialized atomic counter.
+    unsafe { Atomic::from_ptr(count) }.store(initial, Relaxed);
+    // SAFETY: The local storage remains valid and has exclusive access.
+    unsafe { dec_rq_iowait(rq) };
+    // SAFETY: The helper initialized and updated the atomic counter.
+    unsafe { Atomic::from_ptr(count) }.load(Relaxed)
+}
+
 /// Activates a woke task while its runqueue lock remains held.
 ///
 /// Rust owns load accounting, I/O wait completion, enqueue-flag selection,
@@ -568,7 +624,9 @@ unsafe extern "C" fn rust_sched_ttwu_activate_locked(
     }
     if plan & ACTIVATE_IO_WAIT != 0 {
         // SAFETY: The task and its current runqueue are locked and live.
-        unsafe { bindings::rust_helper_sched_ttwu_io_wait_end(task) };
+        unsafe { bindings::rust_helper_sched_ttwu_delayacct_blkio_end(task) };
+        // SAFETY: The caller holds the task runqueue lock.
+        unsafe { dec_rq_iowait(rq) };
     }
 
     let enqueue_flags = activation_flags(

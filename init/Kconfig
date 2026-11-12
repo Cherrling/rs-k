@@ -1036,14 +1036,15 @@ config RUST_SCHED_TTWU_ACTIVATE
 	help
 	  Use Rust for the production woke-task activation state machine. Rust
 	  owns task load and I/O wait state reads, wake-flag decoding, load
-	  accounting, I/O wait completion, enqueue-flag construction, the direct
-	  task activation call, preemption ordering, wake-state publication, and
-	  the optional scheduling-class callback decision.
+	  accounting, the delay-accounting completion call, the atomic I/O wait
+	  count update, enqueue-flag construction, the direct task activation
+	  call, preemption ordering, wake-state publication, and the optional
+	  scheduling-class callback decision.
 
 	  Task runqueue locking and pinning, scheduling-class queue operations
-	  invoked by the activation call, the preemption primitive, tracing,
-	  scheduling-class callbacks, and public scheduler ABI adapters remain
-	  in C.
+	  invoked by the activation call, the delay accounting primitive, the
+	  preemption primitive, tracing, scheduling-class callbacks, and public
+	  scheduler ABI adapters remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
