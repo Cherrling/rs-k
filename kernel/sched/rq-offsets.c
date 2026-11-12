@@ -7,6 +7,8 @@
 int main(void)
 {
 	DEFINE(RQ_nr_pinned, offsetof(struct rq, nr_pinned));
+	DEFINE(RQ_nr_uninterruptible,
+	       offsetof(struct rq, nr_uninterruptible));
 
 	return 0;
 }

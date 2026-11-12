@@ -66,6 +66,13 @@ void rust_helper_sched_ttwu_wake(struct task_struct *task);
 
 #endif
 
+#if defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE) || \
+	defined(CONFIG_RUST_SCHED_RQ_TRANSITION)
+
+#define RUST_SCHED_ENQUEUE_MIGRATED		0x00040000
+
+#endif
+
 #ifdef CONFIG_RUST_SCHED_TTWU_ACTIVATE
 
 #define RUST_SCHED_TTWU_ACTIVATE_DEC_LOAD	0x01
@@ -74,15 +81,17 @@ void rust_helper_sched_ttwu_wake(struct task_struct *task);
 #define RUST_SCHED_TTWU_ACTIVATE_IO_WAIT	0x08
 #define RUST_SCHED_WF_MIGRATED			0x20
 #define RUST_SCHED_WF_RQ_SELECTED		0x80
+#define RUST_SCHED_ENQUEUE_WAKEUP		0x0001
+#define RUST_SCHED_ENQUEUE_NOCLOCK		0x0008
+#define RUST_SCHED_ENQUEUE_RQ_SELECTED		0x00100000
 
-void rust_helper_sched_ttwu_dec_uninterruptible(struct rq *rq);
 void rust_helper_sched_ttwu_io_wait_end(struct task_struct *task);
-void rust_helper_sched_ttwu_activate(struct rq *rq, struct task_struct *task,
-				     bool rq_selected, bool migrated);
 bool rust_helper_sched_ttwu_has_task_woken(struct task_struct *task);
 void rust_helper_sched_ttwu_task_woken(struct rq *rq,
 				       struct task_struct *task,
 				       struct rq_flags *rf);
+
+void activate_task(struct rq *rq, struct task_struct *task, int flags);
 
 void rust_sched_ttwu_activate_locked(struct rq *rq, struct task_struct *task,
 				     int wake_flags, struct rq_flags *rf);
@@ -93,6 +102,9 @@ unsigned int rust_sched_ttwu_activate_select(bool contributes_load,
 					    bool in_iowait);
 unsigned int rust_sched_ttwu_task_activate_flags_select(struct task_struct *task);
 unsigned int rust_sched_ttwu_wake_flags_select(int wake_flags);
+int rust_sched_ttwu_activate_flags_select(bool rq_selected,
+					  bool migrated);
+unsigned long rust_sched_ttwu_dec_uninterruptible_select(unsigned long initial);
 #endif
 
 #endif /* CONFIG_RUST_SCHED_TTWU_ACTIVATE */
@@ -123,7 +135,6 @@ void rust_sched_block_task_set_contributes_load_select(struct task_struct *task,
 #define RUST_SCHED_RQ_ADD_MIGRATED		0x01
 #define RUST_SCHED_RQ_WARN_DEQUEUE_SLEEP	0x02
 #define RUST_SCHED_DEQUEUE_SLEEP		0x0001
-#define RUST_SCHED_ENQUEUE_MIGRATED		0x00040000
 
 void enqueue_task(struct rq *rq, struct task_struct *task, int flags);
 bool dequeue_task(struct rq *rq, struct task_struct *task, int flags);

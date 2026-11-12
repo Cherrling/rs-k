@@ -3,8 +3,8 @@
 //! Native scheduler core state machines.
 //!
 //! Rust owns task-state matching, wake activation, and task blocking
-//! decisions. C retains task-state memory accesses, warning delivery, task
-//! locking, run-queue operations, and task selection.
+//! decisions. C retains task and runqueue locking, warning delivery,
+//! scheduling-class queue operations, and task selection.
 
 use crate::bindings;
 #[cfg(any(
@@ -14,6 +14,8 @@ use crate::bindings;
     CONFIG_RUST_SCHED_RQ_TRANSITION
 ))]
 use crate::ffi::c_int;
+#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+use crate::ffi::c_ulong;
 #[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
 use crate::sync::atomic::atomic_store;
 #[cfg(any(CONFIG_RUST_SCHED_TTWU_RUNNABLE, CONFIG_RUST_SCHED_RQ_TRANSITION))]
@@ -368,6 +370,60 @@ const ACTIVATE_IO_WAIT: u32 = 0x08;
 const WF_MIGRATED: c_int = bindings::RUST_SCHED_WF_MIGRATED as c_int;
 #[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
 const WF_RQ_SELECTED: c_int = bindings::RUST_SCHED_WF_RQ_SELECTED as c_int;
+#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+const ENQUEUE_WAKEUP: c_int = bindings::RUST_SCHED_ENQUEUE_WAKEUP as c_int;
+#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+const ENQUEUE_NOCLOCK: c_int = bindings::RUST_SCHED_ENQUEUE_NOCLOCK as c_int;
+#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+const ENQUEUE_RQ_SELECTED: c_int = bindings::RUST_SCHED_ENQUEUE_RQ_SELECTED as c_int;
+#[cfg(any(CONFIG_RUST_SCHED_TTWU_ACTIVATE, CONFIG_RUST_SCHED_RQ_TRANSITION))]
+const ENQUEUE_MIGRATED: c_int = bindings::RUST_SCHED_ENQUEUE_MIGRATED as c_int;
+
+/// Returns a pointer to the runqueue's uninterruptible task count.
+///
+/// # Safety
+///
+/// `rq` must remain live and point to the start of a C `struct rq`.
+#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+unsafe fn rq_uninterruptible_ptr(rq: *mut Rq) -> *mut c_ulong {
+    // SAFETY: The generated offset comes from `offsetof(struct rq,
+    // nr_uninterruptible)` and the caller provides the live base pointer.
+    unsafe {
+        rq.cast::<u8>()
+            .add(bindings::RQ_nr_uninterruptible as usize)
+            .cast()
+    }
+}
+
+/// Decrements the runqueue's uninterruptible task count.
+///
+/// # Safety
+///
+/// `rq` must remain live and the caller must hold the runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+unsafe fn dec_rq_uninterruptible(rq: *mut Rq) {
+    // SAFETY: The caller guarantees that the runqueue remains live and locked.
+    let count = unsafe { rq_uninterruptible_ptr(rq) };
+    // SAFETY: The runqueue lock serializes this read-modify-write sequence.
+    let value = unsafe { count.read_volatile() };
+    // SAFETY: The runqueue lock remains held and the field is writable.
+    unsafe { count.write_volatile(value.wrapping_sub(1)) };
+}
+
+/// Constructs the enqueue flags for a woke task.
+#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+fn activation_flags(rq_selected: bool, migrated: bool) -> c_int {
+    let mut flags = ENQUEUE_WAKEUP | ENQUEUE_NOCLOCK;
+
+    if rq_selected {
+        flags |= ENQUEUE_RQ_SELECTED;
+    }
+    if migrated {
+        flags |= ENQUEUE_MIGRATED;
+    }
+
+    flags
+}
 
 /// Decodes the wake flags used by the activation state machine.
 #[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
@@ -448,6 +504,36 @@ extern "C" fn rust_sched_ttwu_wake_flags_select(wake_flags: c_int) -> u32 {
     decode_wake_flags(wake_flags)
 }
 
+/// Returns the activation enqueue flags for the KUnit table.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_TTWU_ACTIVATE))]
+#[export]
+extern "C" fn rust_sched_ttwu_activate_flags_select(rq_selected: bool, migrated: bool) -> c_int {
+    activation_flags(rq_selected, migrated)
+}
+
+/// Decrements a runqueue load counter for the scheduler KUnit test.
+///
+/// Returns the counter value after the decrement.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_TTWU_ACTIVATE))]
+#[export]
+extern "C" fn rust_sched_ttwu_dec_uninterruptible_select(initial: c_ulong) -> c_ulong {
+    const OFFSET: usize = bindings::RQ_nr_uninterruptible as usize;
+    const WORDS: usize =
+        (OFFSET + core::mem::size_of::<c_ulong>()).div_ceil(core::mem::size_of::<u64>());
+    let mut storage = [0_u64; WORDS];
+    let rq = storage.as_mut_ptr().cast::<Rq>();
+    // SAFETY: The storage contains the generated counter offset.
+    let count = unsafe { rq_uninterruptible_ptr(rq) };
+
+    // SAFETY: The aligned storage is valid for a raw write and the helper
+    // accesses only the initialized counter field.
+    unsafe { count.write(initial) };
+    // SAFETY: The local storage remains valid and has exclusive access.
+    unsafe { dec_rq_uninterruptible(rq) };
+    // SAFETY: The helper initialized and updated the counter field.
+    unsafe { count.read_volatile() }
+}
+
 /// Activates a woke task while its runqueue lock remains held.
 ///
 /// Rust owns load accounting, I/O wait completion, enqueue-flag selection,
@@ -478,22 +564,19 @@ unsafe extern "C" fn rust_sched_ttwu_activate_locked(
 
     if plan & ACTIVATE_DEC_LOAD != 0 {
         // SAFETY: The caller holds the task runqueue lock.
-        unsafe { bindings::rust_helper_sched_ttwu_dec_uninterruptible(rq) };
+        unsafe { dec_rq_uninterruptible(rq) };
     }
     if plan & ACTIVATE_IO_WAIT != 0 {
         // SAFETY: The task and its current runqueue are locked and live.
         unsafe { bindings::rust_helper_sched_ttwu_io_wait_end(task) };
     }
 
+    let enqueue_flags = activation_flags(
+        plan & ACTIVATE_RQ_SELECTED != 0,
+        plan & ACTIVATE_MIGRATED != 0,
+    );
     // SAFETY: The task is locked and ready to enter its runqueue.
-    unsafe {
-        bindings::rust_helper_sched_ttwu_activate(
-            rq,
-            task,
-            plan & ACTIVATE_RQ_SELECTED != 0,
-            plan & ACTIVATE_MIGRATED != 0,
-        )
-    };
+    unsafe { bindings::activate_task(rq, task, enqueue_flags) };
     // SAFETY: The caller holds the task runqueue lock.
     unsafe { bindings::rust_helper_sched_ttwu_preempt(rq, task, wake_flags) };
     // SAFETY: The caller holds the task runqueue lock.
@@ -589,8 +672,6 @@ const RQ_WARN_DEQUEUE_SLEEP: u32 = 0x02;
 
 #[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
 const DEQUEUE_SLEEP: c_int = bindings::RUST_SCHED_DEQUEUE_SLEEP as c_int;
-#[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
-const ENQUEUE_MIGRATED: c_int = bindings::RUST_SCHED_ENQUEUE_MIGRATED as c_int;
 
 /// Selects the actions for a task runqueue activation or deactivation.
 #[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]

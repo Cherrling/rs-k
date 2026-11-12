@@ -136,10 +136,19 @@ static_assert(RUST_SCHED_TASK_ON_RQ_QUEUED == TASK_ON_RQ_QUEUED);
 #ifdef CONFIG_RUST_SCHED_RQ_TRANSITION
 static_assert(RUST_SCHED_TASK_ON_RQ_MIGRATING == TASK_ON_RQ_MIGRATING);
 static_assert(RUST_SCHED_DEQUEUE_SLEEP == DEQUEUE_SLEEP);
+#endif
+
+#if defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE) || \
+	defined(CONFIG_RUST_SCHED_RQ_TRANSITION)
 static_assert(RUST_SCHED_ENQUEUE_MIGRATED == ENQUEUE_MIGRATED);
 #endif
 
 #ifdef CONFIG_RUST_SCHED_TTWU_ACTIVATE
+static_assert(RUST_SCHED_ENQUEUE_WAKEUP == ENQUEUE_WAKEUP);
+static_assert(RUST_SCHED_ENQUEUE_NOCLOCK == ENQUEUE_NOCLOCK);
+static_assert(RUST_SCHED_ENQUEUE_RQ_SELECTED == ENQUEUE_RQ_SELECTED);
+static_assert(sizeof_field(struct rq, nr_uninterruptible) ==
+	      sizeof(unsigned long));
 static_assert(RUST_SCHED_WF_MIGRATED == WF_MIGRATED);
 static_assert(RUST_SCHED_WF_RQ_SELECTED == WF_RQ_SELECTED);
 #endif
@@ -3933,28 +3942,10 @@ void rust_helper_sched_ttwu_wake(struct task_struct *task)
 #endif
 
 #ifdef CONFIG_RUST_SCHED_TTWU_ACTIVATE
-void rust_helper_sched_ttwu_dec_uninterruptible(struct rq *rq)
-{
-	rq->nr_uninterruptible--;
-}
-
 void rust_helper_sched_ttwu_io_wait_end(struct task_struct *task)
 {
 	delayacct_blkio_end(task);
 	atomic_dec(&task_rq(task)->nr_iowait);
-}
-
-void rust_helper_sched_ttwu_activate(struct rq *rq, struct task_struct *task,
-				     bool rq_selected, bool migrated)
-{
-	int en_flags = ENQUEUE_WAKEUP | ENQUEUE_NOCLOCK;
-
-	if (rq_selected)
-		en_flags |= ENQUEUE_RQ_SELECTED;
-	if (migrated)
-		en_flags |= ENQUEUE_MIGRATED;
-
-	activate_task(rq, task, en_flags);
 }
 
 bool rust_helper_sched_ttwu_has_task_woken(struct task_struct *task)

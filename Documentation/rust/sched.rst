@@ -32,10 +32,11 @@ Rust owns these production decisions:
   handling proxy state, selecting preemption, and publishing the final running
   state.
 * Decoding the selected-runqueue and migrated wake flags.
-* Reading task load and I/O wait state, removing uninterruptible-load
-  accounting, ending I/O wait accounting, selecting enqueue flags, activating
-  the task, selecting preemption, publishing the wakeup, and deciding whether
-  to invoke the scheduling-class ``task_woken`` callback.
+* Reading task load and I/O wait state, updating the runqueue
+  ``nr_uninterruptible`` count, ending I/O wait accounting, constructing
+  enqueue flags, calling task activation directly, selecting preemption,
+  publishing the wakeup, and deciding whether to invoke the scheduling-class
+  ``task_woken`` callback.
 * Classifying whether a blocking task contributes to load, classifying whether
   its state is special, updating its load flag, selecting special dequeue,
   and deciding whether dequeue and block accounting run.
@@ -64,9 +65,9 @@ The Rust-to-C helper calls are:
 * The invalid debug-preemption wake-mask warning.
 * The runqueue clock update, proxy state query, delayed enqueue, preemption,
   and final wake publication used by the runnable path.
-* Load and I/O wait accounting updates, activation-flag construction, task
-  activation, preemption, wake publication, and the scheduling-class callback
-  used by the activation path.
+* I/O wait completion, preemption, wake publication, and the scheduling-class
+  callback used by the activation path. Rust constructs the enqueue flags and
+  calls ``activate_task()`` directly.
 * Runqueue lock unpin and repin around a scheduling-class ``task_woken``
   callback.
 * Blocking dequeue with selected sleep and special flags, and block
@@ -130,12 +131,13 @@ order and the decision to invoke each helper. The C adapter cannot return
 while Rust still holds the lock because the lock remains owned by the C
 caller.
 
-The activation path retains runqueue lock ownership, activation enqueue flags,
-scheduler queue operations, preemption, tracing, and the scheduling-class
-callback in C. Rust owns wake-flag decoding, the conditions and order for load
-accounting, I/O wait completion, task activation, preemption, wake
-publication, and callback selection. The C lock-unpin helper preserves the
-existing callback lock contract while Rust still owns the caller's state
+The activation path retains runqueue lock ownership, scheduling-class queue
+operations reached through ``activate_task()``, the preemption primitive,
+tracing, and the scheduling-class callback in C. Rust owns wake-flag decoding,
+the runqueue ``nr_uninterruptible`` update, the conditions and order for I/O
+wait completion and task activation, enqueue-flag construction, preemption,
+wake publication, and callback selection. The C lock-unpin helper preserves
+the existing callback lock contract while Rust still owns the caller's state
 machine.
 
 The blocking path retains runqueue locking, scheduler queue operations,
@@ -161,6 +163,11 @@ Rust maps the ``on_rq`` field to a one-byte atomic value. A relaxed atomic load
 has the same LKMM semantics as ``READ_ONCE()``, and a relaxed atomic store has
 the same LKMM semantics as ``WRITE_ONCE()``. The C writer assertion still runs
 after each membership publication.
+
+Rust accesses ``struct rq.nr_uninterruptible`` through a Kbuild-generated
+offset. ``kernel/sched/rq-offsets.c`` derives the offset with
+``offsetof(struct rq, nr_uninterruptible)``. C checks the field size, and Rust
+performs the locked read-modify-write at the generated location.
 
 Important invariants
 --------------------
@@ -215,11 +222,12 @@ Validation gate
 ---------------
 
 The Rust KUnit cases cover the state-match table, saved-state transition,
-activation action selection, blocking action selection, and a real
-uninterruptible timeout. The transition action table covers migrated enqueue
-and invalid sleeping dequeue. Real wakeup cases cover current-task rejection,
-waking a stopped kernel thread, waking a queued runnable task, and real
-activation and deactivation traffic with both the Rust and C implementations.
+activation action selection, activation enqueue flags, the uninterruptible
+count update, blocking action selection, and a real uninterruptible timeout.
+The transition action table covers migrated enqueue and invalid sleeping
+dequeue. Real wakeup cases cover current-task rejection, waking a stopped
+kernel thread, waking a queued runnable task, and real activation and
+deactivation traffic with both the Rust and C implementations.
 
 The unit must pass repeated four-vCPU Rust runs, a C fallback run, PREEMPT_RT,
 KASAN, lockdep, and a no-KUnit production build. Static checks include Rustfmt,
@@ -493,6 +501,71 @@ diagnosis, Oops, or panic. One lockdep launch stopped during QEMU boot before
 KUnit started. The same image passed immediately on rerun. The final three
 lockdep scheduler logs all contain complete 13-case results.
 
+The wake activation enqueue ownership unit was validated on 2026-11-13 with
+x86_64 ``LLVM=1`` builds and QEMU 11.1.3. Each configuration passed three
+consecutive four-vCPU runs:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 25 25
+
+   * - Configuration
+     - Scheduler cases
+     - hrtimer cases
+   * - Full Rust
+     - 15
+     - 25
+   * - Wake-state fallback
+     - 13
+     - 25
+   * - Runnable fallback
+     - 14
+     - 25
+   * - Activation fallback
+     - 10
+     - 25
+   * - Wake-state only
+     - 5
+     - 25
+   * - Runnable only
+     - 4
+     - 25
+   * - Activation only
+     - 8
+     - 25
+   * - PREEMPT_RT
+     - 15
+     - 25
+   * - KASAN
+     - 15
+     - 25
+   * - lockdep
+     - 15
+     - 25
+
+Rust constructs ``ENQUEUE_WAKEUP``, ``ENQUEUE_NOCLOCK``,
+``ENQUEUE_RQ_SELECTED``, and ``ENQUEUE_MIGRATED``. Rust calls
+``activate_task()`` directly and that function has no activation wrapper.
+Activation-only builds confirm that this path does not depend on another Rust
+scheduler option.
+
+Rust updates ``struct rq.nr_uninterruptible`` as an ``unsigned long`` at the
+offset generated from the C layout. The KUnit case sets the count to two and
+checks the Rust decrement result of one. C statically checks the field size and
+all exported enqueue flag values.
+
+Rust removes ``rust_helper_sched_ttwu_dec_uninterruptible()`` and
+``rust_helper_sched_ttwu_activate()``. C retains the runqueue lock, the
+scheduling-class queue operation reached through ``activate_task()``, I/O wait
+delay accounting, preemption, tracing, and the class callback contract.
+
+The full configuration passed Rustfmt, Clippy, strict checkpatch, and
+``git diff --check``. The all-Rust configuration with KUnit disabled also
+passed Clippy. Both production images contained no unresolved symbols. One RT
+scheduler launch stopped during QEMU boot before KUnit started. The same image
+passed immediately on rerun. No final run reported a ``BUG``, warning, KASAN
+report, lock dependency diagnosis, Oops, or panic.
+
 Review conditions
 -----------------
 
@@ -508,6 +581,8 @@ Reopen this boundary decision if any of these conditions changes:
 * The activation path changes load or I/O wait accounting, enqueue flags,
   activation ordering, preemption ordering, wake publication, or the
   scheduling-class callback contract.
+* The runqueue ``nr_uninterruptible`` layout, range, or lock serialization
+  changes.
 * Rust gains stable runqueue state accessors or safe scheduling-class callback
   abstractions.
 * Task-state masks, load accounting, special-state classification, or the

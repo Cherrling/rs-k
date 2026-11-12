@@ -159,6 +159,30 @@ static void sched_wake_test_wake_flags(struct kunit *test)
 			RUST_SCHED_TTWU_ACTIVATE_MIGRATED,
 			rust_sched_ttwu_wake_flags_select(both));
 }
+
+static void sched_wake_test_activate_enqueue_flags(struct kunit *test)
+{
+	int base = RUST_SCHED_ENQUEUE_WAKEUP |
+		   RUST_SCHED_ENQUEUE_NOCLOCK;
+	int rq_selected = base | RUST_SCHED_ENQUEUE_RQ_SELECTED;
+	int migrated = base | RUST_SCHED_ENQUEUE_MIGRATED;
+	int both = rq_selected | RUST_SCHED_ENQUEUE_MIGRATED;
+
+	KUNIT_EXPECT_EQ(test, base,
+			rust_sched_ttwu_activate_flags_select(false, false));
+	KUNIT_EXPECT_EQ(test, rq_selected,
+			rust_sched_ttwu_activate_flags_select(true, false));
+	KUNIT_EXPECT_EQ(test, migrated,
+			rust_sched_ttwu_activate_flags_select(false, true));
+	KUNIT_EXPECT_EQ(test, both,
+			rust_sched_ttwu_activate_flags_select(true, true));
+}
+
+static void sched_wake_test_dec_uninterruptible(struct kunit *test)
+{
+	KUNIT_EXPECT_EQ(test, 1,
+			rust_sched_ttwu_dec_uninterruptible_select(2));
+}
 #endif
 
 #ifdef CONFIG_RUST_SCHED_BLOCK_TASK
@@ -314,6 +338,8 @@ static struct kunit_case sched_wake_test_cases[] = {
 	KUNIT_CASE(sched_wake_test_activate_plan),
 	KUNIT_CASE(sched_wake_test_activate_task_flags),
 	KUNIT_CASE(sched_wake_test_wake_flags),
+	KUNIT_CASE(sched_wake_test_activate_enqueue_flags),
+	KUNIT_CASE(sched_wake_test_dec_uninterruptible),
 #endif
 #ifdef CONFIG_RUST_SCHED_BLOCK_TASK
 	KUNIT_CASE(sched_wake_test_block_plan),
