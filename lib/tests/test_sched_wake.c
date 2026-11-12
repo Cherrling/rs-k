@@ -117,6 +117,31 @@ static void sched_wake_test_activate_plan(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, 0,
 			rust_sched_ttwu_activate_select(false, false, false, false));
 }
+
+static void sched_wake_test_activate_task_flags(struct kunit *test)
+{
+	struct task_struct *task;
+
+	task = kzalloc_obj(*task);
+	KUNIT_ASSERT_NOT_NULL(test, task);
+
+	KUNIT_EXPECT_EQ(test, 0,
+			rust_sched_ttwu_task_activate_flags_select(task));
+	task->sched_contributes_to_load = 1;
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_TTWU_ACTIVATE_DEC_LOAD,
+			rust_sched_ttwu_task_activate_flags_select(task));
+	task->sched_contributes_to_load = 0;
+	task->in_iowait = 1;
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_TTWU_ACTIVATE_IO_WAIT,
+			rust_sched_ttwu_task_activate_flags_select(task));
+	task->sched_contributes_to_load = 1;
+	KUNIT_EXPECT_EQ(test,
+			RUST_SCHED_TTWU_ACTIVATE_DEC_LOAD |
+			RUST_SCHED_TTWU_ACTIVATE_IO_WAIT,
+			rust_sched_ttwu_task_activate_flags_select(task));
+
+	kfree(task);
+}
 #endif
 
 #ifdef CONFIG_RUST_SCHED_BLOCK_TASK
@@ -141,6 +166,21 @@ static void sched_wake_test_block_plan(struct kunit *test)
 			rust_sched_block_task_select(TASK_PARKED));
 }
 
+static void sched_wake_test_block_task_flags(struct kunit *test)
+{
+	struct task_struct *task;
+
+	task = kzalloc_obj(*task);
+	KUNIT_ASSERT_NOT_NULL(test, task);
+
+	rust_sched_block_task_set_contributes_load_select(task, true);
+	KUNIT_EXPECT_TRUE(test, task->sched_contributes_to_load);
+	rust_sched_block_task_set_contributes_load_select(task, false);
+	KUNIT_EXPECT_FALSE(test, task->sched_contributes_to_load);
+
+	kfree(task);
+}
+
 static void sched_wake_test_uninterruptible_timeout(struct kunit *test)
 {
 	struct task_struct *task;
@@ -154,6 +194,31 @@ static void sched_wake_test_uninterruptible_timeout(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, 1, wake_up_process(task));
 	wait_for_completion(&finished);
 	KUNIT_EXPECT_EQ(test, 0, kthread_stop(task));
+}
+#endif
+
+#ifdef CONFIG_RUST_SCHED_TTWU_RUNNABLE
+static void sched_wake_test_runnable_task_flags(struct kunit *test)
+{
+	struct task_struct *task;
+
+	task = kzalloc_obj(*task);
+	KUNIT_ASSERT_NOT_NULL(test, task);
+
+	KUNIT_EXPECT_EQ(test, 0, rust_sched_ttwu_task_flags_select(task));
+	task->is_blocked = 1;
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_TTWU_TASK_IS_BLOCKED,
+			rust_sched_ttwu_task_flags_select(task));
+	task->is_blocked = 0;
+	task->on_cpu = 1;
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_TTWU_TASK_ON_CPU,
+			rust_sched_ttwu_task_flags_select(task));
+	task->is_blocked = 1;
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_TTWU_TASK_IS_BLOCKED |
+			      RUST_SCHED_TTWU_TASK_ON_CPU,
+			rust_sched_ttwu_task_flags_select(task));
+
+	kfree(task);
 }
 #endif
 
@@ -219,10 +284,15 @@ static struct kunit_case sched_wake_test_cases[] = {
 #endif
 #ifdef CONFIG_RUST_SCHED_TTWU_ACTIVATE
 	KUNIT_CASE(sched_wake_test_activate_plan),
+	KUNIT_CASE(sched_wake_test_activate_task_flags),
 #endif
 #ifdef CONFIG_RUST_SCHED_BLOCK_TASK
 	KUNIT_CASE(sched_wake_test_block_plan),
+	KUNIT_CASE(sched_wake_test_block_task_flags),
 	KUNIT_CASE(sched_wake_test_uninterruptible_timeout),
+#endif
+#ifdef CONFIG_RUST_SCHED_TTWU_RUNNABLE
+	KUNIT_CASE(sched_wake_test_runnable_task_flags),
 #endif
 #ifdef CONFIG_RUST_SCHED_RQ_TRANSITION
 	KUNIT_CASE(sched_wake_test_rq_transition_plan),

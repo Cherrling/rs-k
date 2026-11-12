@@ -42,17 +42,22 @@ int rust_sched_state_match_select(unsigned int task_state,
 
 #ifdef CONFIG_RUST_SCHED_TTWU_RUNNABLE
 
+#define RUST_SCHED_TTWU_TASK_IS_BLOCKED		0x01
+#define RUST_SCHED_TTWU_TASK_ON_CPU		0x02
+
 void rust_helper_sched_ttwu_update_clock(struct rq *rq);
-bool rust_helper_sched_ttwu_is_blocked(struct task_struct *task);
 bool rust_helper_sched_ttwu_is_delayed(struct task_struct *task);
 void rust_helper_sched_ttwu_enqueue_delayed(struct rq *rq,
 					    struct task_struct *task);
 bool rust_helper_sched_ttwu_proxy_return(struct rq *rq,
 					 struct task_struct *task);
-bool rust_helper_sched_ttwu_on_cpu(struct rq *rq, struct task_struct *task);
 
 int rust_sched_ttwu_runnable_locked(struct rq *rq, struct task_struct *task,
 				    int wake_flags);
+
+#ifdef CONFIG_KUNIT
+unsigned int rust_sched_ttwu_task_flags_select(struct task_struct *task);
+#endif
 
 #endif /* CONFIG_RUST_SCHED_TTWU_RUNNABLE */
 
@@ -72,11 +77,9 @@ void rust_helper_sched_ttwu_wake(struct task_struct *task);
 #define RUST_SCHED_TTWU_ACTIVATE_MIGRATED	0x04
 #define RUST_SCHED_TTWU_ACTIVATE_IO_WAIT	0x08
 
-bool rust_helper_sched_ttwu_contributes_load(struct task_struct *task);
 void rust_helper_sched_ttwu_dec_uninterruptible(struct rq *rq);
 bool rust_helper_sched_ttwu_rq_selected(int wake_flags);
 bool rust_helper_sched_ttwu_migrated(int wake_flags);
-bool rust_helper_sched_ttwu_in_iowait(struct task_struct *task);
 void rust_helper_sched_ttwu_io_wait_end(struct task_struct *task);
 void rust_helper_sched_ttwu_activate(struct rq *rq, struct task_struct *task,
 				     bool rq_selected, bool migrated);
@@ -92,6 +95,7 @@ void rust_sched_ttwu_activate_locked(struct rq *rq, struct task_struct *task,
 unsigned int rust_sched_ttwu_activate_select(bool contributes_load,
 					     bool rq_selected, bool migrated,
 					    bool in_iowait);
+unsigned int rust_sched_ttwu_task_activate_flags_select(struct task_struct *task);
 #endif
 
 #endif /* CONFIG_RUST_SCHED_TTWU_ACTIVATE */
@@ -101,8 +105,6 @@ unsigned int rust_sched_ttwu_activate_select(bool contributes_load,
 #define RUST_SCHED_BLOCK_CONTRIBUTES_LOAD	0x01
 #define RUST_SCHED_BLOCK_SPECIAL		0x02
 
-void rust_helper_sched_block_set_contributes_load(struct task_struct *task,
-						  bool contributes_load);
 bool rust_helper_sched_block_dequeue(struct rq *rq,
 				     struct task_struct *task, bool special);
 void rust_helper_sched_block_finish(struct rq *rq,
@@ -113,6 +115,8 @@ void rust_sched_block_task_locked(struct rq *rq, struct task_struct *task,
 
 #ifdef CONFIG_KUNIT
 unsigned int rust_sched_block_task_select(unsigned int task_state);
+void rust_sched_block_task_set_contributes_load_select(struct task_struct *task,
+						       bool contributes_load);
 #endif
 
 #endif /* CONFIG_RUST_SCHED_BLOCK_TASK */

@@ -1018,7 +1018,8 @@ config RUST_SCHED_TTWU_RUNNABLE
 	help
 	  Use Rust for the production task_rq-locked runnable wake path. Rust
 	  owns the queued check, clock update, delayed-enqueue and proxy-return
-	  ordering, preemption decision, and final wake-state publication.
+	  ordering, task blocked and on-CPU state reads, preemption decision,
+	  and final wake-state publication.
 
 	  Task runqueue lock acquisition and release, scheduler queue and proxy
 	  operations, preemption, tracing, and public scheduler ABI adapters
@@ -1033,9 +1034,10 @@ config RUST_SCHED_TTWU_ACTIVATE
 	default y
 	help
 	  Use Rust for the production woke-task activation state machine. Rust
-	  owns load accounting, I/O wait completion, enqueue-flag selection,
-	  task activation and preemption ordering, wake-state publication, and
-	  the optional scheduling-class callback decision.
+	  owns task load and I/O wait state reads, load accounting, I/O wait
+	  completion, enqueue-flag selection, task activation and preemption
+	  ordering, wake-state publication, and the optional scheduling-class
+	  callback decision.
 
 	  Task runqueue locking and pinning, scheduler queue operations,
 	  preemption, tracing, scheduling-class callbacks, and public scheduler
@@ -1051,12 +1053,12 @@ config RUST_SCHED_BLOCK_TASK
 	help
 	  Use Rust for the production task blocking state machine. Rust owns
 	  load-state classification, special-state classification, the
-	  contributes-to-load update, dequeue-flag selection, and the decision
-	  and order of dequeue and block accounting.
+	  contributes-to-load bitfield update, dequeue-flag selection, and the
+	  decision and order of dequeue and block accounting.
 
-	  Task-state and bitfield writes, runqueue locking, scheduler queue
-	  operations, blocking accounting primitives, tracepoints, and public
-	  scheduler ABI adapters remain in C.
+	  Task saved-state writes, runqueue locking, scheduler queue operations,
+	  blocking accounting primitives, tracepoints, and public scheduler ABI
+	  adapters remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

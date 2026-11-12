@@ -27,12 +27,13 @@ Rust owns these production decisions:
 * Clearing a matched saved state to ``TASK_RUNNING``.
 * Checking whether the wake target remains queued after the runqueue lock is
   acquired.
-* Updating the runqueue clock, handling delayed and proxy state, selecting
-  preemption, and publishing the final running state.
-* Removing uninterruptible-load accounting, ending I/O wait accounting,
-  selecting enqueue flags, activating the task, selecting preemption,
-  publishing the wakeup, and deciding whether to invoke the scheduling-class
-  ``task_woken`` callback.
+* Updating the runqueue clock, reading task blocked and on-CPU state,
+  handling delayed and proxy state, selecting preemption, and publishing the
+  final running state.
+* Reading task load and I/O wait state, removing uninterruptible-load
+  accounting, ending I/O wait accounting, selecting enqueue flags,
+  activating the task, selecting preemption, publishing the wakeup, and
+  deciding whether to invoke the scheduling-class ``task_woken`` callback.
 * Classifying whether a blocking task contributes to load, classifying whether
   its state is special, updating its load flag, selecting special dequeue,
   and deciding whether dequeue and block accounting run.
@@ -40,13 +41,13 @@ Rust owns these production decisions:
   migrated enqueue, rejecting sleeping deactivation, publishing queued and
   migrating membership, and ordering dequeue.
 
-Other task-state memory accesses, warning delivery, task and runqueue locking,
-scheduler queue and proxy operations, wake-list handling, CPU selection,
-preemption, tracing, statistics, and public scheduler ABI adapters remain in
-C. Runqueue queue operations, the class callback, and its lock unpin and
-repin also remain in C. The task load bitfield write, blocking dequeue, and
-block accounting primitives also remain in C. The KCSAN runqueue membership
-writer assertion, warnings, and queue operations also remain in C.
+Task current-state and saved-state accesses, warning delivery, task and
+runqueue locking, scheduler queue and proxy operations, wake-list handling,
+CPU selection, preemption, tracing, statistics, and public scheduler ABI
+adapters remain in C. Runqueue queue operations, the class callback, and its
+lock unpin and repin also remain in C. Blocking dequeue and block accounting
+primitives also remain in C. The KCSAN runqueue membership writer assertion,
+warnings, and queue operations also remain in C.
 
 Entry points and ownership
 --------------------------
@@ -63,13 +64,13 @@ The Rust-to-C helper calls are:
 * The invalid debug-preemption wake-mask warning.
 * The runqueue clock update, delayed and proxy state queries, delayed enqueue,
   preemption, and final wake publication used by the runnable path.
-* The load and I/O wait queries, load and I/O wait accounting updates,
-  enqueue-flag selection, task activation, preemption, wake publication, and
-  scheduling-class callback used by the activation path.
+* Load and I/O wait accounting updates, enqueue-flag selection, task
+  activation, preemption, wake publication, and the scheduling-class callback
+  used by the activation path.
 * Runqueue lock unpin and repin around a scheduling-class ``task_woken``
   callback.
-* The task contributes-to-load bitfield write, blocking dequeue with selected
-  sleep and special flags, and block accounting.
+* Blocking dequeue with selected sleep and special flags, and block
+  accounting.
 * The task runqueue membership writer assertion, migrated enqueue constants,
   the invalid sleeping-dequeue warning, and dequeue.
 
@@ -109,9 +110,10 @@ the kernel atomic API. C retains the lock across the complete Rust call.
 Retained C boundary
 -------------------
 
-Task-state accesses remain in C because ``READ_ONCE`` and the task layout are
-defined by the C scheduler ABI. The helper reads current and saved state only.
-Rust receives values and performs the matching decision.
+Task current-state and saved-state accesses remain in C because ``READ_ONCE``
+and the task layout are defined by the C scheduler ABI. The helpers read and
+write only the wake-state fields. Rust receives values and performs the
+matching decision.
 
 The saved-state write remains in C to preserve the existing task-structure
 access. Rust decides when the write is required.
@@ -138,12 +140,12 @@ publication, and callback selection. The C lock-unpin helper preserves the
 existing callback lock contract while Rust still owns the caller's state
 machine.
 
-The blocking path retains task-state and bitfield writes, runqueue locking,
-scheduler queue operations, accounting primitives, tracing, and public
-scheduler ABI adapters in C. Rust owns the load and special-state masks, the
-conditions for updating the load flag, the special dequeue decision, and the
-order of dequeue and accounting. The accounting helper runs only after the
-scheduling class accepts the dequeue.
+The blocking path retains runqueue locking, scheduler queue operations,
+accounting primitives, tracing, and public scheduler ABI adapters in C. Rust
+owns the load and special-state masks, the contributes-to-load bitfield
+write, the special dequeue decision, and the order of dequeue and accounting.
+The accounting helper runs only after the scheduling class accepts the
+dequeue.
 
 The transition path retains the KCSAN writer assertion, warning delivery,
 queue operations, tracing, and public scheduler ABI adapters in C. Rust owns
@@ -357,6 +359,71 @@ The shared task-runqueue-state unit was validated on 2026-11-13 with x86_64
 * No run reported a ``BUG``, warning, KASAN report, lock dependency diagnosis,
   Oops, or panic.
 
+The task scalar and scheduler bitfield access unit was validated on 2026-11-13
+with x86_64 ``LLVM=1`` builds and QEMU 11.1.3. Each configuration passed three
+consecutive four-vCPU runs:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 25 25
+
+   * - Configuration
+     - Scheduler cases
+     - hrtimer cases
+   * - Full Rust
+     - 12
+     - 25
+   * - Runnable fallback
+     - 11
+     - 25
+   * - Activation fallback
+     - 10
+     - 25
+   * - Blocking fallback
+     - 9
+     - 25
+   * - Runnable only
+     - 4
+     - 25
+   * - Activation only
+     - 5
+     - 25
+   * - Blocking only
+     - 6
+     - 25
+   * - PREEMPT_RT
+     - 12
+     - 25
+   * - KASAN
+     - 12
+     - 25
+   * - lockdep
+     - 12
+     - 25
+
+The full Rust configuration passed Clippy and Rustfmt. Every configuration
+produced a production image with no unresolved symbols. No run reported a
+``BUG``, warning, KASAN report, lock dependency diagnosis, Oops, or panic.
+
+Rust reads ``task_struct.is_blocked`` and ``task_struct.on_cpu`` with volatile
+loads. This access keeps the single-read behavior of the former C scalar
+helpers. Rust reads and writes ``task_struct.sched_contributes_to_load`` and
+reads ``task_struct.in_iowait`` through the bindgen-generated raw bitfield
+accessors.
+
+Rust removes these C helpers:
+
+* ``rust_helper_sched_block_set_contributes_load()``.
+* ``rust_helper_sched_ttwu_is_blocked()``.
+* ``rust_helper_sched_ttwu_on_cpu()``.
+* ``rust_helper_sched_ttwu_contributes_load()``.
+* ``rust_helper_sched_ttwu_in_iowait()``.
+
+KUnit reads and writes a zeroed task to verify each Rust field access. The
+isolated runnable and activation builds exposed a missing conditional import
+for ``c_int``. The import now covers every enabled scheduler entry that uses
+the C integer ABI.
+
 Review conditions
 -----------------
 
@@ -375,8 +442,10 @@ Reopen this boundary decision if any of these conditions changes:
   abstractions.
 * Task-state masks, load accounting, special-state classification, or the
   blocking dequeue and accounting order changes.
-* Rust gains stable task bitfield access or safe runqueue dequeue and block
-  accounting abstractions.
+* Task scalar or scheduler bitfield layout changes.
+* The runqueue-lock serialization assumptions for task blocked state, on-CPU
+  state, load state, or I/O wait state change.
+* Rust gains safe runqueue dequeue and block accounting abstractions.
 * Runqueue membership states, migration enqueue flags, sleeping-dequeue
   validation, or activation and deactivation ordering changes.
 * The kernel atomic API, ``task_struct.on_rq`` layout, or KCSAN writer

@@ -7,7 +7,12 @@
 //! locking, run-queue operations, and task selection.
 
 use crate::bindings;
-#[cfg(any(CONFIG_RUST_SCHED_WAKE_STATE, CONFIG_RUST_SCHED_RQ_TRANSITION))]
+#[cfg(any(
+    CONFIG_RUST_SCHED_WAKE_STATE,
+    CONFIG_RUST_SCHED_TTWU_RUNNABLE,
+    CONFIG_RUST_SCHED_TTWU_ACTIVATE,
+    CONFIG_RUST_SCHED_RQ_TRANSITION
+))]
 use crate::ffi::c_int;
 #[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
 use crate::sync::atomic::atomic_store;
@@ -42,6 +47,68 @@ unsafe fn task_on_rq_state(task: *mut Task) -> i8 {
     // SAFETY: The pointer is valid, aligned, and all concurrent accesses are
     // atomic. Relaxed atomic load is the LKMM equivalent of READ_ONCE().
     unsafe { atomic_load(state, Relaxed) }
+}
+
+/// Returns whether a task is blocked on another task.
+///
+/// # Safety
+///
+/// `task` must remain live and the caller must hold the task runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_TTWU_RUNNABLE)]
+unsafe fn task_is_blocked(task: *mut Task) -> bool {
+    // SAFETY: The caller guarantees that the task remains live. Use a volatile
+    // load so this has the single-read behavior of the C scalar access.
+    unsafe { core::ptr::addr_of!((*task).is_blocked).read_volatile() != 0 }
+}
+
+/// Returns whether a task is currently running on a CPU.
+///
+/// # Safety
+///
+/// `task` must remain live and the caller must hold the task runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_TTWU_RUNNABLE)]
+unsafe fn task_on_cpu_state(task: *mut Task) -> bool {
+    // SAFETY: The caller guarantees that the task remains live. Use a volatile
+    // load so this has the single-read behavior of the C scalar access.
+    unsafe { core::ptr::addr_of!((*task).on_cpu).read_volatile() != 0 }
+}
+
+/// Returns whether a task contributes to uninterruptible load.
+///
+/// # Safety
+///
+/// `task` must remain live and the caller must hold the task runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+unsafe fn task_contributes_to_load(task: *mut Task) -> bool {
+    // SAFETY: The caller guarantees that the task remains live. The scheduler
+    // serializes this bitfield with the task runqueue lock.
+    unsafe { Task::sched_contributes_to_load_raw(task.cast_const()) != 0 }
+}
+
+/// Returns whether a task is waiting for I/O.
+///
+/// # Safety
+///
+/// `task` must remain live and the caller must hold the task runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+unsafe fn task_in_iowait(task: *mut Task) -> bool {
+    // SAFETY: The caller guarantees that the task remains live. The scheduler
+    // serializes this bitfield with the task runqueue lock.
+    unsafe { Task::in_iowait_raw(task.cast_const()) != 0 }
+}
+
+/// Updates whether a task contributes to uninterruptible load.
+///
+/// # Safety
+///
+/// `task` must remain live and the caller must hold the task runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_BLOCK_TASK)]
+unsafe fn set_task_contributes_to_load(task: *mut Task, contributes_load: bool) {
+    // SAFETY: The caller guarantees that the task remains live. The scheduler
+    // serializes this bitfield with the task runqueue lock.
+    unsafe {
+        Task::set_sched_contributes_to_load_raw(task, u32::from(contributes_load));
+    }
 }
 
 /// Returns whether a task is queued on a runqueue.
@@ -189,7 +256,7 @@ unsafe extern "C" fn rust_sched_ttwu_runnable_locked(
     unsafe { bindings::rust_helper_sched_ttwu_update_clock(rq) };
 
     // SAFETY: The caller holds the task runqueue lock.
-    if unsafe { bindings::rust_helper_sched_ttwu_is_blocked(task) } {
+    if unsafe { task_is_blocked(task) } {
         // SAFETY: The caller holds the task runqueue lock.
         if unsafe { bindings::rust_helper_sched_ttwu_is_delayed(task) } {
             // SAFETY: The task is queued on this runqueue.
@@ -203,7 +270,7 @@ unsafe extern "C" fn rust_sched_ttwu_runnable_locked(
     }
 
     // SAFETY: The caller holds the task runqueue lock.
-    if !unsafe { bindings::rust_helper_sched_ttwu_on_cpu(rq, task) } {
+    if !unsafe { task_on_cpu_state(task) } {
         // SAFETY: The caller holds the task runqueue lock.
         unsafe { bindings::rust_helper_sched_ttwu_preempt(rq, task, wake_flags) };
     }
@@ -211,6 +278,28 @@ unsafe extern "C" fn rust_sched_ttwu_runnable_locked(
     // SAFETY: The caller holds the task runqueue lock.
     unsafe { bindings::rust_helper_sched_ttwu_wake(task) };
     1
+}
+
+/// Returns the scalar task flags used by the runnable wake path.
+///
+/// # Safety
+///
+/// `task` must remain live. The KUnit caller uses an otherwise unused task.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_TTWU_RUNNABLE))]
+#[export]
+unsafe extern "C" fn rust_sched_ttwu_task_flags_select(task: *mut Task) -> u32 {
+    let mut flags = 0;
+
+    // SAFETY: The caller provides a live task.
+    if unsafe { task_is_blocked(task) } {
+        flags |= bindings::RUST_SCHED_TTWU_TASK_IS_BLOCKED;
+    }
+    // SAFETY: The caller provides a live task.
+    if unsafe { task_on_cpu_state(task) } {
+        flags |= bindings::RUST_SCHED_TTWU_TASK_ON_CPU;
+    }
+
+    flags
 }
 
 #[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
@@ -257,6 +346,28 @@ extern "C" fn rust_sched_ttwu_activate_select(
     activate_plan(contributes_load, rq_selected, migrated, in_iowait)
 }
 
+/// Returns the task flags used by woke-task activation.
+///
+/// # Safety
+///
+/// `task` must remain live. The KUnit caller uses an otherwise unused task.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_TTWU_ACTIVATE))]
+#[export]
+unsafe extern "C" fn rust_sched_ttwu_task_activate_flags_select(task: *mut Task) -> u32 {
+    let mut flags = 0;
+
+    // SAFETY: The caller provides a live task.
+    if unsafe { task_contributes_to_load(task) } {
+        flags |= ACTIVATE_DEC_LOAD;
+    }
+    // SAFETY: The caller provides a live task.
+    if unsafe { task_in_iowait(task) } {
+        flags |= ACTIVATE_IO_WAIT;
+    }
+
+    flags
+}
+
 /// Activates a woke task while its runqueue lock remains held.
 ///
 /// Rust owns load accounting, I/O wait completion, enqueue-flag selection,
@@ -277,10 +388,10 @@ unsafe extern "C" fn rust_sched_ttwu_activate_locked(
 ) {
     // SAFETY: The caller holds the task runqueue lock.
     let plan = activate_plan(
-        unsafe { bindings::rust_helper_sched_ttwu_contributes_load(task) },
+        unsafe { task_contributes_to_load(task) },
         unsafe { bindings::rust_helper_sched_ttwu_rq_selected(wake_flags) },
         unsafe { bindings::rust_helper_sched_ttwu_migrated(wake_flags) },
-        unsafe { bindings::rust_helper_sched_ttwu_in_iowait(task) },
+        unsafe { task_in_iowait(task) },
     );
 
     if plan & ACTIVATE_DEC_LOAD != 0 {
@@ -350,6 +461,21 @@ extern "C" fn rust_sched_block_task_select(task_state: u32) -> u32 {
     block_plan(task_state)
 }
 
+/// Updates the contributes-to-load flag for the scheduler KUnit test.
+///
+/// # Safety
+///
+/// `task` must remain live. The KUnit caller uses an otherwise unused task.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_BLOCK_TASK))]
+#[export]
+unsafe extern "C" fn rust_sched_block_task_set_contributes_load_select(
+    task: *mut Task,
+    contributes_load: bool,
+) {
+    // SAFETY: The caller provides a live task and exclusive field access.
+    unsafe { set_task_contributes_to_load(task, contributes_load) };
+}
+
 /// Blocks a task while its runqueue lock remains held.
 ///
 /// Rust owns load and special-state classification, the contributes-to-load
@@ -366,12 +492,7 @@ unsafe extern "C" fn rust_sched_block_task_locked(rq: *mut Rq, task: *mut Task, 
     let plan = block_plan(task_state);
 
     // SAFETY: The caller holds the task runqueue lock.
-    unsafe {
-        bindings::rust_helper_sched_block_set_contributes_load(
-            task,
-            plan & BLOCK_CONTRIBUTES_LOAD != 0,
-        )
-    };
+    unsafe { set_task_contributes_to_load(task, plan & BLOCK_CONTRIBUTES_LOAD != 0) };
     // SAFETY: The task is queued on the caller's locked runqueue.
     if unsafe { bindings::rust_helper_sched_block_dequeue(rq, task, plan & BLOCK_SPECIAL != 0) } {
         // SAFETY: Dequeue succeeded and the runqueue lock remains held.

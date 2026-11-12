@@ -2287,12 +2287,6 @@ void deactivate_task(struct rq *rq, struct task_struct *p, int flags)
 }
 
 #ifdef CONFIG_RUST_SCHED_BLOCK_TASK
-void rust_helper_sched_block_set_contributes_load(struct task_struct *task,
-						  bool contributes_load)
-{
-	task->sched_contributes_to_load = contributes_load;
-}
-
 bool rust_helper_sched_block_dequeue(struct rq *rq, struct task_struct *task,
 				     bool special)
 {
@@ -3921,11 +3915,6 @@ void rust_helper_sched_ttwu_update_clock(struct rq *rq)
 	update_rq_clock(rq);
 }
 
-bool rust_helper_sched_ttwu_is_blocked(struct task_struct *task)
-{
-	return task->is_blocked;
-}
-
 bool rust_helper_sched_ttwu_is_delayed(struct task_struct *task)
 {
 	return task->se.sched_delayed;
@@ -3943,10 +3932,6 @@ bool rust_helper_sched_ttwu_proxy_return(struct rq *rq,
 	return proxy_needs_return(rq, task);
 }
 
-bool rust_helper_sched_ttwu_on_cpu(struct rq *rq, struct task_struct *task)
-{
-	return task_on_cpu(rq, task);
-}
 #endif
 
 #if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
@@ -3964,11 +3949,6 @@ void rust_helper_sched_ttwu_wake(struct task_struct *task)
 #endif
 
 #ifdef CONFIG_RUST_SCHED_TTWU_ACTIVATE
-bool rust_helper_sched_ttwu_contributes_load(struct task_struct *task)
-{
-	return task->sched_contributes_to_load;
-}
-
 void rust_helper_sched_ttwu_dec_uninterruptible(struct rq *rq)
 {
 	rq->nr_uninterruptible--;
@@ -3982,11 +3962,6 @@ bool rust_helper_sched_ttwu_rq_selected(int wake_flags)
 bool rust_helper_sched_ttwu_migrated(int wake_flags)
 {
 	return wake_flags & WF_MIGRATED;
-}
-
-bool rust_helper_sched_ttwu_in_iowait(struct task_struct *task)
-{
-	return task->in_iowait;
 }
 
 void rust_helper_sched_ttwu_io_wait_end(struct task_struct *task)
