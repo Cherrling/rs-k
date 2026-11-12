@@ -139,6 +139,11 @@ static_assert(RUST_SCHED_DEQUEUE_SLEEP == DEQUEUE_SLEEP);
 static_assert(RUST_SCHED_ENQUEUE_MIGRATED == ENQUEUE_MIGRATED);
 #endif
 
+#ifdef CONFIG_RUST_SCHED_TTWU_ACTIVATE
+static_assert(RUST_SCHED_WF_MIGRATED == WF_MIGRATED);
+static_assert(RUST_SCHED_WF_RQ_SELECTED == WF_RQ_SELECTED);
+#endif
+
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 DEFINE_PER_CPU(struct rnd_state, sched_rnd_state);
 
@@ -2369,22 +2374,6 @@ void wakeup_preempt(struct rq *rq, struct task_struct *p, int flags)
 }
 
 #ifdef CONFIG_RUST_SCHED_WAKE_STATE
-int rust_helper_sched_task_state(const struct task_struct *task)
-{
-	return READ_ONCE(task->__state);
-}
-
-int rust_helper_sched_task_saved_state(const struct task_struct *task)
-{
-	return READ_ONCE(task->saved_state);
-}
-
-void rust_helper_sched_set_task_saved_state(struct task_struct *task,
-					    unsigned int state)
-{
-	task->saved_state = state;
-}
-
 void rust_helper_sched_warn_ttwu_state(unsigned int state)
 {
 	WARN_ON_ONCE((state & TASK_RTLOCK_WAIT) &&
@@ -3915,11 +3904,6 @@ void rust_helper_sched_ttwu_update_clock(struct rq *rq)
 	update_rq_clock(rq);
 }
 
-bool rust_helper_sched_ttwu_is_delayed(struct task_struct *task)
-{
-	return task->se.sched_delayed;
-}
-
 void rust_helper_sched_ttwu_enqueue_delayed(struct rq *rq,
 					    struct task_struct *task)
 {
@@ -3952,16 +3936,6 @@ void rust_helper_sched_ttwu_wake(struct task_struct *task)
 void rust_helper_sched_ttwu_dec_uninterruptible(struct rq *rq)
 {
 	rq->nr_uninterruptible--;
-}
-
-bool rust_helper_sched_ttwu_rq_selected(int wake_flags)
-{
-	return wake_flags & WF_RQ_SELECTED;
-}
-
-bool rust_helper_sched_ttwu_migrated(int wake_flags)
-{
-	return wake_flags & WF_MIGRATED;
 }
 
 void rust_helper_sched_ttwu_io_wait_end(struct task_struct *task)

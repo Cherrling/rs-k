@@ -142,6 +142,23 @@ static void sched_wake_test_activate_task_flags(struct kunit *test)
 
 	kfree(task);
 }
+
+static void sched_wake_test_wake_flags(struct kunit *test)
+{
+	unsigned int migrated = RUST_SCHED_WF_MIGRATED;
+	unsigned int rq_selected = RUST_SCHED_WF_RQ_SELECTED;
+	unsigned int both = rq_selected | migrated;
+
+	KUNIT_EXPECT_EQ(test, 0, rust_sched_ttwu_wake_flags_select(0));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_TTWU_ACTIVATE_RQ_SELECTED,
+			rust_sched_ttwu_wake_flags_select(rq_selected));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_TTWU_ACTIVATE_MIGRATED,
+			rust_sched_ttwu_wake_flags_select(migrated));
+	KUNIT_EXPECT_EQ(test,
+			RUST_SCHED_TTWU_ACTIVATE_RQ_SELECTED |
+			RUST_SCHED_TTWU_ACTIVATE_MIGRATED,
+			rust_sched_ttwu_wake_flags_select(both));
+}
 #endif
 
 #ifdef CONFIG_RUST_SCHED_BLOCK_TASK
@@ -213,9 +230,20 @@ static void sched_wake_test_runnable_task_flags(struct kunit *test)
 	task->on_cpu = 1;
 	KUNIT_EXPECT_EQ(test, RUST_SCHED_TTWU_TASK_ON_CPU,
 			rust_sched_ttwu_task_flags_select(task));
+	task->on_cpu = 0;
+	task->se.sched_delayed = 1;
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_TTWU_TASK_DELAYED,
+			rust_sched_ttwu_task_flags_select(task));
+	task->se.sched_delayed = 0;
 	task->is_blocked = 1;
+	task->on_cpu = 1;
 	KUNIT_EXPECT_EQ(test, RUST_SCHED_TTWU_TASK_IS_BLOCKED |
 			      RUST_SCHED_TTWU_TASK_ON_CPU,
+			rust_sched_ttwu_task_flags_select(task));
+	task->se.sched_delayed = 1;
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_TTWU_TASK_IS_BLOCKED |
+			      RUST_SCHED_TTWU_TASK_ON_CPU |
+			      RUST_SCHED_TTWU_TASK_DELAYED,
 			rust_sched_ttwu_task_flags_select(task));
 
 	kfree(task);
@@ -285,6 +313,7 @@ static struct kunit_case sched_wake_test_cases[] = {
 #ifdef CONFIG_RUST_SCHED_TTWU_ACTIVATE
 	KUNIT_CASE(sched_wake_test_activate_plan),
 	KUNIT_CASE(sched_wake_test_activate_task_flags),
+	KUNIT_CASE(sched_wake_test_wake_flags),
 #endif
 #ifdef CONFIG_RUST_SCHED_BLOCK_TASK
 	KUNIT_CASE(sched_wake_test_block_plan),

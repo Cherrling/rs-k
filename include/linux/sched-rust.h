@@ -21,10 +21,6 @@ struct rq_flags;
 
 #ifdef CONFIG_RUST_SCHED_WAKE_STATE
 
-int rust_helper_sched_task_state(const struct task_struct *task);
-int rust_helper_sched_task_saved_state(const struct task_struct *task);
-void rust_helper_sched_set_task_saved_state(struct task_struct *task,
-					    unsigned int state);
 void rust_helper_sched_warn_ttwu_state(unsigned int state);
 
 int rust_sched_task_state_match(const struct task_struct *task,
@@ -44,9 +40,9 @@ int rust_sched_state_match_select(unsigned int task_state,
 
 #define RUST_SCHED_TTWU_TASK_IS_BLOCKED		0x01
 #define RUST_SCHED_TTWU_TASK_ON_CPU		0x02
+#define RUST_SCHED_TTWU_TASK_DELAYED		0x04
 
 void rust_helper_sched_ttwu_update_clock(struct rq *rq);
-bool rust_helper_sched_ttwu_is_delayed(struct task_struct *task);
 void rust_helper_sched_ttwu_enqueue_delayed(struct rq *rq,
 					    struct task_struct *task);
 bool rust_helper_sched_ttwu_proxy_return(struct rq *rq,
@@ -76,10 +72,10 @@ void rust_helper_sched_ttwu_wake(struct task_struct *task);
 #define RUST_SCHED_TTWU_ACTIVATE_RQ_SELECTED	0x02
 #define RUST_SCHED_TTWU_ACTIVATE_MIGRATED	0x04
 #define RUST_SCHED_TTWU_ACTIVATE_IO_WAIT	0x08
+#define RUST_SCHED_WF_MIGRATED			0x20
+#define RUST_SCHED_WF_RQ_SELECTED		0x80
 
 void rust_helper_sched_ttwu_dec_uninterruptible(struct rq *rq);
-bool rust_helper_sched_ttwu_rq_selected(int wake_flags);
-bool rust_helper_sched_ttwu_migrated(int wake_flags);
 void rust_helper_sched_ttwu_io_wait_end(struct task_struct *task);
 void rust_helper_sched_ttwu_activate(struct rq *rq, struct task_struct *task,
 				     bool rq_selected, bool migrated);
@@ -96,6 +92,7 @@ unsigned int rust_sched_ttwu_activate_select(bool contributes_load,
 					     bool rq_selected, bool migrated,
 					    bool in_iowait);
 unsigned int rust_sched_ttwu_task_activate_flags_select(struct task_struct *task);
+unsigned int rust_sched_ttwu_wake_flags_select(int wake_flags);
 #endif
 
 #endif /* CONFIG_RUST_SCHED_TTWU_ACTIVATE */

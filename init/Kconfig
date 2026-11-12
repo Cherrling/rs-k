@@ -1000,13 +1000,14 @@ config RUST_SCHED_WAKE_STATE
 	default y
 	help
 	  Use Rust for the production task-state match used by task wakeups
-	  and inactive-task waits. Rust distinguishes a current-state match
-	  from a saved-state match, reports wake success, and clears a matched
-	  saved state before the task restores its blocking state.
+	  and inactive-task waits. Rust reads the current and saved task states,
+	  distinguishes a current-state match from a saved-state match, reports
+	  wake success, and clears a matched saved state before the task restores
+	  its blocking state.
 
-	  Task-state memory accesses, warning delivery, task and run-queue
-	  locking, wake-list handling, CPU selection, enqueue, and public
-	  scheduler ABI adapters remain in C.
+	  Warning delivery, task and run-queue locking, wake-list handling, other
+	  task-state updates, CPU selection, enqueue, and public scheduler ABI
+	  adapters remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -1018,8 +1019,8 @@ config RUST_SCHED_TTWU_RUNNABLE
 	help
 	  Use Rust for the production task_rq-locked runnable wake path. Rust
 	  owns the queued check, clock update, delayed-enqueue and proxy-return
-	  ordering, task blocked and on-CPU state reads, preemption decision,
-	  and final wake-state publication.
+	  ordering, task blocked, on-CPU, and delayed state reads, preemption
+	  decision, and final wake-state publication.
 
 	  Task runqueue lock acquisition and release, scheduler queue and proxy
 	  operations, preemption, tracing, and public scheduler ABI adapters
@@ -1034,10 +1035,10 @@ config RUST_SCHED_TTWU_ACTIVATE
 	default y
 	help
 	  Use Rust for the production woke-task activation state machine. Rust
-	  owns task load and I/O wait state reads, load accounting, I/O wait
-	  completion, enqueue-flag selection, task activation and preemption
-	  ordering, wake-state publication, and the optional scheduling-class
-	  callback decision.
+	  owns task load and I/O wait state reads, wake-flag decoding, load
+	  accounting, I/O wait completion, enqueue-flag selection, task
+	  activation and preemption ordering, wake-state publication, and the
+	  optional scheduling-class callback decision.
 
 	  Task runqueue locking and pinning, scheduler queue operations,
 	  preemption, tracing, scheduling-class callbacks, and public scheduler
@@ -1056,9 +1057,9 @@ config RUST_SCHED_BLOCK_TASK
 	  contributes-to-load bitfield update, dequeue-flag selection, and the
 	  decision and order of dequeue and block accounting.
 
-	  Task saved-state writes, runqueue locking, scheduler queue operations,
-	  blocking accounting primitives, tracepoints, and public scheduler ABI
-	  adapters remain in C.
+	  Task-state storage outside the wake-state path, runqueue locking,
+	  scheduler queue operations, blocking accounting primitives,
+	  tracepoints, and public scheduler ABI adapters remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

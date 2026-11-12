@@ -34,6 +34,44 @@ const TASK_ON_RQ_QUEUED: i8 = bindings::RUST_SCHED_TASK_ON_RQ_QUEUED as i8;
 #[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
 const TASK_ON_RQ_MIGRATING: i8 = bindings::RUST_SCHED_TASK_ON_RQ_MIGRATING as i8;
 
+/// Reads the current task wake state.
+///
+/// # Safety
+///
+/// `task` must remain live while this function reads its state field.
+#[cfg(CONFIG_RUST_SCHED_WAKE_STATE)]
+unsafe fn task_state(task: *const Task) -> u32 {
+    // SAFETY: The caller guarantees that the task remains live. Use a volatile
+    // load so this has the single-read behavior of the C scalar access.
+    unsafe { core::ptr::addr_of!((*task).__state).read_volatile() }
+}
+
+/// Reads the saved task wake state.
+///
+/// # Safety
+///
+/// `task` must remain live while this function reads its saved-state field.
+#[cfg(CONFIG_RUST_SCHED_WAKE_STATE)]
+unsafe fn task_saved_state(task: *const Task) -> u32 {
+    // SAFETY: The caller guarantees that the task remains live. Use a volatile
+    // load so this has the single-read behavior of the C scalar access.
+    unsafe { core::ptr::addr_of!((*task).saved_state).read_volatile() }
+}
+
+/// Publishes the saved task wake state.
+///
+/// # Safety
+///
+/// `task` must remain live and the caller must provide the serialization
+/// required by the scheduler's saved-state protocol.
+#[cfg(CONFIG_RUST_SCHED_WAKE_STATE)]
+unsafe fn set_task_saved_state(task: *mut Task, state: u32) {
+    // SAFETY: The caller guarantees that the task remains live and that the
+    // saved-state update is serialized. Use a volatile store so this has the
+    // single-store behavior of the C scalar access.
+    unsafe { core::ptr::addr_of_mut!((*task).saved_state).write_volatile(state) };
+}
+
 /// Reads the scheduler's task runqueue membership state.
 ///
 /// # Safety
@@ -71,6 +109,18 @@ unsafe fn task_on_cpu_state(task: *mut Task) -> bool {
     // SAFETY: The caller guarantees that the task remains live. Use a volatile
     // load so this has the single-read behavior of the C scalar access.
     unsafe { core::ptr::addr_of!((*task).on_cpu).read_volatile() != 0 }
+}
+
+/// Returns whether a task has delayed scheduler state.
+///
+/// # Safety
+///
+/// `task` must remain live and the caller must hold the task runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_TTWU_RUNNABLE)]
+unsafe fn task_sched_delayed(task: *mut Task) -> bool {
+    // SAFETY: The caller guarantees that the task remains live. Use a volatile
+    // load so this has the single-read behavior of the C scalar access.
+    unsafe { core::ptr::addr_of!((*task).se.sched_delayed).read_volatile() != 0 }
 }
 
 /// Returns whether a task contributes to uninterruptible load.
@@ -175,9 +225,9 @@ fn state_match(task_state: u32, saved_state: u32, requested_state: u32) -> c_int
 #[export]
 unsafe extern "C" fn rust_sched_task_state_match(task: *const Task, state: u32) -> c_int {
     // SAFETY: The caller guarantees that the task remains live.
-    let task_state = unsafe { bindings::rust_helper_sched_task_state(task) } as u32;
+    let task_state = unsafe { task_state(task) };
     // SAFETY: The caller guarantees that the task remains live.
-    let saved_state = unsafe { bindings::rust_helper_sched_task_saved_state(task) } as u32;
+    let saved_state = unsafe { task_saved_state(task) };
     state_match(task_state, saved_state, state)
 }
 
@@ -214,7 +264,7 @@ unsafe extern "C" fn rust_sched_ttwu_state_match(
     if matched < 0 {
         // SAFETY: The caller provides the serialization required by the
         // scheduler's saved-state protocol.
-        unsafe { bindings::rust_helper_sched_set_task_saved_state(task, bindings::TASK_RUNNING) };
+        unsafe { set_task_saved_state(task, bindings::TASK_RUNNING) };
     }
 
     matched > 0
@@ -258,7 +308,7 @@ unsafe extern "C" fn rust_sched_ttwu_runnable_locked(
     // SAFETY: The caller holds the task runqueue lock.
     if unsafe { task_is_blocked(task) } {
         // SAFETY: The caller holds the task runqueue lock.
-        if unsafe { bindings::rust_helper_sched_ttwu_is_delayed(task) } {
+        if unsafe { task_sched_delayed(task) } {
             // SAFETY: The task is queued on this runqueue.
             unsafe { bindings::rust_helper_sched_ttwu_enqueue_delayed(rq, task) };
         }
@@ -298,6 +348,10 @@ unsafe extern "C" fn rust_sched_ttwu_task_flags_select(task: *mut Task) -> u32 {
     if unsafe { task_on_cpu_state(task) } {
         flags |= bindings::RUST_SCHED_TTWU_TASK_ON_CPU;
     }
+    // SAFETY: The caller provides a live task.
+    if unsafe { task_sched_delayed(task) } {
+        flags |= bindings::RUST_SCHED_TTWU_TASK_DELAYED;
+    }
 
     flags
 }
@@ -310,6 +364,25 @@ const ACTIVATE_RQ_SELECTED: u32 = 0x02;
 const ACTIVATE_MIGRATED: u32 = 0x04;
 #[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
 const ACTIVATE_IO_WAIT: u32 = 0x08;
+#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+const WF_MIGRATED: c_int = bindings::RUST_SCHED_WF_MIGRATED as c_int;
+#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+const WF_RQ_SELECTED: c_int = bindings::RUST_SCHED_WF_RQ_SELECTED as c_int;
+
+/// Decodes the wake flags used by the activation state machine.
+#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+fn decode_wake_flags(wake_flags: c_int) -> u32 {
+    let mut flags = 0;
+
+    if wake_flags & WF_RQ_SELECTED != 0 {
+        flags |= ACTIVATE_RQ_SELECTED;
+    }
+    if wake_flags & WF_MIGRATED != 0 {
+        flags |= ACTIVATE_MIGRATED;
+    }
+
+    flags
+}
 
 /// Selects the state-changing actions for a woke task activation.
 #[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
@@ -368,6 +441,13 @@ unsafe extern "C" fn rust_sched_ttwu_task_activate_flags_select(task: *mut Task)
     flags
 }
 
+/// Returns the decoded scheduler wake flags for the KUnit table.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_TTWU_ACTIVATE))]
+#[export]
+extern "C" fn rust_sched_ttwu_wake_flags_select(wake_flags: c_int) -> u32 {
+    decode_wake_flags(wake_flags)
+}
+
 /// Activates a woke task while its runqueue lock remains held.
 ///
 /// Rust owns load accounting, I/O wait completion, enqueue-flag selection,
@@ -386,11 +466,13 @@ unsafe extern "C" fn rust_sched_ttwu_activate_locked(
     wake_flags: c_int,
     rf: *mut bindings::rq_flags,
 ) {
-    // SAFETY: The caller holds the task runqueue lock.
+    let decoded_wake_flags = decode_wake_flags(wake_flags);
     let plan = activate_plan(
+        // SAFETY: The caller holds the task runqueue lock.
         unsafe { task_contributes_to_load(task) },
-        unsafe { bindings::rust_helper_sched_ttwu_rq_selected(wake_flags) },
-        unsafe { bindings::rust_helper_sched_ttwu_migrated(wake_flags) },
+        decoded_wake_flags & ACTIVATE_RQ_SELECTED != 0,
+        decoded_wake_flags & ACTIVATE_MIGRATED != 0,
+        // SAFETY: The caller holds the task runqueue lock.
         unsafe { task_in_iowait(task) },
     );
 

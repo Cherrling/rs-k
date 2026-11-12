@@ -20,20 +20,22 @@ task activation and deactivation state machines.
 
 Rust owns these production decisions:
 
+* Reading the current and saved task states.
 * Matching the requested wake mask against the current task state.
 * Falling back to the saved task state when the current state does not match.
 * Giving a current-state match precedence over a saved-state match.
 * Reporting wake success independently from whether the task can run now.
-* Clearing a matched saved state to ``TASK_RUNNING``.
+* Publishing a matched saved state as ``TASK_RUNNING``.
 * Checking whether the wake target remains queued after the runqueue lock is
   acquired.
-* Updating the runqueue clock, reading task blocked and on-CPU state,
-  handling delayed and proxy state, selecting preemption, and publishing the
-  final running state.
+* Updating the runqueue clock, reading task blocked, on-CPU, and delayed state,
+  handling proxy state, selecting preemption, and publishing the final running
+  state.
+* Decoding the selected-runqueue and migrated wake flags.
 * Reading task load and I/O wait state, removing uninterruptible-load
-  accounting, ending I/O wait accounting, selecting enqueue flags,
-  activating the task, selecting preemption, publishing the wakeup, and
-  deciding whether to invoke the scheduling-class ``task_woken`` callback.
+  accounting, ending I/O wait accounting, selecting enqueue flags, activating
+  the task, selecting preemption, publishing the wakeup, and deciding whether
+  to invoke the scheduling-class ``task_woken`` callback.
 * Classifying whether a blocking task contributes to load, classifying whether
   its state is special, updating its load flag, selecting special dequeue,
   and deciding whether dequeue and block accounting run.
@@ -41,7 +43,7 @@ Rust owns these production decisions:
   migrated enqueue, rejecting sleeping deactivation, publishing queued and
   migrating membership, and ordering dequeue.
 
-Task current-state and saved-state accesses, warning delivery, task and
+Task-state storage outside the wake-state protocol, warning delivery, task and
 runqueue locking, scheduler queue and proxy operations, wake-list handling,
 CPU selection, preemption, tracing, statistics, and public scheduler ABI
 adapters remain in C. Runqueue queue operations, the class callback, and its
@@ -59,12 +61,10 @@ state result and wake-state transition come from
 
 The Rust-to-C helper calls are:
 
-* Task current-state and saved-state ``READ_ONCE`` accesses.
-* The saved-state write.
 * The invalid debug-preemption wake-mask warning.
-* The runqueue clock update, delayed and proxy state queries, delayed enqueue,
-  preemption, and final wake publication used by the runnable path.
-* Load and I/O wait accounting updates, enqueue-flag selection, task
+* The runqueue clock update, proxy state query, delayed enqueue, preemption,
+  and final wake publication used by the runnable path.
+* Load and I/O wait accounting updates, activation-flag construction, task
   activation, preemption, wake publication, and the scheduling-class callback
   used by the activation path.
 * Runqueue lock unpin and repin around a scheduling-class ``task_woken``
@@ -110,13 +110,11 @@ the kernel atomic API. C retains the lock across the complete Rust call.
 Retained C boundary
 -------------------
 
-Task current-state and saved-state accesses remain in C because ``READ_ONCE``
-and the task layout are defined by the C scheduler ABI. The helpers read and
-write only the wake-state fields. Rust receives values and performs the
-matching decision.
-
-The saved-state write remains in C to preserve the existing task-structure
-access. Rust decides when the write is required.
+Rust reads and writes the task current state, saved state, and scheduling
+delay state through volatile accesses. These accesses preserve the single
+load or store behavior of the former C scalar helpers. C defines the task
+layout, supplies the task pointer, and retains the serialization around the
+wake-state protocol.
 
 ``WARN_ON_ONCE`` remains in C because report formatting and rate limiting
 depend on kernel diagnostics. Rust decides whether the debug-preemption state
@@ -132,9 +130,9 @@ order and the decision to invoke each helper. The C adapter cannot return
 while Rust still holds the lock because the lock remains owned by the C
 caller.
 
-The activation path retains runqueue lock ownership, enqueue-flag bit
-definitions, scheduler queue operations, preemption, tracing, and the
-scheduling-class callback in C. Rust owns the conditions and order for load
+The activation path retains runqueue lock ownership, activation enqueue flags,
+scheduler queue operations, preemption, tracing, and the scheduling-class
+callback in C. Rust owns wake-flag decoding, the conditions and order for load
 accounting, I/O wait completion, task activation, preemption, wake
 publication, and callback selection. The C lock-unpin helper preserves the
 existing callback lock contract while Rust still owns the caller's state
@@ -424,6 +422,77 @@ isolated runnable and activation builds exposed a missing conditional import
 for ``c_int``. The import now covers every enabled scheduler entry that uses
 the C integer ABI.
 
+The wake-state storage and flag-decoding unit was validated on 2026-11-13 with
+x86_64 ``LLVM=1`` builds and QEMU 11.1.3. Each configuration passed three
+consecutive four-vCPU runs:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 25 25
+
+   * - Configuration
+     - Scheduler cases
+     - hrtimer cases
+   * - Full Rust
+     - 13
+     - 25
+   * - Wake-state fallback
+     - 11
+     - 25
+   * - Runnable fallback
+     - 12
+     - 25
+   * - Activation fallback
+     - 10
+     - 25
+   * - Wake-state only
+     - 5
+     - 25
+   * - Runnable only
+     - 4
+     - 25
+   * - Activation only
+     - 6
+     - 25
+   * - PREEMPT_RT
+     - 13
+     - 25
+   * - KASAN
+     - 13
+     - 25
+   * - lockdep
+     - 13
+     - 25
+
+Rust reads and writes ``task_struct.__state`` and
+``task_struct.saved_state`` with volatile accesses. Rust also reads
+``task_struct.se.sched_delayed`` with a volatile access. These accesses keep
+the single-load or single-store behavior of the former C helpers.
+
+Rust decodes ``WF_RQ_SELECTED`` and ``WF_MIGRATED`` directly. C statically
+asserts that the exported flag constants match the scheduler definitions.
+
+Rust removes these C helpers:
+
+* ``rust_helper_sched_task_state()``.
+* ``rust_helper_sched_task_saved_state()``.
+* ``rust_helper_sched_set_task_saved_state()``.
+* ``rust_helper_sched_ttwu_is_delayed()``.
+* ``rust_helper_sched_ttwu_rq_selected()``.
+* ``rust_helper_sched_ttwu_migrated()``.
+
+The saved-state transition test verifies the direct read and write protocol.
+The new KUnit cases verify delayed-state reads, individual wake-flag decoding,
+and combined wake-flag decoding.
+
+Every configuration produced a production image with no unresolved symbols.
+The no-KUnit image built with Clippy while all scheduler Rust options were
+enabled.
+No final run reported a ``BUG``, warning, KASAN report, lock dependency
+diagnosis, Oops, or panic. One lockdep launch stopped during QEMU boot before
+KUnit started. The same image passed immediately on rerun. The final three
+lockdep scheduler logs all contain complete 13-case results.
+
 Review conditions
 -----------------
 
@@ -432,7 +501,8 @@ Reopen this boundary decision if any of these conditions changes:
 * Task current-state or saved-state representation changes.
 * ``try_to_wake_up()`` changes the state-match gate or saved-state protocol.
 * Debug-preemption wake-mask validation changes.
-* Rust gains stable task-state accessors and kernel warning abstractions.
+* The selected-runqueue or migrated wake-flag values or meanings change.
+* Rust gains safe task-state accessors and kernel warning abstractions.
 * The runnable path changes its runqueue lock, delayed enqueue, proxy return,
   preemption, or wake-publication ordering.
 * The activation path changes load or I/O wait accounting, enqueue flags,
@@ -443,6 +513,8 @@ Reopen this boundary decision if any of these conditions changes:
 * Task-state masks, load accounting, special-state classification, or the
   blocking dequeue and accounting order changes.
 * Task scalar or scheduler bitfield layout changes.
+* The compiler access or instrumentation semantics for volatile task-state
+  accesses change.
 * The runqueue-lock serialization assumptions for task blocked state, on-CPU
   state, load state, or I/O wait state change.
 * Rust gains safe runqueue dequeue and block accounting abstractions.
