@@ -128,6 +128,17 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(sched_dl_update_tp);
 EXPORT_TRACEPOINT_SYMBOL_GPL(sched_dl_server_start_tp);
 EXPORT_TRACEPOINT_SYMBOL_GPL(sched_dl_server_stop_tp);
 
+#if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
+	defined(CONFIG_RUST_SCHED_RQ_TRANSITION)
+static_assert(RUST_SCHED_TASK_ON_RQ_QUEUED == TASK_ON_RQ_QUEUED);
+#endif
+
+#ifdef CONFIG_RUST_SCHED_RQ_TRANSITION
+static_assert(RUST_SCHED_TASK_ON_RQ_MIGRATING == TASK_ON_RQ_MIGRATING);
+static_assert(RUST_SCHED_DEQUEUE_SLEEP == DEQUEUE_SLEEP);
+static_assert(RUST_SCHED_ENQUEUE_MIGRATED == ENQUEUE_MIGRATED);
+#endif
+
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 DEFINE_PER_CPU(struct rnd_state, sched_rnd_state);
 
@@ -2228,15 +2239,8 @@ inline bool dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 }
 
 #ifdef CONFIG_RUST_SCHED_RQ_TRANSITION
-bool rust_helper_sched_rq_on_migrating(struct task_struct *task)
+void rust_helper_sched_rq_assert_exclusive_writer(struct task_struct *task)
 {
-	return task_on_rq_migrating(task);
-}
-
-void rust_helper_sched_rq_set_state(struct task_struct *task, bool migrating)
-{
-	WRITE_ONCE(task->on_rq, migrating ? TASK_ON_RQ_MIGRATING :
-					   TASK_ON_RQ_QUEUED);
 	ASSERT_EXCLUSIVE_WRITER(task->on_rq);
 }
 
@@ -2244,20 +2248,13 @@ void rust_helper_sched_rq_warn_dequeue_sleep(void)
 {
 	WARN_ON_ONCE(1);
 }
-
-#ifdef CONFIG_KUNIT
-int rust_helper_sched_rq_dequeue_sleep_flag(void)
-{
-	return DEQUEUE_SLEEP;
-}
-#endif
 #endif
 
 void activate_task(struct rq *rq, struct task_struct *p, int flags)
 {
 #ifdef CONFIG_RUST_SCHED_RQ_TRANSITION
 	lockdep_assert_rq_held(rq);
-	rust_sched_activate_task_locked(rq, p, flags, ENQUEUE_MIGRATED);
+	rust_sched_activate_task_locked(rq, p, flags);
 #else
 	if (task_on_rq_migrating(p))
 		flags |= ENQUEUE_MIGRATED;
@@ -2273,7 +2270,7 @@ void deactivate_task(struct rq *rq, struct task_struct *p, int flags)
 {
 #ifdef CONFIG_RUST_SCHED_RQ_TRANSITION
 	lockdep_assert_rq_held(rq);
-	rust_sched_deactivate_task_locked(rq, p, flags, DEQUEUE_SLEEP);
+	rust_sched_deactivate_task_locked(rq, p, flags);
 #else
 	WARN_ON_ONCE(flags & DEQUEUE_SLEEP);
 
@@ -3919,11 +3916,6 @@ static inline bool proxy_needs_return(struct rq *rq, struct task_struct *p)
 #endif /* CONFIG_SCHED_PROXY_EXEC */
 
 #ifdef CONFIG_RUST_SCHED_TTWU_RUNNABLE
-bool rust_helper_sched_ttwu_rq_queued(struct task_struct *task)
-{
-	return task_on_rq_queued(task);
-}
-
 void rust_helper_sched_ttwu_update_clock(struct rq *rq)
 {
 	update_rq_clock(rq);

@@ -8,6 +8,17 @@ struct task_struct;
 struct rq;
 struct rq_flags;
 
+#if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
+	defined(CONFIG_RUST_SCHED_RQ_TRANSITION)
+
+#define RUST_SCHED_TASK_ON_RQ_QUEUED		1
+
+#endif
+
+#ifdef CONFIG_RUST_SCHED_RQ_TRANSITION
+#define RUST_SCHED_TASK_ON_RQ_MIGRATING		2
+#endif
+
 #ifdef CONFIG_RUST_SCHED_WAKE_STATE
 
 int rust_helper_sched_task_state(const struct task_struct *task);
@@ -31,7 +42,6 @@ int rust_sched_state_match_select(unsigned int task_state,
 
 #ifdef CONFIG_RUST_SCHED_TTWU_RUNNABLE
 
-bool rust_helper_sched_ttwu_rq_queued(struct task_struct *task);
 void rust_helper_sched_ttwu_update_clock(struct rq *rq);
 bool rust_helper_sched_ttwu_is_blocked(struct task_struct *task);
 bool rust_helper_sched_ttwu_is_delayed(struct task_struct *task);
@@ -111,24 +121,23 @@ unsigned int rust_sched_block_task_select(unsigned int task_state);
 
 #define RUST_SCHED_RQ_ADD_MIGRATED		0x01
 #define RUST_SCHED_RQ_WARN_DEQUEUE_SLEEP	0x02
+#define RUST_SCHED_DEQUEUE_SLEEP		0x0001
+#define RUST_SCHED_ENQUEUE_MIGRATED		0x00040000
 
 void enqueue_task(struct rq *rq, struct task_struct *task, int flags);
 bool dequeue_task(struct rq *rq, struct task_struct *task, int flags);
 
-bool rust_helper_sched_rq_on_migrating(struct task_struct *task);
-void rust_helper_sched_rq_set_state(struct task_struct *task, bool migrating);
+void rust_helper_sched_rq_assert_exclusive_writer(struct task_struct *task);
 void rust_helper_sched_rq_warn_dequeue_sleep(void);
 
 void rust_sched_activate_task_locked(struct rq *rq, struct task_struct *task,
-				     int flags, int enqueue_migrated_flag);
+				     int flags);
 void rust_sched_deactivate_task_locked(struct rq *rq, struct task_struct *task,
-				       int flags, int dequeue_sleep_flag);
+				       int flags);
 
 #ifdef CONFIG_KUNIT
-int rust_helper_sched_rq_dequeue_sleep_flag(void);
 unsigned int rust_sched_rq_transition_select(bool migrating,
-					     int deactivate_flags,
-					     int dequeue_sleep_flag);
+					     int deactivate_flags);
 #endif
 
 #endif /* CONFIG_RUST_SCHED_RQ_TRANSITION */

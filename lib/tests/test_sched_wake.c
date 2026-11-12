@@ -160,19 +160,13 @@ static void sched_wake_test_uninterruptible_timeout(struct kunit *test)
 #ifdef CONFIG_RUST_SCHED_RQ_TRANSITION
 static void sched_wake_test_rq_transition_plan(struct kunit *test)
 {
-	int dequeue_sleep_flag;
-
-	dequeue_sleep_flag = rust_helper_sched_rq_dequeue_sleep_flag();
 	KUNIT_EXPECT_EQ(test, RUST_SCHED_RQ_ADD_MIGRATED,
-			rust_sched_rq_transition_select(true, 0,
-							dequeue_sleep_flag));
+			rust_sched_rq_transition_select(true, 0));
 	KUNIT_EXPECT_EQ(test, RUST_SCHED_RQ_WARN_DEQUEUE_SLEEP,
 			rust_sched_rq_transition_select(false,
-							dequeue_sleep_flag,
-							dequeue_sleep_flag));
+							RUST_SCHED_DEQUEUE_SLEEP));
 	KUNIT_EXPECT_EQ(test, 0,
-			rust_sched_rq_transition_select(false, 0,
-							dequeue_sleep_flag));
+			rust_sched_rq_transition_select(false, 0));
 }
 #endif
 

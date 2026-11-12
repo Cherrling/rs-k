@@ -9,6 +9,10 @@
 use crate::bindings;
 #[cfg(any(CONFIG_RUST_SCHED_WAKE_STATE, CONFIG_RUST_SCHED_RQ_TRANSITION))]
 use crate::ffi::c_int;
+#[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
+use crate::sync::atomic::atomic_store;
+#[cfg(any(CONFIG_RUST_SCHED_TTWU_RUNNABLE, CONFIG_RUST_SCHED_RQ_TRANSITION))]
+use crate::sync::atomic::{atomic_load, Relaxed};
 use macros::export;
 
 type Task = bindings::task_struct;
@@ -19,6 +23,65 @@ type Task = bindings::task_struct;
     CONFIG_RUST_SCHED_TTWU_RUNNABLE
 ))]
 type Rq = bindings::rq;
+
+#[cfg(any(CONFIG_RUST_SCHED_TTWU_RUNNABLE, CONFIG_RUST_SCHED_RQ_TRANSITION))]
+const TASK_ON_RQ_QUEUED: i8 = bindings::RUST_SCHED_TASK_ON_RQ_QUEUED as i8;
+#[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
+const TASK_ON_RQ_MIGRATING: i8 = bindings::RUST_SCHED_TASK_ON_RQ_MIGRATING as i8;
+
+/// Reads the scheduler's task runqueue membership state.
+///
+/// # Safety
+///
+/// `task` must remain live while this function reads its membership field.
+#[cfg(any(CONFIG_RUST_SCHED_TTWU_RUNNABLE, CONFIG_RUST_SCHED_RQ_TRANSITION))]
+unsafe fn task_on_rq_state(task: *mut Task) -> i8 {
+    // SAFETY: The caller guarantees that the task remains live. The field has
+    // one-byte alignment, and all other writers use the same atomic access.
+    let state = unsafe { core::ptr::addr_of_mut!((*task).on_rq) }.cast::<i8>();
+    // SAFETY: The pointer is valid, aligned, and all concurrent accesses are
+    // atomic. Relaxed atomic load is the LKMM equivalent of READ_ONCE().
+    unsafe { atomic_load(state, Relaxed) }
+}
+
+/// Returns whether a task is queued on a runqueue.
+///
+/// # Safety
+///
+/// `task` must remain live during the state check.
+#[cfg(CONFIG_RUST_SCHED_TTWU_RUNNABLE)]
+unsafe fn task_on_rq_queued(task: *mut Task) -> bool {
+    // SAFETY: The caller guarantees that the task remains live.
+    unsafe { task_on_rq_state(task) == TASK_ON_RQ_QUEUED }
+}
+
+/// Returns whether a task is migrating between runqueues.
+///
+/// # Safety
+///
+/// `task` must remain live during the state check.
+#[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
+unsafe fn task_on_rq_migrating(task: *mut Task) -> bool {
+    // SAFETY: The caller guarantees that the task remains live.
+    unsafe { task_on_rq_state(task) == TASK_ON_RQ_MIGRATING }
+}
+
+/// Publishes scheduler task runqueue membership state.
+///
+/// # Safety
+///
+/// `task` must remain live and the caller must hold the task runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
+unsafe fn publish_task_on_rq(task: *mut Task, state: i8) {
+    // SAFETY: The caller guarantees that the task remains live. The field has
+    // one-byte alignment, and all other accesses use the same atomic access.
+    let state_ptr = unsafe { core::ptr::addr_of_mut!((*task).on_rq) }.cast::<i8>();
+    // SAFETY: The pointer is valid, aligned, and all concurrent accesses are
+    // atomic. Relaxed atomic store is the LKMM equivalent of WRITE_ONCE().
+    unsafe { atomic_store(state_ptr, state, Relaxed) };
+    // SAFETY: The caller holds the runqueue lock and the task remains live.
+    unsafe { bindings::rust_helper_sched_rq_assert_exclusive_writer(task) };
+}
 
 /// Classifies a task state against a requested wake mask.
 #[cfg(CONFIG_RUST_SCHED_WAKE_STATE)]
@@ -118,7 +181,7 @@ unsafe extern "C" fn rust_sched_ttwu_runnable_locked(
     wake_flags: c_int,
 ) -> c_int {
     // SAFETY: The caller holds the task runqueue lock.
-    if !unsafe { bindings::rust_helper_sched_ttwu_rq_queued(task) } {
+    if !unsafe { task_on_rq_queued(task) } {
         return 0;
     }
 
@@ -321,15 +384,20 @@ const RQ_ADD_MIGRATED: u32 = 0x01;
 #[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
 const RQ_WARN_DEQUEUE_SLEEP: u32 = 0x02;
 
+#[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
+const DEQUEUE_SLEEP: c_int = bindings::RUST_SCHED_DEQUEUE_SLEEP as c_int;
+#[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
+const ENQUEUE_MIGRATED: c_int = bindings::RUST_SCHED_ENQUEUE_MIGRATED as c_int;
+
 /// Selects the actions for a task runqueue activation or deactivation.
 #[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
-fn rq_transition_plan(migrating: bool, deactivate_flags: c_int, dequeue_sleep_flag: c_int) -> u32 {
+fn rq_transition_plan(migrating: bool, deactivate_flags: c_int) -> u32 {
     let mut plan = 0;
 
     if migrating {
         plan |= RQ_ADD_MIGRATED;
     }
-    if deactivate_flags & dequeue_sleep_flag != 0 {
+    if deactivate_flags & DEQUEUE_SLEEP != 0 {
         plan |= RQ_WARN_DEQUEUE_SLEEP;
     }
 
@@ -339,12 +407,8 @@ fn rq_transition_plan(migrating: bool, deactivate_flags: c_int, dequeue_sleep_fl
 /// Returns the runqueue transition action bits for the scheduler KUnit table.
 #[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_RQ_TRANSITION))]
 #[export]
-extern "C" fn rust_sched_rq_transition_select(
-    migrating: bool,
-    deactivate_flags: c_int,
-    dequeue_sleep_flag: c_int,
-) -> u32 {
-    rq_transition_plan(migrating, deactivate_flags, dequeue_sleep_flag)
+extern "C" fn rust_sched_rq_transition_select(migrating: bool, deactivate_flags: c_int) -> u32 {
+    rq_transition_plan(migrating, deactivate_flags)
 }
 
 /// Activates a task while its runqueue lock remains held.
@@ -358,25 +422,20 @@ extern "C" fn rust_sched_rq_transition_select(
 /// must hold the runqueue lock.
 #[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
 #[export]
-unsafe extern "C" fn rust_sched_activate_task_locked(
-    rq: *mut Rq,
-    task: *mut Task,
-    flags: c_int,
-    enqueue_migrated_flag: c_int,
-) {
+unsafe extern "C" fn rust_sched_activate_task_locked(rq: *mut Rq, task: *mut Task, flags: c_int) {
     // SAFETY: The caller holds the task runqueue lock.
-    let migrating = unsafe { bindings::rust_helper_sched_rq_on_migrating(task) };
-    let plan = rq_transition_plan(migrating, 0, 0);
+    let migrating = unsafe { task_on_rq_migrating(task) };
+    let plan = rq_transition_plan(migrating, 0);
     let flags = if plan & RQ_ADD_MIGRATED != 0 {
-        flags | enqueue_migrated_flag
+        flags | ENQUEUE_MIGRATED
     } else {
         flags
     };
 
     // SAFETY: The task is entering the caller's locked runqueue.
     unsafe { bindings::enqueue_task(rq, task, flags) };
-    // SAFETY: The scheduling class accepted the queue insertion.
-    unsafe { bindings::rust_helper_sched_rq_set_state(task, false) };
+    // SAFETY: The caller holds the runqueue lock and the task is live.
+    unsafe { publish_task_on_rq(task, TASK_ON_RQ_QUEUED) };
 }
 
 /// Deactivates a task while its runqueue lock remains held.
@@ -390,21 +449,16 @@ unsafe extern "C" fn rust_sched_activate_task_locked(
 /// must hold the runqueue lock.
 #[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
 #[export]
-unsafe extern "C" fn rust_sched_deactivate_task_locked(
-    rq: *mut Rq,
-    task: *mut Task,
-    flags: c_int,
-    dequeue_sleep_flag: c_int,
-) {
-    let plan = rq_transition_plan(false, flags, dequeue_sleep_flag);
+unsafe extern "C" fn rust_sched_deactivate_task_locked(rq: *mut Rq, task: *mut Task, flags: c_int) {
+    let plan = rq_transition_plan(false, flags);
 
     if plan & RQ_WARN_DEQUEUE_SLEEP != 0 {
         // SAFETY: The helper emits the existing scheduler warning.
         unsafe { bindings::rust_helper_sched_rq_warn_dequeue_sleep() };
     }
 
-    // SAFETY: The task is leaving the caller's locked runqueue.
-    unsafe { bindings::rust_helper_sched_rq_set_state(task, true) };
+    // SAFETY: The caller holds the runqueue lock and the task is live.
+    unsafe { publish_task_on_rq(task, TASK_ON_RQ_MIGRATING) };
     // SAFETY: The task runqueue lock remains held.
     unsafe { bindings::dequeue_task(rq, task, flags) };
 }
