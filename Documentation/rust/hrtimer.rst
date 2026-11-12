@@ -18,7 +18,8 @@ selected clock base.  The
 ``CONFIG_RUST_HRTIMER_CALLBACK`` option selects Rust for the state transitions
 around an expiry callback.  The
 ``CONFIG_RUST_HRTIMER_RUN_QUEUES`` option selects Rust for the expired clock
-base and timer loops.  The
+base and timer loops.  ``CONFIG_RUST_HRTIMER_INTERRUPT`` selects Rust for the
+high-resolution timer interrupt state machine.  The
 ``CONFIG_RUST_HRTIMER_BASE_SELECTION`` option selects Rust for the decision
 that accepts or rejects a selected remote clock base.
 ``CONFIG_RUST_HRTIMER_TARGET_BASE`` selects Rust for the target CPU base
@@ -54,6 +55,9 @@ Rust owns these production decisions:
 * Taking a stable active-clock-base snapshot, traversing it in clock base
   order, applying each clock offset, selecting the leftmost soft-expired
   timer, and repeating the per-base loop after each callback.
+* Rechecking dropped-lock expiry progress, limiting interrupt retries,
+  activating a due softirq, detecting a repeated expired event as a hang,
+  updating hang counters, and selecting immediate or deferred rearm.
 * Enqueueing an inactive timer on its current clock base.
 * Updating an active timer in place when its new expiry remains between the
   current neighbors.
@@ -102,6 +106,20 @@ tree insertion and erasure.
 
 Entry points and state ownership
 --------------------------------
+
+The C ``hrtimer_interrupt()`` path calls ``rust_hrtimer_interrupt()`` when the
+interrupt option is enabled.  The original C clock-base update, retry loop,
+softirq-deadline decision, hang detection, counters, and final rearm selection
+are compiled out.  C keeps the timer device counters, CPU base lock, and
+interrupt entry and exit.
+
+The Rust kernel build currently exports every non-inline symbol from the
+``kernel`` crate with ``EXPORT_SYMBOL_GPL``.  The interrupt entry therefore
+follows this existing build-wide policy.  Narrowing its module visibility
+requires a separate Rust build change and proof that all required code
+generation remains available.  Review this boundary when the Rust compiler
+provides a stable internal-linkage mechanism or the kernel changes its symbol
+export policy.
 
 The C ``hrtimer_start_range_ns_common()`` path calls
 ``rust_hrtimer_start_range_ns()`` when the startup option is enabled.  The
@@ -226,6 +244,8 @@ The following operations remain in C:
   execution.
 * Expired callback invocation, lock dropping and reacquisition, tracepoints,
   lockdep context tracking, and softirq waiter synchronization.
+* Clock sampling and offset updates, clock event tracing and programming,
+  deferred-rearm thread-flag publication, and the interrupt-context lock.
 * The lockless try-to-cancel entry point and PREEMPT_RT callback wait
   primitive with its expiry-lock synchronization.
 * Checked ktime division, saturated expiry arithmetic, and range
@@ -298,6 +318,19 @@ less than or equal to the base-local time.  A base is processed until its
 first timer is not expired.  A clock base that becomes active during a callback
 is not added to the current snapshot.
 
+A high-resolution interrupt publishes a pending rearm before running hard
+timers.  A softirq deadline at or before the sampled time activates the
+softirq and clears its cached deadline.  After hard-timer execution, Rust
+updates the clock and next event.  An expired next event permits two more
+passes.  A third expired observation records the elapsed hang time, increments
+the hang count, sets the hang state, and rearms with a delay from zero to 100
+milliseconds.
+
+With immediate rearm, Rust updates ``expires_next`` and clears the pending
+rearm before programming the device.  A detected hang replaces the programmed
+deadline with the capped delay.  With deferred rearm, Rust caches the selected
+expiry, marks it unchanged, and requests thread-work execution.
+
 A queued timer returns 1 from ``hrtimer_try_to_cancel()``.  A timer whose
 callback is running returns -1.  An inactive timer returns 0.  Removing the
 last timer in a clock base clears its active-base bit.
@@ -365,6 +398,13 @@ The migration unit must pass these checks before integration:
 * Repeated four-vCPU C startup fallback runs with
   ``CONFIG_RUST_HRTIMER_START`` disabled.
 * Repeated four-vCPU C startup fallback runs with Rust user expiry enabled.
+* Repeated four-vCPU C interrupt fallback runs with
+  ``CONFIG_RUST_HRTIMER_INTERRUPT`` disabled.
+* Repeated four-vCPU interrupt runs with
+  ``CONFIG_RUST_HRTIMER_RUN_QUEUES`` and
+  ``CONFIG_RUST_HRTIMER_NEXT_EVENT`` disabled.  Disabling next-event selection
+  also disables the dependent ``CONFIG_RUST_HRTIMER_UPDATE_NEXT_EVENT`` and
+  ``CONFIG_RUST_HRTIMER_UPDATE_NEEDS_IPI`` options.
 * Repeated four-vCPU startup runs with insertion, cancellation, local-base
   retention, and base migration independently disabled.
 * Repeated four-vCPU Rust user-expiry runs and C fallback runs with
@@ -420,6 +460,9 @@ The migration unit must pass these checks before integration:
 * Empty, future, equal-expiry, past-expiry, and next-entry queue selection.
 * Real hard and soft hrtimer delivery through the Rust expiry loop, including
   softirq waiter synchronization.
+* Future, equal, and expired interrupt rechecks, the two-retry limit, third
+  observation hang detection, softirq deadline equality, and hang-delay
+  capping.
 * In-place expiry updates and requeues that cross the next neighbor.
 * Queued cancellation, callback-running rejection, and inactive cancellation.
 * Cancellation retry after a callback-running rejection.
@@ -503,11 +546,22 @@ with x86_64 ``LLVM=1`` builds and QEMU 11.1.3:
   ``CONFIG_RUST_HRTIMER_CANCEL_WAIT`` disabled.
 * The four-vCPU C forwarding fallback passed all five cases with
   ``CONFIG_RUST_HRTIMER_FORWARD`` disabled.
-* Three consecutive four-vCPU runs on each generic inline KASAN, lockdep, and
-  PREEMPT_RT image passed all nineteen cases with the Rust implementation
-  enabled.
+* Three consecutive four-vCPU runs on the final integrated Rust image passed
+  all twenty cases.
+* Three consecutive four-vCPU runs on the final generic inline KASAN image
+  passed all twenty cases.
+* Three consecutive four-vCPU runs on the final lockdep image passed all
+  twenty cases.
+* Three consecutive four-vCPU runs on the final PREEMPT_RT image passed all
+  twenty cases.
 * Three consecutive four-vCPU images with ``CONFIG_RUST_RBTREE`` disabled
-  passed all nineteen cases.
+  passed all twenty cases.
+* Three consecutive four-vCPU C interrupt fallback runs passed all nineteen
+  applicable cases with ``CONFIG_RUST_HRTIMER_INTERRUPT`` disabled.
+* Three consecutive four-vCPU interrupt runs passed all fifteen applicable
+  cases with ``CONFIG_RUST_HRTIMER_RUN_QUEUES`` and
+  ``CONFIG_RUST_HRTIMER_NEXT_EVENT`` disabled.  Kconfig disabled the dependent
+  next-event update and IPI options.
 * The user-expiry cases covered soft-expiry offset conversion, the next-timer
   short-circuit, a future candidate, equality with the current time,
   expired removal, and a successful restart.
@@ -546,8 +600,9 @@ with x86_64 ``LLVM=1`` builds and QEMU 11.1.3:
   forwarding overruns, exact interval alignment, and resolution clamping.
 * No run reported a ``BUG``, warning, KASAN report, lock dependence
   diagnosis, or panic.
-* The hrtimer expiry path calls ``rust_hrtimer_run_queues()``. Its selected
-  timer path calls ``rust_helper_hrtimer_run_expired()``, which invokes
+* The high-resolution interrupt path calls ``rust_hrtimer_interrupt()``. The
+  hrtimer expiry path calls ``rust_hrtimer_run_queues()``. Its selected timer
+  path calls ``rust_helper_hrtimer_run_expired()``, which invokes
   ``__run_hrtimer()``. The hrtimer insertion path calls
   ``rust_hrtimer_enqueue()``. The hrtimer start path calls
   ``rust_hrtimer_start_range_ns()``. Its same-base path calls

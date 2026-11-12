@@ -10,6 +10,7 @@
 //! Rust also selects the target CPU base and owns timer base migration.
 //! It also owns the local-base retention decision for the SMP NOHZ path.
 //! It also selects and iterates expired timer queues.
+//! It also owns the high-resolution timer interrupt state machine.
 //! It also owns the first-timer startup state machine.
 //! It also validates and removes already expired user timers.
 //! Locking, clock event reprogramming, ktime arithmetic, callback completion
@@ -26,6 +27,7 @@ type ClockBase = bindings::hrtimer_clock_base;
     CONFIG_RUST_HRTIMER_BASE_SELECTION,
     CONFIG_RUST_HRTIMER_CALLBACK,
     CONFIG_RUST_HRTIMER_ENQUEUE,
+    CONFIG_RUST_HRTIMER_INTERRUPT,
     CONFIG_RUST_HRTIMER_NEXT_EVENT,
     CONFIG_RUST_HRTIMER_REPROGRAM,
     CONFIG_RUST_HRTIMER_RUN_QUEUES,
@@ -1007,6 +1009,296 @@ unsafe extern "C" fn rust_hrtimer_clock_base_next_expired(
 ) -> *mut Hrtimer {
     // SAFETY: The caller satisfies the queue and lock requirements.
     unsafe { clock_base_next_expired(base, basenow) }
+}
+
+/// The maximum number of interrupt rechecks after a callback drops the lock.
+#[cfg(CONFIG_RUST_HRTIMER_INTERRUPT)]
+const HRTIMER_INTERRUPT_RETRY_LIMIT: u32 = 3;
+
+/// The maximum hang delay applied directly by an hrtimer interrupt.
+#[cfg(CONFIG_RUST_HRTIMER_INTERRUPT)]
+const HRTIMER_MAX_HANG_DELAY_NS: u32 = 100 * 1000 * 1000;
+
+/// The next action after a callback has dropped and reacquired the base lock.
+#[cfg(CONFIG_RUST_HRTIMER_INTERRUPT)]
+enum InterruptProgress {
+    Done,
+    Retry,
+    Hang,
+}
+
+/// The selected interrupt progress and the resulting retry count.
+#[cfg(CONFIG_RUST_HRTIMER_INTERRUPT)]
+struct InterruptDecision {
+    progress: InterruptProgress,
+    retries: u32,
+}
+
+/// Selects between completion, another pass, and hang detection.
+///
+/// The timer code permits two rechecks after a hardirq callback. The third
+/// observation of an already expired next event is a hang.
+#[cfg(CONFIG_RUST_HRTIMER_INTERRUPT)]
+fn interrupt_progress(
+    expires_next: bindings::ktime_t,
+    now: bindings::ktime_t,
+    retries: u32,
+) -> InterruptDecision {
+    if expires_next >= now {
+        return InterruptDecision {
+            progress: InterruptProgress::Done,
+            retries,
+        };
+    }
+
+    let retries = retries + 1;
+    let progress = if retries < HRTIMER_INTERRUPT_RETRY_LIMIT {
+        InterruptProgress::Retry
+    } else {
+        InterruptProgress::Hang
+    };
+
+    InterruptDecision { progress, retries }
+}
+
+/// Applies an interrupt progress decision to the CPU base state.
+///
+/// # Safety
+///
+/// `cpu_base` must be live and protected by its CPU base lock.
+#[cfg(CONFIG_RUST_HRTIMER_INTERRUPT)]
+unsafe fn advance_interrupt(
+    cpu_base: *mut CpuBase,
+    expires_next: bindings::ktime_t,
+    now: bindings::ktime_t,
+    entry_time: bindings::ktime_t,
+    retries: u32,
+) -> InterruptDecision {
+    // SAFETY: The caller holds the CPU base lock.
+    unsafe { (*cpu_base).hang_detected = false };
+    let decision = interrupt_progress(expires_next, now, retries);
+
+    match decision.progress {
+        InterruptProgress::Done => {}
+        InterruptProgress::Retry => {
+            // SAFETY: The caller holds the CPU base lock.
+            unsafe {
+                (*cpu_base).nr_retries = (*cpu_base).nr_retries.wrapping_add(1);
+            }
+        }
+        InterruptProgress::Hang => {
+            // SAFETY: The caller holds the CPU base lock.
+            unsafe {
+                let delta = now.wrapping_sub(entry_time) as u32;
+                (*cpu_base).max_hang_time = (*cpu_base).max_hang_time.max(delta);
+                (*cpu_base).nr_hangs = (*cpu_base).nr_hangs.wrapping_add(1);
+                (*cpu_base).hang_detected = true;
+            }
+        }
+    }
+
+    decision
+}
+
+/// Returns whether the pending softirq deadline has been reached.
+#[cfg(CONFIG_RUST_HRTIMER_INTERRUPT)]
+fn softirq_due(now: bindings::ktime_t, softirq_expires_next: bindings::ktime_t) -> bool {
+    now >= softirq_expires_next
+}
+
+/// Returns the direct hang-delay expiry, capped at 100 milliseconds.
+#[cfg(CONFIG_RUST_HRTIMER_INTERRUPT)]
+fn hang_expiry(now: bindings::ktime_t, max_hang_time: u32) -> bindings::ktime_t {
+    let delay = bindings::ktime_t::from(max_hang_time.min(HRTIMER_MAX_HANG_DELAY_NS));
+
+    now.wrapping_add(delay)
+}
+
+/// Publishes the selected interrupt rearm.
+///
+/// Immediate rearm updates the programmed deadline and applies any hang delay.
+/// Deferred rearm caches the deadline and requests thread-work execution.
+///
+/// # Safety
+///
+/// `cpu_base` must be live and protected by its CPU base lock.
+#[cfg(CONFIG_RUST_HRTIMER_INTERRUPT)]
+unsafe fn finalize_interrupt_rearm(
+    cpu_base: *mut CpuBase,
+    expires_next: bindings::ktime_t,
+    deferred_rearm: bool,
+) {
+    if deferred_rearm {
+        // SAFETY: The caller holds the CPU base lock.
+        unsafe {
+            (*cpu_base).deferred_needs_update = false;
+            (*cpu_base).deferred_expires_next = expires_next;
+        }
+        // SAFETY: The current task can request deferred rearm execution.
+        unsafe { bindings::rust_helper_hrtimer_interrupt_defer_rearm() };
+    } else {
+        // SAFETY: The caller holds the CPU base lock.
+        let hang_detected = unsafe { (*cpu_base).hang_detected };
+        // SAFETY: The caller holds the CPU base lock.
+        unsafe {
+            (*cpu_base).expires_next = expires_next;
+            (*cpu_base).deferred_rearm = false;
+        }
+
+        let programmed = if hang_detected {
+            // SAFETY: The caller holds the CPU base lock.
+            let max_hang_time = unsafe { (*cpu_base).max_hang_time };
+            // SAFETY: It is safe to sample monotonic time in interrupt context.
+            let now = unsafe { bindings::ktime_get() };
+            hang_expiry(now, max_hang_time)
+        } else {
+            expires_next
+        };
+
+        // SAFETY: The caller holds the CPU base lock and owns the event rearm.
+        unsafe { bindings::rust_helper_hrtimer_interrupt_program_event(programmed, false) };
+    }
+}
+
+/// Runs the high-resolution timer interrupt state machine.
+///
+/// Rust owns retry selection, softirq activation, hang detection, counters,
+/// and the final immediate or deferred rearm choice. C updates clock offsets,
+/// runs the hard timer queues, programs the clock event device, and retains
+/// interrupt-context locking.
+///
+/// # Safety
+///
+/// `cpu_base` must be live and locked by the caller in interrupt context.
+/// `flags` must be the saved interrupt state for that lock. The caller keeps
+/// interrupts disabled across the call.
+#[cfg(CONFIG_RUST_HRTIMER_INTERRUPT)]
+#[export]
+unsafe extern "C" fn rust_hrtimer_interrupt(cpu_base: *mut CpuBase, flags: usize) {
+    // SAFETY: The caller guarantees that the CPU base is live and locked.
+    let entry_time = unsafe { bindings::rust_helper_hrtimer_interrupt_update_base(cpu_base) };
+    // SAFETY: The helper reports the compile-time rearm configuration.
+    let deferred_rearm = unsafe { bindings::rust_helper_hrtimer_interrupt_deferred_rearm() };
+    let mut now = entry_time;
+    let mut retries = 0;
+
+    loop {
+        // SAFETY: The caller holds the CPU base lock.
+        unsafe {
+            (*cpu_base).deferred_rearm = true;
+            (*cpu_base).expires_next = bindings::ktime_t::MAX;
+        }
+
+        // SAFETY: The caller holds the CPU base lock.
+        let softirq_expires_next = unsafe { (*cpu_base).softirq_expires_next };
+        if softirq_due(now, softirq_expires_next) {
+            // SAFETY: The caller holds the CPU base lock.
+            unsafe {
+                (*cpu_base).softirq_expires_next = bindings::ktime_t::MAX;
+                (*cpu_base).softirq_activated = true;
+                bindings::rust_helper_hrtimer_interrupt_raise_softirq();
+            }
+        }
+
+        // SAFETY: Queue execution preserves the CPU base lock protocol.
+        unsafe { bindings::rust_helper_hrtimer_interrupt_run_queues(cpu_base, now, flags) };
+
+        // SAFETY: Queue execution returns with the CPU base lock held.
+        now = unsafe { bindings::rust_helper_hrtimer_interrupt_update_base(cpu_base) };
+        // SAFETY: The caller holds the CPU base lock.
+        let expires_next =
+            unsafe { bindings::rust_helper_hrtimer_interrupt_update_next_event(cpu_base) };
+
+        // SAFETY: The caller holds the CPU base lock.
+        let decision =
+            unsafe { advance_interrupt(cpu_base, expires_next, now, entry_time, retries) };
+        retries = decision.retries;
+        match decision.progress {
+            InterruptProgress::Done => {
+                // SAFETY: The caller satisfies the final rearm requirements.
+                unsafe { finalize_interrupt_rearm(cpu_base, expires_next, deferred_rearm) };
+                return;
+            }
+            InterruptProgress::Retry => {}
+            InterruptProgress::Hang => {
+                // SAFETY: The caller satisfies the final rearm requirements.
+                unsafe { finalize_interrupt_rearm(cpu_base, expires_next, deferred_rearm) };
+                return;
+            }
+        }
+    }
+}
+
+/// Runs the interrupt retry decision with explicit test inputs.
+///
+/// # Safety
+///
+/// `next_retries` must be writable for the duration of the call.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_HRTIMER_INTERRUPT))]
+#[export]
+unsafe extern "C" fn rust_hrtimer_interrupt_select(
+    expires_next: bindings::ktime_t,
+    now: bindings::ktime_t,
+    retries: u32,
+    next_retries: *mut u32,
+) -> i32 {
+    let decision = interrupt_progress(expires_next, now, retries);
+    // SAFETY: The caller guarantees that the output is writable.
+    unsafe { *next_retries = decision.retries };
+
+    match decision.progress {
+        InterruptProgress::Done => 0,
+        InterruptProgress::Retry => 1,
+        InterruptProgress::Hang => 2,
+    }
+}
+
+/// Applies the interrupt progress and counters with explicit test inputs.
+///
+/// # Safety
+///
+/// `cpu_base` must be live and isolated from concurrent users.
+/// `next_retries` must be writable for the duration of the call.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_HRTIMER_INTERRUPT))]
+#[export]
+unsafe extern "C" fn rust_hrtimer_interrupt_advance(
+    cpu_base: *mut CpuBase,
+    expires_next: bindings::ktime_t,
+    now: bindings::ktime_t,
+    entry_time: bindings::ktime_t,
+    retries: u32,
+    next_retries: *mut u32,
+) -> i32 {
+    // SAFETY: The caller guarantees exclusive access to the CPU base.
+    let decision = unsafe { advance_interrupt(cpu_base, expires_next, now, entry_time, retries) };
+    // SAFETY: The caller guarantees that the output is writable.
+    unsafe { *next_retries = decision.retries };
+
+    match decision.progress {
+        InterruptProgress::Done => 0,
+        InterruptProgress::Retry => 1,
+        InterruptProgress::Hang => 2,
+    }
+}
+
+/// Returns whether the softirq deadline has passed.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_HRTIMER_INTERRUPT))]
+#[export]
+extern "C" fn rust_hrtimer_interrupt_softirq_due(
+    now: bindings::ktime_t,
+    softirq_expires_next: bindings::ktime_t,
+) -> bool {
+    softirq_due(now, softirq_expires_next)
+}
+
+/// Returns the direct hang-delay expiry with explicit test inputs.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_HRTIMER_INTERRUPT))]
+#[export]
+extern "C" fn rust_hrtimer_interrupt_hang_expiry(
+    now: bindings::ktime_t,
+    max_hang_time: u32,
+) -> bindings::ktime_t {
+    hang_expiry(now, max_hang_time)
 }
 
 /// Updates the earliest expiry and timer across the active clock bases.

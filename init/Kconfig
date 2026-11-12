@@ -1090,6 +1090,23 @@ config RUST_HRTIMER_RUN_QUEUES
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_HRTIMER_INTERRUPT
+	bool "Rust implementation of the hrtimer interrupt state machine"
+	depends on RUST_HRTIMER && HIGH_RES_TIMERS
+	default y
+	help
+	  Use Rust for the production high-resolution timer interrupt state
+	  machine. Rust owns the expiry retry limit, dropped-lock rechecks,
+	  softirq activation decision, hang detection, retry and hang counters,
+	  hang-delay accounting, and immediate or deferred rearm selection.
+
+	  Clock sampling and offset updates, clock event programming, CPU base
+	  locking, callback execution, tracing, and public ABI adapters remain
+	  in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_HRTIMER_START
 	bool "Rust implementation of hrtimer startup"
 	depends on RUST_HRTIMER

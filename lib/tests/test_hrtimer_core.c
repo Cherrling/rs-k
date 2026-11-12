@@ -77,6 +77,15 @@ struct hrtimer_core_test_run_queues {
 	struct hrtimer timers[2];
 };
 
+#ifdef CONFIG_RUST_HRTIMER_INTERRUPT
+struct hrtimer_core_test_interrupt {
+	struct hrtimer first;
+	struct hrtimer second;
+	struct completion completion;
+	atomic_t second_calls;
+};
+#endif
+
 struct hrtimer_core_test_start {
 	struct hrtimer timer;
 };
@@ -90,6 +99,31 @@ static enum hrtimer_restart hrtimer_core_test_callback(struct hrtimer *timer)
 	complete(&test->completion);
 	return HRTIMER_NORESTART;
 }
+
+#ifdef CONFIG_RUST_HRTIMER_INTERRUPT
+static enum hrtimer_restart
+hrtimer_core_test_interrupt_first(struct hrtimer *timer)
+{
+	struct hrtimer_core_test_interrupt *state;
+
+	state = container_of(timer, struct hrtimer_core_test_interrupt, first);
+	hrtimer_start(&state->second,
+		      ktime_sub_ms(ktime_get_boottime(), 1),
+		      HRTIMER_MODE_ABS_PINNED);
+	return HRTIMER_NORESTART;
+}
+
+static enum hrtimer_restart
+hrtimer_core_test_interrupt_second(struct hrtimer *timer)
+{
+	struct hrtimer_core_test_interrupt *state;
+
+	state = container_of(timer, struct hrtimer_core_test_interrupt, second);
+	atomic_inc(&state->second_calls);
+	complete(&state->completion);
+	return HRTIMER_NORESTART;
+}
+#endif
 
 static int hrtimer_core_test_release_callback(void *data)
 {
@@ -1049,6 +1083,123 @@ static void hrtimer_core_test_soft_expiry(struct kunit *test)
 }
 #endif
 
+#ifdef CONFIG_RUST_HRTIMER_INTERRUPT
+static void hrtimer_core_test_interrupt(struct kunit *test)
+{
+	struct hrtimer_cpu_base cpu_base = { };
+	struct hrtimer_core_test_interrupt *state;
+	unsigned int cpu;
+	unsigned int retries;
+	unsigned int retries_after;
+	unsigned int retries_before;
+
+	retries = 7;
+	KUNIT_EXPECT_EQ(test, RUST_HRTIMER_INTERRUPT_DONE,
+			rust_hrtimer_interrupt_select(ns_to_ktime(200),
+						      ns_to_ktime(100), 0,
+						      &retries));
+	KUNIT_EXPECT_EQ(test, 0, retries);
+	KUNIT_EXPECT_EQ(test, RUST_HRTIMER_INTERRUPT_DONE,
+			rust_hrtimer_interrupt_select(ns_to_ktime(100),
+						      ns_to_ktime(100), 0,
+						      &retries));
+	KUNIT_EXPECT_EQ(test, 0, retries);
+	KUNIT_EXPECT_EQ(test, RUST_HRTIMER_INTERRUPT_RETRY,
+			rust_hrtimer_interrupt_select(ns_to_ktime(100),
+						      ns_to_ktime(200), 0,
+						      &retries));
+	KUNIT_EXPECT_EQ(test, 1, retries);
+	KUNIT_EXPECT_EQ(test, RUST_HRTIMER_INTERRUPT_RETRY,
+			rust_hrtimer_interrupt_select(ns_to_ktime(100),
+						      ns_to_ktime(200), 1,
+						      &retries));
+	KUNIT_EXPECT_EQ(test, 2, retries);
+	KUNIT_EXPECT_EQ(test, RUST_HRTIMER_INTERRUPT_HANG,
+			rust_hrtimer_interrupt_select(ns_to_ktime(100),
+						      ns_to_ktime(200), 2,
+						      &retries));
+	KUNIT_EXPECT_EQ(test, 3, retries);
+
+	cpu_base.max_hang_time = 50;
+	KUNIT_EXPECT_EQ(test, RUST_HRTIMER_INTERRUPT_RETRY,
+			rust_hrtimer_interrupt_advance(&cpu_base,
+						       ns_to_ktime(100),
+						       ns_to_ktime(200),
+						       ns_to_ktime(75), 0,
+						       &retries));
+	KUNIT_EXPECT_EQ(test, 1, retries);
+	KUNIT_EXPECT_EQ(test, 1, cpu_base.nr_retries);
+	KUNIT_EXPECT_EQ(test, 50, cpu_base.max_hang_time);
+	KUNIT_EXPECT_FALSE(test, cpu_base.hang_detected);
+	KUNIT_EXPECT_EQ(test, RUST_HRTIMER_INTERRUPT_RETRY,
+			rust_hrtimer_interrupt_advance(&cpu_base,
+						       ns_to_ktime(100),
+						       ns_to_ktime(200),
+						       ns_to_ktime(75), 1,
+						       &retries));
+	KUNIT_EXPECT_EQ(test, 2, retries);
+	KUNIT_EXPECT_EQ(test, 2, cpu_base.nr_retries);
+	KUNIT_EXPECT_EQ(test, RUST_HRTIMER_INTERRUPT_HANG,
+			rust_hrtimer_interrupt_advance(&cpu_base,
+						       ns_to_ktime(100),
+						       ns_to_ktime(200),
+						       ns_to_ktime(75), 2,
+						       &retries));
+	KUNIT_EXPECT_EQ(test, 3, retries);
+	KUNIT_EXPECT_EQ(test, 125, cpu_base.max_hang_time);
+	KUNIT_EXPECT_EQ(test, 1, cpu_base.nr_hangs);
+	KUNIT_EXPECT_TRUE(test, cpu_base.hang_detected);
+
+	KUNIT_EXPECT_FALSE(test,
+			   rust_hrtimer_interrupt_softirq_due(ns_to_ktime(99),
+							      ns_to_ktime(100)));
+	KUNIT_EXPECT_TRUE(test,
+			  rust_hrtimer_interrupt_softirq_due(ns_to_ktime(100),
+							     ns_to_ktime(100)));
+	KUNIT_EXPECT_TRUE(test,
+			  rust_hrtimer_interrupt_softirq_due(ns_to_ktime(101),
+							     ns_to_ktime(100)));
+
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(1000),
+			rust_hrtimer_interrupt_hang_expiry(ns_to_ktime(1000),
+							   0));
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(6000),
+			rust_hrtimer_interrupt_hang_expiry(ns_to_ktime(1000),
+							   5000));
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(100001000),
+			rust_hrtimer_interrupt_hang_expiry(ns_to_ktime(1000),
+							   100 * NSEC_PER_MSEC));
+	KUNIT_EXPECT_EQ(test, ns_to_ktime(100001000),
+			rust_hrtimer_interrupt_hang_expiry(ns_to_ktime(1000),
+							   101 * NSEC_PER_MSEC));
+
+	state = kunit_kzalloc(test, sizeof(*state), GFP_KERNEL);
+	KUNIT_ASSERT_NOT_NULL(test, state);
+	init_completion(&state->completion);
+	hrtimer_setup_on_stack(&state->first, hrtimer_core_test_interrupt_first,
+			       CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED);
+	hrtimer_setup_on_stack(&state->second, hrtimer_core_test_interrupt_second,
+			       CLOCK_BOOTTIME, HRTIMER_MODE_ABS_PINNED);
+
+	get_cpu();
+	cpu = smp_processor_id();
+	retries_before = rust_hrtimer_interrupt_test_retries(cpu);
+	hrtimer_start(&state->first, ktime_add_ms(ktime_get(), 1),
+		      HRTIMER_MODE_ABS_PINNED);
+	put_cpu();
+	KUNIT_ASSERT_NE(test,
+			wait_for_completion_timeout(&state->completion, HZ), 0);
+	retries_after = rust_hrtimer_interrupt_test_retries(cpu);
+	if (!IS_ENABLED(CONFIG_PREEMPT_RT))
+		KUNIT_EXPECT_GT(test, retries_after, retries_before);
+	KUNIT_EXPECT_EQ(test, atomic_read(&state->second_calls), 1);
+	KUNIT_EXPECT_FALSE(test, hrtimer_is_queued(&state->first));
+	KUNIT_EXPECT_FALSE(test, hrtimer_is_queued(&state->second));
+	destroy_hrtimer_on_stack(&state->first);
+	destroy_hrtimer_on_stack(&state->second);
+}
+#endif
+
 #ifdef CONFIG_RUST_HRTIMER_START
 static void hrtimer_core_test_start(struct kunit *test)
 {
@@ -1401,6 +1552,9 @@ static struct kunit_case hrtimer_core_test_cases[] = {
 #ifdef CONFIG_RUST_HRTIMER_RUN_QUEUES
 	KUNIT_CASE(hrtimer_core_test_run_queues),
 	KUNIT_CASE(hrtimer_core_test_soft_expiry),
+#endif
+#ifdef CONFIG_RUST_HRTIMER_INTERRUPT
+	KUNIT_CASE(hrtimer_core_test_interrupt),
 #endif
 #ifdef CONFIG_RUST_HRTIMER_START
 	KUNIT_CASE(hrtimer_core_test_start),

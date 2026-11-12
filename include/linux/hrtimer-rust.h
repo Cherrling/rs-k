@@ -73,6 +73,42 @@ rust_hrtimer_clock_base_next_expired(struct hrtimer_clock_base *base,
 
 #endif /* CONFIG_RUST_HRTIMER_RUN_QUEUES */
 
+#ifdef CONFIG_RUST_HRTIMER_INTERRUPT
+
+ktime_t rust_helper_hrtimer_interrupt_update_base(struct hrtimer_cpu_base *cpu_base);
+void rust_helper_hrtimer_interrupt_raise_softirq(void);
+void rust_helper_hrtimer_interrupt_run_queues(struct hrtimer_cpu_base *cpu_base,
+					      ktime_t now, unsigned long flags);
+ktime_t rust_helper_hrtimer_interrupt_update_next_event(struct hrtimer_cpu_base *cpu_base);
+void rust_helper_hrtimer_interrupt_program_event(ktime_t expires_next,
+						 bool deferred);
+bool rust_helper_hrtimer_interrupt_deferred_rearm(void);
+void rust_helper_hrtimer_interrupt_defer_rearm(void);
+
+void rust_hrtimer_interrupt(struct hrtimer_cpu_base *cpu_base,
+			    unsigned long flags);
+
+#ifdef CONFIG_KUNIT
+#define RUST_HRTIMER_INTERRUPT_DONE	0
+#define RUST_HRTIMER_INTERRUPT_RETRY	1
+#define RUST_HRTIMER_INTERRUPT_HANG	2
+
+int rust_hrtimer_interrupt_select(ktime_t expires_next, ktime_t now,
+				  unsigned int retries,
+				  unsigned int *next_retries);
+int rust_hrtimer_interrupt_advance(struct hrtimer_cpu_base *cpu_base,
+				   ktime_t expires_next, ktime_t now,
+				   ktime_t entry_time, unsigned int retries,
+				   unsigned int *next_retries);
+bool rust_hrtimer_interrupt_softirq_due(ktime_t now,
+					ktime_t softirq_expires_next);
+ktime_t rust_hrtimer_interrupt_hang_expiry(ktime_t now,
+					   unsigned int max_hang_time);
+unsigned int rust_hrtimer_interrupt_test_retries(unsigned int cpu);
+#endif
+
+#endif /* CONFIG_RUST_HRTIMER_INTERRUPT */
+
 #ifdef CONFIG_RUST_HRTIMER_START
 
 bool rust_helper_hrtimer_keep_base(struct hrtimer *timer, bool is_local,
