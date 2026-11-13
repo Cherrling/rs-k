@@ -85,6 +85,7 @@
 #include <linux/phy.h>
 #include <linux/pid.h>
 #include <linux/pid-allocation-rust.h>
+#include <linux/pid-association-rust.h>
 #include <linux/pid-rust.h>
 #include <linux/pid_namespace.h>
 #include <linux/percpu-refcount-rust.h>

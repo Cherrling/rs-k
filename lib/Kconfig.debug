@@ -2545,6 +2545,20 @@ config PID_ALLOCATION_KUNIT_TEST
 
 	  If unsure, say N.
 
+config PID_ASSOCIATION_KUNIT_TEST
+	bool "KUnit test for PID task association" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for PID attach, detach, change,
+	  transfer, TID exchange, orphan detection, and cached task PID
+	  updates.
+
+	  The integration cases run with either the C implementation or the
+	  native Rust implementation selected.
+
+	  If unsure, say N.
+
 config WAITQUEUE_KUNIT_TEST
 	bool "KUnit test for wait queue wakeups" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

@@ -39,6 +39,7 @@ more details.
     testing
     task-teardown
     pid-allocation
+    pid-association
     pid-lifecycle
     mm-lifetime
     mm-teardown

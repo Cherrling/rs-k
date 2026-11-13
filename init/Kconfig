@@ -1333,6 +1333,21 @@ config RUST_PID_ALLOCATION
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_PID_ASSOCIATION
+	bool "Rust implementation of PID task association"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production PID and task association state machine.
+	  Rust owns attach, detach, change, transfer, TID exchange, orphan
+	  detection, and warning decisions.
+
+	  Task-list locking, RCU list primitives, task PID pointer access, and
+	  lockdep assertions remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_CPUPRI
 	bool "Rust implementation of CPU-priority scheduling state"
 	depends on RUST && SMP
