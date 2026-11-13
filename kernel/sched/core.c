@@ -3941,9 +3941,9 @@ void rust_helper_sched_ttwu_preempt(struct rq *rq, struct task_struct *task,
 	wakeup_preempt(rq, task, wake_flags);
 }
 
-void rust_helper_sched_ttwu_wake(struct task_struct *task)
+void rust_helper_sched_ttwu_trace_wakeup(struct task_struct *task)
 {
-	ttwu_do_wakeup(task);
+	trace_sched_wakeup(task);
 }
 #endif
 

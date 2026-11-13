@@ -111,6 +111,30 @@ unsafe fn task_is_blocked(task: *mut Task) -> bool {
     unsafe { core::ptr::addr_of!((*task).is_blocked).read_volatile() != 0 }
 }
 
+/// Updates whether a task is blocked.
+///
+/// # Safety
+///
+/// `task` must remain live and the caller must hold the task runqueue lock.
+#[cfg(any(CONFIG_RUST_SCHED_TTWU_RUNNABLE, CONFIG_RUST_SCHED_TTWU_ACTIVATE))]
+unsafe fn set_task_is_blocked(task: *mut Task, blocked: bool) {
+    // SAFETY: The caller guarantees that the task remains live. Use a volatile
+    // store so this has single-store visibility.
+    unsafe { core::ptr::addr_of_mut!((*task).is_blocked).write_volatile(u8::from(blocked)) };
+}
+
+/// Publishes the running task state.
+///
+/// # Safety
+///
+/// `task` must remain live and the caller must serialize the state update.
+#[cfg(any(CONFIG_RUST_SCHED_TTWU_RUNNABLE, CONFIG_RUST_SCHED_TTWU_ACTIVATE))]
+unsafe fn set_task_running(task: *mut Task) {
+    // SAFETY: The caller guarantees that the task remains live. Use a volatile
+    // store so this has the single-store behavior of WRITE_ONCE().
+    unsafe { core::ptr::addr_of_mut!((*task).__state).write_volatile(bindings::TASK_RUNNING) };
+}
+
 /// Returns whether a task is currently running on a CPU.
 ///
 /// # Safety
@@ -133,6 +157,19 @@ unsafe fn task_sched_delayed(task: *mut Task) -> bool {
     // SAFETY: The caller guarantees that the task remains live. Use a volatile
     // load so this has the single-read behavior of the C scalar access.
     unsafe { core::ptr::addr_of!((*task).se.sched_delayed).read_volatile() != 0 }
+}
+
+/// Publishes the state update for a woken task.
+///
+/// # Safety
+///
+/// `task` must remain live and the caller must hold the task runqueue lock.
+#[cfg(any(CONFIG_RUST_SCHED_TTWU_RUNNABLE, CONFIG_RUST_SCHED_TTWU_ACTIVATE))]
+unsafe fn publish_task_wakeup_state(task: *mut Task) {
+    // SAFETY: The caller holds the task runqueue lock.
+    unsafe { set_task_is_blocked(task, false) };
+    // SAFETY: The caller holds the task runqueue lock.
+    unsafe { set_task_running(task) };
 }
 
 /// Returns whether a task contributes to uninterruptible load.
@@ -338,7 +375,9 @@ unsafe extern "C" fn rust_sched_ttwu_runnable_locked(
     }
 
     // SAFETY: The caller holds the task runqueue lock.
-    unsafe { bindings::rust_helper_sched_ttwu_wake(task) };
+    unsafe { publish_task_wakeup_state(task) };
+    // SAFETY: The task state is published and the task remains live.
+    unsafe { bindings::rust_helper_sched_ttwu_trace_wakeup(task) };
     1
 }
 
@@ -366,6 +405,21 @@ unsafe extern "C" fn rust_sched_ttwu_task_flags_select(task: *mut Task) -> u32 {
     }
 
     flags
+}
+
+/// Publishes the wake state for the scheduler KUnit test.
+///
+/// # Safety
+///
+/// `task` must remain live. The KUnit caller uses an otherwise unused task.
+#[cfg(all(
+    CONFIG_KUNIT,
+    any(CONFIG_RUST_SCHED_TTWU_RUNNABLE, CONFIG_RUST_SCHED_TTWU_ACTIVATE)
+))]
+#[export]
+unsafe extern "C" fn rust_sched_ttwu_wakeup_state_select(task: *mut Task) {
+    // SAFETY: The caller provides a live task with exclusive access.
+    unsafe { publish_task_wakeup_state(task) };
 }
 
 #[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
@@ -661,7 +715,9 @@ unsafe extern "C" fn rust_sched_ttwu_activate_locked(
     // SAFETY: The caller holds the task runqueue lock.
     unsafe { bindings::rust_helper_sched_ttwu_preempt(rq, task, wake_flags) };
     // SAFETY: The caller holds the task runqueue lock.
-    unsafe { bindings::rust_helper_sched_ttwu_wake(task) };
+    unsafe { publish_task_wakeup_state(task) };
+    // SAFETY: The task state is published and the task remains live.
+    unsafe { bindings::rust_helper_sched_ttwu_trace_wakeup(task) };
 
     // SAFETY: The task and its scheduling class remain stable under the lock.
     if let Some(callback) = unsafe { task_woken_callback(task) } {

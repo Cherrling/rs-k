@@ -64,11 +64,12 @@ state result and wake-state transition come from
 The Rust-to-C helper calls are:
 
 * The invalid debug-preemption wake-mask warning.
-* The runqueue clock update, proxy state query, delayed enqueue, preemption,
-  and final wake publication used by the runnable path.
-* The delay-accounting completion primitive, preemption, and wake publication
-  used by the activation path. Rust constructs the enqueue flags, updates
-  ``nr_iowait``, and calls ``activate_task()`` directly.
+* The runqueue clock update, proxy state query, delayed enqueue, and
+  preemption used by the runnable path.
+* The delay-accounting completion primitive and preemption used by the
+  activation path. Rust constructs the enqueue flags, updates ``nr_iowait``,
+  and calls ``activate_task()`` directly.
+* Wakeup tracepoint emission used by both wake paths.
 * Scheduling-class ``task_woken`` callback implementations reached through
   an indirect call from Rust.
 * Runqueue lock unpin and repin around a scheduling-class ``task_woken``
@@ -114,11 +115,11 @@ the kernel atomic API. C retains the lock across the complete Rust call.
 Retained C boundary
 -------------------
 
-Rust reads and writes the task current state, saved state, and scheduling
-delay state through volatile accesses. These accesses preserve the single
-load or store behavior of the former C scalar helpers. C defines the task
-layout, supplies the task pointer, and retains the serialization around the
-wake-state protocol.
+Rust reads and writes the task current state, saved state, blocked marker, and
+scheduling delay state through volatile accesses. These accesses preserve the
+single load or store behavior of the former C scalar helpers. C defines the
+task layout, supplies the task pointer, and retains the serialization around
+the wake-state protocol.
 
 ``WARN_ON_ONCE`` remains in C because report formatting and rate limiting
 depend on kernel diagnostics. Rust decides whether the debug-preemption state
@@ -183,6 +184,11 @@ Rust reads ``struct sched_class.task_woken`` through a generated offset. C
 checks the field size and alignment against a function pointer. Rust loads the
 optional callback once and calls it directly with the runqueue and task.
 
+Rust publishes a successful wake by clearing ``task_struct.is_blocked`` and
+storing ``TASK_RUNNING`` into ``task_struct.__state``. Rust then calls the C
+tracepoint helper. This preserves the original blocked-marker, state, and
+trace ordering.
+
 Important invariants
 --------------------
 
@@ -207,9 +213,9 @@ scheduler state first, then asks the proxy path whether the task must return.
 A proxy return ends the wake attempt without preemption or wake publication.
 
 For a queued task that must stay on this runqueue, Rust requests preemption
-only when the task is not currently on CPU. The final action publishes
-``TASK_RUNNING`` and clears the blocked marker while the runqueue lock remains
-held.
+only when the task is not currently on CPU. The final action clears the
+blocked marker and publishes ``TASK_RUNNING`` before emitting the wakeup
+tracepoint while the runqueue lock remains held.
 
 The activation path decrements ``nr_uninterruptible`` before activation when
 the task contributes to load. A non-migrated I/O wait task ends delay
@@ -239,11 +245,12 @@ Validation gate
 The Rust KUnit cases cover the state-match table, saved-state transition,
 activation action selection, activation enqueue flags, the uninterruptible
 and I/O wait count updates, blocking action selection, and a real
-uninterruptible timeout. The transition action table covers migrated enqueue
+uninterruptible timeout. A state-publication case checks the blocked marker
+and running-state stores. The transition action table covers migrated enqueue
 and invalid sleeping dequeue. Real wakeup cases cover current-task rejection,
 waking a stopped kernel thread, waking a queued runnable task, waking a
-``SCHED_FIFO`` task to invoke its scheduling-class callback, and real activation
-and deactivation traffic with both the Rust and C implementations.
+``SCHED_FIFO`` task to invoke its scheduling-class callback, and real
+activation and deactivation traffic with both the Rust and C implementations.
 
 The unit must pass repeated four-vCPU Rust runs, a C fallback run, PREEMPT_RT,
 KASAN, lockdep, and a no-KUnit production build. Static checks include Rustfmt,
@@ -697,6 +704,63 @@ passed Clippy. Both production images contained no unresolved symbols. No run
 reported a ``BUG``, warning, KASAN report, lock dependency diagnosis, Oops, or
 panic.
 
+The wake-state publication unit was validated on 2026-11-13 with x86_64
+``LLVM=1`` builds and QEMU 11.1.3. Each configuration passed three consecutive
+four-vCPU runs:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 25 25
+
+   * - Configuration
+     - Scheduler cases
+     - hrtimer cases
+   * - Full Rust
+     - 18
+     - 25
+   * - Wake-state fallback
+     - 16
+     - 25
+   * - Runnable fallback
+     - 17
+     - 25
+   * - Activation fallback
+     - 11
+     - 25
+   * - Wake-state only
+     - 5
+     - 25
+   * - Runnable only
+     - 5
+     - 25
+   * - Activation only
+     - 11
+     - 25
+   * - PREEMPT_RT
+     - 18
+     - 25
+   * - KASAN
+     - 18
+     - 25
+   * - lockdep
+     - 18
+     - 25
+
+Rust clears ``task_struct.is_blocked`` and stores ``TASK_RUNNING`` into
+``task_struct.__state`` with volatile stores. The runnable and activation wake
+paths share this publication function, so both paths preserve blocked marker,
+running state, and tracepoint ordering.
+
+KUnit invokes the same publication function through a test selector. The C
+helper after publication only emits ``trace_sched_wakeup()``. It does not
+publish wake state, and no empty callback dispatch wrapper remains in C.
+
+The full configuration passed Rustfmt, Clippy, strict checkpatch, and
+``git diff --check``. The no-KUnit configuration passed Clippy with all five
+scheduler Rust options enabled. Its production image contained no unresolved
+symbols and no KUnit selector symbol. No run reported a ``BUG``, warning, KASAN
+report, lock dependency diagnosis, Oops, or panic.
+
 Review conditions
 -----------------
 
@@ -712,6 +776,8 @@ Reopen this boundary decision if any of these conditions changes:
 * The activation path changes load or I/O wait accounting, enqueue flags,
   activation ordering, preemption ordering, wake publication, or the
   scheduling-class callback contract.
+* The blocked-marker or current-state layout, store semantics, or wake
+  publication and trace ordering changes.
 * The scheduling-class ``task_woken`` field layout, callback signature,
   indirect-call ABI, or lock pin contract changes.
 * The runqueue ``nr_uninterruptible`` layout, range, or lock serialization

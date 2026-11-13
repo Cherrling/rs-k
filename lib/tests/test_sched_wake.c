@@ -206,6 +206,25 @@ static void sched_wake_test_realtime_task_woken(struct kunit *test)
 }
 #endif
 
+#if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
+	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE)
+static void sched_wake_test_wakeup_state(struct kunit *test)
+{
+	struct task_struct *task;
+
+	task = kzalloc_obj(*task);
+	KUNIT_ASSERT_NOT_NULL(test, task);
+
+	task->is_blocked = 1;
+	task->__state = TASK_INTERRUPTIBLE;
+	rust_sched_ttwu_wakeup_state_select(task);
+	KUNIT_EXPECT_FALSE(test, task->is_blocked);
+	KUNIT_EXPECT_EQ(test, TASK_RUNNING, task->__state);
+
+	kfree(task);
+}
+#endif
+
 #ifdef CONFIG_RUST_SCHED_BLOCK_TASK
 static void sched_wake_test_block_plan(struct kunit *test)
 {
@@ -374,6 +393,10 @@ static struct kunit_case sched_wake_test_cases[] = {
 #endif
 #ifdef CONFIG_RUST_SCHED_RQ_TRANSITION
 	KUNIT_CASE(sched_wake_test_rq_transition_plan),
+#endif
+#if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
+	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE)
+	KUNIT_CASE(sched_wake_test_wakeup_state),
 #endif
 	KUNIT_CASE(sched_wake_test_current),
 	KUNIT_CASE(sched_wake_test_stopped_task),

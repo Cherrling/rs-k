@@ -62,7 +62,11 @@ unsigned int rust_sched_ttwu_task_flags_select(struct task_struct *task);
 
 void rust_helper_sched_ttwu_preempt(struct rq *rq, struct task_struct *task,
 				    int wake_flags);
-void rust_helper_sched_ttwu_wake(struct task_struct *task);
+void rust_helper_sched_ttwu_trace_wakeup(struct task_struct *task);
+
+#ifdef CONFIG_KUNIT
+void rust_sched_ttwu_wakeup_state_select(struct task_struct *task);
+#endif
 
 #endif
 
