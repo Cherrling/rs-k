@@ -13,6 +13,7 @@
 #include <linux/sched/task.h>
 #include <linux/sched/task_stack.h>
 #include <linux/sched/cputime.h>
+#include <linux/task-release-rust.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/capability.h>
@@ -123,6 +124,8 @@ static __init int kernel_exit_sysfs_init(void)
 late_initcall(kernel_exit_sysfs_init);
 #endif
 
+#ifndef CONFIG_RUST_TASK_RELEASE
+
 /*
  * For things release_task() would like to do *after* tasklist_lock is released.
  */
@@ -224,6 +227,8 @@ static void __exit_signal(struct release_task_post *post, struct task_struct *ts
 		tty_kref_put(tty);
 }
 
+#endif /* !CONFIG_RUST_TASK_RELEASE */
+
 static void delayed_put_task_struct(struct rcu_head *rhp)
 {
 	struct task_struct *tsk = container_of(rhp, struct task_struct, rcu);
@@ -247,6 +252,9 @@ void __weak release_thread(struct task_struct *dead_task)
 
 void release_task(struct task_struct *p)
 {
+#ifdef CONFIG_RUST_TASK_RELEASE
+	rust_task_release(p);
+#else
 	struct release_task_post post;
 	struct task_struct *leader;
 	struct pid *thread_pid;
@@ -317,6 +325,7 @@ repeat:
 	p = leader;
 	if (unlikely(zap_leader))
 		goto repeat;
+#endif /* CONFIG_RUST_TASK_RELEASE */
 }
 
 int rcuwait_wake_up(struct rcuwait *w)

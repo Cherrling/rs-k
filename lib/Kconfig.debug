@@ -2515,6 +2515,21 @@ config TASK_TEARDOWN_KUNIT_TEST
 
 	  If unsure, say N.
 
+config TASK_RELEASE_KUNIT_TEST
+	bool "KUnit test for zombie task release" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for zombie task release. The test
+	  creates and stops kernel threads so their dead task state passes
+	  through the production release path.
+
+	  The group-leader notification and exit-code selectors run only with
+	  the native Rust implementation. The real release case runs with either
+	  the C implementation or the native Rust implementation selected.
+
+	  If unsure, say N.
+
 config PID_LIFECYCLE_KUNIT_TEST
 	bool "KUnit test for PID lifecycle release" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

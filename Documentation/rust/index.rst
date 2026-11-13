@@ -38,6 +38,7 @@ more details.
     arch-support
     testing
     task-teardown
+    task-release
     pid-allocation
     pid-association
     pid-number

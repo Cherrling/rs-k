@@ -106,6 +106,7 @@
 #include "srcu.c"
 #include "sync.c"
 #include "task.c"
+#include "task_release.c"
 #include "time.c"
 #include "uaccess.c"
 #include "usb.c"

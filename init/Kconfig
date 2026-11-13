@@ -1300,6 +1300,22 @@ config RUST_TASK_TEARDOWN
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_TASK_RELEASE
+	bool "Rust implementation of zombie task release"
+	depends on RUST && RUST_PID_ASSOCIATION && RUST_PID_LIFECYCLE
+	default y
+	help
+	  Use Rust for the production orchestration of zombie task release.
+	  Rust owns release ordering, signal statistics updates, PID and thread
+	  list removal, group-leader notification, and zap-leader repetition.
+
+	  Task-list and signal locks, RCU and list operations, CPU and I/O
+	  accounting reads, parent notification, subsystem cleanup, and final
+	  task reference release remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_PID_LIFECYCLE
 	bool "Rust implementation of PID lifecycle release"
 	depends on RUST

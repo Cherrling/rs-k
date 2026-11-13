@@ -190,6 +190,8 @@ pub mod str;
 mod swait_core;
 pub mod sync;
 pub mod task;
+#[cfg(CONFIG_RUST_TASK_RELEASE)]
+mod task_release;
 #[cfg(CONFIG_RUST_TASK_TEARDOWN)]
 mod task_teardown;
 pub mod time;
