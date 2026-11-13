@@ -1317,6 +1317,22 @@ config RUST_PID_LIFECYCLE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_PID_ALLOCATION
+	bool "Rust implementation of PID allocation"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production PID allocation state machine. Rust owns
+	  set_tid validation, namespace traversal, IDR preload retry selection,
+	  identify allocation, partial-failure rollback, namespace publication,
+	  and pidfs insertion failure handling.
+
+	  PID cache allocation, IDR primitive calls, locking, capability checks,
+	  namespace reference primitives, and pidfs insertion remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_CPUPRI
 	bool "Rust implementation of CPU-priority scheduling state"
 	depends on RUST && SMP

@@ -2530,6 +2530,21 @@ config PID_LIFECYCLE_KUNIT_TEST
 
 	  If unsure, say N.
 
+config PID_ALLOCATION_KUNIT_TEST
+	bool "KUnit test for PID allocation" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for PID allocation, set_tid
+	  validation, collision reporting, partial-failure cleanup, and
+	  concurrent allocation.
+
+	  The integration cases run with either the C implementation or the
+	  native Rust implementation selected. The selector cases run only on the
+	  native Rust implementation.
+
+	  If unsure, say N.
+
 config WAITQUEUE_KUNIT_TEST
 	bool "KUnit test for wait queue wakeups" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

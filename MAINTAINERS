@@ -23987,6 +23987,7 @@ F:	include/linux/cpupri.h
 F:	include/linux/hrtimer-rust.h
 F:	include/linux/itimer-rust.h
 F:	include/linux/mutex-rust.h
+F:	include/linux/pid-allocation-rust.h
 F:	include/linux/pid-rust.h
 F:	include/linux/rwlock-rust.h
 F:	include/linux/rwsem-rust.h
@@ -24004,6 +24005,7 @@ F:	lib/tests/test_itimer.c
 F:	lib/tests/test_mm_lifetime.c
 F:	lib/tests/test_completion.c
 F:	lib/tests/test_mutex.c
+F:	lib/tests/test_pid_allocation.c
 F:	lib/tests/test_pid_lifecycle.c
 F:	lib/tests/test_rwlock.c
 F:	lib/tests/test_rwsem.c

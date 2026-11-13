@@ -27,6 +27,7 @@ obj-$(CONFIG_SCHED_WAKE_KUNIT_TEST) += test_sched_wake.o
 obj-$(CONFIG_MM_LIFETIME_KUNIT_TEST) += test_mm_lifetime.o
 obj-$(CONFIG_TASK_TEARDOWN_KUNIT_TEST) += test_task_teardown.o
 obj-$(CONFIG_PID_LIFECYCLE_KUNIT_TEST) += test_pid_lifecycle.o
+obj-$(CONFIG_PID_ALLOCATION_KUNIT_TEST) += test_pid_allocation.o
 obj-$(CONFIG_CPUMASK_KUNIT_TEST) += cpumask_kunit.o
 obj-$(CONFIG_FFS_KUNIT_TEST) += ffs_kunit.o
 CFLAGS_fortify_kunit.o += $(call cc-disable-warning, unsequenced)

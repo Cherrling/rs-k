@@ -129,6 +129,8 @@ pub mod page;
 pub mod pci;
 #[cfg(CONFIG_RUST_PERCPU_REFCOUNT)]
 mod percpu_refcount;
+#[cfg(CONFIG_RUST_PID_ALLOCATION)]
+mod pid_allocation;
 #[cfg(CONFIG_RUST_PID_LIFECYCLE)]
 mod pid_lifecycle;
 pub mod pid_namespace;
