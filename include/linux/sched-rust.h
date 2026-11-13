@@ -86,10 +86,8 @@ void rust_helper_sched_ttwu_wake(struct task_struct *task);
 #define RUST_SCHED_ENQUEUE_RQ_SELECTED		0x00100000
 
 void rust_helper_sched_ttwu_delayacct_blkio_end(struct task_struct *task);
-bool rust_helper_sched_ttwu_has_task_woken(struct task_struct *task);
-void rust_helper_sched_ttwu_task_woken(struct rq *rq,
-				       struct task_struct *task,
-				       struct rq_flags *rf);
+void rust_helper_sched_rq_unpin_lock(struct rq *rq, struct rq_flags *rf);
+void rust_helper_sched_rq_repin_lock(struct rq *rq, struct rq_flags *rf);
 
 void activate_task(struct rq *rq, struct task_struct *task, int flags);
 

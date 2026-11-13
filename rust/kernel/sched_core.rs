@@ -38,6 +38,8 @@ type Task = bindings::task_struct;
     CONFIG_RUST_SCHED_TTWU_RUNNABLE
 ))]
 type Rq = bindings::rq;
+#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+type TaskWokenCallback = unsafe extern "C" fn(rq: *mut Rq, task: *mut Task);
 
 #[cfg(any(CONFIG_RUST_SCHED_TTWU_RUNNABLE, CONFIG_RUST_SCHED_RQ_TRANSITION))]
 const TASK_ON_RQ_QUEUED: i8 = bindings::RUST_SCHED_TASK_ON_RQ_QUEUED as i8;
@@ -444,6 +446,27 @@ unsafe fn dec_rq_iowait(rq: *mut Rq) {
     unsafe { Atomic::from_ptr(count) }.fetch_sub(1, Relaxed);
 }
 
+/// Returns the task's optional scheduling-class wake callback.
+///
+/// # Safety
+///
+/// `task` must remain live and its scheduling class must remain valid.
+#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+unsafe fn task_woken_callback(task: *mut Task) -> Option<TaskWokenCallback> {
+    // SAFETY: The caller guarantees that the task and its class are live.
+    let class = unsafe { core::ptr::addr_of!((*task).sched_class).read_volatile() };
+    // SAFETY: The generated offset comes from
+    // `offsetof(struct sched_class, task_woken)`.
+    let callback = unsafe {
+        class
+            .cast::<u8>()
+            .add(bindings::SCHED_CLASS_task_woken as usize)
+            .cast::<Option<TaskWokenCallback>>()
+    };
+    // SAFETY: The generated offset points to the optional callback field.
+    unsafe { callback.read_volatile() }
+}
+
 /// Constructs the enqueue flags for a woke task.
 #[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
 fn activation_flags(rq_selected: bool, migrated: bool) -> c_int {
@@ -641,10 +664,15 @@ unsafe extern "C" fn rust_sched_ttwu_activate_locked(
     unsafe { bindings::rust_helper_sched_ttwu_wake(task) };
 
     // SAFETY: The task and its scheduling class remain stable under the lock.
-    if unsafe { bindings::rust_helper_sched_ttwu_has_task_woken(task) } {
-        // SAFETY: The helper performs the class callback's required unpin and
-        // repin around the callback.
-        unsafe { bindings::rust_helper_sched_ttwu_task_woken(rq, task, rf) };
+    if let Some(callback) = unsafe { task_woken_callback(task) } {
+        // SAFETY: The callback lock contract requires a matching unpin and
+        // repin around the class callback.
+        unsafe { bindings::rust_helper_sched_rq_unpin_lock(rq, rf) };
+        // SAFETY: The task is fully awake and both pointers remain valid for
+        // the duration of the scheduling-class callback.
+        unsafe { callback(rq, task) };
+        // SAFETY: The callback returned and the runqueue remains live.
+        unsafe { bindings::rust_helper_sched_rq_repin_lock(rq, rf) };
     }
 }
 

@@ -152,6 +152,9 @@ static_assert(sizeof_field(struct rq, nr_uninterruptible) ==
 static_assert(sizeof_field(struct rq, nr_iowait) == sizeof(atomic_t));
 static_assert(sizeof(atomic_t) == sizeof(int));
 static_assert(__alignof__(atomic_t) == __alignof__(int));
+static_assert(sizeof_field(struct sched_class, task_woken) == sizeof(void *));
+static_assert(offsetof(struct sched_class, task_woken) %
+	      __alignof__(((struct sched_class *)0)->task_woken) == 0);
 static_assert(RUST_SCHED_WF_MIGRATED == WF_MIGRATED);
 static_assert(RUST_SCHED_WF_RQ_SELECTED == WF_RQ_SELECTED);
 #endif
@@ -3950,16 +3953,13 @@ void rust_helper_sched_ttwu_delayacct_blkio_end(struct task_struct *task)
 	delayacct_blkio_end(task);
 }
 
-bool rust_helper_sched_ttwu_has_task_woken(struct task_struct *task)
-{
-	return task->sched_class->task_woken;
-}
-
-void rust_helper_sched_ttwu_task_woken(struct rq *rq, struct task_struct *task,
-				       struct rq_flags *rf)
+void rust_helper_sched_rq_unpin_lock(struct rq *rq, struct rq_flags *rf)
 {
 	rq_unpin_lock(rq, rf);
-	task->sched_class->task_woken(rq, task);
+}
+
+void rust_helper_sched_rq_repin_lock(struct rq *rq, struct rq_flags *rf)
+{
 	rq_repin_lock(rq, rf);
 }
 #endif

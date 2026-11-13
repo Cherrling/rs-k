@@ -188,6 +188,22 @@ static void sched_wake_test_dec_iowait(struct kunit *test)
 {
 	KUNIT_EXPECT_EQ(test, 1, rust_sched_ttwu_dec_iowait_select(2));
 }
+
+static void sched_wake_test_realtime_task_woken(struct kunit *test)
+{
+	struct task_struct *task;
+	struct completion started;
+
+	init_completion(&started);
+	task = kthread_create(sched_wake_test_thread, &started,
+			      "sched-wake-rt-test");
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, task);
+
+	sched_set_fifo(task);
+	KUNIT_EXPECT_EQ(test, 1, wake_up_process(task));
+	wait_for_completion(&started);
+	KUNIT_EXPECT_EQ(test, 0, kthread_stop(task));
+}
 #endif
 
 #ifdef CONFIG_RUST_SCHED_BLOCK_TASK
@@ -346,6 +362,7 @@ static struct kunit_case sched_wake_test_cases[] = {
 	KUNIT_CASE(sched_wake_test_activate_enqueue_flags),
 	KUNIT_CASE(sched_wake_test_dec_uninterruptible),
 	KUNIT_CASE(sched_wake_test_dec_iowait),
+	KUNIT_CASE(sched_wake_test_realtime_task_woken),
 #endif
 #ifdef CONFIG_RUST_SCHED_BLOCK_TASK
 	KUNIT_CASE(sched_wake_test_block_plan),
