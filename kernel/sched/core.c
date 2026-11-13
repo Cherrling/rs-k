@@ -250,6 +250,15 @@ static_assert(offsetof(struct sched_class, pick_task) %
 	      __alignof__(((struct sched_class *)0)->pick_task) == 0);
 #endif
 
+#ifdef CONFIG_RUST_SCHED_CORE_PICK_TASK
+static_assert(sizeof_field(struct rq, dl_server) == sizeof(void *));
+static_assert(sizeof_field(struct sched_class, pick_task) == sizeof(void *));
+static_assert(offsetof(struct rq, dl_server) %
+	      __alignof__(((struct rq *)0)->dl_server) == 0);
+static_assert(offsetof(struct sched_class, pick_task) %
+	      __alignof__(((struct sched_class *)0)->pick_task) == 0);
+#endif
+
 #ifdef CONFIG_RUST_SCHED_WAKE_PREEMPT
 static_assert(RUST_SCHED_RQCF_REQ_SKIP == RQCF_REQ_SKIP);
 static_assert(sizeof_field(struct rq, donor) == sizeof(void *));
@@ -2470,7 +2479,8 @@ void rust_helper_sched_class_warn_donor_mismatch(void)
 #endif
 
 #if defined(CONFIG_RUST_SCHED_PREV_BALANCE) || \
-	defined(CONFIG_RUST_SCHED_PICK_NEXT_TASK)
+	defined(CONFIG_RUST_SCHED_PICK_NEXT_TASK) || \
+	defined(CONFIG_RUST_SCHED_CORE_PICK_TASK)
 const struct sched_class *rust_helper_sched_fair_class(void)
 {
 	return &fair_sched_class;
@@ -6649,7 +6659,8 @@ static void prev_balance(struct rq *rq, struct rq_flags *rf)
 #endif
 }
 
-#ifdef CONFIG_RUST_SCHED_PICK_NEXT_TASK
+#if defined(CONFIG_RUST_SCHED_PICK_NEXT_TASK) || \
+	defined(CONFIG_RUST_SCHED_CORE_PICK_TASK)
 const struct sched_class *rust_helper_sched_class_highest(void)
 {
 	return __sched_class_highest;
@@ -6660,6 +6671,13 @@ const struct sched_class *rust_helper_sched_class_lowest(void)
 	return __sched_class_lowest;
 }
 
+struct task_struct *rust_helper_sched_retry_task(void)
+{
+	return RETRY_TASK;
+}
+#endif
+
+#ifdef CONFIG_RUST_SCHED_PICK_NEXT_TASK
 struct task_struct *rust_helper_sched_pick_task_fair(struct rq *rq,
 						     struct rq_flags *rf)
 {
@@ -6670,11 +6688,6 @@ struct task_struct *rust_helper_sched_pick_task_idle(struct rq *rq,
 						     struct rq_flags *rf)
 {
 	return pick_task_idle(rq, rf);
-}
-
-struct task_struct *rust_helper_sched_retry_task(void)
-{
-	return RETRY_TASK;
 }
 
 void rust_helper_sched_pick_prev_balance(struct rq *rq, struct rq_flags *rf)
@@ -6774,6 +6787,12 @@ static inline bool cookie_match(struct task_struct *a, struct task_struct *b)
  */
 static inline struct task_struct *pick_task(struct rq *rq, struct rq_flags *rf)
 {
+#ifdef CONFIG_RUST_SCHED_CORE_PICK_TASK
+	struct task_struct *p = rust_sched_core_pick_task(rq, rf);
+
+	if (likely(p))
+		return p;
+#else
 	const struct sched_class *class;
 	struct task_struct *p;
 
@@ -6784,6 +6803,7 @@ static inline struct task_struct *pick_task(struct rq *rq, struct rq_flags *rf)
 		if (p)
 			return p;
 	}
+#endif
 
 	BUG(); /* The idle class should always have a runnable task. */
 }

@@ -1240,6 +1240,21 @@ config RUST_SCHED_PICK_NEXT_TASK
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SCHED_CORE_PICK_TASK
+	bool "Rust implementation of scheduler core task picking"
+	depends on RUST && SCHED_CORE
+	default y
+	help
+	  Use Rust for the production core-scheduling task pick path. Rust owns
+	  the deferred-server clear, active-class traversal, pick_task callback
+	  dispatch, and retry-sentinel propagation.
+
+	  The scheduling-class anchors and order, runqueue field offsets,
+	  retry sentinel, and fatal invariant report remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_CPUPRI
 	bool "Rust implementation of CPU-priority scheduling state"
 	depends on RUST && SMP

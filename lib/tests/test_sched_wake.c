@@ -7,9 +7,11 @@
 #include <linux/cpumask.h>
 #include <linux/kthread.h>
 #include <linux/preempt.h>
+#include <linux/prctl.h>
 #include <linux/processor.h>
 #include <linux/sched.h>
 #include <linux/sched/idle.h>
+#include <linux/sched/smt.h>
 #include <linux/sched-rust.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
@@ -546,7 +548,8 @@ static void sched_wake_test_prev_balance_plan(struct kunit *test)
 #endif
 
 #if defined(CONFIG_RUST_SCHED_PREV_BALANCE) || \
-	defined(CONFIG_RUST_SCHED_PICK_NEXT_TASK)
+	defined(CONFIG_RUST_SCHED_PICK_NEXT_TASK) || \
+	defined(CONFIG_RUST_SCHED_CORE_PICK_TASK)
 static void sched_wake_test_next_active_plan(struct kunit *test)
 {
 	unsigned int advance = RUST_SCHED_NEXT_ACTIVE_ADVANCE;
@@ -567,6 +570,36 @@ static void sched_wake_test_next_active_plan(struct kunit *test)
 	state |= RUST_SCHED_SCX_SWITCHED_ALL;
 	KUNIT_EXPECT_EQ(test, advance,
 			rust_sched_next_active_plan_select(state, false, false));
+}
+#endif
+
+#ifdef CONFIG_RUST_SCHED_CORE_PICK_TASK
+static void sched_wake_test_core_pick_plan(struct kunit *test)
+{
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_CORE_PICK_ACTION_RETURN,
+			rust_sched_core_pick_result_select(true, false));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_CORE_PICK_ACTION_RETURN,
+			rust_sched_core_pick_result_select(true, true));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_CORE_PICK_ACTION_RETURN,
+			rust_sched_core_pick_result_select(false, true));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_CORE_PICK_ACTION_CONTINUE,
+			rust_sched_core_pick_result_select(false, false));
+}
+#endif
+
+#ifdef CONFIG_SCHED_CORE
+static void sched_wake_test_core_pick_path(struct kunit *test)
+{
+	int ret;
+
+	if (!sched_smt_active()) {
+		kunit_skip(test, "core scheduling needs an SMT topology");
+		return;
+	}
+
+	ret = sched_core_share_pid(PR_SCHED_CORE_CREATE, 0, PIDTYPE_PID, 0);
+	KUNIT_ASSERT_EQ(test, 0, ret);
+	schedule_timeout_uninterruptible(msecs_to_jiffies(1));
 }
 #endif
 
@@ -823,8 +856,12 @@ static struct kunit_case sched_wake_test_cases[] = {
 	KUNIT_CASE(sched_wake_test_prev_balance_plan),
 #endif
 #if defined(CONFIG_RUST_SCHED_PREV_BALANCE) || \
-	defined(CONFIG_RUST_SCHED_PICK_NEXT_TASK)
+	defined(CONFIG_RUST_SCHED_PICK_NEXT_TASK) || \
+	defined(CONFIG_RUST_SCHED_CORE_PICK_TASK)
 	KUNIT_CASE(sched_wake_test_next_active_plan),
+#endif
+#ifdef CONFIG_RUST_SCHED_CORE_PICK_TASK
+	KUNIT_CASE(sched_wake_test_core_pick_plan),
 #endif
 #ifdef CONFIG_RUST_SCHED_PICK_NEXT_TASK
 	KUNIT_CASE(sched_wake_test_pick_fast_path),
@@ -849,6 +886,9 @@ static struct kunit_case sched_wake_test_cases[] = {
 	KUNIT_CASE(sched_wake_test_current),
 	KUNIT_CASE(sched_wake_test_stopped_task),
 	KUNIT_CASE(sched_wake_test_runnable_task),
+#ifdef CONFIG_SCHED_CORE
+	KUNIT_CASE(sched_wake_test_core_pick_path),
+#endif
 	{}
 };
 

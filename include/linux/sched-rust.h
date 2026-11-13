@@ -365,7 +365,8 @@ unsigned int rust_sched_class_put_prev_set_next_plan_select(bool donor_matches,
 #endif /* CONFIG_RUST_SCHED_CLASS_TRANSITION */
 
 #if defined(CONFIG_RUST_SCHED_PREV_BALANCE) || \
-	defined(CONFIG_RUST_SCHED_PICK_NEXT_TASK)
+	defined(CONFIG_RUST_SCHED_PICK_NEXT_TASK) || \
+	defined(CONFIG_RUST_SCHED_CORE_PICK_TASK)
 
 #define RUST_SCHED_SCX_ENABLED			0x01
 #define RUST_SCHED_SCX_SWITCHED_ALL		0x02
@@ -377,8 +378,11 @@ unsigned int rust_sched_class_put_prev_set_next_plan_select(bool donor_matches,
 const struct sched_class *rust_helper_sched_fair_class(void);
 const struct sched_class *rust_helper_sched_idle_class(void);
 const struct sched_class *rust_helper_sched_ext_class(void);
+const struct sched_class *rust_helper_sched_class_highest(void);
+const struct sched_class *rust_helper_sched_class_lowest(void);
 unsigned long rust_helper_sched_class_size(void);
 unsigned int rust_helper_sched_scx_state(void);
+struct task_struct *rust_helper_sched_retry_task(void);
 
 #ifdef CONFIG_KUNIT
 unsigned int rust_sched_next_active_plan_select(unsigned int scx_state,
@@ -386,7 +390,7 @@ unsigned int rust_sched_next_active_plan_select(unsigned int scx_state,
 						bool at_ext);
 #endif
 
-#endif /* RUST_SCHED_PREV_BALANCE || RUST_SCHED_PICK_NEXT_TASK */
+#endif /* RUST_SCHED_PREV_BALANCE || RUST_SCHED_PICK_NEXT_TASK || RUST_SCHED_CORE_PICK_TASK */
 
 #ifdef CONFIG_RUST_SCHED_PREV_BALANCE
 
@@ -409,14 +413,10 @@ unsigned int rust_sched_prev_balance_plan_select(bool has_callback,
 #define RUST_SCHED_PICK_ACTION_CONTINUE		0x04
 #define RUST_SCHED_PICK_ACTION_TRANSITION	0x08
 
-const struct sched_class *rust_helper_sched_class_highest(void);
-const struct sched_class *rust_helper_sched_class_lowest(void);
-
 struct task_struct *rust_helper_sched_pick_task_fair(struct rq *rq,
 						     struct rq_flags *rf);
 struct task_struct *rust_helper_sched_pick_task_idle(struct rq *rq,
 						     struct rq_flags *rf);
-struct task_struct *rust_helper_sched_retry_task(void);
 void rust_helper_sched_pick_prev_balance(struct rq *rq,
 					 struct rq_flags *rf);
 void rust_helper_sched_pick_transition(struct rq *rq,
@@ -434,5 +434,19 @@ unsigned int rust_sched_pick_class_result_select(bool retry, bool has_task);
 #endif
 
 #endif /* CONFIG_RUST_SCHED_PICK_NEXT_TASK */
+
+#ifdef CONFIG_RUST_SCHED_CORE_PICK_TASK
+
+#define RUST_SCHED_CORE_PICK_ACTION_RETURN	0x01
+#define RUST_SCHED_CORE_PICK_ACTION_CONTINUE	0x02
+
+struct task_struct *rust_sched_core_pick_task(struct rq *rq,
+					      struct rq_flags *rf);
+
+#ifdef CONFIG_KUNIT
+unsigned int rust_sched_core_pick_result_select(bool retry, bool has_task);
+#endif
+
+#endif /* CONFIG_RUST_SCHED_CORE_PICK_TASK */
 
 #endif /* _LINUX_SCHED_RUST_H */
