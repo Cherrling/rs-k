@@ -43,8 +43,6 @@ int rust_sched_state_match_select(unsigned int task_state,
 #define RUST_SCHED_TTWU_TASK_DELAYED		0x04
 
 void rust_helper_sched_ttwu_update_clock(struct rq *rq);
-void rust_helper_sched_ttwu_enqueue_delayed(struct rq *rq,
-					    struct task_struct *task);
 bool rust_helper_sched_ttwu_proxy_return(struct rq *rq,
 					 struct task_struct *task);
 
@@ -53,9 +51,31 @@ int rust_sched_ttwu_runnable_locked(struct rq *rq, struct task_struct *task,
 
 #ifdef CONFIG_KUNIT
 unsigned int rust_sched_ttwu_task_flags_select(struct task_struct *task);
+int rust_sched_ttwu_delayed_enqueue_flags_select(void);
 #endif
 
 #endif /* CONFIG_RUST_SCHED_TTWU_RUNNABLE */
+
+#ifdef CONFIG_RUST_SCHED_TTWU_RUNNABLE
+
+#define RUST_SCHED_ENQUEUE_DELAYED		0x0020
+
+#endif
+
+#if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
+	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE) || \
+	defined(CONFIG_RUST_SCHED_RQ_TRANSITION)
+
+void enqueue_task(struct rq *rq, struct task_struct *task, int flags);
+
+#endif
+
+#if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
+	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE)
+
+#define RUST_SCHED_ENQUEUE_NOCLOCK		0x0008
+
+#endif
 
 #if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
 	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE)
@@ -86,7 +106,6 @@ void rust_sched_ttwu_wakeup_state_select(struct task_struct *task);
 #define RUST_SCHED_WF_MIGRATED			0x20
 #define RUST_SCHED_WF_RQ_SELECTED		0x80
 #define RUST_SCHED_ENQUEUE_WAKEUP		0x0001
-#define RUST_SCHED_ENQUEUE_NOCLOCK		0x0008
 #define RUST_SCHED_ENQUEUE_RQ_SELECTED		0x00100000
 
 void rust_helper_sched_ttwu_delayacct_blkio_end(struct task_struct *task);
@@ -139,7 +158,6 @@ void rust_sched_block_task_set_contributes_load_select(struct task_struct *task,
 #define RUST_SCHED_RQ_WARN_DEQUEUE_SLEEP	0x02
 #define RUST_SCHED_DEQUEUE_SLEEP		0x0001
 
-void enqueue_task(struct rq *rq, struct task_struct *task, int flags);
 bool dequeue_task(struct rq *rq, struct task_struct *task, int flags);
 
 void rust_helper_sched_rq_assert_exclusive_writer(struct task_struct *task);

@@ -143,9 +143,17 @@ static_assert(RUST_SCHED_DEQUEUE_SLEEP == DEQUEUE_SLEEP);
 static_assert(RUST_SCHED_ENQUEUE_MIGRATED == ENQUEUE_MIGRATED);
 #endif
 
+#if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
+	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE)
+static_assert(RUST_SCHED_ENQUEUE_NOCLOCK == ENQUEUE_NOCLOCK);
+#endif
+
+#ifdef CONFIG_RUST_SCHED_TTWU_RUNNABLE
+static_assert(RUST_SCHED_ENQUEUE_DELAYED == ENQUEUE_DELAYED);
+#endif
+
 #ifdef CONFIG_RUST_SCHED_TTWU_ACTIVATE
 static_assert(RUST_SCHED_ENQUEUE_WAKEUP == ENQUEUE_WAKEUP);
-static_assert(RUST_SCHED_ENQUEUE_NOCLOCK == ENQUEUE_NOCLOCK);
 static_assert(RUST_SCHED_ENQUEUE_RQ_SELECTED == ENQUEUE_RQ_SELECTED);
 static_assert(sizeof_field(struct rq, nr_uninterruptible) ==
 	      sizeof(unsigned long));
@@ -3917,12 +3925,6 @@ static inline bool proxy_needs_return(struct rq *rq, struct task_struct *p)
 void rust_helper_sched_ttwu_update_clock(struct rq *rq)
 {
 	update_rq_clock(rq);
-}
-
-void rust_helper_sched_ttwu_enqueue_delayed(struct rq *rq,
-					    struct task_struct *task)
-{
-	enqueue_task(rq, task, ENQUEUE_NOCLOCK | ENQUEUE_DELAYED);
 }
 
 bool rust_helper_sched_ttwu_proxy_return(struct rq *rq,

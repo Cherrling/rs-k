@@ -29,7 +29,9 @@ Rust owns these production decisions:
 * Checking whether the wake target remains queued after the runqueue lock is
   acquired.
 * Updating the runqueue clock, reading task blocked, on-CPU, and delayed state,
-  handling proxy state, selecting preemption, and publishing the final running
+  deciding whether delayed enqueue is necessary, composing its flags, and
+  calling ``enqueue_task()`` directly.
+* Handling proxy state, selecting preemption, and publishing the final running
   state.
 * Decoding the selected-runqueue and migrated wake flags.
 * Reading task load and I/O wait state, updating the runqueue
@@ -64,8 +66,8 @@ state result and wake-state transition come from
 The Rust-to-C helper calls are:
 
 * The invalid debug-preemption wake-mask warning.
-* The runqueue clock update, proxy state query, delayed enqueue, and
-  preemption used by the runnable path.
+* The runqueue clock update, proxy state query, and preemption used by the
+  runnable path.
 * The delay-accounting completion primitive and preemption used by the
   activation path. Rust constructs the enqueue flags, updates ``nr_iowait``,
   and calls ``activate_task()`` directly.
@@ -130,10 +132,12 @@ selection, migration, full enqueue, statistics, and accounting in C. The
 runnable unit changes only the path inside the task runqueue lock.
 
 The runnable path retains runqueue lock acquisition and release, scheduler
-queue and proxy operations, preemption, and tracing in C. Rust owns their
-order and the decision to invoke each helper. The C adapter cannot return
-while Rust still holds the lock because the lock remains owned by the C
-caller.
+queue and proxy operations, preemption, and tracing in C. Rust owns the
+decision to enqueue a delayed task, the ``ENQUEUE_NOCLOCK`` and
+``ENQUEUE_DELAYED`` flags, and the direct ``enqueue_task()`` call. C retains
+the scheduling-class queue operation reached through that call. The C adapter
+cannot return while Rust still holds the lock because the lock remains owned
+by the C caller.
 
 The activation path retains runqueue lock ownership, scheduling-class queue
 operations reached through ``activate_task()``, the preemption primitive,
@@ -243,13 +247,13 @@ Validation gate
 ---------------
 
 The Rust KUnit cases cover the state-match table, saved-state transition,
-activation action selection, activation enqueue flags, the uninterruptible
-and I/O wait count updates, blocking action selection, and a real
-uninterruptible timeout. A state-publication case checks the blocked marker
-and running-state stores. The transition action table covers migrated enqueue
-and invalid sleeping dequeue. Real wakeup cases cover current-task rejection,
-waking a stopped kernel thread, waking a queued runnable task, waking a
-``SCHED_FIFO`` task to invoke its scheduling-class callback, and real
+activation action selection, activation and delayed-enqueue flags, the
+uninterruptible and I/O wait count updates, blocking action selection, and a
+real uninterruptible timeout. A state-publication case checks the blocked
+marker and running-state stores. The transition action table covers migrated
+enqueue and invalid sleeping dequeue. Real wakeup cases cover current-task
+rejection, waking a stopped kernel thread, waking a queued runnable task,
+waking a ``SCHED_FIFO`` task to invoke its scheduling-class callback, and real
 activation and deactivation traffic with both the Rust and C implementations.
 
 The unit must pass repeated four-vCPU Rust runs, a C fallback run, PREEMPT_RT,
@@ -761,6 +765,66 @@ scheduler Rust options enabled. Its production image contained no unresolved
 symbols and no KUnit selector symbol. No run reported a ``BUG``, warning, KASAN
 report, lock dependency diagnosis, Oops, or panic.
 
+The delayed-enqueue ownership unit was validated on 2026-11-13 with x86_64
+``LLVM=1`` builds and QEMU 11.1.3. Each configuration passed three consecutive
+four-vCPU runs:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 25 25
+
+   * - Configuration
+     - Scheduler cases
+     - hrtimer cases
+   * - Full Rust
+     - 19
+     - 25
+   * - Wake-state fallback
+     - 17
+     - 25
+   * - Runnable fallback
+     - 17
+     - 25
+   * - Activation fallback
+     - 12
+     - 25
+   * - Wake-state only
+     - 5
+     - 25
+   * - Runnable only
+     - 6
+     - 25
+   * - Activation only
+     - 11
+     - 25
+   * - PREEMPT_RT
+     - 19
+     - 25
+   * - KASAN
+     - 19
+     - 25
+   * - lockdep
+     - 19
+     - 25
+
+Rust owns the decision to enqueue a delayed runnable task, constructs
+``ENQUEUE_NOCLOCK | ENQUEUE_DELAYED``, and calls ``enqueue_task()`` directly.
+C removes ``rust_helper_sched_ttwu_enqueue_delayed()``. The delayed-enqueue C
+helper had no state-machine work beyond composing the flags and calling the
+scheduler queue function.
+
+C statically checks the exported no-clock and delayed flag values. A KUnit
+selector checks the composed flags. The runnable-only configuration passes all
+six applicable scheduler cases and does not depend on another Rust scheduler
+option.
+
+The full configuration passed Rustfmt, Clippy, strict checkpatch, and
+``git diff --check``. The no-KUnit configuration passed Clippy with all five
+scheduler Rust options enabled. Its production image contained no unresolved
+symbols, no delayed-enqueue helper symbol, and no KUnit selector symbol. No run
+reported a ``BUG``, warning, KASAN report, lock dependency diagnosis, Oops, or
+panic.
+
 Review conditions
 -----------------
 
@@ -771,8 +835,9 @@ Reopen this boundary decision if any of these conditions changes:
 * Debug-preemption wake-mask validation changes.
 * The selected-runqueue or migrated wake-flag values or meanings change.
 * Rust gains safe task-state accessors and kernel warning abstractions.
-* The runnable path changes its runqueue lock, delayed enqueue, proxy return,
-  preemption, or wake-publication ordering.
+* The runnable path changes its runqueue lock, delayed-enqueue condition,
+  enqueue flags, direct enqueue call, proxy return, preemption, or
+  wake-publication ordering.
 * The activation path changes load or I/O wait accounting, enqueue flags,
   activation ordering, preemption ordering, wake publication, or the
   scheduling-class callback contract.

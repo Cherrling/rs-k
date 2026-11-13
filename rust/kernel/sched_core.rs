@@ -358,8 +358,9 @@ unsafe extern "C" fn rust_sched_ttwu_runnable_locked(
     if unsafe { task_is_blocked(task) } {
         // SAFETY: The caller holds the task runqueue lock.
         if unsafe { task_sched_delayed(task) } {
-            // SAFETY: The task is queued on this runqueue.
-            unsafe { bindings::rust_helper_sched_ttwu_enqueue_delayed(rq, task) };
+            // SAFETY: The task is queued on this runqueue and the caller holds
+            // the runqueue lock.
+            unsafe { bindings::enqueue_task(rq, task, ENQUEUE_NOCLOCK | ENQUEUE_DELAYED) };
         }
 
         // SAFETY: The caller holds the task runqueue lock.
@@ -407,6 +408,13 @@ unsafe extern "C" fn rust_sched_ttwu_task_flags_select(task: *mut Task) -> u32 {
     flags
 }
 
+/// Returns the flags used for delayed runnable enqueue.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_TTWU_RUNNABLE))]
+#[export]
+extern "C" fn rust_sched_ttwu_delayed_enqueue_flags_select() -> c_int {
+    ENQUEUE_NOCLOCK | ENQUEUE_DELAYED
+}
+
 /// Publishes the wake state for the scheduler KUnit test.
 ///
 /// # Safety
@@ -436,8 +444,10 @@ const WF_MIGRATED: c_int = bindings::RUST_SCHED_WF_MIGRATED as c_int;
 const WF_RQ_SELECTED: c_int = bindings::RUST_SCHED_WF_RQ_SELECTED as c_int;
 #[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
 const ENQUEUE_WAKEUP: c_int = bindings::RUST_SCHED_ENQUEUE_WAKEUP as c_int;
-#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+#[cfg(any(CONFIG_RUST_SCHED_TTWU_RUNNABLE, CONFIG_RUST_SCHED_TTWU_ACTIVATE))]
 const ENQUEUE_NOCLOCK: c_int = bindings::RUST_SCHED_ENQUEUE_NOCLOCK as c_int;
+#[cfg(CONFIG_RUST_SCHED_TTWU_RUNNABLE)]
+const ENQUEUE_DELAYED: c_int = bindings::RUST_SCHED_ENQUEUE_DELAYED as c_int;
 #[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
 const ENQUEUE_RQ_SELECTED: c_int = bindings::RUST_SCHED_ENQUEUE_RQ_SELECTED as c_int;
 #[cfg(any(CONFIG_RUST_SCHED_TTWU_ACTIVATE, CONFIG_RUST_SCHED_RQ_TRANSITION))]

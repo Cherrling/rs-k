@@ -312,6 +312,14 @@ static void sched_wake_test_runnable_task_flags(struct kunit *test)
 
 	kfree(task);
 }
+
+static void sched_wake_test_delayed_enqueue_flags(struct kunit *test)
+{
+	KUNIT_EXPECT_EQ(test,
+			RUST_SCHED_ENQUEUE_NOCLOCK |
+			RUST_SCHED_ENQUEUE_DELAYED,
+			rust_sched_ttwu_delayed_enqueue_flags_select());
+}
 #endif
 
 #ifdef CONFIG_RUST_SCHED_RQ_TRANSITION
@@ -390,6 +398,7 @@ static struct kunit_case sched_wake_test_cases[] = {
 #endif
 #ifdef CONFIG_RUST_SCHED_TTWU_RUNNABLE
 	KUNIT_CASE(sched_wake_test_runnable_task_flags),
+	KUNIT_CASE(sched_wake_test_delayed_enqueue_flags),
 #endif
 #ifdef CONFIG_RUST_SCHED_RQ_TRANSITION
 	KUNIT_CASE(sched_wake_test_rq_transition_plan),
