@@ -543,7 +543,10 @@ static void sched_wake_test_prev_balance_plan(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, 0,
 			rust_sched_prev_balance_plan_select(false, 1));
 }
+#endif
 
+#if defined(CONFIG_RUST_SCHED_PREV_BALANCE) || \
+	defined(CONFIG_RUST_SCHED_PICK_NEXT_TASK)
 static void sched_wake_test_next_active_plan(struct kunit *test)
 {
 	unsigned int advance = RUST_SCHED_NEXT_ACTIVE_ADVANCE;
@@ -564,6 +567,42 @@ static void sched_wake_test_next_active_plan(struct kunit *test)
 	state |= RUST_SCHED_SCX_SWITCHED_ALL;
 	KUNIT_EXPECT_EQ(test, advance,
 			rust_sched_next_active_plan_select(state, false, false));
+}
+#endif
+
+#ifdef CONFIG_RUST_SCHED_PICK_NEXT_TASK
+static void sched_wake_test_pick_fast_path(struct kunit *test)
+{
+	KUNIT_EXPECT_TRUE(test,
+			  rust_sched_pick_fast_counts_select(0, 0));
+	KUNIT_EXPECT_TRUE(test,
+			  rust_sched_pick_fast_counts_select(7, 7));
+	KUNIT_EXPECT_FALSE(test,
+			   rust_sched_pick_fast_counts_select(7, 6));
+	KUNIT_EXPECT_FALSE(test,
+			   rust_sched_pick_fast_counts_select(6, 7));
+}
+
+static void sched_wake_test_pick_result_plan(struct kunit *test)
+{
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_PICK_ACTION_RESTART,
+			rust_sched_pick_fast_result_select(true, false));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_PICK_ACTION_RESTART,
+			rust_sched_pick_fast_result_select(true, true));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_PICK_ACTION_TRANSITION,
+			rust_sched_pick_fast_result_select(false, true));
+	KUNIT_EXPECT_EQ(test,
+			RUST_SCHED_PICK_ACTION_IDLE |
+			RUST_SCHED_PICK_ACTION_TRANSITION,
+			rust_sched_pick_fast_result_select(false, false));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_PICK_ACTION_RESTART,
+			rust_sched_pick_class_result_select(true, false));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_PICK_ACTION_RESTART,
+			rust_sched_pick_class_result_select(true, true));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_PICK_ACTION_TRANSITION,
+			rust_sched_pick_class_result_select(false, true));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_PICK_ACTION_CONTINUE,
+			rust_sched_pick_class_result_select(false, false));
 }
 #endif
 
@@ -782,7 +821,14 @@ static struct kunit_case sched_wake_test_cases[] = {
 #endif
 #ifdef CONFIG_RUST_SCHED_PREV_BALANCE
 	KUNIT_CASE(sched_wake_test_prev_balance_plan),
+#endif
+#if defined(CONFIG_RUST_SCHED_PREV_BALANCE) || \
+	defined(CONFIG_RUST_SCHED_PICK_NEXT_TASK)
 	KUNIT_CASE(sched_wake_test_next_active_plan),
+#endif
+#ifdef CONFIG_RUST_SCHED_PICK_NEXT_TASK
+	KUNIT_CASE(sched_wake_test_pick_fast_path),
+	KUNIT_CASE(sched_wake_test_pick_result_plan),
 #endif
 #ifdef CONFIG_RUST_SCHED_BLOCK_TASK
 	KUNIT_CASE(sched_wake_test_block_plan),

@@ -229,6 +229,27 @@ static_assert(offsetof(struct sched_class, balance) %
 	      __alignof__(((struct sched_class *)0)->balance) == 0);
 #endif
 
+#ifdef CONFIG_RUST_SCHED_PICK_NEXT_TASK
+static_assert(sizeof_field(struct rq, donor) == sizeof(void *));
+static_assert(sizeof_field(struct rq, dl_server) == sizeof(void *));
+static_assert(sizeof_field(struct rq, nr_running) == sizeof(unsigned int));
+static_assert(sizeof_field(struct rq, cfs.h_nr_queued) == sizeof(unsigned int));
+static_assert(sizeof_field(struct task_struct, sched_class) == sizeof(void *));
+static_assert(sizeof_field(struct sched_class, pick_task) == sizeof(void *));
+static_assert(offsetof(struct rq, donor) %
+	      __alignof__(((struct rq *)0)->donor) == 0);
+static_assert(offsetof(struct rq, dl_server) %
+	      __alignof__(((struct rq *)0)->dl_server) == 0);
+static_assert(offsetof(struct rq, nr_running) %
+	      __alignof__(((struct rq *)0)->nr_running) == 0);
+static_assert(offsetof(struct rq, cfs.h_nr_queued) %
+	      __alignof__(((struct rq *)0)->cfs.h_nr_queued) == 0);
+static_assert(offsetof(struct task_struct, sched_class) %
+	      __alignof__(((struct task_struct *)0)->sched_class) == 0);
+static_assert(offsetof(struct sched_class, pick_task) %
+	      __alignof__(((struct sched_class *)0)->pick_task) == 0);
+#endif
+
 #ifdef CONFIG_RUST_SCHED_WAKE_PREEMPT
 static_assert(RUST_SCHED_RQCF_REQ_SKIP == RQCF_REQ_SKIP);
 static_assert(sizeof_field(struct rq, donor) == sizeof(void *));
@@ -2448,7 +2469,8 @@ void rust_helper_sched_class_warn_donor_mismatch(void)
 }
 #endif
 
-#ifdef CONFIG_RUST_SCHED_PREV_BALANCE
+#if defined(CONFIG_RUST_SCHED_PREV_BALANCE) || \
+	defined(CONFIG_RUST_SCHED_PICK_NEXT_TASK)
 const struct sched_class *rust_helper_sched_fair_class(void)
 {
 	return &fair_sched_class;
@@ -6627,6 +6649,47 @@ static void prev_balance(struct rq *rq, struct rq_flags *rf)
 #endif
 }
 
+#ifdef CONFIG_RUST_SCHED_PICK_NEXT_TASK
+const struct sched_class *rust_helper_sched_class_highest(void)
+{
+	return __sched_class_highest;
+}
+
+const struct sched_class *rust_helper_sched_class_lowest(void)
+{
+	return __sched_class_lowest;
+}
+
+struct task_struct *rust_helper_sched_pick_task_fair(struct rq *rq,
+						     struct rq_flags *rf)
+{
+	return pick_task_fair(rq, rf);
+}
+
+struct task_struct *rust_helper_sched_pick_task_idle(struct rq *rq,
+						     struct rq_flags *rf)
+{
+	return pick_task_idle(rq, rf);
+}
+
+struct task_struct *rust_helper_sched_retry_task(void)
+{
+	return RETRY_TASK;
+}
+
+void rust_helper_sched_pick_prev_balance(struct rq *rq, struct rq_flags *rf)
+{
+	prev_balance(rq, rf);
+}
+
+void rust_helper_sched_pick_transition(struct rq *rq,
+				       struct task_struct *prev,
+				       struct task_struct *next)
+{
+	put_prev_set_next_task(rq, prev, next);
+}
+#endif
+
 /*
  * Pick up the highest-prio task:
  */
@@ -6634,6 +6697,12 @@ static inline struct task_struct *
 __pick_next_task(struct rq *rq, struct rq_flags *rf)
 	__must_hold(__rq_lockp(rq))
 {
+#ifdef CONFIG_RUST_SCHED_PICK_NEXT_TASK
+	struct task_struct *p = rust_sched_pick_next_task(rq, rf);
+
+	if (likely(p))
+		return p;
+#else
 	const struct sched_class *class;
 	struct task_struct *p;
 
@@ -6675,6 +6744,7 @@ restart:
 			return p;
 		}
 	}
+#endif
 
 	BUG(); /* The idle class should always have a runnable task. */
 }

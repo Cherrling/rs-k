@@ -364,13 +364,11 @@ unsigned int rust_sched_class_put_prev_set_next_plan_select(bool donor_matches,
 
 #endif /* CONFIG_RUST_SCHED_CLASS_TRANSITION */
 
-#ifdef CONFIG_RUST_SCHED_PREV_BALANCE
+#if defined(CONFIG_RUST_SCHED_PREV_BALANCE) || \
+	defined(CONFIG_RUST_SCHED_PICK_NEXT_TASK)
 
 #define RUST_SCHED_SCX_ENABLED			0x01
 #define RUST_SCHED_SCX_SWITCHED_ALL		0x02
-
-#define RUST_SCHED_BALANCE_CALL			0x01
-#define RUST_SCHED_BALANCE_STOP			0x02
 
 #define RUST_SCHED_NEXT_ACTIVE_ADVANCE		0x01
 #define RUST_SCHED_NEXT_ACTIVE_SKIP_FAIR	0x02
@@ -382,16 +380,59 @@ const struct sched_class *rust_helper_sched_ext_class(void);
 unsigned long rust_helper_sched_class_size(void);
 unsigned int rust_helper_sched_scx_state(void);
 
-void rust_sched_prev_balance(struct rq *rq, struct rq_flags *rf);
-
 #ifdef CONFIG_KUNIT
-unsigned int rust_sched_prev_balance_plan_select(bool has_callback,
-						 int result);
 unsigned int rust_sched_next_active_plan_select(unsigned int scx_state,
 						bool at_fair,
 						bool at_ext);
 #endif
 
+#endif /* RUST_SCHED_PREV_BALANCE || RUST_SCHED_PICK_NEXT_TASK */
+
+#ifdef CONFIG_RUST_SCHED_PREV_BALANCE
+
+#define RUST_SCHED_BALANCE_CALL			0x01
+#define RUST_SCHED_BALANCE_STOP			0x02
+
+void rust_sched_prev_balance(struct rq *rq, struct rq_flags *rf);
+
+#ifdef CONFIG_KUNIT
+unsigned int rust_sched_prev_balance_plan_select(bool has_callback,
+						 int result);
+#endif
+
 #endif /* CONFIG_RUST_SCHED_PREV_BALANCE */
+
+#ifdef CONFIG_RUST_SCHED_PICK_NEXT_TASK
+
+#define RUST_SCHED_PICK_ACTION_RESTART		0x01
+#define RUST_SCHED_PICK_ACTION_IDLE		0x02
+#define RUST_SCHED_PICK_ACTION_CONTINUE		0x04
+#define RUST_SCHED_PICK_ACTION_TRANSITION	0x08
+
+const struct sched_class *rust_helper_sched_class_highest(void);
+const struct sched_class *rust_helper_sched_class_lowest(void);
+
+struct task_struct *rust_helper_sched_pick_task_fair(struct rq *rq,
+						     struct rq_flags *rf);
+struct task_struct *rust_helper_sched_pick_task_idle(struct rq *rq,
+						     struct rq_flags *rf);
+struct task_struct *rust_helper_sched_retry_task(void);
+void rust_helper_sched_pick_prev_balance(struct rq *rq,
+					 struct rq_flags *rf);
+void rust_helper_sched_pick_transition(struct rq *rq,
+				       struct task_struct *prev,
+				       struct task_struct *next);
+
+struct task_struct *rust_sched_pick_next_task(struct rq *rq,
+					      struct rq_flags *rf);
+
+#ifdef CONFIG_KUNIT
+bool rust_sched_pick_fast_counts_select(unsigned int nr_running,
+					unsigned int cfs_h_nr_queued);
+unsigned int rust_sched_pick_fast_result_select(bool retry, bool has_task);
+unsigned int rust_sched_pick_class_result_select(bool retry, bool has_task);
+#endif
+
+#endif /* CONFIG_RUST_SCHED_PICK_NEXT_TASK */
 
 #endif /* _LINUX_SCHED_RUST_H */

@@ -1224,6 +1224,22 @@ config RUST_SCHED_PREV_BALANCE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SCHED_PICK_NEXT_TASK
+	bool "Rust implementation of scheduler next-task selection"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production next-task selection path. Rust owns
+	  the fair-class fast path, class scan, retry decision, class callback
+	  dispatch, and final class transition.
+
+	  The runqueue field offsets, scheduling-class anchors and pick_task
+	  implementations, task transition helper, and fatal invariant report
+	  remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_CPUPRI
 	bool "Rust implementation of CPU-priority scheduling state"
 	depends on RUST && SMP

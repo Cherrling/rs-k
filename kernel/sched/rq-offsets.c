@@ -15,6 +15,8 @@ int main(void)
 	DEFINE(RQ_cpu, offsetof(struct rq, cpu));
 	DEFINE(RQ_next_class, offsetof(struct rq, next_class));
 	DEFINE(RQ_dl_server, offsetof(struct rq, dl_server));
+	DEFINE(RQ_nr_running, offsetof(struct rq, nr_running));
+	DEFINE(RQ_cfs_h_nr_queued, offsetof(struct rq, cfs.h_nr_queued));
 	DEFINE(RQ_clock_update_flags, offsetof(struct rq, clock_update_flags));
 	DEFINE(TASK_STRUCT_dl_server,
 	       offsetof(struct task_struct, dl_server));
@@ -22,6 +24,8 @@ int main(void)
 	       offsetof(struct sched_class, wakeup_preempt));
 	DEFINE(SCHED_CLASS_balance,
 	       offsetof(struct sched_class, balance));
+	DEFINE(SCHED_CLASS_pick_task,
+	       offsetof(struct sched_class, pick_task));
 	DEFINE(SCHED_CLASS_task_woken,
 	       offsetof(struct sched_class, task_woken));
 	DEFINE(SCHED_CLASS_select_task_rq,
