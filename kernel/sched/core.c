@@ -202,6 +202,13 @@ static_assert(offsetof(struct rq, cpu) %
 	      __alignof__(((struct rq *)0)->cpu) == 0);
 #endif
 
+#ifdef CONFIG_RUST_SCHED_WAKE_IF_IDLE
+static_assert(sizeof_field(struct rq, curr) == sizeof(void *));
+static_assert(sizeof_field(struct task_struct, flags) == sizeof(unsigned int));
+static_assert(offsetof(struct rq, curr) %
+	      __alignof__(((struct rq *)0)->curr) == 0);
+#endif
+
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 DEFINE_PER_CPU(struct rnd_state, sched_rnd_state);
 
@@ -4233,16 +4240,32 @@ static void __ttwu_queue_wakelist(struct task_struct *p, int cpu, int wake_flags
 #endif
 }
 
+#ifdef CONFIG_RUST_SCHED_WAKE_IF_IDLE
+struct task_struct *rust_helper_sched_wake_if_idle_curr(struct rq *rq)
+{
+	return rcu_dereference(rq->curr);
+}
+#endif
+
 void wake_up_if_idle(int cpu)
 {
 	struct rq *rq = cpu_rq(cpu);
 
 	guard(rcu)();
+#ifdef CONFIG_RUST_SCHED_WAKE_IF_IDLE
+	if (rust_sched_wake_if_idle_needs_lock(rq)) {
+		guard(rq_lock_irqsave)(rq);
+
+		lockdep_assert_rq_held(rq);
+		rust_sched_wake_if_idle_locked(rq);
+	}
+#else
 	if (is_idle_task(rcu_dereference(rq->curr))) {
 		guard(rq_lock_irqsave)(rq);
 		if (is_idle_task(rq->curr))
 			resched_curr(rq);
 	}
+#endif
 }
 
 bool cpus_equal_capacity(int this_cpu, int that_cpu)

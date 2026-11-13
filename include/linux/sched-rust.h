@@ -102,6 +102,23 @@ bool rust_sched_resched_cpu_select(bool cpu_online, bool cpu_local);
 
 #endif /* CONFIG_RUST_SCHED_RESCHED_CPU */
 
+#ifdef CONFIG_RUST_SCHED_WAKE_IF_IDLE
+
+#define RUST_SCHED_WAKE_IF_IDLE_LOCK		0x01
+#define RUST_SCHED_WAKE_IF_IDLE_RESCHED		0x02
+
+struct task_struct *rust_helper_sched_wake_if_idle_curr(struct rq *rq);
+
+bool rust_sched_wake_if_idle_needs_lock(struct rq *rq);
+void rust_sched_wake_if_idle_locked(struct rq *rq);
+
+#ifdef CONFIG_KUNIT
+unsigned int rust_sched_wake_if_idle_select(bool curr_idle,
+					    bool locked_idle);
+#endif
+
+#endif /* CONFIG_RUST_SCHED_WAKE_IF_IDLE */
+
 #ifdef CONFIG_RUST_SCHED_TTWU_RUNNABLE
 
 #define RUST_SCHED_TTWU_TASK_IS_BLOCKED		0x01

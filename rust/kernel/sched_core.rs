@@ -2,10 +2,10 @@
 
 //! Native scheduler core state machines.
 //!
-//! Rust owns task-state matching, reschedule requests, wake activation, wake
-//! preemption, and task blocking decisions. C retains task and runqueue
-//! locking, warning delivery, scheduling-class implementations, and task
-//! selection.
+//! Rust owns task-state matching, reschedule requests, idle CPU wakeups, wake
+//! activation, wake preemption, and task blocking decisions. C retains task
+//! and runqueue locking, warning delivery, scheduling-class implementations,
+//! and task selection.
 
 use crate::bindings;
 #[cfg(any(
@@ -47,6 +47,7 @@ use macros::export;
     CONFIG_RUST_SCHED_WAKE_STATE,
     CONFIG_RUST_SCHED_WAKE_PREEMPT,
     CONFIG_RUST_SCHED_RESCHED_CURR,
+    CONFIG_RUST_SCHED_WAKE_IF_IDLE,
     CONFIG_RUST_SCHED_TTWU_RUNNABLE,
     CONFIG_RUST_SCHED_TTWU_ACTIVATE,
     CONFIG_RUST_SCHED_BLOCK_TASK,
@@ -60,6 +61,7 @@ type Task = bindings::task_struct;
     CONFIG_RUST_SCHED_TTWU_RUNNABLE,
     CONFIG_RUST_SCHED_WAKE_PREEMPT,
     CONFIG_RUST_SCHED_RESCHED_CURR,
+    CONFIG_RUST_SCHED_WAKE_IF_IDLE,
     CONFIG_RUST_SCHED_RESCHED_CPU
 ))]
 type Rq = bindings::rq;
@@ -102,6 +104,10 @@ const RESCHED_REMOTE_SET: u32 = bindings::RUST_SCHED_RESCHED_REMOTE_SET;
 const RESCHED_SEND_IPI: u32 = bindings::RUST_SCHED_RESCHED_SEND_IPI;
 #[cfg(CONFIG_RUST_SCHED_RESCHED_CURR)]
 const RESCHED_WAKE_IDLE: u32 = bindings::RUST_SCHED_RESCHED_WAKE_IDLE;
+#[cfg(CONFIG_RUST_SCHED_WAKE_IF_IDLE)]
+const WAKE_IF_IDLE_LOCK: u32 = bindings::RUST_SCHED_WAKE_IF_IDLE_LOCK;
+#[cfg(CONFIG_RUST_SCHED_WAKE_IF_IDLE)]
+const WAKE_IF_IDLE_RESCHED: u32 = bindings::RUST_SCHED_WAKE_IF_IDLE_RESCHED;
 
 /// Reads the current task wake state.
 ///
@@ -597,7 +603,11 @@ unsafe fn task_woken_callback(task: *mut Task) -> Option<TaskWokenCallback> {
 /// # Safety
 ///
 /// `rq` must remain live and the offset must name a live task pointer field.
-#[cfg(any(CONFIG_RUST_SCHED_WAKE_PREEMPT, CONFIG_RUST_SCHED_RESCHED_CURR))]
+#[cfg(any(
+    CONFIG_RUST_SCHED_WAKE_PREEMPT,
+    CONFIG_RUST_SCHED_RESCHED_CURR,
+    CONFIG_RUST_SCHED_WAKE_IF_IDLE
+))]
 unsafe fn rq_task_pointer(rq: *mut Rq, offset: u32) -> *mut Task {
     // SAFETY: The generated offset identifies the requested pointer field in
     // the live runqueue. Use a volatile load to match the C field access.
@@ -738,7 +748,7 @@ unsafe fn rq_cpu(rq: *mut Rq) -> c_int {
 /// # Safety
 ///
 /// `task` must remain live while this function reads its flags.
-#[cfg(CONFIG_RUST_SCHED_RESCHED_CURR)]
+#[cfg(any(CONFIG_RUST_SCHED_RESCHED_CURR, CONFIG_RUST_SCHED_WAKE_IF_IDLE))]
 unsafe fn task_is_idle(task: *mut Task) -> bool {
     // SAFETY: The caller guarantees that the task remains live. Use a volatile
     // load so this has the read behavior of the C task-flag check.
@@ -934,6 +944,84 @@ unsafe extern "C" fn rust_sched_resched_cpu(rq: *mut Rq, cpu: c_int) {
 #[export]
 extern "C" fn rust_sched_resched_cpu_select(cpu_online: bool, cpu_local: bool) -> bool {
     resched_cpu_needed(cpu_online, cpu_local)
+}
+
+/// Selects whether an idle CPU wakeup must lock and request rescheduling.
+#[cfg(CONFIG_RUST_SCHED_WAKE_IF_IDLE)]
+fn wake_if_idle_plan(curr_idle: bool, locked_idle: bool) -> u32 {
+    if !curr_idle {
+        return 0;
+    }
+
+    let mut plan = WAKE_IF_IDLE_LOCK;
+    if locked_idle {
+        plan |= WAKE_IF_IDLE_RESCHED;
+    }
+    plan
+}
+
+/// Checks whether the first idle-CPU wakeup gate requires the runqueue lock.
+///
+/// # Safety
+///
+/// `rq` must remain live and the caller must hold the RCU read lock.
+#[cfg(CONFIG_RUST_SCHED_WAKE_IF_IDLE)]
+unsafe fn wake_if_idle_needs_lock(rq: *mut Rq) -> bool {
+    // SAFETY: The caller holds the RCU read lock and the helper performs the
+    // required RCU dereference of the current-task pointer.
+    let curr = unsafe { bindings::rust_helper_sched_wake_if_idle_curr(rq) };
+    // SAFETY: RCU protects the current task from reclamation until it is
+    // checked.
+    let curr_idle = unsafe { task_is_idle(curr) };
+    wake_if_idle_plan(curr_idle, false) & WAKE_IF_IDLE_LOCK != 0
+}
+
+/// Requests rescheduling if the locked recheck still observes an idle task.
+///
+/// # Safety
+///
+/// `rq` must remain live and the caller must hold its runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_WAKE_IF_IDLE)]
+unsafe fn wake_if_idle_locked(rq: *mut Rq) {
+    // SAFETY: The caller holds the runqueue lock.
+    let curr = unsafe { rq_task_pointer(rq, bindings::RQ_curr) };
+    // SAFETY: The caller holds the runqueue lock.
+    let locked_idle = unsafe { task_is_idle(curr) };
+    if wake_if_idle_plan(true, locked_idle) & WAKE_IF_IDLE_RESCHED != 0 {
+        // SAFETY: The caller holds the runqueue lock.
+        unsafe { bindings::resched_curr(rq) };
+    }
+}
+
+/// Runs the initial idle-CPU wakeup gate.
+///
+/// # Safety
+///
+/// `rq` must remain live and the caller must hold the RCU read lock.
+#[cfg(CONFIG_RUST_SCHED_WAKE_IF_IDLE)]
+#[export]
+unsafe extern "C" fn rust_sched_wake_if_idle_needs_lock(rq: *mut Rq) -> bool {
+    // SAFETY: The caller satisfies the exported entry-point contract.
+    unsafe { wake_if_idle_needs_lock(rq) }
+}
+
+/// Runs the runqueue-locked idle-CPU wakeup recheck.
+///
+/// # Safety
+///
+/// `rq` must remain live and the caller must hold its runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_WAKE_IF_IDLE)]
+#[export]
+unsafe extern "C" fn rust_sched_wake_if_idle_locked(rq: *mut Rq) {
+    // SAFETY: The caller satisfies the exported entry-point contract.
+    unsafe { wake_if_idle_locked(rq) };
+}
+
+/// Selects the idle-CPU wakeup actions for KUnit.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_WAKE_IF_IDLE))]
+#[export]
+extern "C" fn rust_sched_wake_if_idle_select(curr_idle: bool, locked_idle: bool) -> u32 {
+    wake_if_idle_plan(curr_idle, locked_idle)
 }
 
 /// Classifies the task scheduling class relative to the selected class.

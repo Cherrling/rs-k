@@ -8,6 +8,7 @@
 #include <linux/preempt.h>
 #include <linux/processor.h>
 #include <linux/sched.h>
+#include <linux/sched/idle.h>
 #include <linux/sched-rust.h>
 #include <linux/slab.h>
 
@@ -289,6 +290,27 @@ static void sched_wake_test_resched_cpu(struct kunit *test)
 }
 #endif
 
+#ifdef CONFIG_RUST_SCHED_WAKE_IF_IDLE
+static void sched_wake_test_wake_if_idle_plan(struct kunit *test)
+{
+	KUNIT_EXPECT_EQ(test, 0, rust_sched_wake_if_idle_select(false, false));
+	KUNIT_EXPECT_EQ(test, 0, rust_sched_wake_if_idle_select(false, true));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_WAKE_IF_IDLE_LOCK,
+			rust_sched_wake_if_idle_select(true, false));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_WAKE_IF_IDLE_LOCK |
+			      RUST_SCHED_WAKE_IF_IDLE_RESCHED,
+			rust_sched_wake_if_idle_select(true, true));
+}
+
+static void sched_wake_test_wake_if_idle_current(struct kunit *test)
+{
+	migrate_disable();
+	wake_up_if_idle(raw_smp_processor_id());
+	migrate_enable();
+	KUNIT_SUCCEED(test);
+}
+#endif
+
 #if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
 	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE)
 static void sched_wake_test_wakeup_state(struct kunit *test)
@@ -484,6 +506,10 @@ static struct kunit_case sched_wake_test_cases[] = {
 #endif
 #ifdef CONFIG_RUST_SCHED_RESCHED_CPU
 	KUNIT_CASE(sched_wake_test_resched_cpu),
+#endif
+#ifdef CONFIG_RUST_SCHED_WAKE_IF_IDLE
+	KUNIT_CASE(sched_wake_test_wake_if_idle_plan),
+	KUNIT_CASE(sched_wake_test_wake_if_idle_current),
 #endif
 #ifdef CONFIG_RUST_SCHED_BLOCK_TASK
 	KUNIT_CASE(sched_wake_test_block_plan),

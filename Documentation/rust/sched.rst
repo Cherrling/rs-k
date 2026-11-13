@@ -19,6 +19,8 @@ The ``CONFIG_RUST_SCHED_RESCHED_CURR`` option selects Rust for the production
 current-task reschedule request state machine.
 The ``CONFIG_RUST_SCHED_RESCHED_CPU`` option selects Rust for the production
 per-CPU reschedule request decision.
+The ``CONFIG_RUST_SCHED_WAKE_IF_IDLE`` option selects Rust for the production
+idle CPU wakeup decision and locked recheck.
 The ``CONFIG_RUST_SCHED_BLOCK_TASK`` option selects Rust for the production
 task blocking state machine.
 The ``CONFIG_RUST_SCHED_RQ_TRANSITION`` option selects Rust for the production
@@ -49,6 +51,9 @@ Rust owns these production decisions:
   flag, preemption count, reschedule IPI, and idle wake trace operations.
 * Determining whether a per-CPU reschedule request targets an online or
   current CPU and requesting current-task rescheduling only for either case.
+* Checking whether the target runqueue current task is idle, acquiring the
+  runqueue lock only after a matching first check, rechecking under the lock,
+  and requesting rescheduling only after both checks match.
 * Reading task load and I/O wait state, updating the runqueue
   ``nr_uninterruptible`` and ``nr_iowait`` counts, ending delay accounting,
   constructing enqueue flags, calling task activation directly, selecting
@@ -97,6 +102,8 @@ The Rust-to-C calls are:
   delivery used by the current-task reschedule request path.
 * The CPU-online and current-CPU queries used by the per-CPU reschedule
   request path.
+* The RCU dereference of ``struct rq.curr`` used by the idle CPU wakeup
+  first-check path.
 * Wakeup tracepoint emission used by both wake paths.
 * Scheduling-class ``task_woken`` callback implementations reached through
   an indirect call from Rust.
@@ -116,6 +123,8 @@ The C-to-Rust production entries are:
 * ``rust_sched_wakeup_preempt()``.
 * ``rust_sched_resched_curr()``.
 * ``rust_sched_resched_cpu()``.
+* ``rust_sched_wake_if_idle_needs_lock()``.
+* ``rust_sched_wake_if_idle_locked()``.
 * ``rust_sched_block_task_locked()``.
 * ``rust_sched_activate_task_locked()``.
 * ``rust_sched_deactivate_task_locked()``.
@@ -144,6 +153,13 @@ holds that runqueue lock with interrupts disabled. Rust decides whether the
 request is required and calls ``resched_curr()`` only for an online target or
 the current CPU. Narrow C helpers perform the CPU-online and current-CPU
 queries.
+
+For the idle CPU wakeup entry, C holds the RCU read lock and calls Rust for the
+first idle-task check. Rust calls a narrow C helper for the RCU dereference and
+checks ``PF_IDLE``. The C caller acquires the runqueue lock with interrupts
+disabled only when the first check succeeds. Rust then rechecks the current
+task under the runqueue lock and calls ``resched_curr()`` only when both checks
+see an idle task.
 
 For the blocking entry, C validates that the task runqueue lock is held and
 passes the task state to Rust. Rust classifies the state and calls the bitfield,
@@ -335,20 +351,25 @@ A per-CPU reschedule request invokes current-task rescheduling when the target
 CPU is online or is the current CPU. The current-CPU query is skipped while
 the target CPU is online.
 
+An idle CPU wake acquires the target runqueue lock only after the first
+``PF_IDLE`` check succeeds. The locked recheck suppresses rescheduling when
+the target stopped being idle while the first checker waited for the lock.
+
 Validation gate
 ---------------
 
 The Rust KUnit cases cover the state-match table, saved-state transition,
 activation action selection, activation and delayed-enqueue flags, the
 uninterruptible and I/O wait count updates, wakeup-preemption action
-selection, per-CPU reschedule eligibility, blocking action selection, and a
-real uninterruptible timeout. A
+selection, per-CPU reschedule eligibility, idle CPU wakeup action selection,
+blocking action selection, and a real uninterruptible timeout. A
 state-publication case checks the blocked marker and running-state stores. The
 transition action table covers migrated enqueue and invalid sleeping dequeue.
 Real wakeup cases cover current-task rejection, waking a stopped kernel
 thread, waking a queued runnable task, waking a ``SCHED_FIFO`` task to invoke
-its scheduling-class callback, and real activation and deactivation traffic
-with both the Rust and C implementations.
+its scheduling-class callback, real activation and deactivation traffic with
+both the Rust and C implementations, and an idle CPU wake request against the
+current CPU to execute the Rust first-check entry.
 
 The unit must pass repeated four-vCPU Rust runs, a C fallback run, PREEMPT_RT,
 KASAN, lockdep, and a no-KUnit production build. Static checks include Rustfmt,
@@ -1157,6 +1178,59 @@ entry point and both C primitive helpers, and it contained no KUnit selector
 symbol or unresolved symbol. No run reported a ``BUG``, warning, KASAN report,
 lock dependency diagnosis, Oops, or panic.
 
+The idle CPU wakeup ownership unit was validated on 2026-11-13 with x86_64
+``LLVM=1`` builds and QEMU 11.1.3. Each configuration passed three consecutive
+four-vCPU runs for the applicable scheduler and hrtimer suites.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 25 25
+
+   * - Configuration
+     - Scheduler cases
+     - hrtimer cases
+   * - Full Rust
+     - 26
+     - 25
+   * - C fallback
+     - 24
+     - 25
+   * - Idle-wakeup only
+     - 5
+     - 25
+   * - PREEMPT_RT
+     - 26
+     - 25
+   * - KASAN
+     - 26
+     - 25
+   * - lockdep
+     - 26
+     - 25
+
+Rust owns the first idle check, the decision to acquire the runqueue lock,
+the locked recheck, and the conditional ``resched_curr()`` call. C retains the
+public ``wake_up_if_idle()`` entry, RCU read protection, the RCU dereference of
+``struct rq.curr``, runqueue lock and IRQ-state ownership, and the reschedule
+delivery ABI.
+
+The action table covers a non-idle first check, a successful first check with
+a non-idle locked recheck, and a successful first check with an idle locked
+recheck. A real four-vCPU case calls ``wake_up_if_idle()`` for the current CPU
+and executes the Rust first-check entry. The idle-wakeup-only build confirms
+that this path does not depend on another Rust scheduler option.
+
+One initial lockdep hrtimer run emitted a transient warning from
+``rust_hrtimer_callback_exit()`` after scheduler case 23. The trace entered
+only the hrtimer interrupt path. Three immediate reruns and twenty additional
+lockdep hrtimer runs passed without warnings. A ten-run control on the
+previous ``rs`` lockdep image also passed without warnings. Continue to track
+the hrtimer callback-running warning as a separate timing-sensitive issue.
+
+The KASAN test configuration used ``CONFIG_FRAME_WARN=4096`` because an
+unrelated ``fs/coredump.o`` call frame exceeded the default 2048-byte limit.
+The changed scheduler and Rust objects built without KASAN diagnostics.
+
 Review conditions
 -----------------
 
@@ -1186,6 +1260,9 @@ Reopen this boundary decision if any of these conditions changes:
   per-CPU reschedule lock contract changes.
 * The ``resched_curr()`` declaration, ABI, call ordering, or conditional
   requirement changes.
+* The RCU protection, current-task dereference, ``PF_IDLE`` representation,
+  initial idle check, runqueue lock and IRQ-state ownership, locked recheck,
+  or conditional reschedule ordering changes.
 * Rust gains safe CPU-state, runqueue-lock, or reschedule-delivery
   abstractions that can replace the narrow C boundaries.
 * The runnable path changes its runqueue lock, delayed-enqueue condition,
