@@ -2,32 +2,38 @@
 
 //! Native scheduler core state machines.
 //!
-//! Rust owns task-state matching, wake activation, and task blocking
-//! decisions. C retains task and runqueue locking, warning delivery,
-//! scheduling-class queue operations, and task selection.
+//! Rust owns task-state matching, wake activation, wake preemption, and task
+//! blocking decisions. C retains task and runqueue locking, warning delivery,
+//! scheduling-class implementations, and task selection.
 
 use crate::bindings;
 #[cfg(any(
     CONFIG_RUST_SCHED_WAKE_STATE,
+    CONFIG_RUST_SCHED_WAKE_PREEMPT,
     CONFIG_RUST_SCHED_TTWU_RUNNABLE,
     CONFIG_RUST_SCHED_TTWU_ACTIVATE,
     CONFIG_RUST_SCHED_RQ_TRANSITION
 ))]
 use crate::ffi::c_int;
-#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+#[cfg(any(CONFIG_RUST_SCHED_TTWU_ACTIVATE, CONFIG_RUST_SCHED_WAKE_PREEMPT))]
 use crate::ffi::c_ulong;
-#[cfg(any(CONFIG_RUST_SCHED_TTWU_RUNNABLE, CONFIG_RUST_SCHED_RQ_TRANSITION))]
-use crate::sync::atomic::atomic_load;
-#[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
-use crate::sync::atomic::atomic_store;
 #[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
 use crate::sync::atomic::Atomic;
 #[cfg(any(
     CONFIG_RUST_SCHED_TTWU_ACTIVATE,
     CONFIG_RUST_SCHED_TTWU_RUNNABLE,
-    CONFIG_RUST_SCHED_RQ_TRANSITION
+    CONFIG_RUST_SCHED_RQ_TRANSITION,
+    CONFIG_RUST_SCHED_WAKE_PREEMPT
 ))]
 use crate::sync::atomic::Relaxed;
+#[cfg(any(
+    CONFIG_RUST_SCHED_TTWU_RUNNABLE,
+    CONFIG_RUST_SCHED_RQ_TRANSITION,
+    CONFIG_RUST_SCHED_WAKE_PREEMPT
+))]
+use crate::sync::atomic::atomic_load;
+#[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
+use crate::sync::atomic::atomic_store;
 use macros::export;
 
 type Task = bindings::task_struct;
@@ -35,16 +41,39 @@ type Task = bindings::task_struct;
     CONFIG_RUST_SCHED_BLOCK_TASK,
     CONFIG_RUST_SCHED_RQ_TRANSITION,
     CONFIG_RUST_SCHED_TTWU_ACTIVATE,
-    CONFIG_RUST_SCHED_TTWU_RUNNABLE
+    CONFIG_RUST_SCHED_TTWU_RUNNABLE,
+    CONFIG_RUST_SCHED_WAKE_PREEMPT
 ))]
 type Rq = bindings::rq;
 #[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
 type TaskWokenCallback = unsafe extern "C" fn(rq: *mut Rq, task: *mut Task);
+#[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
+type WakeupPreemptCallback = unsafe extern "C" fn(rq: *mut Rq, task: *mut Task, wake_flags: c_int);
 
-#[cfg(any(CONFIG_RUST_SCHED_TTWU_RUNNABLE, CONFIG_RUST_SCHED_RQ_TRANSITION))]
+#[cfg(any(
+    CONFIG_RUST_SCHED_TTWU_RUNNABLE,
+    CONFIG_RUST_SCHED_RQ_TRANSITION,
+    CONFIG_RUST_SCHED_WAKE_PREEMPT
+))]
 const TASK_ON_RQ_QUEUED: i8 = bindings::RUST_SCHED_TASK_ON_RQ_QUEUED as i8;
 #[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
 const TASK_ON_RQ_MIGRATING: i8 = bindings::RUST_SCHED_TASK_ON_RQ_MIGRATING as i8;
+#[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
+const PREEMPT_CLASS_SAME: u32 = bindings::RUST_SCHED_WAKE_PREEMPT_CLASS_SAME;
+#[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
+const PREEMPT_CLASS_ABOVE: u32 = bindings::RUST_SCHED_WAKE_PREEMPT_CLASS_ABOVE;
+#[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
+const PREEMPT_CLASS_BELOW: u32 = bindings::RUST_SCHED_WAKE_PREEMPT_CLASS_BELOW;
+#[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
+const PREEMPT_CALL: u32 = bindings::RUST_SCHED_WAKE_PREEMPT_CALL;
+#[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
+const PREEMPT_RESCHED: u32 = bindings::RUST_SCHED_WAKE_PREEMPT_RESCHED;
+#[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
+const PREEMPT_UPDATE_NEXT: u32 = bindings::RUST_SCHED_WAKE_PREEMPT_UPDATE_NEXT;
+#[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
+const PREEMPT_SKIP_CLOCK: u32 = bindings::RUST_SCHED_WAKE_PREEMPT_SKIP_CLOCK;
+#[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
+const RQCF_REQ_SKIP: u32 = bindings::RUST_SCHED_RQCF_REQ_SKIP;
 
 /// Reads the current task wake state.
 ///
@@ -89,7 +118,11 @@ unsafe fn set_task_saved_state(task: *mut Task, state: u32) {
 /// # Safety
 ///
 /// `task` must remain live while this function reads its membership field.
-#[cfg(any(CONFIG_RUST_SCHED_TTWU_RUNNABLE, CONFIG_RUST_SCHED_RQ_TRANSITION))]
+#[cfg(any(
+    CONFIG_RUST_SCHED_TTWU_RUNNABLE,
+    CONFIG_RUST_SCHED_RQ_TRANSITION,
+    CONFIG_RUST_SCHED_WAKE_PREEMPT
+))]
 unsafe fn task_on_rq_state(task: *mut Task) -> i8 {
     // SAFETY: The caller guarantees that the task remains live. The field has
     // one-byte alignment, and all other writers use the same atomic access.
@@ -215,7 +248,7 @@ unsafe fn set_task_contributes_to_load(task: *mut Task, contributes_load: bool) 
 /// # Safety
 ///
 /// `task` must remain live during the state check.
-#[cfg(CONFIG_RUST_SCHED_TTWU_RUNNABLE)]
+#[cfg(any(CONFIG_RUST_SCHED_TTWU_RUNNABLE, CONFIG_RUST_SCHED_WAKE_PREEMPT))]
 unsafe fn task_on_rq_queued(task: *mut Task) -> bool {
     // SAFETY: The caller guarantees that the task remains live.
     unsafe { task_on_rq_state(task) == TASK_ON_RQ_QUEUED }
@@ -372,7 +405,7 @@ unsafe extern "C" fn rust_sched_ttwu_runnable_locked(
     // SAFETY: The caller holds the task runqueue lock.
     if !unsafe { task_on_cpu_state(task) } {
         // SAFETY: The caller holds the task runqueue lock.
-        unsafe { bindings::wakeup_preempt(rq, task, wake_flags) };
+        unsafe { wakeup_preempt(rq, task, wake_flags) };
     }
 
     // SAFETY: The caller holds the task runqueue lock.
@@ -529,6 +562,238 @@ unsafe fn task_woken_callback(task: *mut Task) -> Option<TaskWokenCallback> {
     };
     // SAFETY: The generated offset points to the optional callback field.
     unsafe { callback.read_volatile() }
+}
+
+/// Reads a task pointer from the generated runqueue field offset.
+///
+/// # Safety
+///
+/// `rq` must remain live and the offset must name a live task pointer field.
+#[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
+unsafe fn rq_task_pointer(rq: *mut Rq, offset: u32) -> *mut Task {
+    // SAFETY: The generated offset identifies the requested pointer field in
+    // the live runqueue. Use a volatile load to match the C field access.
+    unsafe {
+        rq.cast::<u8>()
+            .add(offset as usize)
+            .cast::<*mut Task>()
+            .read_volatile()
+    }
+}
+
+/// Reads the selected scheduling class from the runqueue.
+///
+/// # Safety
+///
+/// `rq` must remain live and the caller must provide the runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
+unsafe fn rq_next_class(rq: *mut Rq) -> *mut bindings::sched_class {
+    // SAFETY: The generated offset identifies the selected class field in the
+    // live runqueue. Use a volatile load to match the C field access.
+    unsafe {
+        rq.cast::<u8>()
+            .add(bindings::RQ_next_class as usize)
+            .cast::<*mut bindings::sched_class>()
+            .read_volatile()
+    }
+}
+
+/// Publishes the selected scheduling class on the runqueue.
+///
+/// # Safety
+///
+/// `rq` and `class` must remain live and the caller must hold the runqueue
+/// lock.
+#[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
+unsafe fn set_rq_next_class(rq: *mut Rq, class: *mut bindings::sched_class) {
+    // SAFETY: The generated offset identifies the selected class field. The
+    // caller holds the runqueue lock during the volatile store.
+    unsafe {
+        rq.cast::<u8>()
+            .add(bindings::RQ_next_class as usize)
+            .cast::<*mut bindings::sched_class>()
+            .write_volatile(class);
+    }
+}
+
+/// Reads the scheduling class of a task.
+///
+/// # Safety
+///
+/// `task` must remain live and the caller must hold the task runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
+unsafe fn task_sched_class(task: *mut Task) -> *mut bindings::sched_class {
+    // SAFETY: The caller guarantees that the task remains live. Use a volatile
+    // load to match the C field access.
+    unsafe { core::ptr::addr_of!((*task).sched_class).read_volatile() }
+}
+
+/// Reads a scheduling class's wakeup-preemption callback.
+///
+/// # Safety
+///
+/// `class` must remain live and refer to a complete `struct sched_class`.
+#[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
+unsafe fn wakeup_preempt_callback(class: *mut bindings::sched_class) -> WakeupPreemptCallback {
+    // SAFETY: The generated offset identifies the non-optional callback field.
+    unsafe {
+        class
+            .cast::<u8>()
+            .add(bindings::SCHED_CLASS_wakeup_preempt as usize)
+            .cast::<WakeupPreemptCallback>()
+            .read_volatile()
+    }
+}
+
+/// Returns whether a task has the reschedule thread flag set.
+///
+/// # Safety
+///
+/// `task` must remain live and the caller must hold the task runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
+unsafe fn task_need_resched(task: *mut Task) -> bool {
+    // SAFETY: The caller guarantees that the task remains live. Use a volatile
+    // load so this has the read behavior of the former C thread-flag check.
+    let flags = unsafe { core::ptr::addr_of!((*task).thread_info.flags).read_volatile() };
+    let mask = (1 as c_ulong) << bindings::TIF_NEED_RESCHED;
+    flags & mask != 0
+}
+
+/// Requests omission of the next redundant runqueue clock update.
+///
+/// # Safety
+///
+/// `rq` must remain live and the caller must hold the runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
+unsafe fn request_rq_clock_skip(rq: *mut Rq) {
+    // SAFETY: The generated offset identifies the clock-update flags. The
+    // runqueue lock serializes this read-modify-write sequence.
+    let flags = unsafe {
+        rq.cast::<u8>()
+            .add(bindings::RQ_clock_update_flags as usize)
+            .cast::<u32>()
+    };
+    // SAFETY: The caller holds the runqueue lock and the field is writable.
+    unsafe { flags.write_volatile(flags.read_volatile() | RQCF_REQ_SKIP) };
+}
+
+/// Classifies the task scheduling class relative to the selected class.
+#[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
+fn preempt_class_relation(
+    task_class: *mut bindings::sched_class,
+    next_class: *mut bindings::sched_class,
+) -> u32 {
+    if task_class == next_class {
+        PREEMPT_CLASS_SAME
+    } else if (task_class as usize) < (next_class as usize) {
+        PREEMPT_CLASS_ABOVE
+    } else {
+        PREEMPT_CLASS_BELOW
+    }
+}
+
+/// Selects the actions for a wakeup-preemption event.
+#[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
+fn wakeup_preempt_plan(class_relation: u32, donor_queued: bool, need_resched: bool) -> u32 {
+    let mut plan = match class_relation {
+        PREEMPT_CLASS_SAME => PREEMPT_CALL,
+        PREEMPT_CLASS_ABOVE => PREEMPT_CALL | PREEMPT_RESCHED | PREEMPT_UPDATE_NEXT,
+        _ => 0,
+    };
+
+    if donor_queued && need_resched {
+        plan |= PREEMPT_SKIP_CLOCK;
+    }
+
+    plan
+}
+
+/// Implements the runqueue-locked wakeup-preemption state machine.
+///
+/// # Safety
+///
+/// `rq`, `task`, and all scheduling classes involved must remain live. The
+/// caller must hold the runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
+unsafe fn wakeup_preempt_locked(rq: *mut Rq, task: *mut Task, wake_flags: c_int) {
+    // SAFETY: The caller holds the runqueue lock.
+    let donor = unsafe { rq_task_pointer(rq, bindings::RQ_donor) };
+    // SAFETY: The caller holds the runqueue lock.
+    let task_class = unsafe { task_sched_class(task) };
+    // SAFETY: The caller holds the runqueue lock.
+    let next_class = unsafe { rq_next_class(rq) };
+    let relation = preempt_class_relation(task_class, next_class);
+    let class_plan = wakeup_preempt_plan(relation, false, false);
+
+    if class_plan & PREEMPT_CALL != 0 {
+        // SAFETY: The selected class and task remain live under the lock.
+        let callback = unsafe { wakeup_preempt_callback(next_class) };
+        // SAFETY: The callback uses the runqueue lock contract of the caller.
+        unsafe { callback(rq, task, wake_flags) };
+    }
+    if class_plan & PREEMPT_RESCHED != 0 {
+        // SAFETY: The caller holds the runqueue lock.
+        unsafe { bindings::resched_curr(rq) };
+    }
+    if class_plan & PREEMPT_UPDATE_NEXT != 0 {
+        // SAFETY: The task class remains live and the caller holds the lock.
+        unsafe { set_rq_next_class(rq, task_class) };
+    }
+
+    // SAFETY: The caller holds the runqueue lock.
+    let donor_queued = unsafe { task_on_rq_queued(donor) };
+    // SAFETY: The caller holds the runqueue lock.
+    let curr = unsafe { rq_task_pointer(rq, bindings::RQ_curr) };
+    // SAFETY: The caller holds the runqueue lock.
+    let need_resched = unsafe { task_need_resched(curr) };
+    if wakeup_preempt_plan(relation, donor_queued, need_resched) & PREEMPT_SKIP_CLOCK != 0 {
+        // SAFETY: The caller holds the runqueue lock.
+        unsafe { request_rq_clock_skip(rq) };
+    }
+}
+
+/// Implements the production wakeup-preemption entry point.
+///
+/// # Safety
+///
+/// `rq`, `task`, and all scheduling classes involved must remain live. The
+/// caller must hold the runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
+#[export]
+unsafe extern "C" fn rust_sched_wakeup_preempt(rq: *mut Rq, task: *mut Task, wake_flags: c_int) {
+    // SAFETY: The caller satisfies the exported entry-point contract.
+    unsafe { wakeup_preempt_locked(rq, task, wake_flags) };
+}
+
+/// Selects the wakeup-preemption actions for a class relation and clock state.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_WAKE_PREEMPT))]
+#[export]
+extern "C" fn rust_sched_wakeup_preempt_select(
+    class_relation: u32,
+    donor_queued: bool,
+    need_resched: bool,
+) -> u32 {
+    wakeup_preempt_plan(class_relation, donor_queued, need_resched)
+}
+
+/// Calls the production wakeup-preemption implementation.
+///
+/// # Safety
+///
+/// The caller must hold the runqueue lock and satisfy `wakeup_preempt()`.
+#[cfg(any(CONFIG_RUST_SCHED_TTWU_RUNNABLE, CONFIG_RUST_SCHED_TTWU_ACTIVATE))]
+unsafe fn wakeup_preempt(rq: *mut Rq, task: *mut Task, wake_flags: c_int) {
+    #[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
+    // SAFETY: The caller provides the runqueue lock contract.
+    unsafe {
+        wakeup_preempt_locked(rq, task, wake_flags);
+    }
+
+    #[cfg(not(CONFIG_RUST_SCHED_WAKE_PREEMPT))]
+    // SAFETY: The caller provides the runqueue lock contract.
+    unsafe {
+        bindings::wakeup_preempt(rq, task, wake_flags);
+    }
 }
 
 /// Constructs the enqueue flags for a woke task.
@@ -723,7 +988,7 @@ unsafe extern "C" fn rust_sched_ttwu_activate_locked(
     // SAFETY: The task is locked and ready to enter its runqueue.
     unsafe { bindings::activate_task(rq, task, enqueue_flags) };
     // SAFETY: The caller holds the task runqueue lock.
-    unsafe { bindings::wakeup_preempt(rq, task, wake_flags) };
+    unsafe { wakeup_preempt(rq, task, wake_flags) };
     // SAFETY: The caller holds the task runqueue lock.
     unsafe { publish_task_wakeup_state(task) };
     // SAFETY: The task state is published and the task remains live.

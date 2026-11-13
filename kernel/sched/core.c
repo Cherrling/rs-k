@@ -167,6 +167,29 @@ static_assert(RUST_SCHED_WF_MIGRATED == WF_MIGRATED);
 static_assert(RUST_SCHED_WF_RQ_SELECTED == WF_RQ_SELECTED);
 #endif
 
+#ifdef CONFIG_RUST_SCHED_WAKE_PREEMPT
+static_assert(RUST_SCHED_RQCF_REQ_SKIP == RQCF_REQ_SKIP);
+static_assert(sizeof_field(struct rq, donor) == sizeof(void *));
+static_assert(sizeof_field(struct rq, curr) == sizeof(void *));
+static_assert(sizeof_field(struct rq, next_class) == sizeof(void *));
+static_assert(sizeof_field(struct task_struct, sched_class) == sizeof(void *));
+static_assert(sizeof_field(struct task_struct, thread_info.flags) ==
+	      sizeof(unsigned long));
+static_assert(sizeof_field(struct rq, clock_update_flags) ==
+	      sizeof(unsigned int));
+static_assert(offsetof(struct rq, donor) %
+	      __alignof__(((struct rq *)0)->donor) == 0);
+static_assert(offsetof(struct rq, curr) %
+	      __alignof__(((struct rq *)0)->curr) == 0);
+static_assert(offsetof(struct rq, next_class) %
+	      __alignof__(((struct rq *)0)->next_class) == 0);
+static_assert(offsetof(struct rq, clock_update_flags) %
+	      __alignof__(((struct rq *)0)->clock_update_flags) == 0);
+static_assert(sizeof_field(struct sched_class, wakeup_preempt) == sizeof(void *));
+static_assert(offsetof(struct sched_class, wakeup_preempt) %
+	      __alignof__(((struct sched_class *)0)->wakeup_preempt) == 0);
+#endif
+
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 DEFINE_PER_CPU(struct rnd_state, sched_rnd_state);
 
@@ -2377,6 +2400,9 @@ inline int task_curr(const struct task_struct *p)
 
 void wakeup_preempt(struct rq *rq, struct task_struct *p, int flags)
 {
+#ifdef CONFIG_RUST_SCHED_WAKE_PREEMPT
+	rust_sched_wakeup_preempt(rq, p, flags);
+#else
 	struct task_struct *donor = rq->donor;
 
 	if (p->sched_class == rq->next_class) {
@@ -2394,6 +2420,7 @@ void wakeup_preempt(struct rq *rq, struct task_struct *p, int flags)
 	 */
 	if (task_on_rq_queued(donor) && test_tsk_need_resched(rq->curr))
 		rq_clock_skip_update(rq);
+#endif
 }
 
 #ifdef CONFIG_RUST_SCHED_WAKE_STATE

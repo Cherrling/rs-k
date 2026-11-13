@@ -1012,6 +1012,24 @@ config RUST_SCHED_WAKE_STATE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SCHED_WAKE_PREEMPT
+	bool "Rust implementation of scheduler wake preemption"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production wakeup preemption state machine. Rust
+	  compares the woken task scheduling class with the selected class,
+	  invokes the selected class wakeup-preemption callback, requests
+	  rescheduling, updates the selected class, and requests the redundant
+	  clock update skip.
+
+	  Task and runqueue locking, scheduling-class callback implementations,
+	  reschedule delivery, tracepoints, and public scheduler ABI adapters
+	  remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_SCHED_TTWU_RUNNABLE
 	bool "Rust implementation of the scheduler runnable wake path"
 	depends on RUST
@@ -1025,9 +1043,8 @@ config RUST_SCHED_TTWU_RUNNABLE
 	  clearing the blocked marker and publishing the running state.
 
 	  Task runqueue lock acquisition and release, the scheduler queue
-	  implementation and proxy operations, the scheduling-class preemption
-	  implementation, tracing, and public scheduler ABI adapters remain in
-	  C.
+	  implementation and proxy operations, scheduling-class preemption
+	  callbacks, tracing, and public scheduler ABI adapters remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -1050,7 +1067,7 @@ config RUST_SCHED_TTWU_ACTIVATE
 
 	  Task runqueue locking and pinning, scheduling-class queue operations
 	  invoked by the activation call, the delay accounting primitive, the
-	  scheduling-class preemption implementation, tracing, scheduling-class
+	  scheduling-class preemption callbacks, tracing, scheduling-class
 	  callback implementations, lock pin primitives, and public scheduler
 	  ABI adapters remain in C.
 

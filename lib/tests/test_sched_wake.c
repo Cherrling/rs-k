@@ -206,6 +206,29 @@ static void sched_wake_test_realtime_task_woken(struct kunit *test)
 }
 #endif
 
+#ifdef CONFIG_RUST_SCHED_WAKE_PREEMPT
+static void sched_wake_test_wakeup_preempt_plan(struct kunit *test)
+{
+	unsigned int (*select)(unsigned int relation, bool donor_queued,
+			       bool need_resched);
+	unsigned int same = RUST_SCHED_WAKE_PREEMPT_CLASS_SAME;
+	unsigned int above = RUST_SCHED_WAKE_PREEMPT_CLASS_ABOVE;
+	unsigned int below = RUST_SCHED_WAKE_PREEMPT_CLASS_BELOW;
+	unsigned int call = RUST_SCHED_WAKE_PREEMPT_CALL;
+	unsigned int skip = RUST_SCHED_WAKE_PREEMPT_SKIP_CLOCK;
+	unsigned int higher = call |
+			      RUST_SCHED_WAKE_PREEMPT_RESCHED |
+			      RUST_SCHED_WAKE_PREEMPT_UPDATE_NEXT;
+
+	select = rust_sched_wakeup_preempt_select;
+	KUNIT_EXPECT_EQ(test, call, select(same, false, false));
+	KUNIT_EXPECT_EQ(test, call | skip, select(same, true, true));
+	KUNIT_EXPECT_EQ(test, higher, select(above, false, false));
+	KUNIT_EXPECT_EQ(test, skip, select(below, true, true));
+	KUNIT_EXPECT_EQ(test, 0, select(below, false, true));
+}
+#endif
+
 #if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
 	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE)
 static void sched_wake_test_wakeup_state(struct kunit *test)
@@ -390,6 +413,9 @@ static struct kunit_case sched_wake_test_cases[] = {
 	KUNIT_CASE(sched_wake_test_dec_uninterruptible),
 	KUNIT_CASE(sched_wake_test_dec_iowait),
 	KUNIT_CASE(sched_wake_test_realtime_task_woken),
+#endif
+#ifdef CONFIG_RUST_SCHED_WAKE_PREEMPT
+	KUNIT_CASE(sched_wake_test_wakeup_preempt_plan),
 #endif
 #ifdef CONFIG_RUST_SCHED_BLOCK_TASK
 	KUNIT_CASE(sched_wake_test_block_plan),

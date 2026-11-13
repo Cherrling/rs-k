@@ -9,7 +9,8 @@ struct rq;
 struct rq_flags;
 
 #if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
-	defined(CONFIG_RUST_SCHED_RQ_TRANSITION)
+	defined(CONFIG_RUST_SCHED_RQ_TRANSITION) || \
+	defined(CONFIG_RUST_SCHED_WAKE_PREEMPT)
 
 #define RUST_SCHED_TASK_ON_RQ_QUEUED		1
 
@@ -35,6 +36,30 @@ int rust_sched_state_match_select(unsigned int task_state,
 #endif
 
 #endif /* CONFIG_RUST_SCHED_WAKE_STATE */
+
+#ifdef CONFIG_RUST_SCHED_WAKE_PREEMPT
+
+#define RUST_SCHED_WAKE_PREEMPT_CLASS_SAME	0
+#define RUST_SCHED_WAKE_PREEMPT_CLASS_ABOVE	1
+#define RUST_SCHED_WAKE_PREEMPT_CLASS_BELOW	2
+#define RUST_SCHED_WAKE_PREEMPT_CALL		0x01
+#define RUST_SCHED_WAKE_PREEMPT_RESCHED		0x02
+#define RUST_SCHED_WAKE_PREEMPT_UPDATE_NEXT	0x04
+#define RUST_SCHED_WAKE_PREEMPT_SKIP_CLOCK	0x08
+#define RUST_SCHED_RQCF_REQ_SKIP		0x01
+
+void resched_curr(struct rq *rq);
+
+void rust_sched_wakeup_preempt(struct rq *rq, struct task_struct *task,
+			       int wake_flags);
+
+#ifdef CONFIG_KUNIT
+unsigned int rust_sched_wakeup_preempt_select(unsigned int class_relation,
+					      bool donor_queued,
+					      bool need_resched);
+#endif
+
+#endif /* CONFIG_RUST_SCHED_WAKE_PREEMPT */
 
 #ifdef CONFIG_RUST_SCHED_TTWU_RUNNABLE
 
