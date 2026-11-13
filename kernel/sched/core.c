@@ -3932,12 +3932,6 @@ bool rust_helper_sched_ttwu_proxy_return(struct rq *rq,
 
 #if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
 	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE)
-void rust_helper_sched_ttwu_preempt(struct rq *rq, struct task_struct *task,
-				    int wake_flags)
-{
-	wakeup_preempt(rq, task, wake_flags);
-}
-
 void rust_helper_sched_ttwu_trace_wakeup(struct task_struct *task)
 {
 	trace_sched_wakeup(task);

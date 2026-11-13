@@ -372,7 +372,7 @@ unsafe extern "C" fn rust_sched_ttwu_runnable_locked(
     // SAFETY: The caller holds the task runqueue lock.
     if !unsafe { task_on_cpu_state(task) } {
         // SAFETY: The caller holds the task runqueue lock.
-        unsafe { bindings::rust_helper_sched_ttwu_preempt(rq, task, wake_flags) };
+        unsafe { bindings::wakeup_preempt(rq, task, wake_flags) };
     }
 
     // SAFETY: The caller holds the task runqueue lock.
@@ -723,7 +723,7 @@ unsafe extern "C" fn rust_sched_ttwu_activate_locked(
     // SAFETY: The task is locked and ready to enter its runqueue.
     unsafe { bindings::activate_task(rq, task, enqueue_flags) };
     // SAFETY: The caller holds the task runqueue lock.
-    unsafe { bindings::rust_helper_sched_ttwu_preempt(rq, task, wake_flags) };
+    unsafe { bindings::wakeup_preempt(rq, task, wake_flags) };
     // SAFETY: The caller holds the task runqueue lock.
     unsafe { publish_task_wakeup_state(task) };
     // SAFETY: The task state is published and the task remains live.

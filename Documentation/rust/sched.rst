@@ -32,14 +32,15 @@ Rust owns these production decisions:
   reading task blocked, on-CPU, and delayed state, deciding whether delayed
   enqueue is necessary, composing its flags, and calling ``enqueue_task()``
   directly.
-* Handling proxy state, selecting preemption, and publishing the final running
-  state.
+* Handling proxy state, selecting preemption and calling
+  ``wakeup_preempt()`` directly, and publishing the final running state.
 * Decoding the selected-runqueue and migrated wake flags.
 * Reading task load and I/O wait state, updating the runqueue
   ``nr_uninterruptible`` and ``nr_iowait`` counts, ending delay accounting,
   constructing enqueue flags, calling task activation directly, selecting
-  preemption, publishing the wakeup, and deciding whether to invoke and
-  directly calling the scheduling-class ``task_woken`` callback.
+  preemption and calling ``wakeup_preempt()`` directly, publishing the
+  wakeup, and deciding whether to invoke and directly calling the
+  scheduling-class ``task_woken`` callback.
 * Classifying whether a blocking task contributes to load, classifying whether
   its state is special, updating its load flag, selecting special dequeue,
   and deciding whether dequeue and block accounting run.
@@ -49,8 +50,9 @@ Rust owns these production decisions:
 
 Task-state storage outside the wake-state protocol, warning delivery, task and
 runqueue locking, scheduler queue and proxy operations, wake-list handling,
-CPU selection, preemption, tracing, statistics, and public scheduler ABI
-adapters remain in C. Runqueue queue operations, the class callback, and its
+CPU selection, the ``wakeup_preempt()`` implementation and scheduling-class
+preemption operations, tracing, statistics, and public scheduler ABI adapters
+remain in C. Runqueue queue operations, the class callback, and its
 scheduling-class implementation and lock pin primitives also remain in C.
 Blocking dequeue and block accounting primitives also remain in C. The KCSAN
 runqueue membership writer assertion, warnings, and queue operations also
@@ -67,11 +69,13 @@ state result and wake-state transition come from
 The Rust-to-C calls are:
 
 * The invalid debug-preemption wake-mask warning.
-* The runqueue clock update, proxy state query, and preemption used by the
-  runnable path. Rust calls ``update_rq_clock()`` directly.
-* The delay-accounting completion primitive and preemption used by the
-  activation path. Rust constructs the enqueue flags, updates ``nr_iowait``,
-  and calls ``activate_task()`` directly.
+* The runqueue clock update and proxy state query used by the runnable path.
+  Rust calls ``update_rq_clock()`` directly.
+* The delay-accounting completion primitive used by the activation path.
+  Rust constructs the enqueue flags, updates ``nr_iowait``, and calls
+  ``activate_task()`` directly.
+* Preemption used by both wake paths. Rust calls ``wakeup_preempt()``
+  directly.
 * Wakeup tracepoint emission used by both wake paths.
 * Scheduling-class ``task_woken`` callback implementations reached through
   an indirect call from Rust.
@@ -133,10 +137,11 @@ selection, migration, full enqueue, statistics, and accounting in C. The
 runnable unit changes only the path inside the task runqueue lock.
 
 The runnable path retains runqueue lock acquisition and release, scheduler
-queue and proxy operations, preemption, and tracing in C. Rust owns the
-decision to enqueue a delayed task, the ``ENQUEUE_NOCLOCK`` and
-``ENQUEUE_DELAYED`` flags, and the direct ``enqueue_task()`` call. C retains
-the scheduling-class queue operation reached through that call.
+queue and proxy operations, the ``wakeup_preempt()`` implementation, and
+tracing in C. Rust owns the decision to enqueue a delayed task, the
+``ENQUEUE_NOCLOCK`` and ``ENQUEUE_DELAYED`` flags, and the direct
+``enqueue_task()`` call. C retains the scheduling-class queue operation
+reached through that call.
 
 The runqueue clock algorithm remains in C. It combines lockdep validation,
 scheduler feature checks, clock-source sampling, ``sched_ext`` clock update,
@@ -146,15 +151,22 @@ runqueue lock is held. There is no clock-update wrapper. The C adapter cannot
 return while Rust still holds the lock because the lock remains owned by the
 C caller.
 
+The preemption implementation remains in C. It selects the next scheduling
+class, invokes its ``wakeup_preempt`` operation, updates the selected class
+when necessary, requests rescheduling, and skips a redundant clock update.
+Rust calls ``wakeup_preempt()`` directly in both wake paths while the task
+runqueue lock is held. There is no preemption wrapper. Reopen this boundary
+when the scheduling-class interface or reschedule ordering changes.
+
 The activation path retains runqueue lock ownership, scheduling-class queue
-operations reached through ``activate_task()``, the preemption primitive,
-tracing, delay accounting, scheduling-class callback implementations, and
-the lock pin primitives in C. Rust owns wake-flag decoding, the runqueue
-``nr_uninterruptible`` and ``nr_iowait`` updates, the conditions and order
-for delay-accounting completion and task activation, enqueue-flag
-construction, preemption, wake publication, callback lookup, and callback
-invocation. Rust keeps the same unpin-callback-repin order as the C path
-while retaining ownership of the state machine.
+operations reached through ``activate_task()``, the ``wakeup_preempt()``
+implementation, tracing, delay accounting, scheduling-class callback
+implementations, and the lock pin primitives in C. Rust owns wake-flag
+decoding, the runqueue ``nr_uninterruptible`` and ``nr_iowait`` updates, the
+conditions and order for delay-accounting completion and task activation,
+enqueue-flag construction, preemption, wake publication, callback lookup, and
+callback invocation. Rust keeps the same unpin-callback-repin order as the C
+path while retaining ownership of the state machine.
 
 The blocking path retains runqueue locking, scheduler queue operations,
 accounting primitives, tracing, and public scheduler ABI adapters in C. Rust
@@ -885,6 +897,64 @@ clock state, scheduler-class time accounting, IRQ time accounting, and
 paravirtual steal-time accounting. Reopen this boundary when those contracts
 or the clock-update ordering change.
 
+The direct preemption call unit was validated on 2026-11-13 with x86_64
+``LLVM=1`` builds and QEMU 11.1.3. Each configuration passed three consecutive
+four-vCPU runs:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 25 25
+
+   * - Configuration
+     - Scheduler cases
+     - hrtimer cases
+   * - Full Rust
+     - 19
+     - 25
+   * - Wake-state fallback
+     - 17
+     - 25
+   * - Runnable fallback
+     - 17
+     - 25
+   * - Activation fallback
+     - 12
+     - 25
+   * - Wake-state only
+     - 5
+     - 25
+   * - Runnable only
+     - 6
+     - 25
+   * - Activation only
+     - 11
+     - 25
+   * - PREEMPT_RT
+     - 19
+     - 25
+   * - KASAN
+     - 19
+     - 25
+   * - lockdep
+     - 19
+     - 25
+
+Rust calls ``wakeup_preempt()`` directly from both wake paths under the task
+runqueue lock. C removes ``rust_helper_sched_ttwu_preempt()``, which only
+forwarded to the preemption implementation. The real runnable and activation
+wake KUnit cases exercise the direct call.
+
+The preemption algorithm remains a reviewed C boundary because it selects a
+scheduling class, invokes its operation, changes the selected class when
+needed, requests rescheduling, and skips a redundant clock update. Reopen this
+boundary when the scheduling-class interface or ordering changes.
+
+The full configuration passed Rustfmt, Clippy, strict checkpatch, and
+``git diff --check``. The no-KUnit production image built with Clippy and all
+five Rust scheduler options enabled. It contained no unresolved symbols and
+no preemption helper symbol. No run reported a ``BUG``, warning, KASAN report,
+lock dependency diagnosis, Oops, or panic.
+
 Review conditions
 -----------------
 
@@ -897,6 +967,8 @@ Reopen this boundary decision if any of these conditions changes:
 * Rust gains safe task-state accessors and kernel warning abstractions.
 * The runqueue clock algorithm, lock contract, update ordering, or function
   declaration changes.
+* The ``wakeup_preempt()`` algorithm, scheduling-class interface, lock
+  contract, or preemption ordering changes.
 * The runnable path changes its runqueue lock, delayed-enqueue condition,
   enqueue flags, direct enqueue call, proxy return, preemption, or
   wake-publication ordering.

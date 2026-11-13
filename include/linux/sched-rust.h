@@ -81,9 +81,9 @@ void enqueue_task(struct rq *rq, struct task_struct *task, int flags);
 #if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
 	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE)
 
-void rust_helper_sched_ttwu_preempt(struct rq *rq, struct task_struct *task,
-				    int wake_flags);
 void rust_helper_sched_ttwu_trace_wakeup(struct task_struct *task);
+
+void wakeup_preempt(struct rq *rq, struct task_struct *task, int wake_flags);
 
 #ifdef CONFIG_KUNIT
 void rust_sched_ttwu_wakeup_state_select(struct task_struct *task);
