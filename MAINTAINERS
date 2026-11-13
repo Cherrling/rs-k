@@ -23996,6 +23996,7 @@ F:	include/linux/rwsem-rust.h
 F:	include/linux/sched-rust.h
 F:	include/linux/semaphore-rust.h
 F:	include/linux/swait-rust.h
+F:	include/linux/task-exit-notify-rust.h
 F:	include/linux/task-release-rust.h
 F:	include/linux/task-rust.h
 F:	include/linux/timerqueue-rust.h
@@ -24017,6 +24018,7 @@ F:	lib/tests/test_rwsem.c
 F:	lib/tests/test_sched_wake.c
 F:	lib/tests/test_semaphore.c
 F:	lib/tests/test_swait.c
+F:	lib/tests/test_task_exit_notify.c
 F:	lib/tests/test_task_release.c
 F:	lib/tests/test_task_teardown.c
 F:	lib/tests/test_timerqueue.c

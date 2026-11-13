@@ -39,6 +39,7 @@ more details.
     testing
     task-teardown
     task-release
+    task-exit-notify
     pid-allocation
     pid-association
     pid-number

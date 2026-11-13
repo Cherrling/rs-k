@@ -1316,6 +1316,23 @@ config RUST_TASK_RELEASE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_TASK_EXIT_NOTIFY
+	bool "Rust implementation of task exit parent notification"
+	depends on RUST && RUST_TASK_RELEASE
+	default y
+	help
+	  Use Rust for the production task-exit notification state machine.
+	  Rust owns child-reaper selection, child reparenting, parent-death
+	  signals, zombie notification, self-reaping decisions, and dead-task
+	  release ordering.
+
+	  Task-list locking, intrusive list operations, ptrace transfer, signal
+	  delivery, process-group cleanup, PID namespace teardown, and parent
+	  notification primitives remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_PID_LIFECYCLE
 	bool "Rust implementation of PID lifecycle release"
 	depends on RUST

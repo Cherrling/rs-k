@@ -2530,6 +2530,21 @@ config TASK_RELEASE_KUNIT_TEST
 
 	  If unsure, say N.
 
+config TASK_EXIT_NOTIFY_KUNIT_TEST
+	bool "KUnit test for task exit parent notification" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for task-exit parent notification.
+	  The integration tests create and stop kernel threads and exercise a
+	  PID namespace child-reaper transfer and teardown.
+
+	  The branch-selector cases run only with the native Rust
+	  implementation. The real exit case runs with either the C
+	  implementation or the native Rust implementation selected.
+
+	  If unsure, say N.
+
 config PID_LIFECYCLE_KUNIT_TEST
 	bool "KUnit test for PID lifecycle release" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

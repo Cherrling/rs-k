@@ -13,6 +13,7 @@
 #include <linux/sched/task.h>
 #include <linux/sched/task_stack.h>
 #include <linux/sched/cputime.h>
+#include <linux/task-exit-notify-rust.h>
 #include <linux/task-release-rust.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
@@ -603,6 +604,22 @@ static void exit_mm(void)
 		exit_oom_victim();
 }
 
+#ifdef CONFIG_RUST_TASK_EXIT_NOTIFY
+
+void
+rust_helper_task_exit_notify_kill_orphaned_pgrp(struct task_struct *task,
+						struct task_struct *parent)
+{
+	kill_orphaned_pgrp(task, parent);
+}
+
+static void exit_notify(struct task_struct *tsk, int group_dead)
+{
+	rust_task_exit_notify(tsk, group_dead);
+}
+
+#else /* !CONFIG_RUST_TASK_EXIT_NOTIFY */
+
 static struct task_struct *find_alive_thread(struct task_struct *p)
 {
 	struct task_struct *t;
@@ -796,6 +813,8 @@ static void exit_notify(struct task_struct *tsk, int group_dead)
 		release_task(p);
 	}
 }
+
+#endif /* !CONFIG_RUST_TASK_EXIT_NOTIFY */
 
 #ifdef CONFIG_DEBUG_STACK_USAGE
 #ifdef CONFIG_STACK_GROWSUP
