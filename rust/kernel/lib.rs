@@ -112,6 +112,8 @@ pub mod miscdevice;
 pub mod mm;
 #[cfg(CONFIG_RUST_MM_LIFETIME)]
 mod mm_core;
+#[cfg(CONFIG_RUST_MM_TEARDOWN)]
+mod mm_teardown;
 pub mod module;
 pub mod module_param;
 #[cfg(CONFIG_RUST_MUTEX)]

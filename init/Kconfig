@@ -1270,6 +1270,21 @@ config RUST_MM_LIFETIME
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_MM_TEARDOWN
+	bool "Rust implementation of final address-space teardown"
+	depends on RUST && MMU
+	default y
+	help
+	  Use Rust for the production orchestration of final address-space
+	  teardown. Rust owns the teardown order and the conditional mmlist
+	  and binary-format cleanup decisions.
+
+	  Subsystem teardown, diagnostics, locking, and the final mmdrop
+	  operation remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_CPUPRI
 	bool "Rust implementation of CPU-priority scheduling state"
 	depends on RUST && SMP

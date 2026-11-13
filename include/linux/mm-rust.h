@@ -35,4 +35,33 @@ unsigned int rust_mm_put_plan_select(bool became_zero, bool async);
 
 #endif /* CONFIG_RUST_MM_LIFETIME */
 
+#ifdef CONFIG_RUST_MM_TEARDOWN
+
+#define RUST_MM_FINAL_ACTION_DELETE_MMLIST	0x01
+#define RUST_MM_FINAL_ACTION_PUT_BINFMT		0x02
+
+void rust_helper_mm_final_check_users(struct mm_struct *mm);
+void rust_helper_mm_final_uprobe_clear_state(struct mm_struct *mm);
+void rust_helper_mm_final_exit_aio(struct mm_struct *mm);
+void rust_helper_mm_final_ksm_exit(struct mm_struct *mm);
+void rust_helper_mm_final_khugepaged_exit(struct mm_struct *mm);
+void rust_helper_mm_final_exit_mmap(struct mm_struct *mm);
+void rust_helper_mm_final_put_huge_zero_folio(struct mm_struct *mm);
+void rust_helper_mm_final_set_exe_file_null(struct mm_struct *mm);
+bool rust_helper_mm_final_mmlist_is_empty(struct mm_struct *mm);
+void rust_helper_mm_final_mmlist_delete(struct mm_struct *mm);
+bool rust_helper_mm_final_has_binfmt(struct mm_struct *mm);
+void rust_helper_mm_final_put_binfmt(struct mm_struct *mm);
+void rust_helper_mm_final_lru_gen_del_mm(struct mm_struct *mm);
+void rust_helper_mm_final_futex_hash_free(struct mm_struct *mm);
+void rust_helper_mm_final_drop(struct mm_struct *mm);
+
+void rust_mm_final(struct mm_struct *mm);
+
+#ifdef CONFIG_KUNIT
+unsigned int rust_mm_final_plan_select(bool mmlist_empty, bool has_binfmt);
+#endif
+
+#endif /* CONFIG_RUST_MM_TEARDOWN */
+
 #endif /* _LINUX_MM_RUST_H */

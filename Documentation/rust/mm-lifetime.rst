@@ -17,8 +17,11 @@ This unit covers three public entry points:
 * ``mmput()``
 * ``mmput_async()``
 
-The migration excludes device drivers and the final address-space teardown.
-It does not change the public C ABI.
+The migration excludes device drivers. Final address-space teardown remains in
+C when ``CONFIG_RUST_MM_TEARDOWN`` is disabled. When that option is enabled,
+Rust owns the final teardown orchestration described in
+``Documentation/rust/mm-teardown.rst``. This unit does not change the public C
+ABI.
 
 The Rust code owns these production decisions:
 
@@ -50,7 +53,8 @@ The Rust implementation uses these narrow C helpers:
 * ``rust_helper_mm_task_lock()`` and ``rust_helper_mm_task_unlock()`` acquire
   and release the existing task lock.
 * ``rust_helper_mm_task_mm()`` reads ``task->mm`` while the task lock is held.
-* ``rust_helper_mm_put_final()`` calls the existing ``__mmput()`` teardown.
+* ``rust_helper_mm_put_final()`` calls ``__mmput()`` when native final
+  teardown is disabled.
 * ``rust_helper_mm_put_async_schedule()`` initializes and schedules the
   existing asynchronous work item.
 
@@ -89,7 +93,8 @@ architecture primitives:
 
 * Task locking, task flag access, and task-mm field access.
 * The address helper and compile-time field layout checks.
-* The final address-space teardown in ``__mmput()``.
+* The final address-space teardown in ``__mmput()`` when
+  ``CONFIG_RUST_MM_TEARDOWN`` is disabled.
 * Work item initialization, work queueing, and callback execution.
 * The warning and fatal invariants inside ``__mmput()``.
 

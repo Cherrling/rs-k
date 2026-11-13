@@ -38,6 +38,7 @@ more details.
     arch-support
     testing
     mm-lifetime
+    mm-teardown
     sched
     cpupri
     itimer

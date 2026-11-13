@@ -34,6 +34,22 @@ static void mm_lifetime_test_put_plan(struct kunit *test)
 }
 #endif
 
+#ifdef CONFIG_RUST_MM_TEARDOWN
+static void mm_lifetime_test_final_plan(struct kunit *test)
+{
+	KUNIT_EXPECT_EQ(test, 0,
+			rust_mm_final_plan_select(true, false));
+	KUNIT_EXPECT_EQ(test, RUST_MM_FINAL_ACTION_DELETE_MMLIST,
+			rust_mm_final_plan_select(false, false));
+	KUNIT_EXPECT_EQ(test, RUST_MM_FINAL_ACTION_PUT_BINFMT,
+			rust_mm_final_plan_select(true, true));
+	KUNIT_EXPECT_EQ(test,
+			RUST_MM_FINAL_ACTION_DELETE_MMLIST |
+			RUST_MM_FINAL_ACTION_PUT_BINFMT,
+			rust_mm_final_plan_select(false, true));
+}
+#endif
+
 static void mm_lifetime_test_get_task_synthetic(struct kunit *test)
 {
 	struct mm_struct *mm;
@@ -104,6 +120,9 @@ static struct kunit_case mm_lifetime_test_cases[] = {
 #ifdef CONFIG_RUST_MM_LIFETIME
 	KUNIT_CASE(mm_lifetime_test_get_task_plan),
 	KUNIT_CASE(mm_lifetime_test_put_plan),
+#endif
+#ifdef CONFIG_RUST_MM_TEARDOWN
+	KUNIT_CASE(mm_lifetime_test_final_plan),
 #endif
 	KUNIT_CASE(mm_lifetime_test_get_task_synthetic),
 	KUNIT_CASE(mm_lifetime_test_put_sync),

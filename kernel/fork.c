@@ -1192,6 +1192,9 @@ EXPORT_SYMBOL_IF_KUNIT(mm_alloc);
 
 static inline void __mmput(struct mm_struct *mm)
 {
+#ifdef CONFIG_RUST_MM_TEARDOWN
+	rust_mm_final(mm);
+#else
 	VM_BUG_ON(atomic_read(&mm->mm_users));
 
 	uprobe_clear_state(mm);
@@ -1211,7 +1214,87 @@ static inline void __mmput(struct mm_struct *mm)
 	lru_gen_del_mm(mm);
 	futex_hash_free(mm);
 	mmdrop(mm);
+#endif
 }
+
+#ifdef CONFIG_RUST_MM_TEARDOWN
+void rust_helper_mm_final_check_users(struct mm_struct *mm)
+{
+	VM_BUG_ON(atomic_read(&mm->mm_users));
+}
+
+void rust_helper_mm_final_uprobe_clear_state(struct mm_struct *mm)
+{
+	uprobe_clear_state(mm);
+}
+
+void rust_helper_mm_final_exit_aio(struct mm_struct *mm)
+{
+	exit_aio(mm);
+}
+
+void rust_helper_mm_final_ksm_exit(struct mm_struct *mm)
+{
+	ksm_exit(mm);
+}
+
+void rust_helper_mm_final_khugepaged_exit(struct mm_struct *mm)
+{
+	khugepaged_exit(mm);
+}
+
+void rust_helper_mm_final_exit_mmap(struct mm_struct *mm)
+{
+	exit_mmap(mm);
+}
+
+void rust_helper_mm_final_put_huge_zero_folio(struct mm_struct *mm)
+{
+	mm_put_huge_zero_folio(mm);
+}
+
+void rust_helper_mm_final_set_exe_file_null(struct mm_struct *mm)
+{
+	set_mm_exe_file(mm, NULL);
+}
+
+bool rust_helper_mm_final_mmlist_is_empty(struct mm_struct *mm)
+{
+	return list_empty(&mm->mmlist);
+}
+
+void rust_helper_mm_final_mmlist_delete(struct mm_struct *mm)
+{
+	spin_lock(&mmlist_lock);
+	list_del(&mm->mmlist);
+	spin_unlock(&mmlist_lock);
+}
+
+bool rust_helper_mm_final_has_binfmt(struct mm_struct *mm)
+{
+	return mm->binfmt;
+}
+
+void rust_helper_mm_final_put_binfmt(struct mm_struct *mm)
+{
+	module_put(mm->binfmt->module);
+}
+
+void rust_helper_mm_final_lru_gen_del_mm(struct mm_struct *mm)
+{
+	lru_gen_del_mm(mm);
+}
+
+void rust_helper_mm_final_futex_hash_free(struct mm_struct *mm)
+{
+	futex_hash_free(mm);
+}
+
+void rust_helper_mm_final_drop(struct mm_struct *mm)
+{
+	mmdrop(mm);
+}
+#endif
 
 #ifdef CONFIG_RUST_MM_LIFETIME
 void *rust_helper_mm_users_ptr(struct mm_struct *mm)

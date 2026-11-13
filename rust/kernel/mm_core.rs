@@ -109,8 +109,16 @@ unsafe fn finish_put(mm: *mut Mm, asynchronous: bool) {
         unsafe { bindings::rust_helper_mm_put_async_schedule(mm) };
     } else {
         debug_assert_ne!(plan & PUT_ACTION_FINALIZE, 0);
+        #[cfg(CONFIG_RUST_MM_TEARDOWN)]
         // SAFETY: The caller transferred the final user reference.
-        unsafe { bindings::rust_helper_mm_put_final(mm) };
+        unsafe {
+            crate::mm_teardown::run(mm)
+        };
+        #[cfg(not(CONFIG_RUST_MM_TEARDOWN))]
+        // SAFETY: The caller transferred the final user reference.
+        unsafe {
+            bindings::rust_helper_mm_put_final(mm)
+        };
     }
 }
 
