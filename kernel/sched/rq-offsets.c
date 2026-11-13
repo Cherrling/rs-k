@@ -19,6 +19,8 @@ int main(void)
 	       offsetof(struct sched_class, wakeup_preempt));
 	DEFINE(SCHED_CLASS_task_woken,
 	       offsetof(struct sched_class, task_woken));
+	DEFINE(SCHED_CLASS_select_task_rq,
+	       offsetof(struct sched_class, select_task_rq));
 
 	return 0;
 }

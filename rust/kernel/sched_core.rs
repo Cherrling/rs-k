@@ -2,10 +2,11 @@
 
 //! Native scheduler core state machines.
 //!
-//! Rust owns task-state matching, reschedule requests, idle CPU wakeups, wake
-//! activation, wake preemption, and task blocking decisions. C retains task
-//! and runqueue locking, warning delivery, scheduling-class implementations,
-//! and task selection.
+//! Rust owns task-state matching, reschedule requests, idle CPU wakeups, task
+//! CPU selection, wake activation, wake preemption, and task blocking
+//! decisions. C retains task and runqueue locking, warning delivery,
+//! scheduling-class implementations, cpumask operations, CPU eligibility
+//! queries, and fallback placement.
 
 use crate::bindings;
 #[cfg(any(
@@ -13,6 +14,7 @@ use crate::bindings;
     CONFIG_RUST_SCHED_WAKE_PREEMPT,
     CONFIG_RUST_SCHED_RESCHED_CURR,
     CONFIG_RUST_SCHED_RESCHED_CPU,
+    CONFIG_RUST_SCHED_SELECT_TASK_RQ,
     CONFIG_RUST_SCHED_TTWU_RUNNABLE,
     CONFIG_RUST_SCHED_TTWU_ACTIVATE,
     CONFIG_RUST_SCHED_RQ_TRANSITION
@@ -48,6 +50,7 @@ use macros::export;
     CONFIG_RUST_SCHED_WAKE_PREEMPT,
     CONFIG_RUST_SCHED_RESCHED_CURR,
     CONFIG_RUST_SCHED_WAKE_IF_IDLE,
+    CONFIG_RUST_SCHED_SELECT_TASK_RQ,
     CONFIG_RUST_SCHED_TTWU_RUNNABLE,
     CONFIG_RUST_SCHED_TTWU_ACTIVATE,
     CONFIG_RUST_SCHED_BLOCK_TASK,
@@ -65,6 +68,11 @@ type Task = bindings::task_struct;
     CONFIG_RUST_SCHED_RESCHED_CPU
 ))]
 type Rq = bindings::rq;
+#[cfg(CONFIG_RUST_SCHED_SELECT_TASK_RQ)]
+type Cpumask = bindings::cpumask;
+#[cfg(CONFIG_RUST_SCHED_SELECT_TASK_RQ)]
+type SelectTaskRqCallback =
+    unsafe extern "C" fn(task: *mut Task, task_cpu: c_int, flags: c_int) -> c_int;
 #[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
 type TaskWokenCallback = unsafe extern "C" fn(rq: *mut Rq, task: *mut Task);
 #[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
@@ -507,8 +515,12 @@ const ACTIVATE_MIGRATED: u32 = 0x04;
 const ACTIVATE_IO_WAIT: u32 = 0x08;
 #[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
 const WF_MIGRATED: c_int = bindings::RUST_SCHED_WF_MIGRATED as c_int;
-#[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
+#[cfg(any(CONFIG_RUST_SCHED_TTWU_ACTIVATE, CONFIG_RUST_SCHED_SELECT_TASK_RQ))]
 const WF_RQ_SELECTED: c_int = bindings::RUST_SCHED_WF_RQ_SELECTED as c_int;
+#[cfg(CONFIG_RUST_SCHED_SELECT_TASK_RQ)]
+const SELECT_TASK_RQ_CLASS: u32 = bindings::RUST_SCHED_SELECT_TASK_RQ_CLASS;
+#[cfg(CONFIG_RUST_SCHED_SELECT_TASK_RQ)]
+const SELECT_TASK_RQ_SINGLE: u32 = bindings::RUST_SCHED_SELECT_TASK_RQ_SINGLE;
 #[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
 const ENQUEUE_WAKEUP: c_int = bindings::RUST_SCHED_ENQUEUE_WAKEUP as c_int;
 #[cfg(any(CONFIG_RUST_SCHED_TTWU_RUNNABLE, CONFIG_RUST_SCHED_TTWU_ACTIVATE))]
@@ -670,12 +682,202 @@ unsafe fn set_rq_next_class(rq: *mut Rq, class: *mut bindings::sched_class) {
 ///
 /// # Safety
 ///
-/// `task` must remain live and the caller must hold the task runqueue lock.
-#[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
+/// `task` must remain live and the caller must hold `task->pi_lock` or the
+/// task's runqueue lock to keep the scheduling class stable.
+#[cfg(any(CONFIG_RUST_SCHED_WAKE_PREEMPT, CONFIG_RUST_SCHED_SELECT_TASK_RQ))]
 unsafe fn task_sched_class(task: *mut Task) -> *mut bindings::sched_class {
     // SAFETY: The caller guarantees that the task remains live. Use a volatile
     // load to match the C field access.
     unsafe { core::ptr::addr_of!((*task).sched_class).read_volatile() }
+}
+
+/// Reads the number of CPUs on which a task may run.
+///
+/// # Safety
+///
+/// `task` must remain live and the caller must hold `task->pi_lock`.
+#[cfg(CONFIG_RUST_SCHED_SELECT_TASK_RQ)]
+unsafe fn task_nr_cpus_allowed(task: *const Task) -> c_int {
+    // SAFETY: The caller guarantees that the task remains live. The affinity
+    // count is stable under the task pi lock.
+    unsafe { core::ptr::addr_of!((*task).nr_cpus_allowed).read_volatile() }
+}
+
+/// Reads whether migration is disabled for a task.
+///
+/// # Safety
+///
+/// `task` must remain live and the caller must hold `task->pi_lock`.
+#[cfg(CONFIG_RUST_SCHED_SELECT_TASK_RQ)]
+unsafe fn task_migration_disabled(task: *const Task) -> bool {
+    // SAFETY: The caller guarantees that the task remains live. The migration
+    // state is stable under the task pi lock.
+    unsafe { core::ptr::addr_of!((*task).migration_disabled).read_volatile() != 0 }
+}
+
+/// Reads the CPU affinity mask pointer of a task.
+///
+/// # Safety
+///
+/// `task` must remain live and the caller must hold `task->pi_lock`.
+#[cfg(CONFIG_RUST_SCHED_SELECT_TASK_RQ)]
+unsafe fn task_cpus_ptr(task: *const Task) -> *const Cpumask {
+    // SAFETY: The caller guarantees that the task remains live. The affinity
+    // pointer is stable under the task pi lock.
+    unsafe { core::ptr::addr_of!((*task).cpus_ptr).read_volatile() }
+}
+
+/// Reads the scheduling-class task CPU selection callback.
+///
+/// # Safety
+///
+/// `task` and its scheduling class must remain live, and the caller must hold
+/// `task->pi_lock`.
+#[cfg(CONFIG_RUST_SCHED_SELECT_TASK_RQ)]
+unsafe fn task_select_task_rq_callback(task: *mut Task) -> SelectTaskRqCallback {
+    // SAFETY: The caller guarantees that the task and class remain live.
+    let class = unsafe { task_sched_class(task) };
+    // SAFETY: The generated offset identifies the non-optional callback field
+    // in the live scheduling class.
+    unsafe {
+        class
+            .cast::<u8>()
+            .add(bindings::SCHED_CLASS_select_task_rq as usize)
+            .cast::<SelectTaskRqCallback>()
+            .read_volatile()
+    }
+}
+
+/// Selects the production task CPU selection path.
+#[cfg(CONFIG_RUST_SCHED_SELECT_TASK_RQ)]
+fn select_task_rq_path(nr_cpus_allowed: c_int, migration_disabled: bool) -> u32 {
+    if nr_cpus_allowed > 1 && !migration_disabled {
+        SELECT_TASK_RQ_CLASS
+    } else {
+        SELECT_TASK_RQ_SINGLE
+    }
+}
+
+/// Selects the task CPU selection path for a task.
+///
+/// # Safety
+///
+/// `task` must remain live and the caller must hold `task->pi_lock`.
+#[cfg(CONFIG_RUST_SCHED_SELECT_TASK_RQ)]
+unsafe fn select_task_rq_path_for_task(task: *const Task) -> u32 {
+    // SAFETY: The caller provides the task pi lock.
+    let nr_cpus_allowed = unsafe { task_nr_cpus_allowed(task) };
+    // SAFETY: The caller provides the task pi lock.
+    let migration_disabled = unsafe { task_migration_disabled(task) };
+
+    select_task_rq_path(nr_cpus_allowed, migration_disabled)
+}
+
+/// Selects a task CPU with the supplied scheduling-class callback.
+///
+/// # Safety
+///
+/// `task` must remain live. A callback must remain live when `path` selects
+/// the scheduling-class path. The caller must hold `task->pi_lock` and provide
+/// a valid `wake_flags` pointer.
+#[cfg(CONFIG_RUST_SCHED_SELECT_TASK_RQ)]
+unsafe fn select_task_rq_with_callback(
+    task: *mut Task,
+    cpu: c_int,
+    wake_flags: *mut c_int,
+    path: u32,
+    callback: Option<SelectTaskRqCallback>,
+) -> c_int {
+    let mut selected = if path == SELECT_TASK_RQ_CLASS {
+        // SAFETY: The caller guarantees that a class-path selection provides
+        // a live callback.
+        let callback = unsafe { callback.unwrap_unchecked() };
+        // SAFETY: The caller provides a valid wake-flags pointer.
+        let flags = unsafe { wake_flags.read_volatile() };
+        // SAFETY: The caller guarantees that the callback follows the
+        // scheduling-class contract.
+        let selected = unsafe { callback(task, cpu, flags) };
+        // SAFETY: The caller provides a valid wake-flags pointer.
+        let flags = unsafe { wake_flags.read_volatile() };
+        // Preserve the C operation order: select the CPU, then publish that
+        // the scheduling-class callback ran.
+        // SAFETY: The caller provides a valid wake-flags pointer.
+        unsafe { wake_flags.write_volatile(flags | WF_RQ_SELECTED) };
+        selected
+    } else {
+        // SAFETY: The caller provides the task pi lock.
+        let mask = unsafe { task_cpus_ptr(task) };
+        // SAFETY: The pi lock keeps the affinity mask live and stable.
+        unsafe { bindings::rust_helper_sched_select_task_rq_cpumask_any(mask) }
+    };
+
+    // SAFETY: The task and selected CPU state remain live under the pi lock.
+    if !unsafe { bindings::rust_helper_sched_select_task_rq_cpu_allowed(task, selected) } {
+        // SAFETY: The task and its current CPU remain live under the pi lock.
+        let task_cpu = unsafe { bindings::rust_helper_sched_select_task_rq_task_cpu(task) };
+        // SAFETY: The caller provides the task pi lock required by fallback
+        // placement.
+        selected = unsafe { bindings::rust_helper_sched_select_task_rq_fallback(task_cpu, task) };
+    }
+
+    selected
+}
+
+/// Implements the production task CPU selection entry point.
+///
+/// # Safety
+///
+/// `task` must remain live, the caller must hold `task->pi_lock`, and
+/// `wake_flags` must point to writable storage.
+#[cfg(CONFIG_RUST_SCHED_SELECT_TASK_RQ)]
+#[export]
+unsafe extern "C" fn rust_sched_select_task_rq(
+    task: *mut Task,
+    cpu: c_int,
+    wake_flags: *mut c_int,
+) -> c_int {
+    // SAFETY: The caller satisfies the task pi-lock contract.
+    let path = unsafe { select_task_rq_path_for_task(task) };
+    let callback = if path == SELECT_TASK_RQ_CLASS {
+        // SAFETY: The caller satisfies the task and scheduling-class
+        // contracts.
+        Some(unsafe { task_select_task_rq_callback(task) })
+    } else {
+        None
+    };
+    // SAFETY: The caller satisfies the exported entry-point contract.
+    unsafe { select_task_rq_with_callback(task, cpu, wake_flags, path, callback) }
+}
+
+/// Selects the task CPU routing path for KUnit.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_SELECT_TASK_RQ))]
+#[export]
+extern "C" fn rust_sched_select_task_rq_path_select(
+    nr_cpus_allowed: c_int,
+    migration_disabled: bool,
+) -> u32 {
+    select_task_rq_path(nr_cpus_allowed, migration_disabled)
+}
+
+/// Runs task CPU selection with a KUnit callback.
+///
+/// # Safety
+///
+/// `task` and `callback` must remain live. The caller must hold
+/// `task->pi_lock`.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_SELECT_TASK_RQ))]
+#[export]
+unsafe extern "C" fn rust_sched_select_task_rq_test(
+    task: *mut Task,
+    cpu: c_int,
+    wake_flags: *mut c_int,
+    callback: Option<SelectTaskRqCallback>,
+) -> c_int {
+    // SAFETY: The caller satisfies the test entry-point task pi-lock
+    // contract.
+    let path = unsafe { select_task_rq_path_for_task(task) };
+    // SAFETY: The caller satisfies the test entry-point contract.
+    unsafe { select_task_rq_with_callback(task, cpu, wake_flags, path, callback) }
 }
 
 /// Reads a scheduling class's wakeup-preemption callback.

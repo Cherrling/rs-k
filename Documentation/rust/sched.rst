@@ -21,6 +21,9 @@ The ``CONFIG_RUST_SCHED_RESCHED_CPU`` option selects Rust for the production
 per-CPU reschedule request decision.
 The ``CONFIG_RUST_SCHED_WAKE_IF_IDLE`` option selects Rust for the production
 idle CPU wakeup decision and locked recheck.
+The ``CONFIG_RUST_SCHED_SELECT_TASK_RQ`` option selects Rust for the production
+task CPU selection routing, scheduling-class callback dispatch, selected-CPU
+flag publication, eligibility check, and fallback decision.
 The ``CONFIG_RUST_SCHED_BLOCK_TASK`` option selects Rust for the production
 task blocking state machine.
 The ``CONFIG_RUST_SCHED_RQ_TRANSITION`` option selects Rust for the production
@@ -54,6 +57,12 @@ Rust owns these production decisions:
 * Checking whether the target runqueue current task is idle, acquiring the
   runqueue lock only after a matching first check, rechecking under the lock,
   and requesting rescheduling only after both checks match.
+* Reading the allowed-CPU count and migration-disabled state, choosing between
+  the scheduling-class callback path and the single-CPU mask path, calling the
+  selected class directly, and setting ``WF_RQ_SELECTED`` only for a class
+  callback.
+* Validating the selected CPU and requesting fallback placement from the task's
+  current CPU when that selection is not allowed.
 * Reading task load and I/O wait state, updating the runqueue
   ``nr_uninterruptible`` and ``nr_iowait`` counts, ending delay accounting,
   constructing enqueue flags, calling task activation directly, selecting
@@ -69,11 +78,12 @@ Rust owns these production decisions:
 
 Task-state storage outside the wake-state protocol, warning delivery, task and
 runqueue locking, scheduler queue and proxy operations, wake-list handling,
-CPU selection, scheduling-class preemption callback implementations,
-thread-flag bit mutation, preemption-count updates, tracepoint delivery, IPI
-delivery, statistics, and public scheduler ABI adapters remain in C. Runqueue
-queue operations, the class callback, and its scheduling-class implementation
-and lock pin primitives also remain in C.
+cpumask operations, CPU eligibility queries, fallback placement, task CPU
+selection callback implementations, scheduling-class preemption callback
+implementations, thread-flag bit mutation, preemption-count updates,
+tracepoint delivery, IPI delivery, statistics, and public scheduler ABI
+adapters remain in C. Runqueue queue operations, the class callback, and its
+scheduling-class implementation and lock pin primitives also remain in C.
 Blocking dequeue and block accounting primitives also remain in C. The KCSAN
 runqueue membership writer assertion, warnings, and queue operations also
 remain in C.
@@ -105,6 +115,8 @@ The Rust-to-C calls are:
 * The RCU dereference of ``struct rq.curr`` used by the idle CPU wakeup
   first-check path.
 * Wakeup tracepoint emission used by both wake paths.
+* The ``cpumask_any()``, ``is_cpu_allowed()``, ``task_cpu()``, and
+  ``select_fallback_rq()`` operations used by task CPU selection.
 * Scheduling-class ``task_woken`` callback implementations reached through
   an indirect call from Rust.
 * Runqueue lock unpin and repin around a scheduling-class ``task_woken``
@@ -125,6 +137,7 @@ The C-to-Rust production entries are:
 * ``rust_sched_resched_cpu()``.
 * ``rust_sched_wake_if_idle_needs_lock()``.
 * ``rust_sched_wake_if_idle_locked()``.
+* ``rust_sched_select_task_rq()``.
 * ``rust_sched_block_task_locked()``.
 * ``rust_sched_activate_task_locked()``.
 * ``rust_sched_deactivate_task_locked()``.
@@ -134,6 +147,11 @@ preemption exclusion, around the state-match entries. For the runnable entry,
 C acquires the task runqueue lock, calls Rust while the lock is held, and
 releases the lock after Rust returns. Rust does not acquire or release
 scheduler locks.
+
+For task CPU selection, the caller validates and keeps ``p->pi_lock``. Rust
+reads the affinity count, migration-disabled state, affinity mask pointer, and
+scheduling-class callback while that lock is held. Rust does not acquire or
+release any lock.
 
 For the activation entry, C validates that it holds the runqueue lock and
 passes the matching lock context to Rust. Rust selects and orders all state
@@ -222,6 +240,15 @@ C retains runqueue lock ownership, scheduling-class callback
 implementations, reschedule delivery, and the public ``wakeup_preempt()``
 adapter.
 
+The task CPU selection path retains only the primitive operations that it must
+share with the rest of the scheduler. ``cpumask_any()`` chooses from the
+affinity mask, ``is_cpu_allowed()`` applies the CPU-hotplug and task-type
+policy, ``task_cpu()`` supplies the current CPU to fallback placement, and
+``select_fallback_rq()`` performs the existing fallback policy. Rust chooses
+when each primitive runs and owns the returned CPU. The scheduling-class
+``select_task_rq`` implementations and the public ``select_task_rq()`` adapter
+remain in C.
+
 The activation path retains runqueue lock ownership, scheduling-class queue
 operations reached through ``activate_task()``, scheduling-class callback
 implementations, tracing, delay accounting, and the lock pin primitives in C.
@@ -305,6 +332,16 @@ No match returns zero and reports wake failure.
 When both states match, the current state wins and the saved state is not
 changed.
 
+Task CPU selection uses the scheduling-class callback only when more than one
+CPU is allowed and migration is not disabled. In that path, the callback
+receives the original wake flags. Rust sets ``WF_RQ_SELECTED`` after the
+callback returns. The single-CPU and migration-disabled path uses
+``cpumask_any()`` and leaves the wake flags unchanged.
+
+After either path, an ineligible selected CPU causes fallback placement from
+the task's current CPU. A selected CPU that satisfies ``is_cpu_allowed()`` is
+returned unchanged.
+
 Under ``CONFIG_DEBUG_PREEMPT``, a wake mask that contains
 ``TASK_RTLOCK_WAIT`` with any other state bit presents an invalid
 ``TASK_NORMAL`` and must issue the existing warning.
@@ -362,9 +399,11 @@ The Rust KUnit cases cover the state-match table, saved-state transition,
 activation action selection, activation and delayed-enqueue flags, the
 uninterruptible and I/O wait count updates, wakeup-preemption action
 selection, per-CPU reschedule eligibility, idle CPU wakeup action selection,
-blocking action selection, and a real uninterruptible timeout. A
-state-publication case checks the blocked marker and running-state stores. The
-transition action table covers migrated enqueue and invalid sleeping dequeue.
+task CPU selection routing, scheduling-class dispatch and flag publication,
+single-CPU and migration-disabled behavior, CPU fallback, blocking action
+selection, and a real uninterruptible timeout. A state-publication case checks
+the blocked marker and running-state stores. The transition action table covers
+migrated enqueue and invalid sleeping dequeue.
 Real wakeup cases cover current-task rejection, waking a stopped kernel
 thread, waking a queued runnable task, waking a ``SCHED_FIFO`` task to invoke
 its scheduling-class callback, real activation and deactivation traffic with
@@ -1231,6 +1270,68 @@ The KASAN test configuration used ``CONFIG_FRAME_WARN=4096`` because an
 unrelated ``fs/coredump.o`` call frame exceeded the default 2048-byte limit.
 The changed scheduler and Rust objects built without KASAN diagnostics.
 
+The scheduler task CPU selection routing unit was validated on 2026-11-13
+with x86_64 ``LLVM=1`` builds and QEMU 11.1.3. Each configuration passed three
+consecutive four-vCPU runs for the applicable scheduler and hrtimer suites.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 25 25
+
+   * - Configuration
+     - Scheduler cases
+     - hrtimer cases
+   * - Full Rust
+     - 30
+     - 25
+   * - C fallback
+     - 26
+     - 25
+   * - Task-selection only
+     - 7
+     - 25
+   * - PREEMPT_RT
+     - 30
+     - 25
+   * - KASAN
+     - 30
+     - 25
+   * - lockdep
+     - 30
+     - 25
+
+``select_task_rq()`` calls ``rust_sched_select_task_rq()`` when the option is
+enabled. Rust reads the allowed-CPU count and migration-disabled state before
+it loads the scheduling-class callback. The callback is loaded only on the
+class path and receives the original wake flags. Rust sets
+``WF_RQ_SELECTED`` only after that callback returns.
+
+The single-CPU and migration-disabled path calls ``cpumask_any()`` and keeps
+the wake flags unchanged. Both paths check ``is_cpu_allowed()``. An ineligible
+CPU enters ``select_fallback_rq()`` with the task's current CPU. KUnit covers
+the routing table, class dispatch, flag publication, both fast-path
+conditions, and a valid but disallowed callback result. The full Rust
+configuration also wakes a real ``SCHED_FIFO`` kthread, which exercises the
+production callback load and RT scheduling-class selection.
+
+C retains the four primitive adapters ``cpumask_any()``,
+``is_cpu_allowed()``, ``task_cpu()``, and ``select_fallback_rq()``. It also
+retains scheduling-class callback implementations and the public
+``select_task_rq()`` adapter. Rust owns path selection, callback dispatch,
+flag ordering, validity checking, fallback decision, and the returned CPU.
+
+The no-KUnit production configuration enabled all ten scheduler Rust options
+and built the image with ``CLIPPY=1``. Its symbol table contains the Rust
+entry point and the four narrow C helpers. It contains no task-selection KUnit
+selector symbol and no unresolved Rust scheduler symbol. Rustfmt, strict
+checkpatch, and ``git diff --check`` passed.
+
+Some scheduler and hrtimer runs emitted a transient clocksource watchdog
+timeout message while the host was loaded. Every affected KUnit suite still
+reported all expected cases as passing. No run reported a ``BUG``, KASAN
+report, lock dependency diagnosis, Oops, or panic. Continue to track the
+clocksource timeout as a separate timing-sensitive infrastructure issue.
+
 Review conditions
 -----------------
 
@@ -1265,6 +1366,13 @@ Reopen this boundary decision if any of these conditions changes:
   or conditional reschedule ordering changes.
 * Rust gains safe CPU-state, runqueue-lock, or reschedule-delivery
   abstractions that can replace the narrow C boundaries.
+* The task allowed-CPU count, affinity mask pointer, migration-disabled state,
+  scheduling-class pointer, or ``select_task_rq`` callback layout and ABI
+  changes.
+* The scheduling-class selection condition, wake-flag ordering, CPU
+  eligibility policy, or fallback placement policy changes.
+* Rust gains safe affinity, CPU-state, task-runqueue, or scheduling-class
+  callback abstractions that can replace the narrow C boundaries.
 * The runnable path changes its runqueue lock, delayed-enqueue condition,
   enqueue flags, direct enqueue call, proxy return, preemption, or
   wake-publication ordering.

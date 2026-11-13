@@ -4,6 +4,7 @@
 
 #include <linux/completion.h>
 #include <linux/cpu.h>
+#include <linux/cpumask.h>
 #include <linux/kthread.h>
 #include <linux/preempt.h>
 #include <linux/processor.h>
@@ -11,6 +12,7 @@
 #include <linux/sched/idle.h>
 #include <linux/sched-rust.h>
 #include <linux/slab.h>
+#include <linux/spinlock.h>
 
 static int sched_wake_test_thread(void *data)
 {
@@ -311,6 +313,154 @@ static void sched_wake_test_wake_if_idle_current(struct kunit *test)
 }
 #endif
 
+#ifdef CONFIG_RUST_SCHED_SELECT_TASK_RQ
+static int sched_select_test_calls;
+static int sched_select_test_cpu;
+static int sched_select_test_flags;
+static int sched_select_test_disallowed_cpu;
+
+static int sched_select_test_callback(struct task_struct *task, int cpu,
+				      int flags)
+{
+	sched_select_test_calls++;
+	sched_select_test_cpu = cpu;
+	sched_select_test_flags = flags;
+
+	return sched_select_test_cpu;
+}
+
+static int sched_select_test_disallowed_callback(struct task_struct *task,
+						 int cpu, int flags)
+{
+	sched_select_test_calls++;
+	sched_select_test_cpu = cpu;
+	sched_select_test_flags = flags;
+
+	return sched_select_test_disallowed_cpu;
+}
+
+static void sched_wake_test_select_task_rq_path(struct kunit *test)
+{
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_SELECT_TASK_RQ_CLASS,
+			rust_sched_select_task_rq_path_select(2, false));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_SELECT_TASK_RQ_SINGLE,
+			rust_sched_select_task_rq_path_select(1, false));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_SELECT_TASK_RQ_SINGLE,
+			rust_sched_select_task_rq_path_select(4, true));
+}
+
+static void sched_wake_test_select_task_rq_class(struct kunit *test)
+{
+	struct task_struct *task;
+	int initial_flags = 0x10;
+	int wake_flags = initial_flags;
+	int selected_cpu;
+	int cpu;
+
+	task = kzalloc_obj(*task);
+	KUNIT_ASSERT_NOT_NULL(test, task);
+	raw_spin_lock_init(&task->pi_lock);
+	cpumask_clear(&task->cpus_mask);
+	selected_cpu = raw_smp_processor_id();
+	cpumask_set_cpu(selected_cpu, &task->cpus_mask);
+	task->cpus_ptr = &task->cpus_mask;
+	task->nr_cpus_allowed = 2;
+	task->migration_disabled = 0;
+
+	sched_select_test_calls = 0;
+	scoped_guard(raw_spinlock_irqsave, &task->pi_lock)
+		cpu = rust_sched_select_task_rq_test(task, selected_cpu,
+						     &wake_flags,
+						     sched_select_test_callback);
+
+	KUNIT_EXPECT_EQ(test, 1, sched_select_test_calls);
+	KUNIT_EXPECT_EQ(test, selected_cpu, sched_select_test_cpu);
+	KUNIT_EXPECT_EQ(test, initial_flags, sched_select_test_flags);
+	KUNIT_EXPECT_EQ(test, selected_cpu, cpu);
+	KUNIT_EXPECT_EQ(test, initial_flags | RUST_SCHED_WF_RQ_SELECTED,
+			wake_flags);
+
+	kfree(task);
+}
+
+static void sched_wake_test_select_task_rq_single(struct kunit *test)
+{
+	struct task_struct *task;
+	int initial_flags = 0x10;
+	int wake_flags;
+	int cpu;
+
+	task = kzalloc_obj(*task);
+	KUNIT_ASSERT_NOT_NULL(test, task);
+	raw_spin_lock_init(&task->pi_lock);
+	cpumask_clear(&task->cpus_mask);
+	cpumask_set_cpu(raw_smp_processor_id(), &task->cpus_mask);
+	task->cpus_ptr = &task->cpus_mask;
+	task->nr_cpus_allowed = 1;
+
+	sched_select_test_calls = 0;
+	wake_flags = initial_flags;
+	scoped_guard(raw_spinlock_irqsave, &task->pi_lock)
+		cpu = rust_sched_select_task_rq_test(task, 0, &wake_flags,
+						     sched_select_test_callback);
+	KUNIT_EXPECT_EQ(test, 0, sched_select_test_calls);
+	KUNIT_EXPECT_EQ(test, raw_smp_processor_id(), cpu);
+	KUNIT_EXPECT_EQ(test, initial_flags, wake_flags);
+
+	task->nr_cpus_allowed = 4;
+	task->migration_disabled = 1;
+	sched_select_test_calls = 0;
+	wake_flags = initial_flags;
+	scoped_guard(raw_spinlock_irqsave, &task->pi_lock)
+		cpu = rust_sched_select_task_rq_test(task, 0, &wake_flags,
+						     sched_select_test_callback);
+	KUNIT_EXPECT_EQ(test, 0, sched_select_test_calls);
+	KUNIT_EXPECT_EQ(test, raw_smp_processor_id(), cpu);
+	KUNIT_EXPECT_EQ(test, initial_flags, wake_flags);
+
+	kfree(task);
+}
+
+static void sched_wake_test_select_task_rq_fallback(struct kunit *test)
+{
+	struct task_struct *task;
+	int initial_flags = 0x10;
+	int wake_flags = initial_flags;
+	int current_cpu;
+	int cpu;
+
+	if (nr_cpu_ids <= 1)
+		kunit_skip(test, "fallback test needs two valid CPU indices");
+
+	task = kzalloc_obj(*task);
+	KUNIT_ASSERT_NOT_NULL(test, task);
+	raw_spin_lock_init(&task->pi_lock);
+	cpumask_clear(&task->cpus_mask);
+	current_cpu = raw_smp_processor_id();
+	cpumask_set_cpu(current_cpu, &task->cpus_mask);
+	task->cpus_ptr = &task->cpus_mask;
+	task->nr_cpus_allowed = 2;
+	task->migration_disabled = 0;
+	sched_select_test_disallowed_cpu = (current_cpu + 1) % nr_cpu_ids;
+
+	sched_select_test_calls = 0;
+	scoped_guard(raw_spinlock_irqsave, &task->pi_lock) {
+		cpu = rust_sched_select_task_rq_test(task, current_cpu,
+						     &wake_flags,
+						     sched_select_test_disallowed_callback);
+	}
+
+	KUNIT_EXPECT_EQ(test, 1, sched_select_test_calls);
+	KUNIT_EXPECT_EQ(test, current_cpu, sched_select_test_cpu);
+	KUNIT_EXPECT_EQ(test, initial_flags, sched_select_test_flags);
+	KUNIT_EXPECT_EQ(test, current_cpu, cpu);
+	KUNIT_EXPECT_EQ(test, initial_flags | RUST_SCHED_WF_RQ_SELECTED,
+			wake_flags);
+
+	kfree(task);
+}
+#endif
+
 #if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
 	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE)
 static void sched_wake_test_wakeup_state(struct kunit *test)
@@ -510,6 +660,12 @@ static struct kunit_case sched_wake_test_cases[] = {
 #ifdef CONFIG_RUST_SCHED_WAKE_IF_IDLE
 	KUNIT_CASE(sched_wake_test_wake_if_idle_plan),
 	KUNIT_CASE(sched_wake_test_wake_if_idle_current),
+#endif
+#ifdef CONFIG_RUST_SCHED_SELECT_TASK_RQ
+	KUNIT_CASE(sched_wake_test_select_task_rq_path),
+	KUNIT_CASE(sched_wake_test_select_task_rq_class),
+	KUNIT_CASE(sched_wake_test_select_task_rq_single),
+	KUNIT_CASE(sched_wake_test_select_task_rq_fallback),
 #endif
 #ifdef CONFIG_RUST_SCHED_BLOCK_TASK
 	KUNIT_CASE(sched_wake_test_block_plan),

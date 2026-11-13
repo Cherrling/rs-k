@@ -1079,6 +1079,24 @@ config RUST_SCHED_WAKE_IF_IDLE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SCHED_SELECT_TASK_RQ
+	bool "Rust implementation of scheduler task CPU selection"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production task CPU selection entry point. Rust
+	  reads the allowed-CPU count and migration-disabled state, selects the
+	  scheduling-class callback path or the single-CPU mask path, invokes
+	  the scheduling class directly, sets the runqueue-selected wake flag,
+	  validates the selected CPU, and requests fallback placement.
+
+	  Task and CPU locking, cpumask primitives, CPU eligibility queries,
+	  fallback placement, scheduling-class callback implementations, and
+	  public scheduler ABI adapters remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_SCHED_TTWU_RUNNABLE
 	bool "Rust implementation of the scheduler runnable wake path"
 	depends on RUST

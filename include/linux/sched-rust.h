@@ -7,6 +7,7 @@
 struct task_struct;
 struct rq;
 struct rq_flags;
+struct cpumask;
 
 void resched_curr(struct rq *rq);
 
@@ -119,6 +120,41 @@ unsigned int rust_sched_wake_if_idle_select(bool curr_idle,
 
 #endif /* CONFIG_RUST_SCHED_WAKE_IF_IDLE */
 
+#if defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE) || \
+	defined(CONFIG_RUST_SCHED_SELECT_TASK_RQ)
+
+#define RUST_SCHED_WF_RQ_SELECTED		0x80
+
+#endif
+
+#ifdef CONFIG_RUST_SCHED_SELECT_TASK_RQ
+
+#define RUST_SCHED_SELECT_TASK_RQ_CLASS		0x01
+#define RUST_SCHED_SELECT_TASK_RQ_SINGLE	0x02
+
+int rust_helper_sched_select_task_rq_cpumask_any(const struct cpumask *mask);
+bool rust_helper_sched_select_task_rq_cpu_allowed(struct task_struct *task,
+						  int cpu);
+int rust_helper_sched_select_task_rq_task_cpu(const struct task_struct *task);
+int rust_helper_sched_select_task_rq_fallback(int cpu,
+					      struct task_struct *task);
+
+int rust_sched_select_task_rq(struct task_struct *task, int cpu,
+			      int *wake_flags);
+
+#ifdef CONFIG_KUNIT
+typedef int (*rust_sched_select_task_rq_fn)(struct task_struct *task, int cpu,
+					    int flags);
+
+unsigned int rust_sched_select_task_rq_path_select(int nr_cpus_allowed,
+						   bool migration_disabled);
+int rust_sched_select_task_rq_test(struct task_struct *task, int cpu,
+				   int *wake_flags,
+				   rust_sched_select_task_rq_fn callback);
+#endif
+
+#endif /* CONFIG_RUST_SCHED_SELECT_TASK_RQ */
+
 #ifdef CONFIG_RUST_SCHED_TTWU_RUNNABLE
 
 #define RUST_SCHED_TTWU_TASK_IS_BLOCKED		0x01
@@ -188,7 +224,6 @@ void rust_sched_ttwu_wakeup_state_select(struct task_struct *task);
 #define RUST_SCHED_TTWU_ACTIVATE_MIGRATED	0x04
 #define RUST_SCHED_TTWU_ACTIVATE_IO_WAIT	0x08
 #define RUST_SCHED_WF_MIGRATED			0x20
-#define RUST_SCHED_WF_RQ_SELECTED		0x80
 #define RUST_SCHED_ENQUEUE_WAKEUP		0x0001
 #define RUST_SCHED_ENQUEUE_RQ_SELECTED		0x00100000
 
