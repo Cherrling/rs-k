@@ -42,9 +42,10 @@ int rust_sched_state_match_select(unsigned int task_state,
 #define RUST_SCHED_TTWU_TASK_ON_CPU		0x02
 #define RUST_SCHED_TTWU_TASK_DELAYED		0x04
 
-void rust_helper_sched_ttwu_update_clock(struct rq *rq);
 bool rust_helper_sched_ttwu_proxy_return(struct rq *rq,
 					 struct task_struct *task);
+
+void update_rq_clock(struct rq *rq);
 
 int rust_sched_ttwu_runnable_locked(struct rq *rq, struct task_struct *task,
 				    int wake_flags);

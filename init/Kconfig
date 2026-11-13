@@ -1018,10 +1018,11 @@ config RUST_SCHED_TTWU_RUNNABLE
 	default y
 	help
 	  Use Rust for the production task_rq-locked runnable wake path. Rust
-	  owns the queued check, clock update, delayed-enqueue flags and direct
-	  enqueue call, proxy-return ordering, task blocked, on-CPU, and delayed
-	  state reads, preemption decision, and final wake-state publication,
-	  including clearing the blocked marker and publishing the running state.
+	  owns the queued check, direct runqueue clock update, delayed-enqueue
+	  flags and direct enqueue call, proxy-return ordering, task blocked,
+	  on-CPU, and delayed state reads, preemption decision, and final
+	  wake-state publication, including clearing the blocked marker and
+	  publishing the running state.
 
 	  Task runqueue lock acquisition and release, the scheduler queue
 	  implementation and proxy operations, preemption, tracing, and public

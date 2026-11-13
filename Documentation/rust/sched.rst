@@ -28,9 +28,10 @@ Rust owns these production decisions:
 * Publishing a matched saved state as ``TASK_RUNNING``.
 * Checking whether the wake target remains queued after the runqueue lock is
   acquired.
-* Updating the runqueue clock, reading task blocked, on-CPU, and delayed state,
-  deciding whether delayed enqueue is necessary, composing its flags, and
-  calling ``enqueue_task()`` directly.
+* Updating the runqueue clock through a direct ``update_rq_clock()`` call,
+  reading task blocked, on-CPU, and delayed state, deciding whether delayed
+  enqueue is necessary, composing its flags, and calling ``enqueue_task()``
+  directly.
 * Handling proxy state, selecting preemption, and publishing the final running
   state.
 * Decoding the selected-runqueue and migrated wake flags.
@@ -63,11 +64,11 @@ and ``ttwu_state_match()`` adapters. When the Rust option is enabled, the task
 state result and wake-state transition come from
 ``rust/kernel/sched_core.rs``.
 
-The Rust-to-C helper calls are:
+The Rust-to-C calls are:
 
 * The invalid debug-preemption wake-mask warning.
 * The runqueue clock update, proxy state query, and preemption used by the
-  runnable path.
+  runnable path. Rust calls ``update_rq_clock()`` directly.
 * The delay-accounting completion primitive and preemption used by the
   activation path. Rust constructs the enqueue flags, updates ``nr_iowait``,
   and calls ``activate_task()`` directly.
@@ -135,9 +136,15 @@ The runnable path retains runqueue lock acquisition and release, scheduler
 queue and proxy operations, preemption, and tracing in C. Rust owns the
 decision to enqueue a delayed task, the ``ENQUEUE_NOCLOCK`` and
 ``ENQUEUE_DELAYED`` flags, and the direct ``enqueue_task()`` call. C retains
-the scheduling-class queue operation reached through that call. The C adapter
-cannot return while Rust still holds the lock because the lock remains owned
-by the C caller.
+the scheduling-class queue operation reached through that call.
+
+The runqueue clock algorithm remains in C. It combines lockdep validation,
+scheduler feature checks, clock-source sampling, ``sched_ext`` clock update,
+scheduler-class time accounting, IRQ time accounting, and paravirtual steal
+time accounting. Rust calls ``update_rq_clock()`` directly while the task
+runqueue lock is held. There is no clock-update wrapper. The C adapter cannot
+return while Rust still holds the lock because the lock remains owned by the
+C caller.
 
 The activation path retains runqueue lock ownership, scheduling-class queue
 operations reached through ``activate_task()``, the preemption primitive,
@@ -825,6 +832,59 @@ symbols, no delayed-enqueue helper symbol, and no KUnit selector symbol. No run
 reported a ``BUG``, warning, KASAN report, lock dependency diagnosis, Oops, or
 panic.
 
+The direct runqueue-clock call unit was validated on 2026-11-13 with x86_64
+``LLVM=1`` builds and QEMU 11.1.3. Each configuration passed three consecutive
+four-vCPU runs:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 25 25
+
+   * - Configuration
+     - Scheduler cases
+     - hrtimer cases
+   * - Full Rust
+     - 19
+     - 25
+   * - Wake-state fallback
+     - 17
+     - 25
+   * - Runnable fallback
+     - 17
+     - 25
+   * - Activation fallback
+     - 12
+     - 25
+   * - Wake-state only
+     - 5
+     - 25
+   * - Runnable only
+     - 6
+     - 25
+   * - Activation only
+     - 11
+     - 25
+   * - PREEMPT_RT
+     - 19
+     - 25
+   * - KASAN
+     - 19
+     - 25
+   * - lockdep
+     - 19
+     - 25
+
+Rust calls ``update_rq_clock()`` directly under the task runqueue lock. C
+removes ``rust_helper_sched_ttwu_update_clock()``, which only forwarded to the
+clock implementation. The real runnable wake KUnit cases exercise the direct
+call.
+
+The clock algorithm remains a reviewed C boundary because it coordinates
+lockdep state, scheduler feature checks, clock-source sampling, ``sched_ext``
+clock state, scheduler-class time accounting, IRQ time accounting, and
+paravirtual steal-time accounting. Reopen this boundary when those contracts
+or the clock-update ordering change.
+
 Review conditions
 -----------------
 
@@ -835,6 +895,8 @@ Reopen this boundary decision if any of these conditions changes:
 * Debug-preemption wake-mask validation changes.
 * The selected-runqueue or migrated wake-flag values or meanings change.
 * Rust gains safe task-state accessors and kernel warning abstractions.
+* The runqueue clock algorithm, lock contract, update ordering, or function
+  declaration changes.
 * The runnable path changes its runqueue lock, delayed-enqueue condition,
   enqueue flags, direct enqueue call, proxy return, preemption, or
   wake-publication ordering.

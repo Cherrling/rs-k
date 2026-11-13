@@ -352,7 +352,7 @@ unsafe extern "C" fn rust_sched_ttwu_runnable_locked(
     }
 
     // SAFETY: The caller holds the task runqueue lock.
-    unsafe { bindings::rust_helper_sched_ttwu_update_clock(rq) };
+    unsafe { bindings::update_rq_clock(rq) };
 
     // SAFETY: The caller holds the task runqueue lock.
     if unsafe { task_is_blocked(task) } {

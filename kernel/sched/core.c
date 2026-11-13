@@ -3922,11 +3922,6 @@ static inline bool proxy_needs_return(struct rq *rq, struct task_struct *p)
 #endif /* CONFIG_SCHED_PROXY_EXEC */
 
 #ifdef CONFIG_RUST_SCHED_TTWU_RUNNABLE
-void rust_helper_sched_ttwu_update_clock(struct rq *rq)
-{
-	update_rq_clock(rq);
-}
-
 bool rust_helper_sched_ttwu_proxy_return(struct rq *rq,
 					 struct task_struct *task)
 {
