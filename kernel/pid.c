@@ -33,6 +33,7 @@
 #include <linux/init.h>
 #include <linux/rculist.h>
 #include <linux/memblock.h>
+#include <linux/pid-rust.h>
 #include <linux/pid_namespace.h>
 #include <linux/init_task.h>
 #include <linux/syscalls.h>
@@ -84,6 +85,41 @@ struct pid_namespace init_pid_ns = {
 EXPORT_SYMBOL_GPL(init_pid_ns);
 
 static  __cacheline_aligned_in_smp DEFINE_SPINLOCK(pidmap_lock);
+
+#ifdef CONFIG_RUST_PID_LIFECYCLE
+
+void put_pid(struct pid *pid)
+{
+	rust_pid_put(pid);
+}
+EXPORT_SYMBOL_GPL(put_pid);
+
+void free_pid(struct pid *pid)
+{
+	rust_pid_free(pid);
+}
+
+void free_pids(struct pid **pids)
+{
+	rust_pid_free_all(pids);
+}
+
+void rust_helper_pidmap_lock(void)
+{
+	spin_lock(&pidmap_lock);
+}
+
+void rust_helper_pidmap_unlock(void)
+{
+	spin_unlock(&pidmap_lock);
+}
+
+void rust_helper_pid_assert_tasklist_not_held(void)
+{
+	lockdep_assert_not_held(&tasklist_lock);
+}
+
+#else /* !CONFIG_RUST_PID_LIFECYCLE */
 
 void put_pid(struct pid *pid)
 {
@@ -155,6 +191,8 @@ void free_pids(struct pid **pids)
 		if (pids[tmp])
 			free_pid(pids[tmp]);
 }
+
+#endif /* CONFIG_RUST_PID_LIFECYCLE */
 
 struct pid *alloc_pid(struct pid_namespace *ns, pid_t *arg_set_tid,
 		      size_t arg_set_tid_size)

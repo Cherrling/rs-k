@@ -38,6 +38,7 @@ more details.
     arch-support
     testing
     task-teardown
+    pid-lifecycle
     mm-lifetime
     mm-teardown
     sched

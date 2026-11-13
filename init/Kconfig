@@ -1300,6 +1300,23 @@ config RUST_TASK_TEARDOWN
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_PID_LIFECYCLE
+	bool "Rust implementation of PID lifecycle release"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production PID release orchestration. Rust owns the
+	  final-reference decision, reverse PID array traversal, PID namespace
+	  count transitions, child-reaper wake decisions, release ordering, and
+	  the deferred final-reference callback.
+
+	  Atomic reference-count operations, locking, IDR and pidfs operations,
+	  child-reaper reads, cache release, namespace reference release, and
+	  RCU queueing remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_CPUPRI
 	bool "Rust implementation of CPU-priority scheduling state"
 	depends on RUST && SMP
