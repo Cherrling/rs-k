@@ -12,6 +12,7 @@ use crate::bindings;
     CONFIG_RUST_SCHED_WAKE_STATE,
     CONFIG_RUST_SCHED_WAKE_PREEMPT,
     CONFIG_RUST_SCHED_RESCHED_CURR,
+    CONFIG_RUST_SCHED_RESCHED_CPU,
     CONFIG_RUST_SCHED_TTWU_RUNNABLE,
     CONFIG_RUST_SCHED_TTWU_ACTIVATE,
     CONFIG_RUST_SCHED_RQ_TRANSITION
@@ -42,6 +43,15 @@ use crate::sync::atomic::Atomic;
 use crate::sync::atomic::Relaxed;
 use macros::export;
 
+#[cfg(any(
+    CONFIG_RUST_SCHED_WAKE_STATE,
+    CONFIG_RUST_SCHED_WAKE_PREEMPT,
+    CONFIG_RUST_SCHED_RESCHED_CURR,
+    CONFIG_RUST_SCHED_TTWU_RUNNABLE,
+    CONFIG_RUST_SCHED_TTWU_ACTIVATE,
+    CONFIG_RUST_SCHED_BLOCK_TASK,
+    CONFIG_RUST_SCHED_RQ_TRANSITION
+))]
 type Task = bindings::task_struct;
 #[cfg(any(
     CONFIG_RUST_SCHED_BLOCK_TASK,
@@ -49,7 +59,8 @@ type Task = bindings::task_struct;
     CONFIG_RUST_SCHED_TTWU_ACTIVATE,
     CONFIG_RUST_SCHED_TTWU_RUNNABLE,
     CONFIG_RUST_SCHED_WAKE_PREEMPT,
-    CONFIG_RUST_SCHED_RESCHED_CURR
+    CONFIG_RUST_SCHED_RESCHED_CURR,
+    CONFIG_RUST_SCHED_RESCHED_CPU
 ))]
 type Rq = bindings::rq;
 #[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
@@ -875,6 +886,54 @@ extern "C" fn rust_sched_resched_plan_select(tif: c_int, flags: c_ulong, local: 
 #[export]
 extern "C" fn rust_sched_resched_remote_select(atomic_set: bool, tif: c_int) -> u32 {
     resched_remote_plan(atomic_set, tif)
+}
+
+/// Returns whether a per-CPU reschedule request is required.
+#[cfg(CONFIG_RUST_SCHED_RESCHED_CPU)]
+fn resched_cpu_needed(cpu_online: bool, cpu_local: bool) -> bool {
+    cpu_online || cpu_local
+}
+
+/// Implements a runqueue-locked per-CPU reschedule request.
+///
+/// # Safety
+///
+/// `rq` must remain live, must belong to `cpu`, and the caller must hold its
+/// runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_RESCHED_CPU)]
+unsafe fn resched_cpu_locked(rq: *mut Rq, cpu: c_int) {
+    // SAFETY: The caller holds the target runqueue lock.
+    let cpu_online = unsafe { bindings::rust_helper_sched_resched_cpu_online(cpu) };
+    // Preserve the C short-circuit: query the current CPU only for an offline
+    // target.
+    // SAFETY: The runqueue lock disables migration and IRQs on this CPU.
+    let cpu_local =
+        !cpu_online && cpu == unsafe { bindings::rust_helper_sched_resched_cpu_current() };
+
+    if resched_cpu_needed(cpu_online, cpu_local) {
+        // SAFETY: The caller holds the target runqueue lock.
+        unsafe { bindings::resched_curr(rq) };
+    }
+}
+
+/// Implements the production per-CPU reschedule request entry point.
+///
+/// # Safety
+///
+/// `rq` must remain live, must belong to `cpu`, and the caller must hold its
+/// runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_RESCHED_CPU)]
+#[export]
+unsafe extern "C" fn rust_sched_resched_cpu(rq: *mut Rq, cpu: c_int) {
+    // SAFETY: The caller satisfies the exported entry-point contract.
+    unsafe { resched_cpu_locked(rq, cpu) };
+}
+
+/// Selects whether a per-CPU reschedule request is required for KUnit.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_RESCHED_CPU))]
+#[export]
+extern "C" fn rust_sched_resched_cpu_select(cpu_online: bool, cpu_local: bool) -> bool {
+    resched_cpu_needed(cpu_online, cpu_local)
 }
 
 /// Classifies the task scheduling class relative to the selected class.

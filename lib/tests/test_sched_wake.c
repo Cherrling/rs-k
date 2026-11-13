@@ -279,6 +279,16 @@ static void sched_wake_test_resched_remote(struct kunit *test)
 }
 #endif
 
+#ifdef CONFIG_RUST_SCHED_RESCHED_CPU
+static void sched_wake_test_resched_cpu(struct kunit *test)
+{
+	KUNIT_EXPECT_TRUE(test, rust_sched_resched_cpu_select(true, false));
+	KUNIT_EXPECT_TRUE(test, rust_sched_resched_cpu_select(true, true));
+	KUNIT_EXPECT_TRUE(test, rust_sched_resched_cpu_select(false, true));
+	KUNIT_EXPECT_FALSE(test, rust_sched_resched_cpu_select(false, false));
+}
+#endif
+
 #if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
 	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE)
 static void sched_wake_test_wakeup_state(struct kunit *test)
@@ -471,6 +481,9 @@ static struct kunit_case sched_wake_test_cases[] = {
 	KUNIT_CASE(sched_wake_test_resched_tif),
 	KUNIT_CASE(sched_wake_test_resched_plan),
 	KUNIT_CASE(sched_wake_test_resched_remote),
+#endif
+#ifdef CONFIG_RUST_SCHED_RESCHED_CPU
+	KUNIT_CASE(sched_wake_test_resched_cpu),
 #endif
 #ifdef CONFIG_RUST_SCHED_BLOCK_TASK
 	KUNIT_CASE(sched_wake_test_block_plan),

@@ -1048,6 +1048,22 @@ config RUST_SCHED_RESCHED_CURR
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SCHED_RESCHED_CPU
+	bool "Rust implementation of per-CPU reschedule requests"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production per-CPU reschedule request decision.
+	  Rust requests current-task rescheduling only when the target CPU is
+	  online or is the current CPU.
+
+	  CPU-to-runqueue mapping, CPU-online and current-CPU queries, runqueue
+	  locking, reschedule delivery, and public scheduler ABI adapters remain
+	  in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_SCHED_TTWU_RUNNABLE
 	bool "Rust implementation of the scheduler runnable wake path"
 	depends on RUST

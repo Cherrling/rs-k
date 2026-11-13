@@ -17,6 +17,8 @@ The ``CONFIG_RUST_SCHED_WAKE_PREEMPT`` option selects Rust for the production
 wakeup-preemption state machine.
 The ``CONFIG_RUST_SCHED_RESCHED_CURR`` option selects Rust for the production
 current-task reschedule request state machine.
+The ``CONFIG_RUST_SCHED_RESCHED_CPU`` option selects Rust for the production
+per-CPU reschedule request decision.
 The ``CONFIG_RUST_SCHED_BLOCK_TASK`` option selects Rust for the production
 task blocking state machine.
 The ``CONFIG_RUST_SCHED_RQ_TRANSITION`` option selects Rust for the production
@@ -45,6 +47,8 @@ Rust owns these production decisions:
 * Promoting a lazy reschedule request for an idle task, suppressing duplicate
   requests, selecting local or remote delivery, and ordering trace, thread
   flag, preemption count, reschedule IPI, and idle wake trace operations.
+* Determining whether a per-CPU reschedule request targets an online or
+  current CPU and requesting current-task rescheduling only for either case.
 * Reading task load and I/O wait state, updating the runqueue
   ``nr_uninterruptible`` and ``nr_iowait`` counts, ending delay accounting,
   constructing enqueue flags, calling task activation directly, selecting
@@ -91,6 +95,8 @@ The Rust-to-C calls are:
 * The reschedule tracepoints, current-CPU query, local thread-flag write,
   preemption-count update, remote atomic thread-flag update, and reschedule IPI
   delivery used by the current-task reschedule request path.
+* The CPU-online and current-CPU queries used by the per-CPU reschedule
+  request path.
 * Wakeup tracepoint emission used by both wake paths.
 * Scheduling-class ``task_woken`` callback implementations reached through
   an indirect call from Rust.
@@ -109,6 +115,7 @@ The C-to-Rust production entries are:
 * ``rust_sched_ttwu_activate_locked()``.
 * ``rust_sched_wakeup_preempt()``.
 * ``rust_sched_resched_curr()``.
+* ``rust_sched_resched_cpu()``.
 * ``rust_sched_block_task_locked()``.
 * ``rust_sched_activate_task_locked()``.
 * ``rust_sched_deactivate_task_locked()``.
@@ -131,6 +138,12 @@ current task and runqueue CPU, applies the idle-task lazy-request promotion,
 checks for duplicate requests, emits the scheduler trace, and selects local or
 remote delivery. Narrow C helpers perform the thread-flag writes, preemption
 count update, IPI delivery, and tracepoint emission in the original order.
+
+For the per-CPU reschedule request entry, C maps the CPU to its runqueue and
+holds that runqueue lock with interrupts disabled. Rust decides whether the
+request is required and calls ``resched_curr()`` only for an online target or
+the current CPU. Narrow C helpers perform the CPU-online and current-CPU
+queries.
 
 For the blocking entry, C validates that the task runqueue lock is held and
 passes the task state to Rust. Rust classifies the state and calls the bitfield,
@@ -174,6 +187,15 @@ time accounting. Rust calls ``update_rq_clock()`` directly while the task
 runqueue lock is held. There is no clock-update wrapper. The C adapter cannot
 return while Rust still holds the lock because the lock remains owned by the
 C caller.
+
+The per-CPU reschedule path retains CPU-to-runqueue mapping, runqueue lock
+acquisition and release, IRQ state save and restore, and the CPU-online and
+current-CPU queries in C. Rust owns the eligibility decision and the ordering
+of the ``resched_curr()`` call. Rust queries the current CPU only when the
+target CPU is offline. This preserves the original short-circuit behavior.
+When the current-task reschedule option is also enabled,
+``resched_curr()`` enters its Rust implementation through the existing C ABI
+adapter.
 
 Rust owns the wakeup-preemption state machine. It reads the donor, current
 task, selected class, and clock-update flags from ``struct rq``. It compares
@@ -309,13 +331,18 @@ becomes the selected class. Rust skips the next redundant runqueue clock
 update only when the donor remains queued and the current task has the
 reschedule flag set.
 
+A per-CPU reschedule request invokes current-task rescheduling when the target
+CPU is online or is the current CPU. The current-CPU query is skipped while
+the target CPU is online.
+
 Validation gate
 ---------------
 
 The Rust KUnit cases cover the state-match table, saved-state transition,
 activation action selection, activation and delayed-enqueue flags, the
 uninterruptible and I/O wait count updates, wakeup-preemption action
-selection, blocking action selection, and a real uninterruptible timeout. A
+selection, per-CPU reschedule eligibility, blocking action selection, and a
+real uninterruptible timeout. A
 state-publication case checks the blocked marker and running-state stores. The
 transition action table covers migrated enqueue and invalid sleeping dequeue.
 Real wakeup cases cover current-task rejection, waking a stopped kernel
@@ -1086,6 +1113,50 @@ point and all narrow C boundaries and contained no KUnit selector symbol or
 unresolved symbol. No run reported a ``BUG``, warning, KASAN report, lock
 dependency diagnosis, Oops, or panic.
 
+The per-CPU reschedule request ownership unit was validated on 2026-11-13
+with x86_64 ``LLVM=1`` builds and QEMU 11.1.3. Each configuration passed
+three consecutive four-vCPU runs:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 25 25
+
+   * - Configuration
+     - Scheduler cases
+     - hrtimer cases
+   * - Full Rust
+     - 24
+     - 25
+   * - C fallback
+     - 23
+     - 25
+   * - Reschedule-CPU only
+     - 4
+     - 25
+   * - PREEMPT_RT
+     - 24
+     - 25
+   * - KASAN
+     - 24
+     - 25
+   * - lockdep
+     - 24
+     - 25
+
+Rust owns the online-or-current decision and the conditional
+``resched_curr()`` call. C retains CPU-to-runqueue mapping, runqueue locking,
+IRQ state save and restore, the CPU-online and current-CPU queries, and the
+public scheduler ABI adapter. Rust preserves the short-circuit by querying the
+current CPU only after an online check fails. The full configuration passes
+the request through the Rust current-task reschedule implementation.
+
+The full configuration passed Rustfmt, Clippy, strict checkpatch, and
+``git diff --check``. The no-KUnit production image built with Clippy and all
+eight Rust scheduler options enabled. Its symbol table contained the Rust
+entry point and both C primitive helpers, and it contained no KUnit selector
+symbol or unresolved symbol. No run reported a ``BUG``, warning, KASAN report,
+lock dependency diagnosis, Oops, or panic.
+
 Review conditions
 -----------------
 
@@ -1110,6 +1181,12 @@ Reopen this boundary decision if any of these conditions changes:
 * The reschedule helper ABI, runqueue lock requirement, or
   ``set_nr_and_not_polling()`` return contract changes.
 * Rust gains safe thread-flag, preemption-count, tracepoint, or IPI
+  abstractions that can replace the narrow C boundaries.
+* CPU-online state, current CPU identity, CPU-to-runqueue mapping, or the
+  per-CPU reschedule lock contract changes.
+* The ``resched_curr()`` declaration, ABI, call ordering, or conditional
+  requirement changes.
+* Rust gains safe CPU-state, runqueue-lock, or reschedule-delivery
   abstractions that can replace the narrow C boundaries.
 * The runnable path changes its runqueue lock, delayed-enqueue condition,
   enqueue flags, direct enqueue call, proxy return, preemption, or

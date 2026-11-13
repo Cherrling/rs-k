@@ -1393,14 +1393,30 @@ void resched_curr_lazy(struct rq *rq)
 #endif
 }
 
+#ifdef CONFIG_RUST_SCHED_RESCHED_CPU
+bool rust_helper_sched_resched_cpu_online(int cpu)
+{
+	return cpu_online(cpu);
+}
+
+int rust_helper_sched_resched_cpu_current(void)
+{
+	return smp_processor_id();
+}
+#endif
+
 void resched_cpu(int cpu)
 {
 	struct rq *rq = cpu_rq(cpu);
 	unsigned long flags;
 
 	raw_spin_rq_lock_irqsave(rq, flags);
+#ifdef CONFIG_RUST_SCHED_RESCHED_CPU
+	rust_sched_resched_cpu(rq, cpu);
+#else
 	if (cpu_online(cpu) || cpu == smp_processor_id())
 		resched_curr(rq);
+#endif
 	raw_spin_rq_unlock_irqrestore(rq, flags);
 }
 

@@ -8,6 +8,8 @@ struct task_struct;
 struct rq;
 struct rq_flags;
 
+void resched_curr(struct rq *rq);
+
 #if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
 	defined(CONFIG_RUST_SCHED_RQ_TRANSITION) || \
 	defined(CONFIG_RUST_SCHED_WAKE_PREEMPT)
@@ -48,8 +50,6 @@ int rust_sched_state_match_select(unsigned int task_state,
 #define RUST_SCHED_WAKE_PREEMPT_SKIP_CLOCK	0x08
 #define RUST_SCHED_RQCF_REQ_SKIP		0x01
 
-void resched_curr(struct rq *rq);
-
 void rust_sched_wakeup_preempt(struct rq *rq, struct task_struct *task,
 			       int wake_flags);
 
@@ -88,6 +88,19 @@ unsigned int rust_sched_resched_remote_select(bool atomic_set, int tif);
 #endif
 
 #endif /* CONFIG_RUST_SCHED_RESCHED_CURR */
+
+#ifdef CONFIG_RUST_SCHED_RESCHED_CPU
+
+bool rust_helper_sched_resched_cpu_online(int cpu);
+int rust_helper_sched_resched_cpu_current(void);
+
+void rust_sched_resched_cpu(struct rq *rq, int cpu);
+
+#ifdef CONFIG_KUNIT
+bool rust_sched_resched_cpu_select(bool cpu_online, bool cpu_local);
+#endif
+
+#endif /* CONFIG_RUST_SCHED_RESCHED_CPU */
 
 #ifdef CONFIG_RUST_SCHED_TTWU_RUNNABLE
 
