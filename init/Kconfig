@@ -1030,6 +1030,24 @@ config RUST_SCHED_WAKE_PREEMPT
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SCHED_RESCHED_CURR
+	bool "Rust implementation of scheduler reschedule requests"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production current-task reschedule request state
+	  machine. Rust promotes a lazy reschedule request for an idle task,
+	  suppresses duplicate requests, emits the scheduler trace, selects
+	  local or remote delivery, and orders the atomic thread-flag, preemption,
+	  reschedule IPI, and idle-polling paths.
+
+	  Task and runqueue locking, thread-flag bit operations, preemption-count
+	  updates, tracepoints, IPI delivery, and public scheduler ABI adapters
+	  remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_SCHED_TTWU_RUNNABLE
 	bool "Rust implementation of the scheduler runnable wake path"
 	depends on RUST

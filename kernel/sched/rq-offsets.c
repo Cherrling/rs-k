@@ -12,6 +12,7 @@ int main(void)
 	DEFINE(RQ_nr_iowait, offsetof(struct rq, nr_iowait));
 	DEFINE(RQ_donor, offsetof(struct rq, donor));
 	DEFINE(RQ_curr, offsetof(struct rq, curr));
+	DEFINE(RQ_cpu, offsetof(struct rq, cpu));
 	DEFINE(RQ_next_class, offsetof(struct rq, next_class));
 	DEFINE(RQ_clock_update_flags, offsetof(struct rq, clock_update_flags));
 	DEFINE(SCHED_CLASS_wakeup_preempt,

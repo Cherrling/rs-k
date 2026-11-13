@@ -229,6 +229,56 @@ static void sched_wake_test_wakeup_preempt_plan(struct kunit *test)
 }
 #endif
 
+#ifdef CONFIG_RUST_SCHED_RESCHED_CURR
+static void sched_wake_test_resched_tif(struct kunit *test)
+{
+	int lazy = TIF_NEED_RESCHED_LAZY;
+	int urgent = TIF_NEED_RESCHED;
+
+	KUNIT_EXPECT_EQ(test, urgent, rust_sched_resched_tif_select(true, lazy));
+	KUNIT_EXPECT_EQ(test, lazy, rust_sched_resched_tif_select(false, lazy));
+	KUNIT_EXPECT_EQ(test, urgent, rust_sched_resched_tif_select(false, urgent));
+}
+
+static void sched_wake_test_resched_plan(struct kunit *test)
+{
+	unsigned long urgent_set = 1UL << TIF_NEED_RESCHED;
+	unsigned long lazy_set = 1UL << TIF_NEED_RESCHED_LAZY;
+	unsigned int local_set = RUST_SCHED_RESCHED_LOCAL_SET;
+	unsigned int local_preempt =
+		RUST_SCHED_RESCHED_LOCAL_SET |
+		RUST_SCHED_RESCHED_LOCAL_PREEMPT;
+	unsigned int urgent = TIF_NEED_RESCHED;
+	unsigned int lazy = TIF_NEED_RESCHED_LAZY;
+
+	KUNIT_EXPECT_EQ(test, local_preempt,
+			rust_sched_resched_plan_select(urgent, 0, true));
+	KUNIT_EXPECT_EQ(test, local_set,
+			rust_sched_resched_plan_select(lazy, 0, true));
+	KUNIT_EXPECT_EQ(test, 0,
+			rust_sched_resched_plan_select(urgent, urgent_set, true));
+	KUNIT_EXPECT_EQ(test, 0,
+			rust_sched_resched_plan_select(lazy, urgent_set, true));
+	KUNIT_EXPECT_EQ(test, 0,
+			rust_sched_resched_plan_select(lazy, lazy_set, true));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_RESCHED_REMOTE_SET,
+			rust_sched_resched_plan_select(urgent, 0, false));
+}
+
+static void sched_wake_test_resched_remote(struct kunit *test)
+{
+	unsigned int urgent = TIF_NEED_RESCHED;
+	unsigned int lazy = TIF_NEED_RESCHED_LAZY;
+
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_RESCHED_SEND_IPI,
+			rust_sched_resched_remote_select(true, urgent));
+	KUNIT_EXPECT_EQ(test, 0,
+			rust_sched_resched_remote_select(true, lazy));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_RESCHED_WAKE_IDLE,
+			rust_sched_resched_remote_select(false, urgent));
+}
+#endif
+
 #if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
 	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE)
 static void sched_wake_test_wakeup_state(struct kunit *test)
@@ -416,6 +466,11 @@ static struct kunit_case sched_wake_test_cases[] = {
 #endif
 #ifdef CONFIG_RUST_SCHED_WAKE_PREEMPT
 	KUNIT_CASE(sched_wake_test_wakeup_preempt_plan),
+#endif
+#ifdef CONFIG_RUST_SCHED_RESCHED_CURR
+	KUNIT_CASE(sched_wake_test_resched_tif),
+	KUNIT_CASE(sched_wake_test_resched_plan),
+	KUNIT_CASE(sched_wake_test_resched_remote),
 #endif
 #ifdef CONFIG_RUST_SCHED_BLOCK_TASK
 	KUNIT_CASE(sched_wake_test_block_plan),

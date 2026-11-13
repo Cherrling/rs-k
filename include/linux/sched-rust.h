@@ -61,6 +61,34 @@ unsigned int rust_sched_wakeup_preempt_select(unsigned int class_relation,
 
 #endif /* CONFIG_RUST_SCHED_WAKE_PREEMPT */
 
+#ifdef CONFIG_RUST_SCHED_RESCHED_CURR
+
+#define RUST_SCHED_RESCHED_LOCAL_SET	0x01
+#define RUST_SCHED_RESCHED_LOCAL_PREEMPT	0x02
+#define RUST_SCHED_RESCHED_REMOTE_SET	0x04
+#define RUST_SCHED_RESCHED_SEND_IPI	0x08
+#define RUST_SCHED_RESCHED_WAKE_IDLE	0x10
+
+void rust_helper_sched_resched_trace(struct task_struct *task, int cpu,
+				     int tif);
+int rust_helper_sched_resched_current_cpu(void);
+void rust_helper_sched_resched_set_local(struct task_struct *task, int tif);
+void rust_helper_sched_resched_set_preempt(void);
+bool rust_helper_sched_resched_set_remote(struct task_struct *task, int tif);
+void rust_helper_sched_resched_send_ipi(int cpu);
+void rust_helper_sched_resched_trace_wake_idle(int cpu);
+
+void rust_sched_resched_curr(struct rq *rq, int tif);
+
+#ifdef CONFIG_KUNIT
+int rust_sched_resched_tif_select(bool idle, int tif);
+unsigned int rust_sched_resched_plan_select(int tif, unsigned long flags,
+					    bool local);
+unsigned int rust_sched_resched_remote_select(bool atomic_set, int tif);
+#endif
+
+#endif /* CONFIG_RUST_SCHED_RESCHED_CURR */
+
 #ifdef CONFIG_RUST_SCHED_TTWU_RUNNABLE
 
 #define RUST_SCHED_TTWU_TASK_IS_BLOCKED		0x01

@@ -2,21 +2,35 @@
 
 //! Native scheduler core state machines.
 //!
-//! Rust owns task-state matching, wake activation, wake preemption, and task
-//! blocking decisions. C retains task and runqueue locking, warning delivery,
-//! scheduling-class implementations, and task selection.
+//! Rust owns task-state matching, reschedule requests, wake activation, wake
+//! preemption, and task blocking decisions. C retains task and runqueue
+//! locking, warning delivery, scheduling-class implementations, and task
+//! selection.
 
 use crate::bindings;
 #[cfg(any(
     CONFIG_RUST_SCHED_WAKE_STATE,
     CONFIG_RUST_SCHED_WAKE_PREEMPT,
+    CONFIG_RUST_SCHED_RESCHED_CURR,
     CONFIG_RUST_SCHED_TTWU_RUNNABLE,
     CONFIG_RUST_SCHED_TTWU_ACTIVATE,
     CONFIG_RUST_SCHED_RQ_TRANSITION
 ))]
 use crate::ffi::c_int;
-#[cfg(any(CONFIG_RUST_SCHED_TTWU_ACTIVATE, CONFIG_RUST_SCHED_WAKE_PREEMPT))]
+#[cfg(any(
+    CONFIG_RUST_SCHED_TTWU_ACTIVATE,
+    CONFIG_RUST_SCHED_WAKE_PREEMPT,
+    CONFIG_RUST_SCHED_RESCHED_CURR
+))]
 use crate::ffi::c_ulong;
+#[cfg(any(
+    CONFIG_RUST_SCHED_TTWU_RUNNABLE,
+    CONFIG_RUST_SCHED_RQ_TRANSITION,
+    CONFIG_RUST_SCHED_WAKE_PREEMPT
+))]
+use crate::sync::atomic::atomic_load;
+#[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
+use crate::sync::atomic::atomic_store;
 #[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
 use crate::sync::atomic::Atomic;
 #[cfg(any(
@@ -26,14 +40,6 @@ use crate::sync::atomic::Atomic;
     CONFIG_RUST_SCHED_WAKE_PREEMPT
 ))]
 use crate::sync::atomic::Relaxed;
-#[cfg(any(
-    CONFIG_RUST_SCHED_TTWU_RUNNABLE,
-    CONFIG_RUST_SCHED_RQ_TRANSITION,
-    CONFIG_RUST_SCHED_WAKE_PREEMPT
-))]
-use crate::sync::atomic::atomic_load;
-#[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
-use crate::sync::atomic::atomic_store;
 use macros::export;
 
 type Task = bindings::task_struct;
@@ -42,7 +48,8 @@ type Task = bindings::task_struct;
     CONFIG_RUST_SCHED_RQ_TRANSITION,
     CONFIG_RUST_SCHED_TTWU_ACTIVATE,
     CONFIG_RUST_SCHED_TTWU_RUNNABLE,
-    CONFIG_RUST_SCHED_WAKE_PREEMPT
+    CONFIG_RUST_SCHED_WAKE_PREEMPT,
+    CONFIG_RUST_SCHED_RESCHED_CURR
 ))]
 type Rq = bindings::rq;
 #[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
@@ -74,6 +81,16 @@ const PREEMPT_UPDATE_NEXT: u32 = bindings::RUST_SCHED_WAKE_PREEMPT_UPDATE_NEXT;
 const PREEMPT_SKIP_CLOCK: u32 = bindings::RUST_SCHED_WAKE_PREEMPT_SKIP_CLOCK;
 #[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
 const RQCF_REQ_SKIP: u32 = bindings::RUST_SCHED_RQCF_REQ_SKIP;
+#[cfg(CONFIG_RUST_SCHED_RESCHED_CURR)]
+const RESCHED_LOCAL_SET: u32 = bindings::RUST_SCHED_RESCHED_LOCAL_SET;
+#[cfg(CONFIG_RUST_SCHED_RESCHED_CURR)]
+const RESCHED_LOCAL_PREEMPT: u32 = bindings::RUST_SCHED_RESCHED_LOCAL_PREEMPT;
+#[cfg(CONFIG_RUST_SCHED_RESCHED_CURR)]
+const RESCHED_REMOTE_SET: u32 = bindings::RUST_SCHED_RESCHED_REMOTE_SET;
+#[cfg(CONFIG_RUST_SCHED_RESCHED_CURR)]
+const RESCHED_SEND_IPI: u32 = bindings::RUST_SCHED_RESCHED_SEND_IPI;
+#[cfg(CONFIG_RUST_SCHED_RESCHED_CURR)]
+const RESCHED_WAKE_IDLE: u32 = bindings::RUST_SCHED_RESCHED_WAKE_IDLE;
 
 /// Reads the current task wake state.
 ///
@@ -569,7 +586,7 @@ unsafe fn task_woken_callback(task: *mut Task) -> Option<TaskWokenCallback> {
 /// # Safety
 ///
 /// `rq` must remain live and the offset must name a live task pointer field.
-#[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
+#[cfg(any(CONFIG_RUST_SCHED_WAKE_PREEMPT, CONFIG_RUST_SCHED_RESCHED_CURR))]
 unsafe fn rq_task_pointer(rq: *mut Rq, offset: u32) -> *mut Task {
     // SAFETY: The generated offset identifies the requested pointer field in
     // the live runqueue. Use a volatile load to match the C field access.
@@ -579,6 +596,18 @@ unsafe fn rq_task_pointer(rq: *mut Rq, offset: u32) -> *mut Task {
             .cast::<*mut Task>()
             .read_volatile()
     }
+}
+
+/// Reads the current thread-info flags of a task.
+///
+/// # Safety
+///
+/// `task` must remain live while this function reads its thread flags.
+#[cfg(any(CONFIG_RUST_SCHED_WAKE_PREEMPT, CONFIG_RUST_SCHED_RESCHED_CURR))]
+unsafe fn task_thread_flags(task: *mut Task) -> c_ulong {
+    // SAFETY: The caller guarantees that the task remains live. Use a volatile
+    // load so this has the read behavior of the C thread-flag check.
+    unsafe { core::ptr::addr_of!((*task).thread_info.flags).read_volatile() }
 }
 
 /// Reads the selected scheduling class from the runqueue.
@@ -652,9 +681,8 @@ unsafe fn wakeup_preempt_callback(class: *mut bindings::sched_class) -> WakeupPr
 /// `task` must remain live and the caller must hold the task runqueue lock.
 #[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
 unsafe fn task_need_resched(task: *mut Task) -> bool {
-    // SAFETY: The caller guarantees that the task remains live. Use a volatile
-    // load so this has the read behavior of the former C thread-flag check.
-    let flags = unsafe { core::ptr::addr_of!((*task).thread_info.flags).read_volatile() };
+    // SAFETY: The caller guarantees that the task remains live.
+    let flags = unsafe { task_thread_flags(task) };
     let mask = (1 as c_ulong) << bindings::TIF_NEED_RESCHED;
     flags & mask != 0
 }
@@ -675,6 +703,178 @@ unsafe fn request_rq_clock_skip(rq: *mut Rq) {
     };
     // SAFETY: The caller holds the runqueue lock and the field is writable.
     unsafe { flags.write_volatile(flags.read_volatile() | RQCF_REQ_SKIP) };
+}
+
+/// Reads the CPU that owns a runqueue.
+///
+/// # Safety
+///
+/// `rq` must remain live and the caller must hold its lock.
+#[cfg(CONFIG_RUST_SCHED_RESCHED_CURR)]
+unsafe fn rq_cpu(rq: *mut Rq) -> c_int {
+    // SAFETY: The generated offset identifies the immutable CPU field in the
+    // live runqueue.
+    unsafe {
+        rq.cast::<u8>()
+            .add(bindings::RQ_cpu as usize)
+            .cast::<c_int>()
+            .read_volatile()
+    }
+}
+
+/// Returns whether a task is an idle task.
+///
+/// # Safety
+///
+/// `task` must remain live while this function reads its flags.
+#[cfg(CONFIG_RUST_SCHED_RESCHED_CURR)]
+unsafe fn task_is_idle(task: *mut Task) -> bool {
+    // SAFETY: The caller guarantees that the task remains live. Use a volatile
+    // load so this has the read behavior of the C task-flag check.
+    let flags = unsafe { core::ptr::addr_of!((*task).flags).read_volatile() };
+    flags & bindings::PF_IDLE != 0
+}
+
+/// Applies the immediate-reschedule rule for an idle task.
+#[cfg(CONFIG_RUST_SCHED_RESCHED_CURR)]
+fn resched_tif(idle: bool, tif: c_int) -> c_int {
+    if idle && tif == bindings::TIF_NEED_RESCHED_LAZY as c_int {
+        bindings::TIF_NEED_RESCHED as c_int
+    } else {
+        tif
+    }
+}
+
+/// Selects local or remote delivery for a non-duplicate reschedule request.
+#[cfg(CONFIG_RUST_SCHED_RESCHED_CURR)]
+fn resched_needed(tif: c_int, flags: c_ulong) -> bool {
+    let requested = (1 as c_ulong) << (tif as u32);
+    let urgent = (1 as c_ulong) << bindings::TIF_NEED_RESCHED;
+
+    flags & (requested | urgent) == 0
+}
+
+/// Selects local or remote delivery for a required reschedule request.
+#[cfg(CONFIG_RUST_SCHED_RESCHED_CURR)]
+fn resched_target_plan(tif: c_int, local: bool) -> u32 {
+    if !local {
+        return RESCHED_REMOTE_SET;
+    }
+
+    let mut plan = RESCHED_LOCAL_SET;
+    if tif == bindings::TIF_NEED_RESCHED as c_int {
+        plan |= RESCHED_LOCAL_PREEMPT;
+    }
+    plan
+}
+
+/// Selects the actions for a reschedule request.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_RESCHED_CURR))]
+fn resched_plan(tif: c_int, flags: c_ulong, local: bool) -> u32 {
+    if !resched_needed(tif, flags) {
+        0
+    } else {
+        resched_target_plan(tif, local)
+    }
+}
+
+/// Selects the action after an atomic remote thread-flag update.
+#[cfg(CONFIG_RUST_SCHED_RESCHED_CURR)]
+fn resched_remote_plan(atomic_set: bool, tif: c_int) -> u32 {
+    if !atomic_set {
+        RESCHED_WAKE_IDLE
+    } else if tif == bindings::TIF_NEED_RESCHED as c_int {
+        RESCHED_SEND_IPI
+    } else {
+        0
+    }
+}
+
+/// Implements a runqueue-locked current-task reschedule request.
+///
+/// # Safety
+///
+/// `rq` and its current task must remain live. The caller must hold the
+/// runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_RESCHED_CURR)]
+unsafe fn resched_curr_locked(rq: *mut Rq, tif: c_int) {
+    // SAFETY: The caller holds the runqueue lock.
+    let curr = unsafe { rq_task_pointer(rq, bindings::RQ_curr) };
+    // SAFETY: The caller holds the runqueue lock.
+    let idle = unsafe { task_is_idle(curr) };
+    let tif = resched_tif(idle, tif);
+    // SAFETY: The caller holds the runqueue lock.
+    let flags = unsafe { task_thread_flags(curr) };
+    if !resched_needed(tif, flags) {
+        return;
+    }
+    // SAFETY: The caller holds the runqueue lock.
+    let cpu = unsafe { rq_cpu(rq) };
+
+    // SAFETY: The task remains live under the runqueue lock.
+    unsafe { bindings::rust_helper_sched_resched_trace(curr, cpu, tif) };
+
+    // SAFETY: The runqueue lock disables migration.
+    let current_cpu = unsafe { bindings::rust_helper_sched_resched_current_cpu() };
+    let plan = resched_target_plan(tif, cpu == current_cpu);
+
+    if plan & RESCHED_LOCAL_SET != 0 {
+        // SAFETY: The task remains live and the caller holds the lock.
+        unsafe { bindings::rust_helper_sched_resched_set_local(curr, tif) };
+        if plan & RESCHED_LOCAL_PREEMPT != 0 {
+            // SAFETY: The runqueue lock disables migration and preemption.
+            unsafe { bindings::rust_helper_sched_resched_set_preempt() };
+        }
+        return;
+    }
+
+    // SAFETY: The task remains live under the runqueue lock.
+    let atomic_set = unsafe { bindings::rust_helper_sched_resched_set_remote(curr, tif) };
+    match resched_remote_plan(atomic_set, tif) {
+        RESCHED_SEND_IPI => {
+            // SAFETY: The target CPU owns the runqueue selected by the caller.
+            unsafe { bindings::rust_helper_sched_resched_send_ipi(cpu) };
+        }
+        RESCHED_WAKE_IDLE => {
+            // SAFETY: The target CPU owns the polling idle task.
+            unsafe { bindings::rust_helper_sched_resched_trace_wake_idle(cpu) };
+        }
+        _ => {}
+    }
+}
+
+/// Implements the production current-task reschedule request entry point.
+///
+/// # Safety
+///
+/// `rq` and its current task must remain live. The caller must hold the
+/// runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_RESCHED_CURR)]
+#[export]
+unsafe extern "C" fn rust_sched_resched_curr(rq: *mut Rq, tif: c_int) {
+    // SAFETY: The caller satisfies the exported entry-point contract.
+    unsafe { resched_curr_locked(rq, tif) };
+}
+
+/// Selects the effective reschedule thread flag for a task.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_RESCHED_CURR))]
+#[export]
+extern "C" fn rust_sched_resched_tif_select(idle: bool, tif: c_int) -> c_int {
+    resched_tif(idle, tif)
+}
+
+/// Selects local or remote delivery for the reschedule KUnit table.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_RESCHED_CURR))]
+#[export]
+extern "C" fn rust_sched_resched_plan_select(tif: c_int, flags: c_ulong, local: bool) -> u32 {
+    resched_plan(tif, flags, local)
+}
+
+/// Selects the remote reschedule action for the KUnit table.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_RESCHED_CURR))]
+#[export]
+extern "C" fn rust_sched_resched_remote_select(atomic_set: bool, tif: c_int) -> u32 {
+    resched_remote_plan(atomic_set, tif)
 }
 
 /// Classifies the task scheduling class relative to the selected class.

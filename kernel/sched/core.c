@@ -190,6 +190,18 @@ static_assert(offsetof(struct sched_class, wakeup_preempt) %
 	      __alignof__(((struct sched_class *)0)->wakeup_preempt) == 0);
 #endif
 
+#ifdef CONFIG_RUST_SCHED_RESCHED_CURR
+static_assert(sizeof_field(struct rq, curr) == sizeof(void *));
+static_assert(sizeof_field(struct rq, cpu) == sizeof(int));
+static_assert(sizeof_field(struct task_struct, flags) == sizeof(unsigned int));
+static_assert(sizeof_field(struct task_struct, thread_info.flags) ==
+	      sizeof(unsigned long));
+static_assert(offsetof(struct rq, curr) %
+	      __alignof__(((struct rq *)0)->curr) == 0);
+static_assert(offsetof(struct rq, cpu) %
+	      __alignof__(((struct rq *)0)->cpu) == 0);
+#endif
+
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 DEFINE_PER_CPU(struct rnd_state, sched_rnd_state);
 
@@ -1255,6 +1267,7 @@ void wake_up_q(struct wake_q_head *head)
  * might also involve a cross-CPU call to trigger the scheduler on
  * the target CPU.
  */
+#ifndef CONFIG_RUST_SCHED_RESCHED_CURR
 static void __resched_curr(struct rq *rq, int tif)
 {
 	struct task_struct *curr = rq->curr;
@@ -1290,6 +1303,7 @@ static void __resched_curr(struct rq *rq, int tif)
 		trace_sched_wake_idle_without_ipi(cpu);
 	}
 }
+#endif
 
 /*
  * Calls to this function MUST be guarded by a
@@ -1303,7 +1317,12 @@ EXPORT_SYMBOL_GPL(__trace_set_need_resched);
 
 void resched_curr(struct rq *rq)
 {
+#ifdef CONFIG_RUST_SCHED_RESCHED_CURR
+	lockdep_assert_rq_held(rq);
+	rust_sched_resched_curr(rq, TIF_NEED_RESCHED);
+#else
 	__resched_curr(rq, TIF_NEED_RESCHED);
+#endif
 }
 
 #ifdef CONFIG_PREEMPT_DYNAMIC
@@ -1327,9 +1346,51 @@ static __always_inline int get_lazy_tif_bit(void)
 	return TIF_NEED_RESCHED;
 }
 
+#ifdef CONFIG_RUST_SCHED_RESCHED_CURR
+void rust_helper_sched_resched_trace(struct task_struct *task, int cpu, int tif)
+{
+	trace_sched_set_need_resched_tp(task, cpu, tif);
+}
+
+int rust_helper_sched_resched_current_cpu(void)
+{
+	return smp_processor_id();
+}
+
+void rust_helper_sched_resched_set_local(struct task_struct *task, int tif)
+{
+	set_ti_thread_flag(task_thread_info(task), tif);
+}
+
+void rust_helper_sched_resched_set_preempt(void)
+{
+	set_preempt_need_resched();
+}
+
+bool rust_helper_sched_resched_set_remote(struct task_struct *task, int tif)
+{
+	return set_nr_and_not_polling(task_thread_info(task), tif);
+}
+
+void rust_helper_sched_resched_send_ipi(int cpu)
+{
+	smp_send_reschedule(cpu);
+}
+
+void rust_helper_sched_resched_trace_wake_idle(int cpu)
+{
+	trace_sched_wake_idle_without_ipi(cpu);
+}
+#endif
+
 void resched_curr_lazy(struct rq *rq)
 {
+#ifdef CONFIG_RUST_SCHED_RESCHED_CURR
+	lockdep_assert_rq_held(rq);
+	rust_sched_resched_curr(rq, get_lazy_tif_bit());
+#else
 	__resched_curr(rq, get_lazy_tif_bit());
+#endif
 }
 
 void resched_cpu(int cpu)

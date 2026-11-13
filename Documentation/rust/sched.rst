@@ -15,6 +15,8 @@ The ``CONFIG_RUST_SCHED_TTWU_ACTIVATE`` option selects Rust for the production
 woke-task activation state machine.
 The ``CONFIG_RUST_SCHED_WAKE_PREEMPT`` option selects Rust for the production
 wakeup-preemption state machine.
+The ``CONFIG_RUST_SCHED_RESCHED_CURR`` option selects Rust for the production
+current-task reschedule request state machine.
 The ``CONFIG_RUST_SCHED_BLOCK_TASK`` option selects Rust for the production
 task blocking state machine.
 The ``CONFIG_RUST_SCHED_RQ_TRANSITION`` option selects Rust for the production
@@ -40,6 +42,9 @@ Rust owns these production decisions:
 * Classifying a woken task against the selected scheduling class, calling the
   selected class wakeup-preemption callback, requesting rescheduling, updating
   the selected class, and requesting omission of a redundant clock update.
+* Promoting a lazy reschedule request for an idle task, suppressing duplicate
+  requests, selecting local or remote delivery, and ordering trace, thread
+  flag, preemption count, reschedule IPI, and idle wake trace operations.
 * Reading task load and I/O wait state, updating the runqueue
   ``nr_uninterruptible`` and ``nr_iowait`` counts, ending delay accounting,
   constructing enqueue flags, calling task activation directly, selecting
@@ -56,9 +61,10 @@ Rust owns these production decisions:
 Task-state storage outside the wake-state protocol, warning delivery, task and
 runqueue locking, scheduler queue and proxy operations, wake-list handling,
 CPU selection, scheduling-class preemption callback implementations,
-reschedule delivery, tracing, statistics, and public scheduler ABI adapters
-remain in C. Runqueue queue operations, the class callback, and its
-scheduling-class implementation and lock pin primitives also remain in C.
+thread-flag bit mutation, preemption-count updates, tracepoint delivery, IPI
+delivery, statistics, and public scheduler ABI adapters remain in C. Runqueue
+queue operations, the class callback, and its scheduling-class implementation
+and lock pin primitives also remain in C.
 Blocking dequeue and block accounting primitives also remain in C. The KCSAN
 runqueue membership writer assertion, warnings, and queue operations also
 remain in C.
@@ -82,6 +88,9 @@ The Rust-to-C calls are:
 * Scheduling-class wakeup-preemption callback implementations reached through
   an indirect call from Rust.
 * Reschedule delivery through ``resched_curr()``.
+* The reschedule tracepoints, current-CPU query, local thread-flag write,
+  preemption-count update, remote atomic thread-flag update, and reschedule IPI
+  delivery used by the current-task reschedule request path.
 * Wakeup tracepoint emission used by both wake paths.
 * Scheduling-class ``task_woken`` callback implementations reached through
   an indirect call from Rust.
@@ -99,6 +108,7 @@ The C-to-Rust production entries are:
 * ``rust_sched_ttwu_runnable_locked()``.
 * ``rust_sched_ttwu_activate_locked()``.
 * ``rust_sched_wakeup_preempt()``.
+* ``rust_sched_resched_curr()``.
 * ``rust_sched_block_task_locked()``.
 * ``rust_sched_activate_task_locked()``.
 * ``rust_sched_deactivate_task_locked()``.
@@ -114,6 +124,13 @@ passes the matching lock context to Rust. Rust selects and orders all state
 changes and scheduler helpers. Rust reads the optional scheduling-class
 callback and invokes it directly. Narrow C helpers unpin and repin the lock
 exactly as the original C path did to preserve the callback lock contract.
+
+For the current-task reschedule request entry, C validates that it holds the
+runqueue lock and passes the request thread flag to Rust. Rust reads the
+current task and runqueue CPU, applies the idle-task lazy-request promotion,
+checks for duplicate requests, emits the scheduler trace, and selects local or
+remote delivery. Narrow C helpers perform the thread-flag writes, preemption
+count update, IPI delivery, and tracepoint emission in the original order.
 
 For the blocking entry, C validates that the task runqueue lock is held and
 passes the task state to Rust. Rust classifies the state and calls the bitfield,
@@ -1028,6 +1045,47 @@ six Rust scheduler options enabled. Its symbol table contained the Rust entry
 point and the C callback and reschedule boundaries. No run reported a
 ``BUG``, warning, KASAN report, lock dependency diagnosis, Oops, or panic.
 
+The current-task reschedule request ownership unit was validated on
+2026-11-13 with x86_64 ``LLVM=1`` builds and QEMU 11.1.3. The full Rust,
+KASAN, and lockdep configurations each passed three consecutive four-vCPU
+runs:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 25 25
+
+   * - Configuration
+     - Scheduler cases
+     - hrtimer cases
+   * - Full Rust
+     - 23
+     - 25
+   * - KASAN
+     - 23
+     - 25
+   * - lockdep
+     - 23
+     - 25
+
+The PREEMPT_RT image passed all 23 scheduler cases and all 25 hrtimer cases.
+The C fallback passed all 20 applicable scheduler cases. A configuration with
+only this Rust scheduler option enabled passed all six applicable scheduler
+cases. Every configuration passed all 25 hrtimer cases.
+
+Rust owns the idle-task lazy-request promotion, duplicate-request check,
+local or remote selection, and the ordering of tracing, thread-flag writes,
+preemption-count updates, reschedule IPI delivery, and idle wake tracing. C
+checks the runqueue current and CPU field sizes and alignment, and retains the
+tracepoints, current-CPU query, thread-flag bit operations, atomic remote
+set, preemption-count update, and IPI delivery. Rust reads the task and
+runqueue fields through bindgen and generated offsets.
+
+The full configuration passed Rustfmt, Clippy, strict checkpatch, and
+``git diff --check``. The no-KUnit production image contained the Rust entry
+point and all narrow C boundaries and contained no KUnit selector symbol or
+unresolved symbol. No run reported a ``BUG``, warning, KASAN report, lock
+dependency diagnosis, Oops, or panic.
+
 Review conditions
 -----------------
 
@@ -1044,6 +1102,15 @@ Reopen this boundary decision if any of these conditions changes:
   contract, or preemption ordering changes.
 * The runqueue donor, current, selected-class, or clock-flag layout, the
   wakeup-preemption callback ABI, or the reschedule primitive changes.
+* The idle-task lazy-request promotion, duplicate-request test, local and
+  remote selection, or reschedule trace, thread-flag, preemption-count, IPI,
+  and idle wake trace ordering changes.
+* The current task, runqueue CPU, task flags, or thread-info flags layout
+  changes, or Rust cannot preserve the lock and volatile-access contracts.
+* The reschedule helper ABI, runqueue lock requirement, or
+  ``set_nr_and_not_polling()`` return contract changes.
+* Rust gains safe thread-flag, preemption-count, tracepoint, or IPI
+  abstractions that can replace the narrow C boundaries.
 * The runnable path changes its runqueue lock, delayed-enqueue condition,
   enqueue flags, direct enqueue call, proxy return, preemption, or
   wake-publication ordering.
