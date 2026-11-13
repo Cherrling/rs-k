@@ -1285,6 +1285,21 @@ config RUST_MM_TEARDOWN
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_TASK_TEARDOWN
+	bool "Rust implementation of final task teardown"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production orchestration of final task resource
+	  teardown. Rust owns the cleanup order after the final task reference
+	  is released.
+
+	  Task invariant diagnostics, subsystem cleanup, and final task memory
+	  release remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_CPUPRI
 	bool "Rust implementation of CPU-priority scheduling state"
 	depends on RUST && SMP

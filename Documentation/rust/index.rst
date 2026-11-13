@@ -37,6 +37,7 @@ more details.
     coding-guidelines
     arch-support
     testing
+    task-teardown
     mm-lifetime
     mm-teardown
     sched

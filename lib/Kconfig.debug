@@ -2501,6 +2501,20 @@ config MM_LIFETIME_KUNIT_TEST
 
 	  If unsure, say N.
 
+config TASK_TEARDOWN_KUNIT_TEST
+	bool "KUnit test for final task resource teardown" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables a KUnit test for final task resource teardown.
+	  The test creates and stops kernel threads, releases their final task
+	  references, and waits for deferred task release completions.
+
+	  The test runs with either the C implementation or the native Rust
+	  implementation selected.
+
+	  If unsure, say N.
+
 config WAITQUEUE_KUNIT_TEST
 	bool "KUnit test for wait queue wakeups" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

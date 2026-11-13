@@ -104,6 +104,7 @@
 #include <linux/slab.h>
 #include <linux/swait-rust.h>
 #include <linux/sys_soc.h>
+#include <linux/task-rust.h>
 #include <linux/task_work.h>
 #include <linux/timerqueue-rust.h>
 #include <linux/tracepoint.h>

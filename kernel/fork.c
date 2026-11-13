@@ -46,6 +46,7 @@
 #include <linux/mm.h>
 #include <linux/mm_inline.h>
 #include <linux/mm-rust.h>
+#include <linux/task-rust.h>
 #include <linux/memblock.h>
 #include <linux/nsproxy.h>
 #include <linux/ns/ns_common_types.h>
@@ -782,6 +783,9 @@ static inline void put_signal_struct(struct signal_struct *sig)
 
 void __put_task_struct(struct task_struct *tsk)
 {
+#ifdef CONFIG_RUST_TASK_TEARDOWN
+	rust_task_put_final(tsk);
+#else
 	WARN_ON(!tsk->exit_state);
 	WARN_ON(refcount_read(&tsk->usage));
 	WARN_ON(tsk == current);
@@ -796,8 +800,68 @@ void __put_task_struct(struct task_struct *tsk)
 	put_signal_struct(tsk->signal);
 	sched_core_free(tsk);
 	free_task(tsk);
+#endif
 }
 EXPORT_SYMBOL_GPL(__put_task_struct);
+
+#ifdef CONFIG_RUST_TASK_TEARDOWN
+void rust_helper_task_final_check(struct task_struct *task)
+{
+	WARN_ON(!task->exit_state);
+	WARN_ON(refcount_read(&task->usage));
+	WARN_ON(task == current);
+}
+
+void rust_helper_task_final_unwind_task_free(struct task_struct *task)
+{
+	unwind_task_free(task);
+}
+
+void rust_helper_task_final_io_uring_free(struct task_struct *task)
+{
+	io_uring_free(task);
+}
+
+void rust_helper_task_final_cgroup_task_free(struct task_struct *task)
+{
+	cgroup_task_free(task);
+}
+
+void rust_helper_task_final_task_numa_free(struct task_struct *task)
+{
+	task_numa_free(task, true);
+}
+
+void rust_helper_task_final_security_task_free(struct task_struct *task)
+{
+	security_task_free(task);
+}
+
+void rust_helper_task_final_exit_creds(struct task_struct *task)
+{
+	exit_creds(task);
+}
+
+void rust_helper_task_final_delayacct_tsk_free(struct task_struct *task)
+{
+	delayacct_tsk_free(task);
+}
+
+void rust_helper_task_final_put_signal_struct(struct task_struct *task)
+{
+	put_signal_struct(task->signal);
+}
+
+void rust_helper_task_final_sched_core_free(struct task_struct *task)
+{
+	sched_core_free(task);
+}
+
+void rust_helper_task_final_free_task(struct task_struct *task)
+{
+	free_task(task);
+}
+#endif
 
 void __put_task_struct_rcu_cb(struct rcu_head *rhp)
 {

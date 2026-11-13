@@ -182,6 +182,8 @@ pub mod str;
 mod swait_core;
 pub mod sync;
 pub mod task;
+#[cfg(CONFIG_RUST_TASK_TEARDOWN)]
+mod task_teardown;
 pub mod time;
 #[cfg(CONFIG_RUST_TIMERQUEUE)]
 mod timerqueue_core;
