@@ -144,7 +144,8 @@ static_assert(RUST_SCHED_ENQUEUE_MIGRATED == ENQUEUE_MIGRATED);
 #endif
 
 #if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
-	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE)
+	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE) || \
+	defined(CONFIG_RUST_SCHED_RQ_OPS)
 static_assert(RUST_SCHED_ENQUEUE_NOCLOCK == ENQUEUE_NOCLOCK);
 #endif
 
@@ -186,6 +187,19 @@ static_assert(offsetof(struct task_struct, migration_disabled) %
 static_assert(sizeof_field(struct sched_class, select_task_rq) == sizeof(void *));
 static_assert(offsetof(struct sched_class, select_task_rq) %
 	      __alignof__(((struct sched_class *)0)->select_task_rq) == 0);
+#endif
+
+#ifdef CONFIG_RUST_SCHED_RQ_OPS
+static_assert(RUST_SCHED_ENQUEUE_RESTORE == ENQUEUE_RESTORE);
+static_assert(RUST_SCHED_DEQUEUE_SAVE == DEQUEUE_SAVE);
+static_assert(RUST_SCHED_DEQUEUE_NOCLOCK == DEQUEUE_NOCLOCK);
+static_assert(sizeof_field(struct task_struct, sched_class) == sizeof(void *));
+static_assert(sizeof_field(struct sched_class, enqueue_task) == sizeof(void *));
+static_assert(sizeof_field(struct sched_class, dequeue_task) == sizeof(void *));
+static_assert(offsetof(struct sched_class, enqueue_task) %
+	      __alignof__(((struct sched_class *)0)->enqueue_task) == 0);
+static_assert(offsetof(struct sched_class, dequeue_task) %
+	      __alignof__(((struct sched_class *)0)->dequeue_task) == 0);
 #endif
 
 #ifdef CONFIG_RUST_SCHED_WAKE_PREEMPT
@@ -2347,8 +2361,65 @@ unsigned long get_wchan(struct task_struct *p)
 	return ip;
 }
 
+#ifdef CONFIG_RUST_SCHED_RQ_OPS
+void rust_helper_sched_rq_enqueue_uclamp(struct rq *rq,
+					 struct task_struct *task, int flags)
+{
+	uclamp_rq_inc(rq, task, flags);
+}
+
+void rust_helper_sched_rq_enqueue_psi(struct task_struct *task, int flags)
+{
+	psi_enqueue(task, flags);
+}
+
+void rust_helper_sched_rq_enqueue_info(struct rq *rq,
+				       struct task_struct *task)
+{
+	sched_info_enqueue(rq, task);
+}
+
+bool rust_helper_sched_rq_core_enabled(struct rq *rq)
+{
+	return sched_core_enabled(rq);
+}
+
+void rust_helper_sched_rq_core_enqueue(struct rq *rq,
+				       struct task_struct *task)
+{
+	sched_core_enqueue(rq, task);
+}
+
+void rust_helper_sched_rq_dequeue_uclamp(struct rq *rq,
+					 struct task_struct *task)
+{
+	uclamp_rq_dec(rq, task);
+}
+
+void rust_helper_sched_rq_dequeue_psi(struct task_struct *task, int flags)
+{
+	psi_dequeue(task, flags);
+}
+
+void rust_helper_sched_rq_dequeue_info(struct rq *rq,
+				       struct task_struct *task)
+{
+	sched_info_dequeue(rq, task);
+}
+
+void rust_helper_sched_rq_core_dequeue(struct rq *rq,
+				       struct task_struct *task, int flags)
+{
+	sched_core_dequeue(rq, task, flags);
+}
+#endif
+
 void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 {
+#ifdef CONFIG_RUST_SCHED_RQ_OPS
+	lockdep_assert_rq_held(rq);
+	rust_sched_enqueue_task_locked(rq, p, flags);
+#else
 	if (!(flags & ENQUEUE_NOCLOCK))
 		update_rq_clock(rq);
 
@@ -2368,6 +2439,7 @@ void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 
 	if (sched_core_enabled(rq))
 		sched_core_enqueue(rq, p);
+#endif
 }
 
 /*
@@ -2375,6 +2447,10 @@ void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
  */
 inline bool dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 {
+#ifdef CONFIG_RUST_SCHED_RQ_OPS
+	lockdep_assert_rq_held(rq);
+	return rust_sched_dequeue_task_locked(rq, p, flags);
+#else
 	if (sched_core_enabled(rq))
 		sched_core_dequeue(rq, p, flags);
 
@@ -2392,6 +2468,7 @@ inline bool dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 	 */
 	uclamp_rq_dec(rq, p);
 	return p->sched_class->dequeue_task(rq, p, flags);
+#endif
 }
 
 #ifdef CONFIG_RUST_SCHED_RQ_TRANSITION

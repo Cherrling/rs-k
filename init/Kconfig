@@ -1176,6 +1176,23 @@ config RUST_SCHED_RQ_TRANSITION
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SCHED_RQ_OPS
+	bool "Rust implementation of scheduler runqueue enqueue and dequeue"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production runqueue enqueue and dequeue operations.
+	  Rust owns the clock-update, utilization-clamp, scheduling-class,
+	  pressure accounting, scheduler statistics, and core-scheduling action
+	  order. It calls the selected scheduling class directly.
+
+	  Runqueue locking, scheduling-class queue implementations, utilization
+	  clamp accounting, pressure and statistics accounting, core scheduling
+	  operations, and public scheduler ABI adapters remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_CPUPRI
 	bool "Rust implementation of CPU-priority scheduling state"
 	depends on RUST && SMP

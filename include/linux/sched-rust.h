@@ -184,14 +184,16 @@ int rust_sched_ttwu_delayed_enqueue_flags_select(void);
 
 #if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
 	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE) || \
-	defined(CONFIG_RUST_SCHED_RQ_TRANSITION)
+	defined(CONFIG_RUST_SCHED_RQ_TRANSITION) || \
+	defined(CONFIG_RUST_SCHED_RQ_OPS)
 
 void enqueue_task(struct rq *rq, struct task_struct *task, int flags);
 
 #endif
 
 #if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
-	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE)
+	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE) || \
+	defined(CONFIG_RUST_SCHED_RQ_OPS)
 
 #define RUST_SCHED_ENQUEUE_NOCLOCK		0x0008
 
@@ -293,5 +295,49 @@ unsigned int rust_sched_rq_transition_select(bool migrating,
 #endif
 
 #endif /* CONFIG_RUST_SCHED_RQ_TRANSITION */
+
+#ifdef CONFIG_RUST_SCHED_RQ_OPS
+
+#define RUST_SCHED_RQ_OP_UPDATE_CLOCK		0x01
+#define RUST_SCHED_RQ_OP_INFO			0x02
+#define RUST_SCHED_RQ_OP_CORE			0x04
+#define RUST_SCHED_ENQUEUE_RESTORE		0x0002
+#define RUST_SCHED_DEQUEUE_SAVE			0x0002
+#define RUST_SCHED_DEQUEUE_NOCLOCK		0x0008
+
+void update_rq_clock(struct rq *rq);
+
+bool dequeue_task(struct rq *rq, struct task_struct *task, int flags);
+
+void rust_helper_sched_rq_enqueue_uclamp(struct rq *rq,
+					 struct task_struct *task, int flags);
+void rust_helper_sched_rq_enqueue_psi(struct task_struct *task, int flags);
+void rust_helper_sched_rq_enqueue_info(struct rq *rq,
+				       struct task_struct *task);
+bool rust_helper_sched_rq_core_enabled(struct rq *rq);
+void rust_helper_sched_rq_core_enqueue(struct rq *rq,
+				       struct task_struct *task);
+
+void rust_helper_sched_rq_dequeue_uclamp(struct rq *rq,
+					 struct task_struct *task);
+void rust_helper_sched_rq_dequeue_psi(struct task_struct *task, int flags);
+void rust_helper_sched_rq_dequeue_info(struct rq *rq,
+				       struct task_struct *task);
+void rust_helper_sched_rq_core_dequeue(struct rq *rq,
+				       struct task_struct *task, int flags);
+
+void rust_sched_enqueue_task_locked(struct rq *rq, struct task_struct *task,
+				    int flags);
+bool rust_sched_dequeue_task_locked(struct rq *rq, struct task_struct *task,
+				    int flags);
+
+#ifdef CONFIG_KUNIT
+unsigned int rust_sched_enqueue_task_plan_select(int flags,
+						 bool core_enabled);
+unsigned int rust_sched_dequeue_task_plan_select(int flags,
+						 bool core_enabled);
+#endif
+
+#endif /* CONFIG_RUST_SCHED_RQ_OPS */
 
 #endif /* _LINUX_SCHED_RUST_H */

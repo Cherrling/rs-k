@@ -3,10 +3,10 @@
 //! Native scheduler core state machines.
 //!
 //! Rust owns task-state matching, reschedule requests, idle CPU wakeups, task
-//! CPU selection, wake activation, wake preemption, and task blocking
-//! decisions. C retains task and runqueue locking, warning delivery,
-//! scheduling-class implementations, cpumask operations, CPU eligibility
-//! queries, and fallback placement.
+//! CPU selection, runqueue enqueue and dequeue routing, wake activation, wake
+//! preemption, and task blocking decisions. C retains task and runqueue
+//! locking, warning delivery, scheduling-class implementations, cpumask
+//! operations, CPU eligibility queries, and fallback placement.
 
 use crate::bindings;
 #[cfg(any(
@@ -15,6 +15,7 @@ use crate::bindings;
     CONFIG_RUST_SCHED_RESCHED_CURR,
     CONFIG_RUST_SCHED_RESCHED_CPU,
     CONFIG_RUST_SCHED_SELECT_TASK_RQ,
+    CONFIG_RUST_SCHED_RQ_OPS,
     CONFIG_RUST_SCHED_TTWU_RUNNABLE,
     CONFIG_RUST_SCHED_TTWU_ACTIVATE,
     CONFIG_RUST_SCHED_RQ_TRANSITION
@@ -51,6 +52,7 @@ use macros::export;
     CONFIG_RUST_SCHED_RESCHED_CURR,
     CONFIG_RUST_SCHED_WAKE_IF_IDLE,
     CONFIG_RUST_SCHED_SELECT_TASK_RQ,
+    CONFIG_RUST_SCHED_RQ_OPS,
     CONFIG_RUST_SCHED_TTWU_RUNNABLE,
     CONFIG_RUST_SCHED_TTWU_ACTIVATE,
     CONFIG_RUST_SCHED_BLOCK_TASK,
@@ -65,7 +67,8 @@ type Task = bindings::task_struct;
     CONFIG_RUST_SCHED_WAKE_PREEMPT,
     CONFIG_RUST_SCHED_RESCHED_CURR,
     CONFIG_RUST_SCHED_WAKE_IF_IDLE,
-    CONFIG_RUST_SCHED_RESCHED_CPU
+    CONFIG_RUST_SCHED_RESCHED_CPU,
+    CONFIG_RUST_SCHED_RQ_OPS
 ))]
 type Rq = bindings::rq;
 #[cfg(CONFIG_RUST_SCHED_SELECT_TASK_RQ)]
@@ -77,6 +80,10 @@ type SelectTaskRqCallback =
 type TaskWokenCallback = unsafe extern "C" fn(rq: *mut Rq, task: *mut Task);
 #[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
 type WakeupPreemptCallback = unsafe extern "C" fn(rq: *mut Rq, task: *mut Task, wake_flags: c_int);
+#[cfg(CONFIG_RUST_SCHED_RQ_OPS)]
+type EnqueueTaskCallback = unsafe extern "C" fn(rq: *mut Rq, task: *mut Task, flags: c_int);
+#[cfg(CONFIG_RUST_SCHED_RQ_OPS)]
+type DequeueTaskCallback = unsafe extern "C" fn(rq: *mut Rq, task: *mut Task, flags: c_int) -> bool;
 
 #[cfg(any(
     CONFIG_RUST_SCHED_TTWU_RUNNABLE,
@@ -116,6 +123,12 @@ const RESCHED_WAKE_IDLE: u32 = bindings::RUST_SCHED_RESCHED_WAKE_IDLE;
 const WAKE_IF_IDLE_LOCK: u32 = bindings::RUST_SCHED_WAKE_IF_IDLE_LOCK;
 #[cfg(CONFIG_RUST_SCHED_WAKE_IF_IDLE)]
 const WAKE_IF_IDLE_RESCHED: u32 = bindings::RUST_SCHED_WAKE_IF_IDLE_RESCHED;
+#[cfg(CONFIG_RUST_SCHED_RQ_OPS)]
+const RQ_OP_UPDATE_CLOCK: u32 = bindings::RUST_SCHED_RQ_OP_UPDATE_CLOCK;
+#[cfg(CONFIG_RUST_SCHED_RQ_OPS)]
+const RQ_OP_INFO: u32 = bindings::RUST_SCHED_RQ_OP_INFO;
+#[cfg(CONFIG_RUST_SCHED_RQ_OPS)]
+const RQ_OP_CORE: u32 = bindings::RUST_SCHED_RQ_OP_CORE;
 
 /// Reads the current task wake state.
 ///
@@ -523,7 +536,11 @@ const SELECT_TASK_RQ_CLASS: u32 = bindings::RUST_SCHED_SELECT_TASK_RQ_CLASS;
 const SELECT_TASK_RQ_SINGLE: u32 = bindings::RUST_SCHED_SELECT_TASK_RQ_SINGLE;
 #[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
 const ENQUEUE_WAKEUP: c_int = bindings::RUST_SCHED_ENQUEUE_WAKEUP as c_int;
-#[cfg(any(CONFIG_RUST_SCHED_TTWU_RUNNABLE, CONFIG_RUST_SCHED_TTWU_ACTIVATE))]
+#[cfg(any(
+    CONFIG_RUST_SCHED_TTWU_RUNNABLE,
+    CONFIG_RUST_SCHED_TTWU_ACTIVATE,
+    CONFIG_RUST_SCHED_RQ_OPS
+))]
 const ENQUEUE_NOCLOCK: c_int = bindings::RUST_SCHED_ENQUEUE_NOCLOCK as c_int;
 #[cfg(CONFIG_RUST_SCHED_TTWU_RUNNABLE)]
 const ENQUEUE_DELAYED: c_int = bindings::RUST_SCHED_ENQUEUE_DELAYED as c_int;
@@ -531,6 +548,12 @@ const ENQUEUE_DELAYED: c_int = bindings::RUST_SCHED_ENQUEUE_DELAYED as c_int;
 const ENQUEUE_RQ_SELECTED: c_int = bindings::RUST_SCHED_ENQUEUE_RQ_SELECTED as c_int;
 #[cfg(any(CONFIG_RUST_SCHED_TTWU_ACTIVATE, CONFIG_RUST_SCHED_RQ_TRANSITION))]
 const ENQUEUE_MIGRATED: c_int = bindings::RUST_SCHED_ENQUEUE_MIGRATED as c_int;
+#[cfg(CONFIG_RUST_SCHED_RQ_OPS)]
+const ENQUEUE_RESTORE: c_int = bindings::RUST_SCHED_ENQUEUE_RESTORE as c_int;
+#[cfg(CONFIG_RUST_SCHED_RQ_OPS)]
+const DEQUEUE_SAVE: c_int = bindings::RUST_SCHED_DEQUEUE_SAVE as c_int;
+#[cfg(CONFIG_RUST_SCHED_RQ_OPS)]
+const DEQUEUE_NOCLOCK: c_int = bindings::RUST_SCHED_DEQUEUE_NOCLOCK as c_int;
 
 /// Returns a pointer to the runqueue's uninterruptible task count.
 ///
@@ -684,7 +707,11 @@ unsafe fn set_rq_next_class(rq: *mut Rq, class: *mut bindings::sched_class) {
 ///
 /// `task` must remain live and the caller must hold `task->pi_lock` or the
 /// task's runqueue lock to keep the scheduling class stable.
-#[cfg(any(CONFIG_RUST_SCHED_WAKE_PREEMPT, CONFIG_RUST_SCHED_SELECT_TASK_RQ))]
+#[cfg(any(
+    CONFIG_RUST_SCHED_WAKE_PREEMPT,
+    CONFIG_RUST_SCHED_SELECT_TASK_RQ,
+    CONFIG_RUST_SCHED_RQ_OPS
+))]
 unsafe fn task_sched_class(task: *mut Task) -> *mut bindings::sched_class {
     // SAFETY: The caller guarantees that the task remains live. Use a volatile
     // load to match the C field access.
@@ -878,6 +905,195 @@ unsafe extern "C" fn rust_sched_select_task_rq_test(
     let path = unsafe { select_task_rq_path_for_task(task) };
     // SAFETY: The caller satisfies the test entry-point contract.
     unsafe { select_task_rq_with_callback(task, cpu, wake_flags, path, callback) }
+}
+
+/// Selects the conditional enqueue actions.
+#[cfg(CONFIG_RUST_SCHED_RQ_OPS)]
+fn enqueue_task_plan(flags: c_int, core_enabled: bool) -> u32 {
+    let mut plan = 0;
+
+    if flags & ENQUEUE_NOCLOCK == 0 {
+        plan |= RQ_OP_UPDATE_CLOCK;
+    }
+    if flags & ENQUEUE_RESTORE == 0 {
+        plan |= RQ_OP_INFO;
+    }
+    if core_enabled {
+        plan |= RQ_OP_CORE;
+    }
+
+    plan
+}
+
+/// Selects the conditional dequeue actions.
+#[cfg(CONFIG_RUST_SCHED_RQ_OPS)]
+fn dequeue_task_plan(flags: c_int, core_enabled: bool) -> u32 {
+    let mut plan = 0;
+
+    if core_enabled {
+        plan |= RQ_OP_CORE;
+    }
+    if flags & DEQUEUE_NOCLOCK == 0 {
+        plan |= RQ_OP_UPDATE_CLOCK;
+    }
+    if flags & DEQUEUE_SAVE == 0 {
+        plan |= RQ_OP_INFO;
+    }
+
+    plan
+}
+
+/// Returns the conditional enqueue action bits for the scheduler KUnit table.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_RQ_OPS))]
+#[export]
+extern "C" fn rust_sched_enqueue_task_plan_select(flags: c_int, core_enabled: bool) -> u32 {
+    enqueue_task_plan(flags, core_enabled)
+}
+
+/// Returns the conditional dequeue action bits for the scheduler KUnit table.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_RQ_OPS))]
+#[export]
+extern "C" fn rust_sched_dequeue_task_plan_select(flags: c_int, core_enabled: bool) -> u32 {
+    dequeue_task_plan(flags, core_enabled)
+}
+
+/// Reads a task's scheduling-class enqueue callback.
+///
+/// # Safety
+///
+/// `task` and its scheduling class must remain live, and the caller must hold
+/// the task runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_RQ_OPS)]
+unsafe fn task_enqueue_task_callback(task: *mut Task) -> EnqueueTaskCallback {
+    // SAFETY: The caller holds the task runqueue lock.
+    let class = unsafe { task_sched_class(task) };
+    // SAFETY: The generated offset identifies the required callback field.
+    unsafe {
+        class
+            .cast::<u8>()
+            .add(bindings::SCHED_CLASS_enqueue_task as usize)
+            .cast::<EnqueueTaskCallback>()
+            .read_volatile()
+    }
+}
+
+/// Reads a task's scheduling-class dequeue callback.
+///
+/// # Safety
+///
+/// `task` and its scheduling class must remain live, and the caller must hold
+/// the task runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_RQ_OPS)]
+unsafe fn task_dequeue_task_callback(task: *mut Task) -> DequeueTaskCallback {
+    // SAFETY: The caller holds the task runqueue lock.
+    let class = unsafe { task_sched_class(task) };
+    // SAFETY: The generated offset identifies the required callback field.
+    unsafe {
+        class
+            .cast::<u8>()
+            .add(bindings::SCHED_CLASS_dequeue_task as usize)
+            .cast::<DequeueTaskCallback>()
+            .read_volatile()
+    }
+}
+
+/// Enqueues a task while its runqueue lock remains held.
+///
+/// # Safety
+///
+/// `rq` must remain live, `task` must be entering `rq`, and the caller must
+/// hold the runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_RQ_OPS)]
+unsafe fn enqueue_task_locked(rq: *mut Rq, task: *mut Task, flags: c_int) {
+    // SAFETY: The caller holds the runqueue lock.
+    let core_enabled = unsafe { bindings::rust_helper_sched_rq_core_enabled(rq) };
+    let plan = enqueue_task_plan(flags, core_enabled);
+
+    if plan & RQ_OP_UPDATE_CLOCK != 0 {
+        // SAFETY: The caller holds the runqueue lock.
+        unsafe { bindings::update_rq_clock(rq) };
+    }
+    // SAFETY: The caller holds the runqueue lock.
+    unsafe { bindings::rust_helper_sched_rq_enqueue_uclamp(rq, task, flags) };
+    // SAFETY: The task and its scheduling class remain stable under the lock.
+    let callback = unsafe { task_enqueue_task_callback(task) };
+    // SAFETY: The scheduling-class callback runs with the runqueue lock held.
+    unsafe { callback(rq, task, flags) };
+    // SAFETY: The caller holds the runqueue lock.
+    unsafe { bindings::rust_helper_sched_rq_enqueue_psi(task, flags) };
+
+    if plan & RQ_OP_INFO != 0 {
+        // SAFETY: The caller holds the runqueue lock.
+        unsafe { bindings::rust_helper_sched_rq_enqueue_info(rq, task) };
+    }
+    if plan & RQ_OP_CORE != 0 {
+        // SAFETY: The caller holds the runqueue lock.
+        unsafe { bindings::rust_helper_sched_rq_core_enqueue(rq, task) };
+    }
+}
+
+/// Dequeues a task while its runqueue lock remains held.
+///
+/// # Safety
+///
+/// `rq` must remain live, `task` must belong to `rq`, and the caller must hold
+/// the runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_RQ_OPS)]
+unsafe fn dequeue_task_locked(rq: *mut Rq, task: *mut Task, flags: c_int) -> bool {
+    // SAFETY: The caller holds the runqueue lock.
+    let core_enabled = unsafe { bindings::rust_helper_sched_rq_core_enabled(rq) };
+    let plan = dequeue_task_plan(flags, core_enabled);
+
+    if plan & RQ_OP_CORE != 0 {
+        // SAFETY: The caller holds the runqueue lock.
+        unsafe { bindings::rust_helper_sched_rq_core_dequeue(rq, task, flags) };
+    }
+    if plan & RQ_OP_UPDATE_CLOCK != 0 {
+        // SAFETY: The caller holds the runqueue lock.
+        unsafe { bindings::update_rq_clock(rq) };
+    }
+    if plan & RQ_OP_INFO != 0 {
+        // SAFETY: The caller holds the runqueue lock.
+        unsafe { bindings::rust_helper_sched_rq_dequeue_info(rq, task) };
+    }
+    // SAFETY: The caller holds the runqueue lock.
+    unsafe { bindings::rust_helper_sched_rq_dequeue_psi(task, flags) };
+    // SAFETY: The caller holds the runqueue lock.
+    unsafe { bindings::rust_helper_sched_rq_dequeue_uclamp(rq, task) };
+    // SAFETY: The task and its scheduling class remain stable under the lock.
+    let callback = unsafe { task_dequeue_task_callback(task) };
+    // SAFETY: The scheduling-class callback runs with the runqueue lock held.
+    unsafe { callback(rq, task, flags) }
+}
+
+/// Implements the production runqueue enqueue operation.
+///
+/// # Safety
+///
+/// `rq` must remain live, `task` must be entering `rq`, and the caller must
+/// hold the runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_RQ_OPS)]
+#[export]
+unsafe extern "C" fn rust_sched_enqueue_task_locked(rq: *mut Rq, task: *mut Task, flags: c_int) {
+    // SAFETY: The caller satisfies the exported entry-point contract.
+    unsafe { enqueue_task_locked(rq, task, flags) };
+}
+
+/// Implements the production runqueue dequeue operation.
+///
+/// # Safety
+///
+/// `rq` must remain live, `task` must belong to `rq`, and the caller must hold
+/// the runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_RQ_OPS)]
+#[export]
+unsafe extern "C" fn rust_sched_dequeue_task_locked(
+    rq: *mut Rq,
+    task: *mut Task,
+    flags: c_int,
+) -> bool {
+    // SAFETY: The caller satisfies the exported entry-point contract.
+    unsafe { dequeue_task_locked(rq, task, flags) }
 }
 
 /// Reads a scheduling class's wakeup-preemption callback.

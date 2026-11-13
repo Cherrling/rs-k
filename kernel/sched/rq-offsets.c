@@ -21,6 +21,10 @@ int main(void)
 	       offsetof(struct sched_class, task_woken));
 	DEFINE(SCHED_CLASS_select_task_rq,
 	       offsetof(struct sched_class, select_task_rq));
+	DEFINE(SCHED_CLASS_enqueue_task,
+	       offsetof(struct sched_class, enqueue_task));
+	DEFINE(SCHED_CLASS_dequeue_task,
+	       offsetof(struct sched_class, dequeue_task));
 
 	return 0;
 }

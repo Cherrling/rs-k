@@ -461,6 +461,48 @@ static void sched_wake_test_select_task_rq_fallback(struct kunit *test)
 }
 #endif
 
+#ifdef CONFIG_RUST_SCHED_RQ_OPS
+static void sched_wake_test_enqueue_task_plan(struct kunit *test)
+{
+	unsigned int base = RUST_SCHED_RQ_OP_UPDATE_CLOCK |
+			    RUST_SCHED_RQ_OP_INFO;
+	int no_clock = RUST_SCHED_ENQUEUE_NOCLOCK;
+	int restore = RUST_SCHED_ENQUEUE_RESTORE;
+	int both = no_clock | restore;
+
+	KUNIT_EXPECT_EQ(test, base,
+			rust_sched_enqueue_task_plan_select(0, false));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_RQ_OP_INFO,
+			rust_sched_enqueue_task_plan_select(no_clock, false));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_RQ_OP_UPDATE_CLOCK,
+			rust_sched_enqueue_task_plan_select(restore, false));
+	KUNIT_EXPECT_EQ(test, 0,
+			rust_sched_enqueue_task_plan_select(both, false));
+	KUNIT_EXPECT_EQ(test, base | RUST_SCHED_RQ_OP_CORE,
+			rust_sched_enqueue_task_plan_select(0, true));
+}
+
+static void sched_wake_test_dequeue_task_plan(struct kunit *test)
+{
+	unsigned int base = RUST_SCHED_RQ_OP_UPDATE_CLOCK |
+			    RUST_SCHED_RQ_OP_INFO;
+	int no_clock = RUST_SCHED_DEQUEUE_NOCLOCK;
+	int save = RUST_SCHED_DEQUEUE_SAVE;
+	int both = no_clock | save;
+
+	KUNIT_EXPECT_EQ(test, base,
+			rust_sched_dequeue_task_plan_select(0, false));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_RQ_OP_INFO,
+			rust_sched_dequeue_task_plan_select(no_clock, false));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_RQ_OP_UPDATE_CLOCK,
+			rust_sched_dequeue_task_plan_select(save, false));
+	KUNIT_EXPECT_EQ(test, 0,
+			rust_sched_dequeue_task_plan_select(both, false));
+	KUNIT_EXPECT_EQ(test, base | RUST_SCHED_RQ_OP_CORE,
+			rust_sched_dequeue_task_plan_select(0, true));
+}
+#endif
+
 #if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
 	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE)
 static void sched_wake_test_wakeup_state(struct kunit *test)
@@ -666,6 +708,10 @@ static struct kunit_case sched_wake_test_cases[] = {
 	KUNIT_CASE(sched_wake_test_select_task_rq_class),
 	KUNIT_CASE(sched_wake_test_select_task_rq_single),
 	KUNIT_CASE(sched_wake_test_select_task_rq_fallback),
+#endif
+#ifdef CONFIG_RUST_SCHED_RQ_OPS
+	KUNIT_CASE(sched_wake_test_enqueue_task_plan),
+	KUNIT_CASE(sched_wake_test_dequeue_task_plan),
 #endif
 #ifdef CONFIG_RUST_SCHED_BLOCK_TASK
 	KUNIT_CASE(sched_wake_test_block_plan),
