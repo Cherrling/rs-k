@@ -8,6 +8,7 @@ struct task_struct;
 struct rq;
 struct rq_flags;
 struct cpumask;
+struct sched_class;
 
 void resched_curr(struct rq *rq);
 
@@ -362,5 +363,35 @@ unsigned int rust_sched_class_put_prev_set_next_plan_select(bool donor_matches,
 #endif
 
 #endif /* CONFIG_RUST_SCHED_CLASS_TRANSITION */
+
+#ifdef CONFIG_RUST_SCHED_PREV_BALANCE
+
+#define RUST_SCHED_SCX_ENABLED			0x01
+#define RUST_SCHED_SCX_SWITCHED_ALL		0x02
+
+#define RUST_SCHED_BALANCE_CALL			0x01
+#define RUST_SCHED_BALANCE_STOP			0x02
+
+#define RUST_SCHED_NEXT_ACTIVE_ADVANCE		0x01
+#define RUST_SCHED_NEXT_ACTIVE_SKIP_FAIR	0x02
+#define RUST_SCHED_NEXT_ACTIVE_SKIP_EXT		0x04
+
+const struct sched_class *rust_helper_sched_fair_class(void);
+const struct sched_class *rust_helper_sched_idle_class(void);
+const struct sched_class *rust_helper_sched_ext_class(void);
+unsigned long rust_helper_sched_class_size(void);
+unsigned int rust_helper_sched_scx_state(void);
+
+void rust_sched_prev_balance(struct rq *rq, struct rq_flags *rf);
+
+#ifdef CONFIG_KUNIT
+unsigned int rust_sched_prev_balance_plan_select(bool has_callback,
+						 int result);
+unsigned int rust_sched_next_active_plan_select(unsigned int scx_state,
+						bool at_fair,
+						bool at_ext);
+#endif
+
+#endif /* CONFIG_RUST_SCHED_PREV_BALANCE */
 
 #endif /* _LINUX_SCHED_RUST_H */

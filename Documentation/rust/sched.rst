@@ -30,6 +30,9 @@ scheduling-class callback dispatch, and dequeue result.
 The ``CONFIG_RUST_SCHED_CLASS_TRANSITION`` option selects Rust for the
 production put-prev and set-next routing, deferred scheduling-server transfer,
 same-task short circuit, and callback order.
+The ``CONFIG_RUST_SCHED_PREV_BALANCE`` option selects Rust for the production
+previous-task balance pass, active scheduling-class traversal, class balance
+callback dispatch, and stop decision.
 The ``CONFIG_RUST_SCHED_BLOCK_TASK`` option selects Rust for the production
 task blocking state machine.
 The ``CONFIG_RUST_SCHED_RQ_TRANSITION`` option selects Rust for the production
@@ -77,6 +80,10 @@ Rust owns these production decisions:
 * Validating the runqueue donor, transferring the deferred scheduling server,
   short-circuiting an unchanged task, and invoking the put-prev and set-next
   callbacks in order.
+* Reading the donor scheduling class, traversing active scheduling classes
+  toward the idle class, skipping inactive sched_ext or fair slots, loading
+  each optional balance callback, invoking it in class order, and stopping
+  when a callback reports runnable work.
 * Reading task load and I/O wait state, updating the runqueue
   ``nr_uninterruptible`` and ``nr_iowait`` counts, ending delay accounting,
   constructing enqueue flags, calling task activation directly, selecting
@@ -99,6 +106,8 @@ tracepoint delivery, IPI delivery, statistics, and public scheduler ABI
 adapters remain in C. Runqueue queue operations, scheduling-class
 implementations, wake, select-task-runqueue, put-prev, and set-next callbacks,
 and lock pin primitives also remain in C.
+Scheduling-class balance implementations, ordering anchors, the scheduling
+class size, and sched_ext static-key queries also remain in C.
 Blocking dequeue and block accounting primitives also remain in C. The KCSAN
 runqueue membership writer assertion, warnings, and queue operations also
 remain in C.
@@ -137,6 +146,9 @@ The Rust-to-C calls are:
 * Scheduling-class put-prev and set-next callback implementations reached
   through indirect calls from Rust.
 * The runqueue donor mismatch warning.
+* The fair, idle, and optional sched_ext class anchors, the scheduling-class
+  size, the sched_ext static-key state, and scheduling-class balance callback
+  implementations reached through indirect calls from Rust.
 * Scheduling-class ``task_woken`` callback implementations reached through
   an indirect call from Rust.
 * Runqueue lock unpin and repin around a scheduling-class ``task_woken``
@@ -163,6 +175,7 @@ The C-to-Rust production entries are:
 * ``rust_sched_class_put_prev_task()``.
 * ``rust_sched_class_set_next_task()``.
 * ``rust_sched_class_put_prev_set_next_task()``.
+* ``rust_sched_prev_balance()``.
 * ``rust_sched_block_task_locked()``.
 * ``rust_sched_activate_task_locked()``.
 * ``rust_sched_deactivate_task_locked()``.
@@ -192,6 +205,13 @@ the complete Rust call. Rust validates the donor, transfers
 circuit, reads the selected put-prev and set-next callbacks, and invokes them
 in order. The warning text and scheduling-class callback implementations
 remain in C.
+
+For the previous-task balance pass, the caller holds the runqueue lock across
+the complete Rust call. Rust reads the donor class, obtains fixed class
+anchors and the scheduling-class size from C, traverses active classes by byte
+offset, queries the current sched_ext static-key state, invokes each optional
+balance callback, and stops at the first non-zero result. The balance callback
+implementations remain in C.
 
 For the activation entry, C validates that it holds the runqueue lock and
 passes the matching lock context to Rust. Rust selects and orders all state
@@ -303,6 +323,14 @@ owns the donor comparison, deferred server transfer, same-task early return,
 callback lookup, and callback order. The standalone put-prev callback receives
 a null next task. A complete transition passes the next task to put-prev and
 sets the set-next callback's first-task argument to true.
+
+The previous-task balance path retains the scheduling-class balance
+implementations in C. Rust reads the donor class and traverses the
+linker-ordered scheduling-class array toward the idle anchor. C supplies the
+fair, idle, and optional sched_ext anchors, the class size, and the current
+sched_ext static-key state. Rust decides when the fair or sched_ext slot is
+inactive, loads each optional balance callback once, and stops at the first
+non-zero result.
 
 The activation path retains runqueue lock ownership, scheduling-class queue
 operations reached through ``activate_task()``, scheduling-class callback
@@ -422,6 +450,12 @@ When both task pointers match, the transition returns after the server move
 without invoking either class callback. Otherwise, put-prev runs before
 set-next, and set-next receives the first-task flag.
 
+The previous-task balance pass starts at the donor class and stops before the
+idle class. It advances by the C-provided scheduling-class size. It skips the
+fair class when sched_ext has switched all fair tasks and skips the sched_ext
+class when sched_ext is disabled. A class with no balance callback is skipped.
+A non-zero balance result stops the pass before any lower-priority class runs.
+
 Under ``CONFIG_DEBUG_PREEMPT``, a wake mask that contains
 ``TASK_RTLOCK_WAIT`` with any other state bit presents an invalid
 ``TASK_NORMAL`` and must issue the existing warning.
@@ -482,13 +516,16 @@ selection, per-CPU reschedule eligibility, idle CPU wakeup action selection,
 task CPU selection routing, scheduling-class dispatch and flag publication,
 single-CPU and migration-disabled behavior, CPU fallback, runqueue enqueue and
 dequeue action selection, scheduler-class transition action selection,
+previous-task balance and active-class transition action selection,
 blocking action selection, and a real uninterruptible timeout. A
 state-publication case checks the blocked marker and running-state stores.
 The transition action table covers migrated enqueue and invalid sleeping
 dequeue. The runqueue-operation action tables cover the clock, statistics, and
 core-scheduling conditions for both operations. The scheduler-class
 transition table covers donor matches, complete transitions, and unchanged
-tasks.
+tasks. The previous-task balance table covers absent, non-stopping, and
+stopping callbacks. The active-class table covers normal, switched-all,
+disabled-sched_ext, and enabled-sched_ext transitions.
 Real wakeup cases cover current-task rejection, waking a stopped kernel
 thread, waking a queued runnable task, waking a ``SCHED_FIFO`` task to invoke
 its scheduling-class callback, real activation and deactivation traffic with
@@ -496,7 +533,8 @@ both the Rust and C implementations, and an idle CPU wake request against the
 current CPU to execute the Rust first-check entry. The same real traffic enters
 the Rust runqueue enqueue and dequeue entries. Every real context switch and
 scheduler task-selection transition enters the Rust scheduler-class transition
-entries.
+entries. Scheduling attempts that take the general class scan also enter the
+Rust previous-task balance pass.
 
 The unit must pass repeated four-vCPU Rust runs, a C fallback run, PREEMPT_RT,
 KASAN, lockdep, and a no-KUnit production build. Static checks include Rustfmt,
@@ -1519,6 +1557,58 @@ to the expected missing-root-filesystem panic without a scheduler ``BUG``,
 warning, KASAN report, lock dependency diagnosis, Oops, or unexpected panic.
 Rustfmt, strict checkpatch, and ``git diff --check`` passed.
 
+The previous-task balance ownership unit was validated on 2026-11-13 with
+x86_64 ``LLVM=1`` builds and QEMU 11.1.3. Each configuration passed three
+consecutive four-vCPU runs for the applicable scheduler and hrtimer suites.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 25 25
+
+   * - Configuration
+     - Scheduler cases
+     - hrtimer cases
+   * - Full Rust
+     - 35
+     - 25
+   * - C balance fallback
+     - 33
+     - 25
+   * - Previous-balance only
+     - 5
+     - 25
+   * - PREEMPT_RT
+     - 35
+     - 25
+   * - KASAN
+     - 35
+     - 25
+   * - lockdep
+     - 35
+     - 25
+
+The previous-task balance action table covers absent, non-stopping, and
+stopping callbacks. The active-class action table covers a regular transition,
+the switched-all fair-class skip, the disabled sched_ext-class skip, and an
+enabled sched_ext transition.
+
+The no-KUnit production configuration enabled all thirteen scheduler Rust
+options and built with ``CLIPPY=1``. Its symbol table contains
+``rust_sched_prev_balance()`` and the fair-class, idle-class,
+sched_ext-class, class-size, and sched_ext-state C helpers. It contains
+neither previous-balance KUnit selector and no unresolved symbol. Disassembly
+shows the donor-class load, the C-provided byte stride, the idle-class
+termination check, the optional callback load, the indirect call, and the
+non-zero stop branch. The production image booted to the expected
+missing-root-filesystem panic without another scheduler diagnostic.
+
+An additional production image enabled ``SCHED_CLASS_EXT`` with BPF JIT and
+BTF. Its symbol table contains the real ``ext_sched_class`` anchor and no
+unresolved symbol. The image booted to the expected panic without another
+scheduler diagnostic. The sched_ext static key is disabled during this boot,
+so active-class traversal must skip the real sched_ext slot and continue to
+the idle anchor.
+
 Review conditions
 -----------------
 
@@ -1575,6 +1665,12 @@ Reopen this boundary decision if any of these conditions changes:
 * The warning threshold or report mechanism changes, or Rust gains a safe
   kernel warning abstraction.
 * Rust gains safe scheduling-class transition callback or deferred-server
+  abstractions that can replace the narrow C boundaries.
+* The scheduler-class linker order, class size, fair, idle, or sched_ext
+  anchors, sched_ext static-key meanings, or active-class skip rules change.
+* The ``sched_class.balance`` layout, callback signature, indirect-call ABI,
+  or non-zero result meaning changes.
+* Rust gains safe scheduling-class iteration, static-key, or balance callback
   abstractions that can replace the narrow C boundaries.
 * The runnable path changes its runqueue lock, delayed-enqueue condition,
   enqueue flags, direct enqueue call, proxy return, preemption, or

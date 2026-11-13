@@ -1209,6 +1209,21 @@ config RUST_SCHED_CLASS_TRANSITION
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SCHED_PREV_BALANCE
+	bool "Rust implementation of the scheduler previous-task balance pass"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production previous-task balance pass before task
+	  selection. Rust owns the active scheduling-class traversal, balance
+	  callback lookup, callback order, and stop decision.
+
+	  The scheduling-class balance implementations, class ordering anchors,
+	  and sched_ext static-key queries remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_CPUPRI
 	bool "Rust implementation of CPU-priority scheduling state"
 	depends on RUST && SMP

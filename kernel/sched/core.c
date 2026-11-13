@@ -217,6 +217,18 @@ static_assert(offsetof(struct sched_class, set_next_task) %
 	      __alignof__(((struct sched_class *)0)->set_next_task) == 0);
 #endif
 
+#ifdef CONFIG_RUST_SCHED_PREV_BALANCE
+static_assert(sizeof_field(struct rq, donor) == sizeof(void *));
+static_assert(sizeof_field(struct task_struct, sched_class) == sizeof(void *));
+static_assert(sizeof_field(struct sched_class, balance) == sizeof(void *));
+static_assert(offsetof(struct rq, donor) %
+	      __alignof__(((struct rq *)0)->donor) == 0);
+static_assert(offsetof(struct task_struct, sched_class) %
+	      __alignof__(((struct task_struct *)0)->sched_class) == 0);
+static_assert(offsetof(struct sched_class, balance) %
+	      __alignof__(((struct sched_class *)0)->balance) == 0);
+#endif
+
 #ifdef CONFIG_RUST_SCHED_WAKE_PREEMPT
 static_assert(RUST_SCHED_RQCF_REQ_SKIP == RQCF_REQ_SKIP);
 static_assert(sizeof_field(struct rq, donor) == sizeof(void *));
@@ -2433,6 +2445,46 @@ void rust_helper_sched_rq_core_dequeue(struct rq *rq,
 void rust_helper_sched_class_warn_donor_mismatch(void)
 {
 	WARN_ON_ONCE(1);
+}
+#endif
+
+#ifdef CONFIG_RUST_SCHED_PREV_BALANCE
+const struct sched_class *rust_helper_sched_fair_class(void)
+{
+	return &fair_sched_class;
+}
+
+const struct sched_class *rust_helper_sched_idle_class(void)
+{
+	return &idle_sched_class;
+}
+
+const struct sched_class *rust_helper_sched_ext_class(void)
+{
+#ifdef CONFIG_SCHED_CLASS_EXT
+	return &ext_sched_class;
+#else
+	return NULL;
+#endif
+}
+
+unsigned long rust_helper_sched_class_size(void)
+{
+	return sizeof(struct sched_class);
+}
+
+unsigned int rust_helper_sched_scx_state(void)
+{
+	unsigned int state = 0;
+
+#ifdef CONFIG_SCHED_CLASS_EXT
+	if (scx_enabled())
+		state |= RUST_SCHED_SCX_ENABLED;
+	if (scx_switched_all())
+		state |= RUST_SCHED_SCX_SWITCHED_ALL;
+#endif
+
+	return state;
 }
 #endif
 
@@ -6554,6 +6606,9 @@ static inline void schedule_debug(struct task_struct *prev, bool preempt)
 
 static void prev_balance(struct rq *rq, struct rq_flags *rf)
 {
+#ifdef CONFIG_RUST_SCHED_PREV_BALANCE
+	rust_sched_prev_balance(rq, rf);
+#else
 	const struct sched_class *start_class = rq->donor->sched_class;
 	const struct sched_class *class;
 
@@ -6569,6 +6624,7 @@ static void prev_balance(struct rq *rq, struct rq_flags *rf)
 		if (class->balance && class->balance(rq, rf))
 			break;
 	}
+#endif
 }
 
 /*

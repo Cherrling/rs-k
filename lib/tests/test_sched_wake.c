@@ -530,6 +530,43 @@ static void sched_wake_test_class_transition_plan(struct kunit *test)
 }
 #endif
 
+#ifdef CONFIG_RUST_SCHED_PREV_BALANCE
+static void sched_wake_test_prev_balance_plan(struct kunit *test)
+{
+	KUNIT_EXPECT_EQ(test, 0,
+			rust_sched_prev_balance_plan_select(false, 0));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_BALANCE_CALL,
+			rust_sched_prev_balance_plan_select(true, 0));
+	KUNIT_EXPECT_EQ(test,
+			RUST_SCHED_BALANCE_CALL | RUST_SCHED_BALANCE_STOP,
+			rust_sched_prev_balance_plan_select(true, 1));
+	KUNIT_EXPECT_EQ(test, 0,
+			rust_sched_prev_balance_plan_select(false, 1));
+}
+
+static void sched_wake_test_next_active_plan(struct kunit *test)
+{
+	unsigned int advance = RUST_SCHED_NEXT_ACTIVE_ADVANCE;
+	unsigned int state;
+
+	KUNIT_EXPECT_EQ(test, advance,
+			rust_sched_next_active_plan_select(0, true, false));
+	state = RUST_SCHED_SCX_SWITCHED_ALL;
+	KUNIT_EXPECT_EQ(test,
+			advance | RUST_SCHED_NEXT_ACTIVE_SKIP_FAIR,
+			rust_sched_next_active_plan_select(state, true, false));
+	KUNIT_EXPECT_EQ(test,
+			advance | RUST_SCHED_NEXT_ACTIVE_SKIP_EXT,
+			rust_sched_next_active_plan_select(0, false, true));
+	state = RUST_SCHED_SCX_ENABLED;
+	KUNIT_EXPECT_EQ(test, advance,
+			rust_sched_next_active_plan_select(state, false, true));
+	state |= RUST_SCHED_SCX_SWITCHED_ALL;
+	KUNIT_EXPECT_EQ(test, advance,
+			rust_sched_next_active_plan_select(state, false, false));
+}
+#endif
+
 #if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
 	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE)
 static void sched_wake_test_wakeup_state(struct kunit *test)
@@ -742,6 +779,10 @@ static struct kunit_case sched_wake_test_cases[] = {
 #endif
 #ifdef CONFIG_RUST_SCHED_CLASS_TRANSITION
 	KUNIT_CASE(sched_wake_test_class_transition_plan),
+#endif
+#ifdef CONFIG_RUST_SCHED_PREV_BALANCE
+	KUNIT_CASE(sched_wake_test_prev_balance_plan),
+	KUNIT_CASE(sched_wake_test_next_active_plan),
 #endif
 #ifdef CONFIG_RUST_SCHED_BLOCK_TASK
 	KUNIT_CASE(sched_wake_test_block_plan),

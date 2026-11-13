@@ -4,10 +4,10 @@
 //!
 //! Rust owns task-state matching, reschedule requests, idle CPU wakeups, task
 //! CPU selection, runqueue enqueue and dequeue routing, wake activation, wake
-//! preemption, scheduler-class transition routing, and task blocking
-//! decisions. C retains task and runqueue locking, warning delivery,
-//! scheduling-class implementations, cpumask operations, CPU eligibility
-//! queries, and fallback placement.
+//! preemption, scheduler-class transition routing, previous-task balancing,
+//! and task blocking decisions. C retains task and runqueue locking, warning
+//! delivery, scheduling-class implementations, class ordering anchors,
+//! cpumask operations, CPU eligibility queries, and fallback placement.
 
 use crate::bindings;
 #[cfg(any(
@@ -17,6 +17,7 @@ use crate::bindings;
     CONFIG_RUST_SCHED_RESCHED_CPU,
     CONFIG_RUST_SCHED_SELECT_TASK_RQ,
     CONFIG_RUST_SCHED_RQ_OPS,
+    CONFIG_RUST_SCHED_PREV_BALANCE,
     CONFIG_RUST_SCHED_TTWU_RUNNABLE,
     CONFIG_RUST_SCHED_TTWU_ACTIVATE,
     CONFIG_RUST_SCHED_RQ_TRANSITION
@@ -58,7 +59,8 @@ use macros::export;
     CONFIG_RUST_SCHED_TTWU_RUNNABLE,
     CONFIG_RUST_SCHED_TTWU_ACTIVATE,
     CONFIG_RUST_SCHED_BLOCK_TASK,
-    CONFIG_RUST_SCHED_RQ_TRANSITION
+    CONFIG_RUST_SCHED_RQ_TRANSITION,
+    CONFIG_RUST_SCHED_PREV_BALANCE
 ))]
 type Task = bindings::task_struct;
 #[cfg(any(
@@ -71,9 +73,12 @@ type Task = bindings::task_struct;
     CONFIG_RUST_SCHED_WAKE_IF_IDLE,
     CONFIG_RUST_SCHED_RESCHED_CPU,
     CONFIG_RUST_SCHED_RQ_OPS,
-    CONFIG_RUST_SCHED_CLASS_TRANSITION
+    CONFIG_RUST_SCHED_CLASS_TRANSITION,
+    CONFIG_RUST_SCHED_PREV_BALANCE
 ))]
 type Rq = bindings::rq;
+#[cfg(CONFIG_RUST_SCHED_PREV_BALANCE)]
+type RqFlags = bindings::rq_flags;
 #[cfg(CONFIG_RUST_SCHED_SELECT_TASK_RQ)]
 type Cpumask = bindings::cpumask;
 #[cfg(CONFIG_RUST_SCHED_SELECT_TASK_RQ)]
@@ -91,6 +96,8 @@ type DequeueTaskCallback = unsafe extern "C" fn(rq: *mut Rq, task: *mut Task, fl
 type PutPrevTaskCallback = unsafe extern "C" fn(rq: *mut Rq, prev: *mut Task, next: *mut Task);
 #[cfg(CONFIG_RUST_SCHED_CLASS_TRANSITION)]
 type SetNextTaskCallback = unsafe extern "C" fn(rq: *mut Rq, next: *mut Task, first: bool);
+#[cfg(CONFIG_RUST_SCHED_PREV_BALANCE)]
+type BalanceCallback = unsafe extern "C" fn(rq: *mut Rq, rf: *mut RqFlags) -> c_int;
 
 #[cfg(any(
     CONFIG_RUST_SCHED_TTWU_RUNNABLE,
@@ -144,6 +151,20 @@ const CLASS_TRANSITION_SERVER: u32 = bindings::RUST_SCHED_CLASS_TRANSITION_SERVE
 const CLASS_TRANSITION_PUT: u32 = bindings::RUST_SCHED_CLASS_TRANSITION_PUT;
 #[cfg(CONFIG_RUST_SCHED_CLASS_TRANSITION)]
 const CLASS_TRANSITION_SET: u32 = bindings::RUST_SCHED_CLASS_TRANSITION_SET;
+#[cfg(CONFIG_RUST_SCHED_PREV_BALANCE)]
+const SCX_ENABLED: u32 = bindings::RUST_SCHED_SCX_ENABLED;
+#[cfg(CONFIG_RUST_SCHED_PREV_BALANCE)]
+const SCX_SWITCHED_ALL: u32 = bindings::RUST_SCHED_SCX_SWITCHED_ALL;
+#[cfg(CONFIG_RUST_SCHED_PREV_BALANCE)]
+const BALANCE_CALL: u32 = bindings::RUST_SCHED_BALANCE_CALL;
+#[cfg(CONFIG_RUST_SCHED_PREV_BALANCE)]
+const BALANCE_STOP: u32 = bindings::RUST_SCHED_BALANCE_STOP;
+#[cfg(CONFIG_RUST_SCHED_PREV_BALANCE)]
+const NEXT_ACTIVE_ADVANCE: u32 = bindings::RUST_SCHED_NEXT_ACTIVE_ADVANCE;
+#[cfg(CONFIG_RUST_SCHED_PREV_BALANCE)]
+const NEXT_ACTIVE_SKIP_FAIR: u32 = bindings::RUST_SCHED_NEXT_ACTIVE_SKIP_FAIR;
+#[cfg(CONFIG_RUST_SCHED_PREV_BALANCE)]
+const NEXT_ACTIVE_SKIP_EXT: u32 = bindings::RUST_SCHED_NEXT_ACTIVE_SKIP_EXT;
 
 /// Reads the current task wake state.
 ///
@@ -657,7 +678,8 @@ unsafe fn task_woken_callback(task: *mut Task) -> Option<TaskWokenCallback> {
     CONFIG_RUST_SCHED_WAKE_PREEMPT,
     CONFIG_RUST_SCHED_RESCHED_CURR,
     CONFIG_RUST_SCHED_WAKE_IF_IDLE,
-    CONFIG_RUST_SCHED_CLASS_TRANSITION
+    CONFIG_RUST_SCHED_CLASS_TRANSITION,
+    CONFIG_RUST_SCHED_PREV_BALANCE
 ))]
 unsafe fn rq_task_pointer(rq: *mut Rq, offset: u32) -> *mut Task {
     // SAFETY: The generated offset identifies the requested pointer field in
@@ -727,9 +749,10 @@ unsafe fn set_rq_next_class(rq: *mut Rq, class: *mut bindings::sched_class) {
     CONFIG_RUST_SCHED_WAKE_PREEMPT,
     CONFIG_RUST_SCHED_SELECT_TASK_RQ,
     CONFIG_RUST_SCHED_RQ_OPS,
-    CONFIG_RUST_SCHED_CLASS_TRANSITION
+    CONFIG_RUST_SCHED_CLASS_TRANSITION,
+    CONFIG_RUST_SCHED_PREV_BALANCE
 ))]
-unsafe fn task_sched_class(task: *mut Task) -> *mut bindings::sched_class {
+unsafe fn task_sched_class(task: *mut Task) -> *const bindings::sched_class {
     // SAFETY: The caller guarantees that the task remains live. Use a volatile
     // load to match the C field access.
     unsafe { core::ptr::addr_of!((*task).sched_class).read_volatile() }
@@ -1367,6 +1390,152 @@ unsafe extern "C" fn rust_sched_class_put_prev_set_next_task(
     unsafe { put_prev_set_next_task_locked(rq, prev, next) };
 }
 
+/// Selects the actions for one scheduler-class balance callback.
+#[cfg(CONFIG_RUST_SCHED_PREV_BALANCE)]
+fn prev_balance_plan(has_callback: bool, result: c_int) -> u32 {
+    let mut plan = 0;
+
+    if has_callback {
+        plan |= BALANCE_CALL;
+        if result != 0 {
+            plan |= BALANCE_STOP;
+        }
+    }
+    plan
+}
+
+/// Selects the active-class step after advancing to the next class slot.
+#[cfg(CONFIG_RUST_SCHED_PREV_BALANCE)]
+fn next_active_plan(scx_state: u32, at_fair: bool, at_ext: bool) -> u32 {
+    let mut plan = NEXT_ACTIVE_ADVANCE;
+
+    if scx_state & SCX_SWITCHED_ALL != 0 && at_fair {
+        plan |= NEXT_ACTIVE_SKIP_FAIR;
+    }
+    if scx_state & SCX_ENABLED == 0 && at_ext {
+        plan |= NEXT_ACTIVE_SKIP_EXT;
+    }
+    plan
+}
+
+/// Returns the action bits for one balance callback decision.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_PREV_BALANCE))]
+#[export]
+extern "C" fn rust_sched_prev_balance_plan_select(has_callback: bool, result: c_int) -> u32 {
+    prev_balance_plan(has_callback, result)
+}
+
+/// Returns the action bits for one active-class step.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_PREV_BALANCE))]
+#[export]
+extern "C" fn rust_sched_next_active_plan_select(
+    scx_state: u32,
+    at_fair: bool,
+    at_ext: bool,
+) -> u32 {
+    next_active_plan(scx_state, at_fair, at_ext)
+}
+
+/// Reads the scheduling class of the runqueue donor.
+///
+/// # Safety
+///
+/// `rq` must remain live and the caller must hold its runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_PREV_BALANCE)]
+unsafe fn rq_donor_class(rq: *mut Rq) -> *const bindings::sched_class {
+    // SAFETY: The caller holds the runqueue lock.
+    let donor = unsafe { rq_task_pointer(rq, bindings::RQ_donor) };
+    // SAFETY: The donor remains live and locked across the balance pass.
+    unsafe { task_sched_class(donor) }
+}
+
+/// Reads an optional scheduling-class balance callback.
+///
+/// # Safety
+///
+/// `class` must remain live and refer to a complete `struct sched_class`.
+#[cfg(CONFIG_RUST_SCHED_PREV_BALANCE)]
+unsafe fn class_balance_callback(class: *const bindings::sched_class) -> Option<BalanceCallback> {
+    // SAFETY: The generated offset identifies the optional callback field.
+    unsafe {
+        class
+            .cast::<u8>()
+            .add(bindings::SCHED_CLASS_balance as usize)
+            .cast::<Option<BalanceCallback>>()
+            .read_volatile()
+    }
+}
+
+/// Advances to the next active scheduling class.
+///
+/// # Safety
+///
+/// `class` must refer to a class in the scheduler-class linker array.
+#[cfg(CONFIG_RUST_SCHED_PREV_BALANCE)]
+unsafe fn next_active_class(
+    class: *const bindings::sched_class,
+    fair_class: *const bindings::sched_class,
+    ext_class: *const bindings::sched_class,
+    class_size: usize,
+) -> *const bindings::sched_class {
+    // SAFETY: The caller stays within the scheduler-class linker array.
+    let next = unsafe { class.cast::<u8>().add(class_size).cast() };
+    // SAFETY: The generated state combines the two SCX static-key values.
+    let scx_state = unsafe { bindings::rust_helper_sched_scx_state() };
+    let plan = next_active_plan(scx_state, next == fair_class, next == ext_class);
+
+    if plan & (NEXT_ACTIVE_SKIP_FAIR | NEXT_ACTIVE_SKIP_EXT) != 0 {
+        // SAFETY: At most one active-class slot is skipped after this step.
+        unsafe { next.cast::<u8>().add(class_size).cast() }
+    } else {
+        next
+    }
+}
+
+/// Runs the previous-task balance pass under the runqueue lock.
+///
+/// # Safety
+///
+/// `rq` and `rf` must remain live and the caller must hold the runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_PREV_BALANCE)]
+unsafe fn prev_balance_locked(rq: *mut Rq, rf: *mut RqFlags) {
+    // SAFETY: Fixed class anchors are immutable for the lifetime of the kernel.
+    let fair_class = unsafe { bindings::rust_helper_sched_fair_class() };
+    // SAFETY: The idle anchor is immutable for the lifetime of the kernel.
+    let idle_class = unsafe { bindings::rust_helper_sched_idle_class() };
+    // SAFETY: This accessor returns NULL when sched_ext is not configured.
+    let ext_class = unsafe { bindings::rust_helper_sched_ext_class() };
+    // SAFETY: The class size is a compile-time C constant.
+    let class_size = unsafe { bindings::rust_helper_sched_class_size() } as usize;
+    // SAFETY: The caller holds the runqueue lock.
+    let mut class = unsafe { rq_donor_class(rq) };
+
+    while class != idle_class {
+        // SAFETY: The class remains in the immutable scheduling-class array.
+        if let Some(callback) = unsafe { class_balance_callback(class) } {
+            // SAFETY: The runqueue lock remains held across the callback.
+            let result = unsafe { callback(rq, rf) };
+            if prev_balance_plan(true, result) & BALANCE_STOP != 0 {
+                break;
+            }
+        }
+        // SAFETY: The caller is below the idle class anchor.
+        class = unsafe { next_active_class(class, fair_class, ext_class, class_size) };
+    }
+}
+
+/// Implements the production previous-task balance pass.
+///
+/// # Safety
+///
+/// `rq` and `rf` must remain live and the caller must hold the runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_PREV_BALANCE)]
+#[export]
+unsafe extern "C" fn rust_sched_prev_balance(rq: *mut Rq, rf: *mut RqFlags) {
+    // SAFETY: The caller satisfies the exported entry-point contract.
+    unsafe { prev_balance_locked(rq, rf) };
+}
+
 /// Reads a scheduling class's wakeup-preemption callback.
 ///
 /// # Safety
@@ -1716,7 +1885,7 @@ extern "C" fn rust_sched_wake_if_idle_select(curr_idle: bool, locked_idle: bool)
 /// Classifies the task scheduling class relative to the selected class.
 #[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
 fn preempt_class_relation(
-    task_class: *mut bindings::sched_class,
+    task_class: *const bindings::sched_class,
     next_class: *mut bindings::sched_class,
 ) -> u32 {
     if task_class == next_class {
@@ -1773,7 +1942,7 @@ unsafe fn wakeup_preempt_locked(rq: *mut Rq, task: *mut Task, wake_flags: c_int)
     }
     if class_plan & PREEMPT_UPDATE_NEXT != 0 {
         // SAFETY: The task class remains live and the caller holds the lock.
-        unsafe { set_rq_next_class(rq, task_class) };
+        unsafe { set_rq_next_class(rq, task_class.cast_mut()) };
     }
 
     // SAFETY: The caller holds the runqueue lock.
