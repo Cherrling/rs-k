@@ -77,6 +77,7 @@
 #include <linux/list_sort.h>
 #include <linux/mdio.h>
 #include <linux/mm.h>
+#include <linux/mm-rust.h>
 #include <linux/miscdevice.h>
 #include <linux/mutex-rust.h>
 #include <linux/of_device.h>

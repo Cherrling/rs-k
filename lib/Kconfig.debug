@@ -2487,6 +2487,20 @@ config SCHED_WAKE_KUNIT_TEST
 
 	  If unsure, say N.
 
+config MM_LIFETIME_KUNIT_TEST
+	bool "KUnit test for address-space reference lifetime" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y && MMU
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for task-mm acquisition, synchronous
+	  and asynchronous mm_users release, final address-space teardown, and
+	  the action tables used by the native Rust lifetime implementation.
+
+	  The real acquisition and release cases run with either the C
+	  implementation or the native Rust implementation selected.
+
+	  If unsure, say N.
+
 config WAITQUEUE_KUNIT_TEST
 	bool "KUnit test for wait queue wakeups" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

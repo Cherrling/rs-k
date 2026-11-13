@@ -110,6 +110,8 @@ mod list_sort;
 pub mod maple_tree;
 pub mod miscdevice;
 pub mod mm;
+#[cfg(CONFIG_RUST_MM_LIFETIME)]
+mod mm_core;
 pub mod module;
 pub mod module_param;
 #[cfg(CONFIG_RUST_MUTEX)]

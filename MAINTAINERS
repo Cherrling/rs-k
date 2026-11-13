@@ -23993,6 +23993,7 @@ F:	include/trace/events/rust_sample.h
 F:	lib/tests/test_cpupri.c
 F:	lib/tests/test_hrtimer_core.c
 F:	lib/tests/test_itimer.c
+F:	lib/tests/test_mm_lifetime.c
 F:	lib/tests/test_completion.c
 F:	lib/tests/test_mutex.c
 F:	lib/tests/test_rwlock.c

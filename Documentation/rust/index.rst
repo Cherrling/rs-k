@@ -37,6 +37,7 @@ more details.
     coding-guidelines
     arch-support
     testing
+    mm-lifetime
     sched
     cpupri
     itimer

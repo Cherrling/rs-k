@@ -45,6 +45,7 @@
 #include <linux/fs.h>
 #include <linux/mm.h>
 #include <linux/mm_inline.h>
+#include <linux/mm-rust.h>
 #include <linux/memblock.h>
 #include <linux/nsproxy.h>
 #include <linux/ns/ns_common_types.h>
@@ -1167,6 +1168,12 @@ fail_mm_init:
 	return NULL;
 }
 
+#ifdef CONFIG_RUST_MM_LIFETIME
+static_assert(sizeof_field(struct mm_struct, mm_users) == sizeof(atomic_t));
+static_assert(offsetof(struct mm_struct, mm_users) %
+	      __alignof__(atomic_t) == 0);
+#endif
+
 /*
  * Allocate and initialize an mm_struct.
  */
@@ -1206,6 +1213,38 @@ static inline void __mmput(struct mm_struct *mm)
 	mmdrop(mm);
 }
 
+#ifdef CONFIG_RUST_MM_LIFETIME
+void *rust_helper_mm_users_ptr(struct mm_struct *mm)
+{
+	return &mm->mm_users;
+}
+
+bool rust_helper_mm_task_is_kernel_thread(struct task_struct *task)
+{
+	return task->flags & PF_KTHREAD;
+}
+
+void rust_helper_mm_task_lock(struct task_struct *task)
+{
+	task_lock(task);
+}
+
+void rust_helper_mm_task_unlock(struct task_struct *task)
+{
+	task_unlock(task);
+}
+
+struct mm_struct *rust_helper_mm_task_mm(struct task_struct *task)
+{
+	return task->mm;
+}
+
+void rust_helper_mm_put_final(struct mm_struct *mm)
+{
+	__mmput(mm);
+}
+#endif
+
 /*
  * Decrement the use count and release all resources for an mm.
  */
@@ -1213,8 +1252,12 @@ void mmput(struct mm_struct *mm)
 {
 	might_sleep();
 
+#ifdef CONFIG_RUST_MM_LIFETIME
+	rust_mm_put(mm);
+#else
 	if (atomic_dec_and_test(&mm->mm_users))
 		__mmput(mm);
+#endif
 }
 EXPORT_SYMBOL_GPL(mmput);
 
@@ -1227,12 +1270,24 @@ static void mmput_async_fn(struct work_struct *work)
 	__mmput(mm);
 }
 
+#ifdef CONFIG_RUST_MM_LIFETIME
+void rust_helper_mm_put_async_schedule(struct mm_struct *mm)
+{
+	INIT_WORK(&mm->async_put_work, mmput_async_fn);
+	schedule_work(&mm->async_put_work);
+}
+#endif
+
 void mmput_async(struct mm_struct *mm)
 {
+#ifdef CONFIG_RUST_MM_LIFETIME
+	rust_mm_put_async(mm);
+#else
 	if (atomic_dec_and_test(&mm->mm_users)) {
 		INIT_WORK(&mm->async_put_work, mmput_async_fn);
 		schedule_work(&mm->async_put_work);
 	}
+#endif
 }
 EXPORT_SYMBOL_GPL(mmput_async);
 #endif
@@ -1384,6 +1439,9 @@ struct file *get_task_exe_file(struct task_struct *task)
  */
 struct mm_struct *get_task_mm(struct task_struct *task)
 {
+#ifdef CONFIG_RUST_MM_LIFETIME
+	return rust_mm_get_task(task);
+#else
 	struct mm_struct *mm;
 
 	if (task->flags & PF_KTHREAD)
@@ -1395,6 +1453,7 @@ struct mm_struct *get_task_mm(struct task_struct *task)
 		mmget(mm);
 	task_unlock(task);
 	return mm;
+#endif
 }
 EXPORT_SYMBOL_GPL(get_task_mm);
 
