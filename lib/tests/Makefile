@@ -29,6 +29,7 @@ obj-$(CONFIG_TASK_TEARDOWN_KUNIT_TEST) += test_task_teardown.o
 obj-$(CONFIG_PID_LIFECYCLE_KUNIT_TEST) += test_pid_lifecycle.o
 obj-$(CONFIG_PID_ALLOCATION_KUNIT_TEST) += test_pid_allocation.o
 obj-$(CONFIG_PID_ASSOCIATION_KUNIT_TEST) += test_pid_association.o
+obj-$(CONFIG_PID_NUMBER_KUNIT_TEST) += test_pid_number.o
 obj-$(CONFIG_CPUMASK_KUNIT_TEST) += cpumask_kunit.o
 obj-$(CONFIG_FFS_KUNIT_TEST) += ffs_kunit.o
 CFLAGS_fortify_kunit.o += $(call cc-disable-warning, unsequenced)

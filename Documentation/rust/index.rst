@@ -40,6 +40,7 @@ more details.
     task-teardown
     pid-allocation
     pid-association
+    pid-number
     pid-lifecycle
     mm-lifetime
     mm-teardown

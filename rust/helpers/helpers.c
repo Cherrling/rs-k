@@ -85,6 +85,7 @@
 #include "pid.c"
 #include "pid_allocation.c"
 #include "pid_association.c"
+#include "pid_number.c"
 #include "pid_namespace.c"
 #include "platform.c"
 #include "poll.c"

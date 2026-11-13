@@ -136,6 +136,8 @@ mod pid_association;
 #[cfg(CONFIG_RUST_PID_LIFECYCLE)]
 mod pid_lifecycle;
 pub mod pid_namespace;
+#[cfg(CONFIG_RUST_PID_NUMBER)]
+mod pid_number;
 pub mod platform;
 pub mod prelude;
 pub mod print;

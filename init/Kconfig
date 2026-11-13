@@ -1348,6 +1348,21 @@ config RUST_PID_ASSOCIATION
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_PID_NUMBER
+	bool "Rust implementation of PID namespace number resolution"
+	depends on RUST
+	default y
+	help
+	  Use Rust to resolve a PID into the number visible in a selected PID
+	  namespace. Rust owns namespace depth, ownership, null, and current
+	  namespace fallback decisions.
+
+	  RCU protection, task PID slot access, and namespace retrieval remain
+	  in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_CPUPRI
 	bool "Rust implementation of CPU-priority scheduling state"
 	depends on RUST && SMP

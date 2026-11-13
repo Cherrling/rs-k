@@ -2559,6 +2559,19 @@ config PID_ASSOCIATION_KUNIT_TEST
 
 	  If unsure, say N.
 
+config PID_NUMBER_KUNIT_TEST
+	bool "KUnit test for PID namespace number resolution" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for PID namespace depth, ownership,
+	  task type lookup, and current namespace fallback.
+
+	  The integration cases run with either the C implementation or the
+	  native Rust implementation selected.
+
+	  If unsure, say N.
+
 config WAITQUEUE_KUNIT_TEST
 	bool "KUnit test for wait queue wakeups" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y
