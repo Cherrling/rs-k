@@ -4,9 +4,10 @@
 //!
 //! Rust owns task-state matching, reschedule requests, idle CPU wakeups, task
 //! CPU selection, runqueue enqueue and dequeue routing, wake activation, wake
-//! preemption, and task blocking decisions. C retains task and runqueue
-//! locking, warning delivery, scheduling-class implementations, cpumask
-//! operations, CPU eligibility queries, and fallback placement.
+//! preemption, scheduler-class transition routing, and task blocking
+//! decisions. C retains task and runqueue locking, warning delivery,
+//! scheduling-class implementations, cpumask operations, CPU eligibility
+//! queries, and fallback placement.
 
 use crate::bindings;
 #[cfg(any(
@@ -53,6 +54,7 @@ use macros::export;
     CONFIG_RUST_SCHED_WAKE_IF_IDLE,
     CONFIG_RUST_SCHED_SELECT_TASK_RQ,
     CONFIG_RUST_SCHED_RQ_OPS,
+    CONFIG_RUST_SCHED_CLASS_TRANSITION,
     CONFIG_RUST_SCHED_TTWU_RUNNABLE,
     CONFIG_RUST_SCHED_TTWU_ACTIVATE,
     CONFIG_RUST_SCHED_BLOCK_TASK,
@@ -68,7 +70,8 @@ type Task = bindings::task_struct;
     CONFIG_RUST_SCHED_RESCHED_CURR,
     CONFIG_RUST_SCHED_WAKE_IF_IDLE,
     CONFIG_RUST_SCHED_RESCHED_CPU,
-    CONFIG_RUST_SCHED_RQ_OPS
+    CONFIG_RUST_SCHED_RQ_OPS,
+    CONFIG_RUST_SCHED_CLASS_TRANSITION
 ))]
 type Rq = bindings::rq;
 #[cfg(CONFIG_RUST_SCHED_SELECT_TASK_RQ)]
@@ -84,6 +87,10 @@ type WakeupPreemptCallback = unsafe extern "C" fn(rq: *mut Rq, task: *mut Task, 
 type EnqueueTaskCallback = unsafe extern "C" fn(rq: *mut Rq, task: *mut Task, flags: c_int);
 #[cfg(CONFIG_RUST_SCHED_RQ_OPS)]
 type DequeueTaskCallback = unsafe extern "C" fn(rq: *mut Rq, task: *mut Task, flags: c_int) -> bool;
+#[cfg(CONFIG_RUST_SCHED_CLASS_TRANSITION)]
+type PutPrevTaskCallback = unsafe extern "C" fn(rq: *mut Rq, prev: *mut Task, next: *mut Task);
+#[cfg(CONFIG_RUST_SCHED_CLASS_TRANSITION)]
+type SetNextTaskCallback = unsafe extern "C" fn(rq: *mut Rq, next: *mut Task, first: bool);
 
 #[cfg(any(
     CONFIG_RUST_SCHED_TTWU_RUNNABLE,
@@ -129,6 +136,14 @@ const RQ_OP_UPDATE_CLOCK: u32 = bindings::RUST_SCHED_RQ_OP_UPDATE_CLOCK;
 const RQ_OP_INFO: u32 = bindings::RUST_SCHED_RQ_OP_INFO;
 #[cfg(CONFIG_RUST_SCHED_RQ_OPS)]
 const RQ_OP_CORE: u32 = bindings::RUST_SCHED_RQ_OP_CORE;
+#[cfg(CONFIG_RUST_SCHED_CLASS_TRANSITION)]
+const CLASS_TRANSITION_WARN: u32 = bindings::RUST_SCHED_CLASS_TRANSITION_WARN;
+#[cfg(CONFIG_RUST_SCHED_CLASS_TRANSITION)]
+const CLASS_TRANSITION_SERVER: u32 = bindings::RUST_SCHED_CLASS_TRANSITION_SERVER;
+#[cfg(CONFIG_RUST_SCHED_CLASS_TRANSITION)]
+const CLASS_TRANSITION_PUT: u32 = bindings::RUST_SCHED_CLASS_TRANSITION_PUT;
+#[cfg(CONFIG_RUST_SCHED_CLASS_TRANSITION)]
+const CLASS_TRANSITION_SET: u32 = bindings::RUST_SCHED_CLASS_TRANSITION_SET;
 
 /// Reads the current task wake state.
 ///
@@ -641,7 +656,8 @@ unsafe fn task_woken_callback(task: *mut Task) -> Option<TaskWokenCallback> {
 #[cfg(any(
     CONFIG_RUST_SCHED_WAKE_PREEMPT,
     CONFIG_RUST_SCHED_RESCHED_CURR,
-    CONFIG_RUST_SCHED_WAKE_IF_IDLE
+    CONFIG_RUST_SCHED_WAKE_IF_IDLE,
+    CONFIG_RUST_SCHED_CLASS_TRANSITION
 ))]
 unsafe fn rq_task_pointer(rq: *mut Rq, offset: u32) -> *mut Task {
     // SAFETY: The generated offset identifies the requested pointer field in
@@ -710,7 +726,8 @@ unsafe fn set_rq_next_class(rq: *mut Rq, class: *mut bindings::sched_class) {
 #[cfg(any(
     CONFIG_RUST_SCHED_WAKE_PREEMPT,
     CONFIG_RUST_SCHED_SELECT_TASK_RQ,
-    CONFIG_RUST_SCHED_RQ_OPS
+    CONFIG_RUST_SCHED_RQ_OPS,
+    CONFIG_RUST_SCHED_CLASS_TRANSITION
 ))]
 unsafe fn task_sched_class(task: *mut Task) -> *mut bindings::sched_class {
     // SAFETY: The caller guarantees that the task remains live. Use a volatile
@@ -1094,6 +1111,260 @@ unsafe extern "C" fn rust_sched_dequeue_task_locked(
 ) -> bool {
     // SAFETY: The caller satisfies the exported entry-point contract.
     unsafe { dequeue_task_locked(rq, task, flags) }
+}
+
+/// Selects the standalone put-prev actions.
+#[cfg(CONFIG_RUST_SCHED_CLASS_TRANSITION)]
+fn put_prev_task_plan(donor_matches: bool) -> u32 {
+    let mut plan = CLASS_TRANSITION_PUT;
+
+    if !donor_matches {
+        plan |= CLASS_TRANSITION_WARN;
+    }
+    plan
+}
+
+/// Selects the complete put-prev and set-next actions.
+#[cfg(CONFIG_RUST_SCHED_CLASS_TRANSITION)]
+fn put_prev_set_next_task_plan(donor_matches: bool, same_task: bool) -> u32 {
+    let mut plan = CLASS_TRANSITION_SERVER;
+
+    if !donor_matches {
+        plan |= CLASS_TRANSITION_WARN;
+    }
+    if !same_task {
+        plan |= CLASS_TRANSITION_PUT | CLASS_TRANSITION_SET;
+    }
+    plan
+}
+
+/// Returns the standalone put-prev action bits for the scheduler KUnit table.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_CLASS_TRANSITION))]
+#[export]
+extern "C" fn rust_sched_class_put_prev_plan_select(donor_matches: bool) -> u32 {
+    put_prev_task_plan(donor_matches)
+}
+
+/// Returns the complete transition action bits for the scheduler KUnit table.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_CLASS_TRANSITION))]
+#[export]
+extern "C" fn rust_sched_class_put_prev_set_next_plan_select(
+    donor_matches: bool,
+    same_task: bool,
+) -> u32 {
+    put_prev_set_next_task_plan(donor_matches, same_task)
+}
+
+/// Returns a task's deferred scheduling-server pointer.
+///
+/// # Safety
+///
+/// `task` must remain live and point to the start of a C `struct task_struct`.
+#[cfg(CONFIG_RUST_SCHED_CLASS_TRANSITION)]
+unsafe fn task_dl_server_ptr(task: *mut Task) -> *mut *mut core::ffi::c_void {
+    // SAFETY: The generated offset comes from `offsetof(struct task_struct,
+    // dl_server)` and the caller provides the live base pointer.
+    unsafe {
+        task.cast::<u8>()
+            .add(bindings::TASK_STRUCT_dl_server as usize)
+            .cast()
+    }
+}
+
+/// Returns the runqueue's deferred scheduling-server pointer.
+///
+/// # Safety
+///
+/// `rq` must remain live and point to the start of a C `struct rq`.
+#[cfg(CONFIG_RUST_SCHED_CLASS_TRANSITION)]
+unsafe fn rq_dl_server_ptr(rq: *mut Rq) -> *mut *mut core::ffi::c_void {
+    // SAFETY: The generated offset comes from
+    // `offsetof(struct rq, dl_server)` and the caller provides the live base
+    // pointer.
+    unsafe { rq.cast::<u8>().add(bindings::RQ_dl_server as usize).cast() }
+}
+
+/// Reads a task's scheduling-class put-prev callback.
+///
+/// # Safety
+///
+/// `task` and its scheduling class must remain live, and the caller must hold
+/// the task runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_CLASS_TRANSITION)]
+unsafe fn task_put_prev_task_callback(task: *mut Task) -> PutPrevTaskCallback {
+    // SAFETY: The caller holds the task runqueue lock.
+    let class = unsafe { task_sched_class(task) };
+    // SAFETY: The generated offset identifies the required callback field.
+    unsafe {
+        class
+            .cast::<u8>()
+            .add(bindings::SCHED_CLASS_put_prev_task as usize)
+            .cast::<PutPrevTaskCallback>()
+            .read_volatile()
+    }
+}
+
+/// Reads a task's scheduling-class set-next callback.
+///
+/// # Safety
+///
+/// `task` and its scheduling class must remain live, and the caller must hold
+/// the task runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_CLASS_TRANSITION)]
+unsafe fn task_set_next_task_callback(task: *mut Task) -> SetNextTaskCallback {
+    // SAFETY: The caller holds the task runqueue lock.
+    let class = unsafe { task_sched_class(task) };
+    // SAFETY: The generated offset identifies the required callback field.
+    unsafe {
+        class
+            .cast::<u8>()
+            .add(bindings::SCHED_CLASS_set_next_task as usize)
+            .cast::<SetNextTaskCallback>()
+            .read_volatile()
+    }
+}
+
+/// Returns whether the runqueue donor matches a task.
+///
+/// # Safety
+///
+/// `rq` and `task` must remain live and the caller must hold the runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_CLASS_TRANSITION)]
+unsafe fn rq_donor_matches(rq: *mut Rq, task: *mut Task) -> bool {
+    // SAFETY: The caller holds the runqueue lock.
+    unsafe { rq_task_pointer(rq, bindings::RQ_donor) == task }
+}
+
+/// Moves the deferred scheduling server from the runqueue to the next task.
+///
+/// # Safety
+///
+/// The tasks and runqueue must remain live and the caller must hold the
+/// runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_CLASS_TRANSITION)]
+unsafe fn transfer_dl_server(rq: *mut Rq, prev: *mut Task, next: *mut Task) {
+    // SAFETY: The caller guarantees that all three objects remain live.
+    let prev_server = unsafe { task_dl_server_ptr(prev) };
+    // SAFETY: The caller guarantees that all three objects remain live.
+    let next_server = unsafe { task_dl_server_ptr(next) };
+    // SAFETY: The caller guarantees that the runqueue remains live.
+    let rq_server = unsafe { rq_dl_server_ptr(rq) };
+    // SAFETY: The runqueue lock serializes access to the deferred server.
+    let server = unsafe { rq_server.read() };
+
+    // SAFETY: The runqueue lock serializes all three stores.
+    unsafe {
+        prev_server.write(core::ptr::null_mut());
+        next_server.write(server);
+        rq_server.write(core::ptr::null_mut());
+    }
+}
+
+/// Runs put-prev for a task while its runqueue lock remains held.
+///
+/// # Safety
+///
+/// `rq` and `prev` must remain live and the caller must hold the runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_CLASS_TRANSITION)]
+unsafe fn put_prev_task_locked(rq: *mut Rq, prev: *mut Task) {
+    // SAFETY: The caller holds the runqueue lock.
+    let plan = put_prev_task_plan(unsafe { rq_donor_matches(rq, prev) });
+
+    if plan & CLASS_TRANSITION_WARN != 0 {
+        // SAFETY: Warning delivery remains in C.
+        unsafe { bindings::rust_helper_sched_class_warn_donor_mismatch() };
+    }
+    // SAFETY: The task and its class remain stable under the runqueue lock.
+    let callback = unsafe { task_put_prev_task_callback(prev) };
+    // SAFETY: The callback runs with the runqueue lock held.
+    unsafe { callback(rq, prev, core::ptr::null_mut()) };
+}
+
+/// Runs set-next for a task while its runqueue lock remains held.
+///
+/// # Safety
+///
+/// `rq` and `next` must remain live and the caller must hold the runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_CLASS_TRANSITION)]
+unsafe fn set_next_task_locked(rq: *mut Rq, next: *mut Task) {
+    // SAFETY: The task and its class remain stable under the runqueue lock.
+    let callback = unsafe { task_set_next_task_callback(next) };
+    // SAFETY: The callback runs with the runqueue lock held.
+    unsafe { callback(rq, next, false) };
+}
+
+/// Runs a complete scheduler-class transition under the runqueue lock.
+///
+/// # Safety
+///
+/// `rq`, `prev`, and `next` must remain live and the caller must hold the
+/// runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_CLASS_TRANSITION)]
+unsafe fn put_prev_set_next_task_locked(rq: *mut Rq, prev: *mut Task, next: *mut Task) {
+    // SAFETY: The caller holds the runqueue lock.
+    let donor_matches = unsafe { rq_donor_matches(rq, prev) };
+    let plan = put_prev_set_next_task_plan(donor_matches, prev == next);
+
+    if plan & CLASS_TRANSITION_WARN != 0 {
+        // SAFETY: Warning delivery remains in C.
+        unsafe { bindings::rust_helper_sched_class_warn_donor_mismatch() };
+    }
+    if plan & CLASS_TRANSITION_SERVER != 0 {
+        // SAFETY: The caller holds the runqueue lock.
+        unsafe { transfer_dl_server(rq, prev, next) };
+    }
+    if prev == next {
+        return;
+    }
+    // SAFETY: The task and its class remain stable under the runqueue lock.
+    let put_callback = unsafe { task_put_prev_task_callback(prev) };
+    // SAFETY: The callback runs with the runqueue lock held.
+    unsafe { put_callback(rq, prev, next) };
+    // SAFETY: The task and its class remain stable under the runqueue lock.
+    let set_callback = unsafe { task_set_next_task_callback(next) };
+    // SAFETY: The callback runs with the runqueue lock held.
+    unsafe { set_callback(rq, next, true) };
+}
+
+/// Implements the production standalone put-prev operation.
+///
+/// # Safety
+///
+/// `rq` and `prev` must remain live and the caller must hold the runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_CLASS_TRANSITION)]
+#[export]
+unsafe extern "C" fn rust_sched_class_put_prev_task(rq: *mut Rq, prev: *mut Task) {
+    // SAFETY: The caller satisfies the exported entry-point contract.
+    unsafe { put_prev_task_locked(rq, prev) };
+}
+
+/// Implements the production standalone set-next operation.
+///
+/// # Safety
+///
+/// `rq` and `next` must remain live and the caller must hold the runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_CLASS_TRANSITION)]
+#[export]
+unsafe extern "C" fn rust_sched_class_set_next_task(rq: *mut Rq, next: *mut Task) {
+    // SAFETY: The caller satisfies the exported entry-point contract.
+    unsafe { set_next_task_locked(rq, next) };
+}
+
+/// Implements the production complete scheduler-class transition.
+///
+/// # Safety
+///
+/// `rq`, `prev`, and `next` must remain live and the caller must hold the
+/// runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_CLASS_TRANSITION)]
+#[export]
+unsafe extern "C" fn rust_sched_class_put_prev_set_next_task(
+    rq: *mut Rq,
+    prev: *mut Task,
+    next: *mut Task,
+) {
+    // SAFETY: The caller satisfies the exported entry-point contract.
+    unsafe { put_prev_set_next_task_locked(rq, prev, next) };
 }
 
 /// Reads a scheduling class's wakeup-preemption callback.

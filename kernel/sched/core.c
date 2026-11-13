@@ -202,6 +202,21 @@ static_assert(offsetof(struct sched_class, dequeue_task) %
 	      __alignof__(((struct sched_class *)0)->dequeue_task) == 0);
 #endif
 
+#ifdef CONFIG_RUST_SCHED_CLASS_TRANSITION
+static_assert(sizeof_field(struct task_struct, dl_server) == sizeof(void *));
+static_assert(sizeof_field(struct rq, dl_server) == sizeof(void *));
+static_assert(offsetof(struct task_struct, dl_server) %
+	      __alignof__(((struct task_struct *)0)->dl_server) == 0);
+static_assert(offsetof(struct rq, dl_server) %
+	      __alignof__(((struct rq *)0)->dl_server) == 0);
+static_assert(sizeof_field(struct sched_class, put_prev_task) == sizeof(void *));
+static_assert(sizeof_field(struct sched_class, set_next_task) == sizeof(void *));
+static_assert(offsetof(struct sched_class, put_prev_task) %
+	      __alignof__(((struct sched_class *)0)->put_prev_task) == 0);
+static_assert(offsetof(struct sched_class, set_next_task) %
+	      __alignof__(((struct sched_class *)0)->set_next_task) == 0);
+#endif
+
 #ifdef CONFIG_RUST_SCHED_WAKE_PREEMPT
 static_assert(RUST_SCHED_RQCF_REQ_SKIP == RQCF_REQ_SKIP);
 static_assert(sizeof_field(struct rq, donor) == sizeof(void *));
@@ -2411,6 +2426,13 @@ void rust_helper_sched_rq_core_dequeue(struct rq *rq,
 				       struct task_struct *task, int flags)
 {
 	sched_core_dequeue(rq, task, flags);
+}
+#endif
+
+#ifdef CONFIG_RUST_SCHED_CLASS_TRANSITION
+void rust_helper_sched_class_warn_donor_mismatch(void)
+{
+	WARN_ON_ONCE(1);
 }
 #endif
 

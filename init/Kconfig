@@ -1193,6 +1193,22 @@ config RUST_SCHED_RQ_OPS
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SCHED_CLASS_TRANSITION
+	bool "Rust implementation of scheduler class transitions"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production scheduler-class transition routing.
+	  Rust owns the donor check, deferred server transfer, same-task
+	  short circuit, callback lookup, and put-prev and set-next callback
+	  order.
+
+	  The scheduling-class callback implementations and warning delivery
+	  remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_CPUPRI
 	bool "Rust implementation of CPU-priority scheduling state"
 	depends on RUST && SMP

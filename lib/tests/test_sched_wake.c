@@ -503,6 +503,33 @@ static void sched_wake_test_dequeue_task_plan(struct kunit *test)
 }
 #endif
 
+#ifdef CONFIG_RUST_SCHED_CLASS_TRANSITION
+static void sched_wake_test_class_transition_plan(struct kunit *test)
+{
+	unsigned int complete = RUST_SCHED_CLASS_TRANSITION_SERVER |
+				RUST_SCHED_CLASS_TRANSITION_PUT |
+				RUST_SCHED_CLASS_TRANSITION_SET;
+
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_CLASS_TRANSITION_PUT,
+			rust_sched_class_put_prev_plan_select(true));
+	KUNIT_EXPECT_EQ(test,
+			RUST_SCHED_CLASS_TRANSITION_PUT |
+			RUST_SCHED_CLASS_TRANSITION_WARN,
+			rust_sched_class_put_prev_plan_select(false));
+	KUNIT_EXPECT_EQ(test, RUST_SCHED_CLASS_TRANSITION_SERVER,
+			rust_sched_class_put_prev_set_next_plan_select(true, true));
+	KUNIT_EXPECT_EQ(test,
+			RUST_SCHED_CLASS_TRANSITION_SERVER |
+			RUST_SCHED_CLASS_TRANSITION_WARN,
+			rust_sched_class_put_prev_set_next_plan_select(false, true));
+	KUNIT_EXPECT_EQ(test, complete,
+			rust_sched_class_put_prev_set_next_plan_select(true, false));
+	KUNIT_EXPECT_EQ(test,
+			complete | RUST_SCHED_CLASS_TRANSITION_WARN,
+			rust_sched_class_put_prev_set_next_plan_select(false, false));
+}
+#endif
+
 #if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
 	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE)
 static void sched_wake_test_wakeup_state(struct kunit *test)
@@ -712,6 +739,9 @@ static struct kunit_case sched_wake_test_cases[] = {
 #ifdef CONFIG_RUST_SCHED_RQ_OPS
 	KUNIT_CASE(sched_wake_test_enqueue_task_plan),
 	KUNIT_CASE(sched_wake_test_dequeue_task_plan),
+#endif
+#ifdef CONFIG_RUST_SCHED_CLASS_TRANSITION
+	KUNIT_CASE(sched_wake_test_class_transition_plan),
 #endif
 #ifdef CONFIG_RUST_SCHED_BLOCK_TASK
 	KUNIT_CASE(sched_wake_test_block_plan),

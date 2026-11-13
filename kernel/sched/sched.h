@@ -2772,6 +2772,33 @@ struct sched_class {
 #endif
 };
 
+#ifdef CONFIG_RUST_SCHED_CLASS_TRANSITION
+
+void rust_sched_class_put_prev_task(struct rq *rq, struct task_struct *prev);
+void rust_sched_class_set_next_task(struct rq *rq, struct task_struct *next);
+void rust_sched_class_put_prev_set_next_task(struct rq *rq,
+					     struct task_struct *prev,
+					     struct task_struct *next);
+
+static inline void put_prev_task(struct rq *rq, struct task_struct *prev)
+{
+	rust_sched_class_put_prev_task(rq, prev);
+}
+
+static inline void set_next_task(struct rq *rq, struct task_struct *next)
+{
+	rust_sched_class_set_next_task(rq, next);
+}
+
+static inline void put_prev_set_next_task(struct rq *rq,
+					  struct task_struct *prev,
+					  struct task_struct *next)
+{
+	rust_sched_class_put_prev_set_next_task(rq, prev, next);
+}
+
+#else
+
 static inline void put_prev_task(struct rq *rq, struct task_struct *prev)
 {
 	WARN_ON_ONCE(rq->donor != prev);
@@ -2807,6 +2834,8 @@ static inline void put_prev_set_next_task(struct rq *rq,
 	prev->sched_class->put_prev_task(rq, prev, next);
 	next->sched_class->set_next_task(rq, next, true);
 }
+
+#endif /* CONFIG_RUST_SCHED_CLASS_TRANSITION */
 
 /*
  * Helper to define a sched_class instance; each one is placed in a separate

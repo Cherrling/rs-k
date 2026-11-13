@@ -14,7 +14,10 @@ int main(void)
 	DEFINE(RQ_curr, offsetof(struct rq, curr));
 	DEFINE(RQ_cpu, offsetof(struct rq, cpu));
 	DEFINE(RQ_next_class, offsetof(struct rq, next_class));
+	DEFINE(RQ_dl_server, offsetof(struct rq, dl_server));
 	DEFINE(RQ_clock_update_flags, offsetof(struct rq, clock_update_flags));
+	DEFINE(TASK_STRUCT_dl_server,
+	       offsetof(struct task_struct, dl_server));
 	DEFINE(SCHED_CLASS_wakeup_preempt,
 	       offsetof(struct sched_class, wakeup_preempt));
 	DEFINE(SCHED_CLASS_task_woken,
@@ -25,6 +28,10 @@ int main(void)
 	       offsetof(struct sched_class, enqueue_task));
 	DEFINE(SCHED_CLASS_dequeue_task,
 	       offsetof(struct sched_class, dequeue_task));
+	DEFINE(SCHED_CLASS_put_prev_task,
+	       offsetof(struct sched_class, put_prev_task));
+	DEFINE(SCHED_CLASS_set_next_task,
+	       offsetof(struct sched_class, set_next_task));
 
 	return 0;
 }

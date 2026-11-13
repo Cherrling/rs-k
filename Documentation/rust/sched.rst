@@ -27,6 +27,9 @@ flag publication, eligibility check, and fallback decision.
 The ``CONFIG_RUST_SCHED_RQ_OPS`` option selects Rust for the production
 runqueue enqueue and dequeue routing, conditional action order,
 scheduling-class callback dispatch, and dequeue result.
+The ``CONFIG_RUST_SCHED_CLASS_TRANSITION`` option selects Rust for the
+production put-prev and set-next routing, deferred scheduling-server transfer,
+same-task short circuit, and callback order.
 The ``CONFIG_RUST_SCHED_BLOCK_TASK`` option selects Rust for the production
 task blocking state machine.
 The ``CONFIG_RUST_SCHED_RQ_TRANSITION`` option selects Rust for the production
@@ -71,6 +74,9 @@ Rust owns these production decisions:
   scheduler-statistics change, and core-scheduling change.
 * Reading the optional core-scheduling state, invoking the selected scheduling
   class directly, and returning the scheduling-class dequeue result.
+* Validating the runqueue donor, transferring the deferred scheduling server,
+  short-circuiting an unchanged task, and invoking the put-prev and set-next
+  callbacks in order.
 * Reading task load and I/O wait state, updating the runqueue
   ``nr_uninterruptible`` and ``nr_iowait`` counts, ending delay accounting,
   constructing enqueue flags, calling task activation directly, selecting
@@ -91,8 +97,8 @@ selection callback implementations, scheduling-class preemption callback
 implementations, thread-flag bit mutation, preemption-count updates,
 tracepoint delivery, IPI delivery, statistics, and public scheduler ABI
 adapters remain in C. Runqueue queue operations, scheduling-class
-implementations, wake and select-task-runqueue callbacks, and lock pin
-primitives also remain in C.
+implementations, wake, select-task-runqueue, put-prev, and set-next callbacks,
+and lock pin primitives also remain in C.
 Blocking dequeue and block accounting primitives also remain in C. The KCSAN
 runqueue membership writer assertion, warnings, and queue operations also
 remain in C.
@@ -128,6 +134,9 @@ The Rust-to-C calls are:
   ``select_fallback_rq()`` operations used by task CPU selection.
 * The utilization-clamp, pressure, scheduler-statistics, and core-scheduling
   primitives used by runqueue enqueue and dequeue.
+* Scheduling-class put-prev and set-next callback implementations reached
+  through indirect calls from Rust.
+* The runqueue donor mismatch warning.
 * Scheduling-class ``task_woken`` callback implementations reached through
   an indirect call from Rust.
 * Runqueue lock unpin and repin around a scheduling-class ``task_woken``
@@ -151,6 +160,9 @@ The C-to-Rust production entries are:
 * ``rust_sched_select_task_rq()``.
 * ``rust_sched_enqueue_task_locked()``.
 * ``rust_sched_dequeue_task_locked()``.
+* ``rust_sched_class_put_prev_task()``.
+* ``rust_sched_class_set_next_task()``.
+* ``rust_sched_class_put_prev_set_next_task()``.
 * ``rust_sched_block_task_locked()``.
 * ``rust_sched_activate_task_locked()``.
 * ``rust_sched_deactivate_task_locked()``.
@@ -173,6 +185,13 @@ class callback through a compile-time checked offset and calls it directly.
 C retains only the scheduling-class implementation and the narrow accounting
 and core-scheduling primitives. Rust returns the scheduling-class dequeue
 result unchanged.
+
+For scheduler-class transitions, the caller holds the runqueue lock across
+the complete Rust call. Rust validates the donor, transfers
+``rq->dl_server`` and the task server pointers, takes the same-task short
+circuit, reads the selected put-prev and set-next callbacks, and invokes them
+in order. The warning text and scheduling-class callback implementations
+remain in C.
 
 For the activation entry, C validates that it holds the runqueue lock and
 passes the matching lock context to Rust. Rust selects and orders all state
@@ -277,6 +296,13 @@ operations, and the public ``enqueue_task()`` and ``dequeue_task()`` adapters
 in C. Rust reads the operation flags and core-scheduling state, selects each
 conditional operation, invokes each primitive in the original order, calls the
 selected scheduling-class callback directly, and returns the class result.
+
+The scheduler-class transition path retains runqueue lock ownership,
+scheduling-class callback implementations, and warning delivery in C. Rust
+owns the donor comparison, deferred server transfer, same-task early return,
+callback lookup, and callback order. The standalone put-prev callback receives
+a null next task. A complete transition passes the next task to put-prev and
+sets the set-next callback's first-task argument to true.
 
 The activation path retains runqueue lock ownership, scheduling-class queue
 operations reached through ``activate_task()``, scheduling-class callback
@@ -389,6 +415,13 @@ clock unless ``DEQUEUE_NOCLOCK`` is present, runs scheduler statistics unless
 utilization clamp before the scheduling-class callback. The scheduling class
 runs last and its boolean result becomes the Rust entry result unchanged.
 
+A scheduler-class transition warns only when the runqueue donor differs from
+the previous task. It always clears the previous task's server pointer, moves
+the runqueue server pointer to the next task, and clears the runqueue pointer.
+When both task pointers match, the transition returns after the server move
+without invoking either class callback. Otherwise, put-prev runs before
+set-next, and set-next receives the first-task flag.
+
 Under ``CONFIG_DEBUG_PREEMPT``, a wake mask that contains
 ``TASK_RTLOCK_WAIT`` with any other state bit presents an invalid
 ``TASK_NORMAL`` and must issue the existing warning.
@@ -448,17 +481,22 @@ uninterruptible and I/O wait count updates, wakeup-preemption action
 selection, per-CPU reschedule eligibility, idle CPU wakeup action selection,
 task CPU selection routing, scheduling-class dispatch and flag publication,
 single-CPU and migration-disabled behavior, CPU fallback, runqueue enqueue and
-dequeue action selection, blocking action selection, and a real
-uninterruptible timeout. A state-publication case checks the blocked marker
-and running-state stores. The transition action table covers migrated enqueue
-and invalid sleeping dequeue. The runqueue-operation action tables cover the
-clock, statistics, and core-scheduling conditions for both operations.
+dequeue action selection, scheduler-class transition action selection,
+blocking action selection, and a real uninterruptible timeout. A
+state-publication case checks the blocked marker and running-state stores.
+The transition action table covers migrated enqueue and invalid sleeping
+dequeue. The runqueue-operation action tables cover the clock, statistics, and
+core-scheduling conditions for both operations. The scheduler-class
+transition table covers donor matches, complete transitions, and unchanged
+tasks.
 Real wakeup cases cover current-task rejection, waking a stopped kernel
 thread, waking a queued runnable task, waking a ``SCHED_FIFO`` task to invoke
 its scheduling-class callback, real activation and deactivation traffic with
 both the Rust and C implementations, and an idle CPU wake request against the
 current CPU to execute the Rust first-check entry. The same real traffic enters
-the Rust runqueue enqueue and dequeue entries.
+the Rust runqueue enqueue and dequeue entries. Every real context switch and
+scheduler task-selection transition enters the Rust scheduler-class transition
+entries.
 
 The unit must pass repeated four-vCPU Rust runs, a C fallback run, PREEMPT_RT,
 KASAN, lockdep, and a no-KUnit production build. Static checks include Rustfmt,
@@ -719,6 +757,54 @@ Rust removes these C helpers:
 * ``rust_helper_sched_ttwu_is_delayed()``.
 * ``rust_helper_sched_ttwu_rq_selected()``.
 * ``rust_helper_sched_ttwu_migrated()``.
+
+The scheduler-class transition unit was validated on 2026-11-13 with x86_64
+``LLVM=1`` builds and QEMU 11.1.3. Each configuration passed three consecutive
+four-vCPU runs:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 25 25
+
+   * - Configuration
+     - Scheduler cases
+     - hrtimer cases
+   * - Full Rust
+     - 33
+     - 25
+   * - Class transition fallback
+     - 32
+     - 25
+   * - Class transition only
+     - 4
+     - 25
+   * - PREEMPT_RT
+     - 33
+     - 25
+   * - KASAN
+     - 33
+     - 25
+   * - lockdep
+     - 33
+     - 25
+
+Rustfmt, strict checkpatch, and ``git diff --check`` passed. The no-KUnit
+production image built with Clippy. It contained the three production Rust
+transition symbols and the C warning helper. It contained no transition KUnit
+selector symbols and no unresolved symbols.
+
+Disassembly showed that the production entries compare ``rq->donor``, call the
+warning helper only on a mismatch, move the deferred server pointer, and take
+the same-task return only after the server move. The complete transition loads
+the put-prev callback before the set-next callback. It calls put-prev first
+with the next task, then calls set-next with the first-task argument set to
+true. The standalone entries pass a null next task to put-prev and false to
+set-next.
+
+The production image reached the expected
+``VFS: Unable to mount root fs on unknown-block(0,0)`` panic without another
+scheduler diagnostic. No run reported a ``BUG``, warning, KASAN report, lock
+dependency diagnosis, Oops, or unexpected panic.
 
 The saved-state transition test verifies the direct read and write protocol.
 The new KUnit cases verify delayed-state reads, individual wake-flag decoding,
@@ -1482,6 +1568,14 @@ Reopen this boundary decision if any of these conditions changes:
   callback signature, indirect-call ABI, or dequeue return meaning changes.
 * Rust gains safe scheduling-class callback, runqueue operation, accounting,
   or core-scheduling abstractions that can replace the narrow C boundaries.
+* The task or runqueue deferred-server pointer layout, donor invariant,
+  same-task behavior, or server transfer order changes.
+* The ``sched_class.put_prev_task`` or ``sched_class.set_next_task`` layout,
+  callback signature, indirect-call ABI, or first-task meaning changes.
+* The warning threshold or report mechanism changes, or Rust gains a safe
+  kernel warning abstraction.
+* Rust gains safe scheduling-class transition callback or deferred-server
+  abstractions that can replace the narrow C boundaries.
 * The runnable path changes its runqueue lock, delayed-enqueue condition,
   enqueue flags, direct enqueue call, proxy return, preemption, or
   wake-publication ordering.

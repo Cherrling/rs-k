@@ -340,4 +340,27 @@ unsigned int rust_sched_dequeue_task_plan_select(int flags,
 
 #endif /* CONFIG_RUST_SCHED_RQ_OPS */
 
+#ifdef CONFIG_RUST_SCHED_CLASS_TRANSITION
+
+#define RUST_SCHED_CLASS_TRANSITION_WARN	0x01
+#define RUST_SCHED_CLASS_TRANSITION_SERVER	0x02
+#define RUST_SCHED_CLASS_TRANSITION_PUT		0x04
+#define RUST_SCHED_CLASS_TRANSITION_SET		0x08
+
+void rust_helper_sched_class_warn_donor_mismatch(void);
+
+void rust_sched_class_put_prev_task(struct rq *rq, struct task_struct *prev);
+void rust_sched_class_set_next_task(struct rq *rq, struct task_struct *next);
+void rust_sched_class_put_prev_set_next_task(struct rq *rq,
+					     struct task_struct *prev,
+					     struct task_struct *next);
+
+#ifdef CONFIG_KUNIT
+unsigned int rust_sched_class_put_prev_plan_select(bool donor_matches);
+unsigned int rust_sched_class_put_prev_set_next_plan_select(bool donor_matches,
+							    bool same_task);
+#endif
+
+#endif /* CONFIG_RUST_SCHED_CLASS_TRANSITION */
+
 #endif /* _LINUX_SCHED_RUST_H */
