@@ -79,7 +79,7 @@ unsafe fn mm_users(mm: *mut Mm) -> *mut MmUsers {
 /// # Safety
 ///
 /// `mm` must point to a live `struct mm_struct`.
-unsafe fn mmget(mm: *mut Mm) {
+pub(crate) unsafe fn get(mm: *mut Mm) {
     // SAFETY: The caller holds a live address-space reference.
     unsafe { (*mm_users(mm)).fetch_add(1, Ordering::SeqCst) };
 }
@@ -142,7 +142,7 @@ unsafe extern "C" fn rust_mm_get_task(task: *mut Task) -> *mut Mm {
     let plan = get_task_plan(false, !mm.is_null());
     if plan & GET_ACTION_ACQUIRE != 0 {
         // SAFETY: The task lock keeps the mm alive while its user count grows.
-        unsafe { mmget(mm) };
+        unsafe { get(mm) };
     }
     // SAFETY: This call balances the successful lock above.
     unsafe { bindings::rust_helper_mm_task_unlock(task) };
@@ -156,8 +156,7 @@ unsafe extern "C" fn rust_mm_get_task(task: *mut Task) -> *mut Mm {
 ///
 /// `mm` must point to a live `struct mm_struct` and the caller must own one
 /// user reference. The call must occur in sleepable context.
-#[export]
-unsafe extern "C" fn rust_mm_put(mm: *mut Mm) {
+pub(crate) unsafe fn put_sync(mm: *mut Mm) {
     // SAFETY: The caller owns one live user reference.
     let became_zero = unsafe { mmput_dec_and_test(mm) };
     let plan = put_plan(became_zero, false);
@@ -167,6 +166,18 @@ unsafe extern "C" fn rust_mm_put(mm: *mut Mm) {
         // SAFETY: This call consumes the caller's final user reference.
         unsafe { finish_put(mm, false) };
     }
+}
+
+/// Releases one synchronous `mm_users` reference.
+///
+/// # Safety
+///
+/// `mm` must point to a live `struct mm_struct` and the caller must own one
+/// user reference. The call must occur in sleepable context.
+#[export]
+unsafe extern "C" fn rust_mm_put(mm: *mut Mm) {
+    // SAFETY: The caller owns one live user reference.
+    unsafe { put_sync(mm) };
 }
 
 /// Releases one `mm_users` reference and queues final teardown when needed.

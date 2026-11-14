@@ -108,6 +108,7 @@
 #include <linux/user_events.h>
 #include <linux/iommu.h>
 #include <linux/rseq.h>
+#include <linux/copy-mm-rust.h>
 #include <linux/dup-task-struct-rust.h>
 #include <linux/signal-struct-copy-rust.h>
 #include <uapi/linux/pidfd.h>
@@ -1317,6 +1318,9 @@ static void mmap_init_lock(struct mm_struct *mm)
 
 static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p)
 {
+#ifdef CONFIG_RUST_COPY_MM
+	return rust_mm_init(mm, p);
+#else
 	mt_init_flags(&mm->mm_mt, MM_MT_FLAGS);
 	mt_set_external_lock(&mm->mm_mt, &mm->mmap_lock);
 	atomic_set(&mm->mm_users, 1);
@@ -1391,7 +1395,296 @@ fail_noid:
 fail_mm_init:
 	free_mm(mm);
 	return NULL;
+#endif /* !CONFIG_RUST_COPY_MM */
 }
+
+#ifdef CONFIG_RUST_COPY_MM
+
+void rust_helper_copy_mm_mt_init(struct mm_struct *mm)
+{
+	mt_init_flags(&mm->mm_mt, MM_MT_FLAGS);
+}
+
+void rust_helper_copy_mm_mt_set_external_lock(struct mm_struct *mm)
+{
+	mt_set_external_lock(&mm->mm_mt, &mm->mmap_lock);
+}
+
+void rust_helper_copy_mm_users_init(struct mm_struct *mm)
+{
+	atomic_set(&mm->mm_users, 1);
+}
+
+void rust_helper_copy_mm_count_init(struct mm_struct *mm)
+{
+	atomic_set(&mm->mm_count, 1);
+}
+
+void rust_helper_copy_mm_write_protect_seq_init(struct mm_struct *mm)
+{
+	seqcount_init(&mm->write_protect_seq);
+}
+
+void rust_helper_copy_mm_mmap_lock_init(struct mm_struct *mm)
+{
+	mmap_init_lock(mm);
+}
+
+void rust_helper_copy_mm_mmlist_init(struct mm_struct *mm)
+{
+	INIT_LIST_HEAD(&mm->mmlist);
+}
+
+void rust_helper_copy_mm_pgtables_bytes_init(struct mm_struct *mm)
+{
+	mm_pgtables_bytes_init(mm);
+}
+
+void rust_helper_copy_mm_map_count_init(struct mm_struct *mm)
+{
+	mm->map_count = 0;
+}
+
+void rust_helper_copy_mm_locked_vm_init(struct mm_struct *mm)
+{
+	mm->locked_vm = 0;
+}
+
+void rust_helper_copy_mm_pinned_vm_init(struct mm_struct *mm)
+{
+	atomic64_set(&mm->pinned_vm, 0);
+}
+
+void rust_helper_copy_mm_rss_stat_init(struct mm_struct *mm)
+{
+	memset(&mm->rss_stat, 0, sizeof(mm->rss_stat));
+}
+
+void rust_helper_copy_mm_page_table_lock_init(struct mm_struct *mm)
+{
+	spin_lock_init(&mm->page_table_lock);
+}
+
+void rust_helper_copy_mm_arg_lock_init(struct mm_struct *mm)
+{
+	spin_lock_init(&mm->arg_lock);
+}
+
+void rust_helper_copy_mm_cpumask_init(struct mm_struct *mm)
+{
+	mm_init_cpumask(mm);
+}
+
+void rust_helper_copy_mm_aio_init(struct mm_struct *mm)
+{
+	mm_init_aio(mm);
+}
+
+void rust_helper_copy_mm_owner_init(struct mm_struct *mm,
+				    struct task_struct *task)
+{
+	mm_init_owner(mm, task);
+}
+
+void rust_helper_copy_mm_pasid_init(struct mm_struct *mm)
+{
+	mm_pasid_init(mm);
+}
+
+void rust_helper_copy_mm_exe_file_init(struct mm_struct *mm)
+{
+	RCU_INIT_POINTER(mm->exe_file, NULL);
+}
+
+void rust_helper_copy_mm_mmu_notifier_init(struct mm_struct *mm)
+{
+	mmu_notifier_subscriptions_init(mm);
+}
+
+void rust_helper_copy_mm_tlb_flush_pending_init(struct mm_struct *mm)
+{
+	init_tlb_flush_pending(mm);
+}
+
+void rust_helper_copy_mm_pmd_huge_pte_init(struct mm_struct *mm)
+{
+#if defined(CONFIG_TRANSPARENT_HUGEPAGE) && !defined(CONFIG_SPLIT_PMD_PTLOCKS)
+	mm->pmd_huge_pte = NULL;
+#endif
+}
+
+void rust_helper_copy_mm_uprobes_state_init(struct mm_struct *mm)
+{
+	mm_init_uprobes_state(mm);
+}
+
+void rust_helper_copy_mm_hugetlb_count_init(struct mm_struct *mm)
+{
+	hugetlb_count_init(mm);
+}
+
+void rust_helper_copy_mm_futex_init(struct mm_struct *mm)
+{
+	futex_mm_init(mm);
+}
+
+void rust_helper_copy_mm_flags_clear_all(struct mm_struct *mm)
+{
+	mm_flags_clear_all(mm);
+}
+
+struct mm_struct *rust_helper_copy_mm_current_mm(void)
+{
+	return current->mm;
+}
+
+unsigned long rust_helper_copy_mm_flags_word(struct mm_struct *mm)
+{
+	return __mm_flags_get_word(mm);
+}
+
+unsigned long rust_helper_copy_mm_init_legacy_flags(unsigned long flags)
+{
+	return mmf_init_legacy_flags(flags);
+}
+
+void rust_helper_copy_mm_set_flags(struct mm_struct *mm, unsigned long flags)
+{
+	__mm_flags_overwrite_word(mm, flags);
+}
+
+unsigned long rust_helper_copy_mm_coredump_filter(void)
+{
+	return coredump_filter;
+}
+
+unsigned long rust_helper_copy_mm_def_flags(struct mm_struct *mm)
+{
+	return mm ? mm->def_flags & VM_INIT_DEF_MASK : 0;
+}
+
+void rust_helper_copy_mm_set_def_flags(struct mm_struct *mm,
+				       unsigned long def_flags)
+{
+	mm->def_flags = def_flags;
+}
+
+int rust_helper_copy_mm_alloc_pgd(struct mm_struct *mm)
+{
+	return mm_alloc_pgd(mm);
+}
+
+int rust_helper_copy_mm_alloc_id(struct mm_struct *mm)
+{
+	return mm_alloc_id(mm);
+}
+
+int rust_helper_copy_mm_init_context(struct task_struct *task,
+				     struct mm_struct *mm)
+{
+	return init_new_context(task, mm);
+}
+
+int rust_helper_copy_mm_alloc_cid(struct mm_struct *mm,
+				  struct task_struct *task)
+{
+	return mm_alloc_cid(mm, task);
+}
+
+int rust_helper_copy_mm_alloc_sched(struct mm_struct *mm)
+{
+	return mm_alloc_sched(mm);
+}
+
+int rust_helper_copy_mm_init_rss(struct mm_struct *mm)
+{
+	return percpu_counter_init_many(mm->rss_stat, 0, GFP_KERNEL_ACCOUNT,
+					NR_MM_COUNTERS);
+}
+
+void rust_helper_copy_mm_destroy_sched(struct mm_struct *mm)
+{
+	mm_destroy_sched(mm);
+}
+
+void rust_helper_copy_mm_destroy_cid(struct mm_struct *mm)
+{
+	mm_destroy_cid(mm);
+}
+
+void rust_helper_copy_mm_destroy_context(struct mm_struct *mm)
+{
+	destroy_context(mm);
+}
+
+void rust_helper_copy_mm_free_id(struct mm_struct *mm)
+{
+	mm_free_id(mm);
+}
+
+void rust_helper_copy_mm_free_pgd(struct mm_struct *mm)
+{
+	mm_free_pgd(mm);
+}
+
+void rust_helper_copy_mm_free(struct mm_struct *mm)
+{
+	free_mm(mm);
+}
+
+void rust_helper_copy_mm_lru_gen_init(struct mm_struct *mm)
+{
+	lru_gen_init_mm(mm);
+}
+
+struct mm_struct *rust_helper_copy_mm_allocate(void)
+{
+	return allocate_mm();
+}
+
+void rust_helper_copy_mm_uprobe_start(void)
+{
+	uprobe_start_dup_mmap();
+}
+
+void rust_helper_copy_mm_uprobe_end(void)
+{
+	uprobe_end_dup_mmap();
+}
+
+int rust_helper_copy_mm_dup_mmap(struct mm_struct *mm,
+				 struct mm_struct *oldmm)
+{
+	return dup_mmap(mm, oldmm);
+}
+
+void rust_helper_copy_mm_set_hiwater(struct mm_struct *mm)
+{
+	mm->hiwater_rss = get_mm_rss(mm);
+	mm->hiwater_vm = mm->total_vm;
+}
+
+int rust_helper_copy_mm_get_binfmt(struct mm_struct *mm)
+{
+	return !mm->binfmt || try_module_get(mm->binfmt->module);
+}
+
+void rust_helper_copy_mm_clear_binfmt(struct mm_struct *mm)
+{
+	mm->binfmt = NULL;
+}
+
+void rust_helper_copy_mm_clear_owner(struct mm_struct *mm)
+{
+	mm_init_owner(mm, NULL);
+}
+
+void rust_helper_copy_mm_sched_cache_fork(struct task_struct *task)
+{
+	sched_cache_fork(task);
+}
+
+#endif /* CONFIG_RUST_COPY_MM */
 
 #ifdef CONFIG_RUST_MM_LIFETIME
 static_assert(sizeof_field(struct mm_struct, mm_users) == sizeof(atomic_t));
@@ -1892,6 +2185,7 @@ void mm_exit_exec_release(struct task_struct *tsk, struct mm_struct *mm)
  *
  * Return: the duplicated mm or NULL on failure.
  */
+#ifndef CONFIG_RUST_COPY_MM
 static struct mm_struct *dup_mm(struct task_struct *tsk,
 				struct mm_struct *oldmm)
 {
@@ -1932,9 +2226,13 @@ free_pt:
 fail_nomem:
 	return NULL;
 }
+#endif /* !CONFIG_RUST_COPY_MM */
 
 static int copy_mm(u64 clone_flags, struct task_struct *tsk)
 {
+#ifdef CONFIG_RUST_COPY_MM
+	return rust_copy_mm(clone_flags, tsk);
+#else
 	struct mm_struct *mm, *oldmm;
 
 	tsk->min_flt = tsk->maj_flt = 0;
@@ -1969,6 +2267,7 @@ static int copy_mm(u64 clone_flags, struct task_struct *tsk)
 	tsk->active_mm = mm;
 	sched_cache_fork(tsk);
 	return 0;
+#endif /* !CONFIG_RUST_COPY_MM */
 }
 
 static int copy_exec_state(u64 clone_flags, struct task_struct *tsk)

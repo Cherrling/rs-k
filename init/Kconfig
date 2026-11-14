@@ -1285,6 +1285,23 @@ config RUST_MM_TEARDOWN
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_COPY_MM
+	bool "Rust implementation of address-space copying"
+	depends on RUST && MMU
+	depends on RUST_MM_LIFETIME && RUST_MM_TEARDOWN
+	default y
+	help
+	  Use Rust for the production address-space construction and copying
+	  path. Rust owns the initialization and failure-cleanup order, private
+	  address-space duplication, CLONE_VM sharing decision, and task pointer
+	  publication.
+
+	  Private allocators, architecture context hooks, VMA duplication,
+	  scheduler cache setup, and subsystem constructors remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_DUP_TASK_STRUCT
 	bool "Rust implementation of task structure duplication"
 	depends on RUST

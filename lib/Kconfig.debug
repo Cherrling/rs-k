@@ -2501,6 +2501,22 @@ config MM_LIFETIME_KUNIT_TEST
 
 	  If unsure, say N.
 
+config COPY_MM_KUNIT_TEST
+	bool "KUnit test for address-space copying" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y && MMU
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for address-space construction,
+	  initialization failure cleanup, private address-space duplication,
+	  and kernel-thread copying.
+
+	  The native Rust implementation also runs constructor failure
+	  injection and private duplication cases. The basic construction case
+	  runs with either the C implementation or the native Rust
+	  implementation selected.
+
+	  If unsure, say N.
+
 config DUP_TASK_STRUCT_KUNIT_TEST
 	bool "KUnit test for task structure duplication" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

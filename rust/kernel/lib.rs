@@ -61,6 +61,8 @@ mod complete_signal;
 mod completion_core;
 #[cfg(CONFIG_CONFIGFS_FS)]
 pub mod configfs;
+#[cfg(CONFIG_RUST_COPY_MM)]
+mod copy_mm;
 pub mod cpu;
 #[cfg(CONFIG_CPU_FREQ)]
 pub mod cpufreq;

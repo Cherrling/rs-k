@@ -57,6 +57,7 @@ more details.
     pid-lifecycle
     mm-lifetime
     mm-teardown
+    copy-mm
     sched
     cpupri
     itimer

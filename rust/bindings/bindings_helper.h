@@ -50,6 +50,7 @@
 #include <linux/completion-rust.h>
 #include <linux/complete-signal-rust.h>
 #include <linux/configfs.h>
+#include <linux/copy-mm-rust.h>
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
 #include <linux/cpupri-rust.h>
