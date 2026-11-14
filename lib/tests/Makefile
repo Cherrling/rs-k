@@ -31,6 +31,7 @@ obj-$(CONFIG_TASK_GROUP_EXIT_SYNC_KUNIT_TEST) += test_task_group_exit_sync.o
 obj-$(CONFIG_COMPLETE_SIGNAL_KUNIT_TEST) += test_complete_signal.o
 obj-$(CONFIG_SEND_SIGNAL_KUNIT_TEST) += test_send_signal.o
 obj-$(CONFIG_PREPARE_SIGNAL_KUNIT_TEST) += test_prepare_signal.o
+obj-$(CONFIG_SIGNAL_DEQUEUE_KUNIT_TEST) += test_signal_dequeue.o
 obj-$(CONFIG_SIGNAL_RETARGET_KUNIT_TEST) += test_signal_retarget.o
 obj-$(CONFIG_SIGNAL_WAKE_SELECT_KUNIT_TEST) += test_signal_wake_select.o
 obj-$(CONFIG_SIGNAL_WAKE_STATE_KUNIT_TEST) += test_signal_wake_state.o

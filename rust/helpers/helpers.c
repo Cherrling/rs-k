@@ -106,6 +106,9 @@
 #ifdef CONFIG_RUST_PREPARE_SIGNAL
 #include "prepare_signal.c"
 #endif
+#ifdef CONFIG_RUST_SIGNAL_DEQUEUE
+#include "signal_dequeue.c"
+#endif
 #include "signal.c"
 #include "signal_retarget.c"
 #include "signal_wake_state.c"

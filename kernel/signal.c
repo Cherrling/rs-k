@@ -46,6 +46,7 @@
 #include <linux/complete-signal-rust.h>
 #include <linux/prepare-signal-rust.h>
 #include <linux/send-signal-rust.h>
+#include <linux/signal-dequeue-rust.h>
 #include <linux/cn_proc.h>
 #include <linux/compiler.h>
 #include <linux/posix-timers.h>
@@ -189,6 +190,9 @@ void calculate_sigpending(void)
 
 int next_signal(struct sigpending *pending, sigset_t *mask)
 {
+#ifdef CONFIG_RUST_SIGNAL_DEQUEUE
+	return rust_signal_next_pending(pending, mask);
+#else
 	unsigned long i, *s, *m, x;
 	int sig = 0;
 
@@ -231,6 +235,7 @@ int next_signal(struct sigpending *pending, sigset_t *mask)
 	}
 
 	return sig;
+#endif /* !CONFIG_RUST_SIGNAL_DEQUEUE */
 }
 
 static inline void print_dropped_signal(int sig)
@@ -611,6 +616,24 @@ still_pending:
 	}
 }
 
+#ifdef CONFIG_RUST_SIGNAL_DEQUEUE
+void rust_signal_dequeue_collect_bridge(struct sigpending *pending, int sig,
+					kernel_siginfo_t *info,
+					struct sigqueue **timer_sigq)
+{
+	collect_signal(sig, pending, info, timer_sigq);
+}
+
+void rust_signal_dequeue_remove_sync_bridge(struct sigqueue *queue,
+					    kernel_siginfo_t *info)
+{
+	list_del_init(&queue->list);
+	copy_siginfo(info, &queue->info);
+	__sigqueue_free(queue);
+}
+#endif
+
+#ifndef CONFIG_RUST_SIGNAL_DEQUEUE
 static int __dequeue_signal(struct sigpending *pending, sigset_t *mask,
 			    kernel_siginfo_t *info, struct sigqueue **timer_sigq)
 {
@@ -620,6 +643,7 @@ static int __dequeue_signal(struct sigpending *pending, sigset_t *mask,
 		collect_signal(sig, pending, info, timer_sigq);
 	return sig;
 }
+#endif
 
 /*
  * Try to dequeue a signal. If a deliverable signal is found fill in the
@@ -628,6 +652,10 @@ static int __dequeue_signal(struct sigpending *pending, sigset_t *mask,
  */
 int dequeue_signal(sigset_t *mask, kernel_siginfo_t *info, enum pid_type *type)
 {
+#ifdef CONFIG_RUST_SIGNAL_DEQUEUE
+	lockdep_assert_held(&current->sighand->siglock);
+	return rust_signal_dequeue(current, mask, info, type);
+#else
 	struct task_struct *tsk = current;
 	struct sigqueue *timer_sigq;
 	int signr;
@@ -673,11 +701,16 @@ again:
 	}
 
 	return signr;
+#endif /* !CONFIG_RUST_SIGNAL_DEQUEUE */
 }
 EXPORT_SYMBOL_GPL(dequeue_signal);
 
 static int dequeue_synchronous_signal(kernel_siginfo_t *info)
 {
+#ifdef CONFIG_RUST_SIGNAL_DEQUEUE
+	lockdep_assert_held(&current->sighand->siglock);
+	return rust_signal_dequeue_synchronous(current, info);
+#else
 	struct task_struct *tsk = current;
 	struct sigpending *pending = &tsk->pending;
 	struct sigqueue *q, *sync = NULL;
@@ -716,7 +749,54 @@ still_pending:
 	copy_siginfo(info, &sync->info);
 	__sigqueue_free(sync);
 	return info->si_signo;
+#endif /* !CONFIG_RUST_SIGNAL_DEQUEUE */
 }
+
+#ifdef CONFIG_SIGNAL_DEQUEUE_KUNIT_TEST
+int signal_dequeue_test_call(sigset_t *mask, kernel_siginfo_t *info,
+			     enum pid_type *type)
+{
+	int ret;
+
+	spin_lock_irq(&current->sighand->siglock);
+	ret = dequeue_signal(mask, info, type);
+	spin_unlock_irq(&current->sighand->siglock);
+
+	return ret;
+}
+
+int signal_dequeue_synchronous_test_call(kernel_siginfo_t *info)
+{
+	int ret;
+
+	spin_lock_irq(&current->sighand->siglock);
+	ret = dequeue_synchronous_signal(info);
+	spin_unlock_irq(&current->sighand->siglock);
+
+	return ret;
+}
+
+int signal_dequeue_test_queue_sync(int sig, int code)
+{
+	struct sigqueue *queue;
+
+	spin_lock_irq(&current->sighand->siglock);
+	queue = sigqueue_alloc(sig, current, GFP_ATOMIC, 1);
+	if (!queue) {
+		spin_unlock_irq(&current->sighand->siglock);
+		return -ENOMEM;
+	}
+
+	clear_siginfo(&queue->info);
+	queue->info.si_signo = sig;
+	queue->info.si_code = code;
+	list_add_tail(&queue->list, &current->pending.list);
+	sigaddset(&current->pending.signal, sig);
+	spin_unlock_irq(&current->sighand->siglock);
+
+	return 0;
+}
+#endif
 
 /*
  * Tell a process that it has a new active signal..

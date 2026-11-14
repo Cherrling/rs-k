@@ -43,6 +43,7 @@ more details.
     complete-signal
     send-signal
     prepare-signal
+    signal-dequeue
     signal-retarget
     signal-wake-select
     signal-wake-state

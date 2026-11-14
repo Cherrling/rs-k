@@ -2636,6 +2636,21 @@ config PREPARE_SIGNAL_KUNIT_TEST
 
 	  If unsure, say N.
 
+config SIGNAL_DEQUEUE_KUNIT_TEST
+	bool "KUnit test for signal dequeue" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for pending signal selection,
+	  local and shared dequeue priority, synchronous signal dequeue, and
+	  the stop-dequeued marker.
+
+	  The behavior cases run with either the C implementation or the
+	  native Rust implementation selected. Rust state-transition counters
+	  run only with the native implementation.
+
+	  If unsure, say N.
+
 config TASK_EXIT_NOTIFY_KUNIT_TEST
 	bool "KUnit test for task exit parent notification" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

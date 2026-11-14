@@ -186,6 +186,8 @@ mod send_signal;
 pub mod seq_file;
 #[cfg(CONFIG_RUST_SERIAL_DEV_BUS_ABSTRACTIONS)]
 pub mod serdev;
+#[cfg(CONFIG_RUST_SIGNAL_DEQUEUE)]
+mod signal_dequeue;
 #[cfg(CONFIG_RUST_SIGNAL_RETARGET)]
 mod signal_retarget;
 #[cfg(CONFIG_RUST_SIGNAL_WAKE_SELECT)]

@@ -1431,6 +1431,22 @@ config RUST_PREPARE_SIGNAL
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SIGNAL_DEQUEUE
+	bool "Rust implementation of signal dequeue"
+	depends on RUST
+	default y
+	help
+	  Use Rust for pending signal selection, local and shared queue
+	  priority, synchronous signal dequeue, stop-dequeued tracking, and
+	  POSIX timer retry.
+
+	  Intrusive queue traversal, siginfo collection and release, pending
+	  state recalculation, timer operations, and public ABI adapters remain
+	  in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_EXIT_NOTIFY
 	bool "Rust implementation of task exit parent notification"
 	depends on RUST && RUST_TASK_RELEASE
