@@ -57,6 +57,7 @@ more details.
     pid-lifecycle
     mm-lifetime
     mm-teardown
+    exit-mmap
     copy-mm
     dup-mmap
     sched

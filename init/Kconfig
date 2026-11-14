@@ -1285,6 +1285,23 @@ config RUST_MM_TEARDOWN
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_EXIT_MMAP
+	bool "Rust implementation of address-space mapping teardown"
+	depends on RUST && MMU
+	depends on RUST_MM_TEARDOWN
+	default y
+	help
+	  Use Rust for the production exit_mmap() path. Rust owns the mmap lock
+	  sequence, notifier ordering, VMA iteration, page-table teardown,
+	  OOM state publication, reverse-map removal, and accounting release.
+
+	  TLB gathering, maple-tree primitives, page-table freeing, architecture
+	  hooks, mmu notifier entry points, and individual VMA operations remain
+	  in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_COPY_MM
 	bool "Rust implementation of address-space copying"
 	depends on RUST && MMU

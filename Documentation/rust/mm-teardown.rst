@@ -13,7 +13,9 @@ sequence remains available as a fallback.
 This unit covers the code reached after ``mm_users`` reaches zero. It excludes
 device drivers, individual subsystem teardown implementations, and final
 ``struct mm_struct`` release through ``mmdrop()``. It does not change the
-public C ABI.
+public C ABI. ``CONFIG_RUST_EXIT_MMAP`` selects the separate mapping-teardown
+unit described in :doc:`exit-mmap`. With that option disabled, the mapping
+teardown remains the original C implementation.
 
 The Rust code owns these production decisions:
 
@@ -56,7 +58,9 @@ The Rust implementation uses narrow C helpers for individual operations:
 
 * The fatal ``mm_users`` diagnostic.
 * Uprobe, asynchronous I/O, KSM, and khugepaged exits.
-* ``exit_mmap()`` and the huge-zero reference release.
+* Mapping teardown through ``exit_mmap()`` when Rust mapping teardown is
+  disabled.
+* The huge-zero reference release.
 * Executable-file cleanup.
 * ``mmlist`` emptiness, locking, and removal.
 * Binary-format presence and module release.
@@ -86,9 +90,10 @@ symbols.
 Ordering and invariants
 -----------------------
 
-The Rust sequence preserves the original C order. ``exit_mmap()`` runs after
-the KSM, khugepaged, and asynchronous I/O teardown steps. The executable file
-is cleared after mapping teardown.
+The Rust sequence preserves the original C order. Mapping teardown runs after
+the KSM, khugepaged, and asynchronous I/O teardown steps. It runs entirely in
+Rust when ``CONFIG_RUST_EXIT_MMAP`` is enabled. The executable file is cleared
+after mapping teardown.
 
 The Rust plan queries ``mmlist`` only after mapping and executable-file
 cleanup. It removes the entry under ``mmlist_lock`` only when the list is
@@ -162,6 +167,8 @@ Reopen the retained C boundary decision if any of these conditions changes:
 * The ``mm_users`` invariant becomes recoverable without unsafe lifetime use.
 * A subsystem teardown function gains a Rust-native safe abstraction.
 * The subsystem teardown order or dependency rules change.
+* The separate address-space mapping teardown gains a new lock or failure
+  contract.
 * ``mmlist`` locking or membership semantics change.
 * Binary-format module lifetime rules change.
 * ``mmdrop()`` gains a Rust implementation with the same ordering contract.

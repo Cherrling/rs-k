@@ -83,6 +83,8 @@ mod dup_mmap;
 #[cfg(CONFIG_RUST_DUP_TASK_STRUCT)]
 mod dup_task_struct;
 pub mod error;
+#[cfg(CONFIG_RUST_EXIT_MMAP)]
+mod exit_mmap;
 pub mod faux;
 #[cfg(CONFIG_RUST_FW_LOADER_ABSTRACTIONS)]
 pub mod firmware;

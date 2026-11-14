@@ -38,6 +38,7 @@
 #include <linux/perf_event.h>
 #include <linux/audit.h>
 #include <linux/khugepaged.h>
+#include <linux/exit-mmap-rust.h>
 #include <linux/uprobes.h>
 #include <linux/notifier.h>
 #include <linux/memory.h>
@@ -1285,9 +1286,220 @@ unsigned long tear_down_vmas(struct mm_struct *mm, struct vma_iterator *vmi,
 	return nr_accounted;
 }
 
+#ifdef CONFIG_RUST_EXIT_MMAP
+
+struct rust_exit_mmap_state {
+	struct vma_iterator vmi;
+	struct unmap_desc unmap;
+	struct mmu_gather tlb;
+};
+
+void rust_helper_exit_mmap_notifier_release(struct mm_struct *mm)
+{
+	mmu_notifier_release(mm);
+}
+
+void rust_helper_exit_mmap_state_init(struct rust_exit_mmap_state *state,
+				      struct mm_struct *mm)
+{
+	vma_iter_init(&state->vmi, mm, 0);
+}
+
+void rust_helper_exit_mmap_read_lock(struct mm_struct *mm)
+{
+	mmap_read_lock(mm);
+}
+
+void rust_helper_exit_mmap_read_unlock(struct mm_struct *mm)
+{
+	mmap_read_unlock(mm);
+}
+
+void rust_helper_exit_mmap_write_lock(struct mm_struct *mm)
+{
+	mmap_write_lock(mm);
+}
+
+void rust_helper_exit_mmap_write_unlock(struct mm_struct *mm)
+{
+	mmap_write_unlock(mm);
+}
+
+void rust_helper_exit_mmap_arch_exit(struct mm_struct *mm)
+{
+	arch_exit_mmap(mm);
+}
+
+struct vm_area_struct *
+rust_helper_exit_mmap_next(struct rust_exit_mmap_state *state)
+{
+	return vma_next(&state->vmi);
+}
+
+void rust_helper_exit_mmap_unmap_init(struct rust_exit_mmap_state *state,
+				      struct vm_area_struct *vma)
+{
+	unmap_all_init(&state->unmap, &state->vmi, vma);
+}
+
+void rust_helper_exit_mmap_flush_cache(struct mm_struct *mm)
+{
+	flush_cache_mm(mm);
+}
+
+void rust_helper_exit_mmap_tlb_init(struct rust_exit_mmap_state *state,
+				    struct mm_struct *mm)
+{
+	tlb_gather_mmu_fullmm(&state->tlb, mm);
+}
+
+void rust_helper_exit_mmap_unmap(struct rust_exit_mmap_state *state)
+{
+	unmap_vmas(&state->tlb, &state->unmap);
+}
+
+void rust_helper_exit_mmap_oom_skip(struct mm_struct *mm)
+{
+	mm_flags_set(MMF_OOM_SKIP, mm);
+}
+
+void
+rust_helper_exit_mmap_set_write_locked(struct rust_exit_mmap_state *state)
+{
+	state->unmap.mm_wr_locked = true;
+}
+
+void rust_helper_exit_mmap_clear_tree_rcu(struct mm_struct *mm)
+{
+	mt_clear_in_rcu(&mm->mm_mt);
+}
+
+void
+rust_helper_exit_mmap_pgtable_init(struct rust_exit_mmap_state *state)
+{
+	unmap_pgtable_init(&state->unmap, &state->vmi);
+}
+
+void
+rust_helper_exit_mmap_free_pgtables(struct rust_exit_mmap_state *state)
+{
+	free_pgtables(&state->tlb, &state->unmap);
+}
+
+void rust_helper_exit_mmap_tlb_finish(struct rust_exit_mmap_state *state)
+{
+	tlb_finish_mmu(&state->tlb);
+}
+
+void
+rust_helper_exit_mmap_teardown_init(struct rust_exit_mmap_state *state,
+				    struct vm_area_struct *vma)
+{
+	vma_iter_set(&state->vmi, vma->vm_end);
+}
+
+unsigned long
+rust_helper_exit_mmap_accounted_pages(struct vm_area_struct *vma)
+{
+	return vma_test(vma, VMA_ACCOUNT_BIT) ? vma_pages(vma) : 0;
+}
+
+void rust_helper_exit_mmap_mark_detached(struct vm_area_struct *vma)
+{
+	vma_mark_detached(vma);
+}
+
+void rust_helper_exit_mmap_remove_vma(struct vm_area_struct *vma)
+{
+	remove_vma(vma);
+}
+
+void rust_helper_exit_mmap_cond_resched(void)
+{
+	cond_resched();
+}
+
+void rust_helper_exit_mmap_warn_count(struct mm_struct *mm, int count)
+{
+	VM_WARN_ON_ONCE(count != mm->map_count);
+}
+
+void rust_helper_exit_mmap_destroy_tree(struct mm_struct *mm)
+{
+	__mt_destroy(&mm->mm_mt);
+}
+
+void rust_helper_exit_mmap_trace(struct mm_struct *mm)
+{
+	trace_exit_mmap(mm);
+}
+
+void rust_helper_exit_mmap_unaccount(unsigned long nr_accounted)
+{
+	vm_unacct_memory(nr_accounted);
+}
+
+#ifdef CONFIG_EXIT_MMAP_KUNIT_TEST
+
+int rust_helper_exit_mmap_test_add_anon(struct mm_struct *mm,
+					unsigned long start,
+					unsigned long end,
+					vm_flags_t extra_flags)
+{
+	VMA_ITERATOR(vmi, mm, start);
+	vm_flags_t flags = VM_READ | VM_WRITE | VM_MAYREAD | VM_MAYWRITE;
+	struct vm_area_struct *vma;
+	unsigned long pages;
+
+	mmap_assert_write_locked(mm);
+	vma = vm_area_alloc(mm);
+	if (!vma)
+		return -ENOMEM;
+
+	vma->vm_start = start;
+	vma->vm_end = end;
+	vma->vm_pgoff = start >> PAGE_SHIFT;
+	flags |= extra_flags;
+	vm_flags_init(vma, flags);
+	vma->vm_page_prot = vm_get_page_prot(flags);
+	vma_set_anonymous(vma);
+	pages = vma_pages(vma);
+
+	if (vma_test(vma, VMA_ACCOUNT_BIT) &&
+	    security_vm_enough_memory_mm(mm, pages)) {
+		vm_area_free(vma);
+		return -ENOMEM;
+	}
+
+	vma_start_write(vma);
+	vma_iter_config(&vmi, start, end);
+	if (vma_iter_prealloc(&vmi, vma)) {
+		vma_iter_free(&vmi);
+		if (vma_test(vma, VMA_ACCOUNT_BIT))
+			vm_unacct_memory(pages);
+		vm_area_free(vma);
+		return -ENOMEM;
+	}
+
+	vma_iter_store_new(&vmi, vma);
+	vma_iter_free(&vmi);
+	mm->map_count++;
+	vm_stat_account(mm, flags, pages);
+	return 0;
+}
+
+#endif /* CONFIG_EXIT_MMAP_KUNIT_TEST */
+
+#endif /* CONFIG_RUST_EXIT_MMAP */
+
 /* Release all mmaps. */
 void exit_mmap(struct mm_struct *mm)
 {
+#ifdef CONFIG_RUST_EXIT_MMAP
+	struct rust_exit_mmap_state state;
+
+	rust_exit_mmap(mm, &state);
+#else
 	struct mmu_gather tlb;
 	struct vm_area_struct *vma;
 	unsigned long nr_accounted = 0;
@@ -1340,6 +1552,7 @@ destroy:
 	trace_exit_mmap(mm);
 	mmap_write_unlock(mm);
 	vm_unacct_memory(nr_accounted);
+#endif
 }
 
 /*

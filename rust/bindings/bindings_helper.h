@@ -65,6 +65,7 @@
 #include <linux/dup-task-struct-rust.h>
 #include <linux/errname.h>
 #include <linux/ethtool.h>
+#include <linux/exit-mmap-rust.h>
 #include <linux/fdtable.h>
 #include <linux/file.h>
 #include <linux/firmware.h>

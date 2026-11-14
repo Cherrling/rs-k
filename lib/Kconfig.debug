@@ -2517,6 +2517,17 @@ config COPY_MM_KUNIT_TEST
 
 	  If unsure, say N.
 
+config EXIT_MMAP_KUNIT_TEST
+	bool "KUnit test for address-space mapping teardown" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y && RUST_EXIT_MMAP
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit coverage for the native Rust exit_mmap()
+	  path. The tests cover empty address spaces, populated VMA trees,
+	  accounted VMA removal, and the final map-count invariant.
+
+	  If unsure, say N.
+
 config DUP_MMAP_KUNIT_TEST
 	bool "KUnit test for VMA-tree duplication" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y && RUST_DUP_MMAP
