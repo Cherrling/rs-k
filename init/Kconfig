@@ -1364,6 +1364,22 @@ config RUST_VMA_MERGE_COMPAT
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_VMA_MERGE_EXISTING
+	bool "Rust orchestration for existing-range VMA merging"
+	depends on RUST && MMU
+	default y
+	help
+	  Use Rust for the production merge orchestration after an existing
+	  VMA range changes. Rust owns scenario selection, left, right, and
+	  two-sided merge processing, removal fallback, range adjustment,
+	  anonymous-VMA duplication order, rollback, and state transitions.
+
+	  Iterator primitives, VMA field writes, locks, anonymous-VMA helpers,
+	  structural merge commitment, and debug invariants remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_VMA_MERGE_NEW_RANGE
 	bool "Rust orchestration for new-range VMA merging"
 	depends on RUST && MMU

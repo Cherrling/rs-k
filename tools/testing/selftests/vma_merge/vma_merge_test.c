@@ -18,7 +18,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#define CARVEOUT_PAGES	128
+#define CARVEOUT_PAGES	240
 #define QEMU_EXIT_PORT	0xf4
 #define QEMU_EXIT_SUCCESS	0x10
 #define QEMU_EXIT_FAILURE	0x11
@@ -148,6 +148,13 @@ static void *map_file_fixed(void *address, size_t length, int fd,
 		    MAP_SHARED | MAP_FIXED, fd, offset);
 }
 
+static void *map_private_file_fixed(void *address, size_t length, int fd,
+				    off_t offset)
+{
+	return mmap(address, length, PROT_READ | PROT_WRITE,
+		    MAP_PRIVATE | MAP_FIXED, fd, offset);
+}
+
 static int create_memfd(size_t size)
 {
 	int fd = memfd_create("vma-merge", 0);
@@ -159,6 +166,11 @@ static int create_memfd(size_t size)
 		return -1;
 	}
 	return fd;
+}
+
+static void fault_mapping(unsigned char *address, size_t length)
+{
+	memset(address, 0x5a, length);
 }
 
 static int name_vma(void *address, size_t length, const char *name)
@@ -241,6 +253,9 @@ static int test_file_mappings(unsigned char *carveout)
 	unsigned char *disjoint = contiguous + length;
 	unsigned char *identity = contiguous + 3 * length;
 	unsigned char *identity_second = identity + length;
+	unsigned char *existing = carveout + 108 * page_size;
+	unsigned char *existing_disjoint = carveout + 120 * page_size;
+	unsigned char *private_first = carveout + 228 * page_size;
 	int first_fd = -1;
 	int second_fd = -1;
 	int result = 1;
@@ -280,6 +295,55 @@ static int test_file_mappings(unsigned char *carveout)
 			    "different files"))
 		goto out;
 
+	if (map_file_fixed(existing, length, first_fd,
+			   (off_t)(8 * page_size)) != existing)
+		goto fail;
+	if (mprotect(existing, length, PROT_READ))
+		goto fail;
+	if (map_file_fixed(existing + length, length, first_fd,
+			   (off_t)(12 * page_size)) != existing + length)
+		goto fail;
+	if (mprotect(existing, length, PROT_READ | PROT_WRITE))
+		goto fail;
+	if (expect_one_vma((unsigned long)existing,
+			   (unsigned long)(existing + 2 * length),
+			   "existing file offsets"))
+		goto out;
+
+	if (map_file_fixed(existing_disjoint, length, first_fd,
+			   (off_t)(16 * page_size)) != existing_disjoint)
+		goto fail;
+	if (mprotect(existing_disjoint, length, PROT_READ))
+		goto fail;
+	if (map_file_fixed(existing_disjoint + length, length, first_fd,
+			   (off_t)(28 * page_size)) !=
+	    existing_disjoint + length)
+		goto fail;
+	if (mprotect(existing_disjoint, length, PROT_READ | PROT_WRITE))
+		goto fail;
+	if (expect_two_vmas((unsigned long)existing_disjoint,
+			    (unsigned long)(existing_disjoint + length),
+			    (unsigned long)(existing_disjoint + 2 * length),
+			    "existing disjoint file offsets"))
+		goto out;
+
+	if (map_private_file_fixed(private_first, length, first_fd,
+				   (off_t)(20 * page_size)) != private_first)
+		goto fail;
+	fault_mapping(private_first, length);
+	if (mprotect(private_first, length, PROT_READ))
+		goto fail;
+	if (map_private_file_fixed(private_first + length, length, first_fd,
+				   (off_t)(24 * page_size)) !=
+	    private_first + length)
+		goto fail;
+	if (mprotect(private_first, length, PROT_READ | PROT_WRITE))
+		goto fail;
+	if (expect_one_vma((unsigned long)private_first,
+			   (unsigned long)(private_first + 2 * length),
+			   "existing private file merge"))
+		goto out;
+
 	result = 0;
 	goto out;
 
@@ -291,6 +355,125 @@ out:
 	if (second_fd >= 0)
 		close(second_fd);
 	return result;
+}
+
+static int test_existing_range_merges(unsigned char *carveout)
+{
+	const size_t length = 4 * page_size;
+	unsigned char *right = carveout + 128 * page_size;
+	unsigned char *left_prev = carveout + 140 * page_size;
+	unsigned char *left = left_prev + length;
+	unsigned char *both_prev = carveout + 152 * page_size;
+	unsigned char *both = both_prev + length;
+	unsigned char *both_next = both + length;
+	unsigned char *shrink_left_prev = carveout + 168 * page_size;
+	unsigned char *shrink_left = shrink_left_prev + length;
+	unsigned char *shrink_right = carveout + 184 * page_size;
+	unsigned char *shrink_right_next = shrink_right + 2 * length;
+	unsigned char *anon_left_prev = carveout + 200 * page_size;
+	unsigned char *anon_left = anon_left_prev + length;
+	unsigned char *anon_right = carveout + 212 * page_size;
+	unsigned char *anon_right_next = anon_right + length;
+
+	if (map_fixed(right, length, PROT_READ) != right)
+		goto fail;
+	if (map_fixed(right + length, length, PROT_READ | PROT_WRITE) !=
+	    right + length)
+		goto fail;
+	if (mprotect(right, length, PROT_READ | PROT_WRITE))
+		goto fail;
+	if (expect_one_vma((unsigned long)right,
+			   (unsigned long)(right + 2 * length),
+			   "existing right merge"))
+		goto out;
+
+	if (map_fixed(left_prev, length, PROT_READ | PROT_WRITE) != left_prev)
+		goto fail;
+	if (map_fixed(left, length, PROT_READ) != left)
+		goto fail;
+	if (mprotect(left, length, PROT_READ | PROT_WRITE))
+		goto fail;
+	if (expect_one_vma((unsigned long)left_prev,
+			   (unsigned long)(left + length),
+			   "existing left merge"))
+		goto out;
+
+	if (map_fixed(both_prev, length, PROT_READ | PROT_WRITE) != both_prev)
+		goto fail;
+	if (map_fixed(both, length, PROT_READ) != both)
+		goto fail;
+	if (map_fixed(both_next, length, PROT_READ | PROT_WRITE) != both_next)
+		goto fail;
+	if (mprotect(both, length, PROT_READ | PROT_WRITE))
+		goto fail;
+	if (expect_one_vma((unsigned long)both_prev,
+			   (unsigned long)(both_next + length),
+			   "existing two-sided merge"))
+		goto out;
+
+	if (map_fixed(shrink_left_prev, length, PROT_READ | PROT_WRITE) !=
+	    shrink_left_prev)
+		goto fail;
+	if (map_fixed(shrink_left, 2 * length, PROT_READ) != shrink_left)
+		goto fail;
+	if (mprotect(shrink_left, length, PROT_READ | PROT_WRITE))
+		goto fail;
+	if (expect_two_vmas((unsigned long)shrink_left_prev,
+			    (unsigned long)(shrink_left + length),
+			    (unsigned long)(shrink_left + 2 * length),
+			    "existing left shrink"))
+		goto out;
+
+	if (map_fixed(shrink_right, 2 * length, PROT_READ) != shrink_right)
+		goto fail;
+	if (map_fixed(shrink_right_next, length, PROT_READ | PROT_WRITE) !=
+	    shrink_right_next)
+		goto fail;
+	if (mprotect(shrink_right + length, length, PROT_READ | PROT_WRITE))
+		goto fail;
+	if (expect_two_vmas((unsigned long)shrink_right,
+			    (unsigned long)(shrink_right + length),
+			    (unsigned long)(shrink_right_next + length),
+			    "existing right shrink"))
+		goto out;
+
+	if (map_fixed(anon_left, length, PROT_READ | PROT_WRITE) != anon_left)
+		goto fail;
+	fault_mapping(anon_left, length);
+	if (mprotect(anon_left, length, PROT_READ))
+		goto fail;
+	if (map_fixed(anon_left_prev, length, PROT_READ | PROT_WRITE) !=
+	    anon_left_prev)
+		goto fail;
+	if (mprotect(anon_left, length, PROT_READ | PROT_WRITE))
+		goto fail;
+	if (expect_one_vma((unsigned long)anon_left_prev,
+			   (unsigned long)(anon_left + length),
+			   "existing left anon_vma copy"))
+		goto out;
+
+	if (map_fixed(anon_right, length, PROT_READ | PROT_WRITE) != anon_right)
+		goto fail;
+	fault_mapping(anon_right, length);
+	if (mprotect(anon_right, length, PROT_READ))
+		goto fail;
+	if (map_fixed(anon_right_next, length, PROT_READ | PROT_WRITE) !=
+	    anon_right_next)
+		goto fail;
+	if (mprotect(anon_right, length, PROT_READ | PROT_WRITE))
+		goto fail;
+	if (expect_one_vma((unsigned long)anon_right,
+			   (unsigned long)(anon_right_next + length),
+			   "existing right anon_vma copy"))
+		goto out;
+
+	return 0;
+
+fail:
+	fprintf(stderr, "VMA_MERGE existing-range mapping failed: %s\n",
+		strerror(errno));
+out:
+	return 1;
 }
 
 static int test_anon_names(unsigned char *carveout)
@@ -425,6 +608,7 @@ int main(void)
 	if (test_new_range_merges(carveout) ||
 	    test_incompatible_ranges(carveout) ||
 	    test_file_mappings(carveout) ||
+	    test_existing_range_merges(carveout) ||
 	    test_anon_names(carveout) ||
 	    test_forked_target(carveout) ||
 	    test_brk_expand())

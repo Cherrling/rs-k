@@ -62,6 +62,7 @@ more details.
     vma-munmap-complete
     vma-munmap-gather
     vma-merge-compat
+    vma-merge-existing
     vma-merge-new-range
     copy-mm
     dup-mmap

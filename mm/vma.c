@@ -11,6 +11,7 @@
 #include "vma_internal.h"
 #include "vma.h"
 #include <linux/vma-merge-compat-rust.h>
+#include <linux/vma-merge-existing-rust.h>
 #include <linux/vma-merge-new-range-rust.h>
 #include <linux/vma-munmap-complete-rust.h>
 #include <linux/vma-munmap-gather-rust.h>
@@ -1094,6 +1095,22 @@ static bool can_merge_remove_vma(struct vm_area_struct *vma)
  * - The caller must hold a WRITE lock on the mm_struct->mmap_lock.
  * - vmi must be positioned within [@vmg->middle->vm_start, @vmg->middle->vm_end).
  */
+#ifdef CONFIG_RUST_VMA_MERGE_EXISTING
+
+static __must_check struct vm_area_struct *
+vma_merge_existing_range(struct vma_merge_struct *vmg)
+{
+	struct rust_vme_state state = {
+		.vmg = vmg,
+		.sticky_flags = vma_flags_and_mask(&vmg->vma_flags,
+						   VMA_STICKY_FLAGS),
+	};
+
+	return rust_vma_merge_existing(&state);
+}
+
+#else
+
 static __must_check struct vm_area_struct *vma_merge_existing_range(
 		struct vma_merge_struct *vmg)
 {
@@ -1300,6 +1317,267 @@ abort:
 		vmg->state = VMA_MERGE_ERROR_NOMEM;
 	return NULL;
 }
+
+#endif /* CONFIG_RUST_VMA_MERGE_EXISTING */
+
+#ifdef CONFIG_RUST_VMA_MERGE_EXISTING
+
+void rust_helper_vma_merge_existing_validate(struct rust_vme_state *state)
+{
+	struct vma_merge_struct *vmg = state->vmg;
+	struct vm_area_struct *middle = vmg->middle;
+	unsigned long start = vmg->start;
+	unsigned long end = vmg->end;
+
+	mmap_assert_write_locked(vmg->mm);
+	VM_WARN_ON_VMG(!middle, vmg);
+	VM_WARN_ON_VMG(vmg->next, vmg);
+	VM_WARN_ON_VMG(vmg->prev && start <= vmg->prev->vm_start, vmg);
+	VM_WARN_ON_VMG(start >= end, vmg);
+	VM_WARN_ON_VMG(middle &&
+		       ((middle != vmg->prev && start != middle->vm_start) ||
+			end > middle->vm_end), vmg);
+	VM_WARN_ON_VMG(middle &&
+		       !(vma_iter_addr(vmg->vmi) >= middle->vm_start &&
+			 vma_iter_addr(vmg->vmi) < middle->vm_end), vmg);
+	VM_WARN_ON_VMG(vmg->copied_from, vmg);
+}
+
+void rust_helper_vma_merge_existing_set_nomerge(struct rust_vme_state *state)
+{
+	state->vmg->state = VMA_MERGE_NOMERGE;
+}
+
+void rust_helper_vma_merge_existing_set_success(struct rust_vme_state *state)
+{
+	state->vmg->state = VMA_MERGE_SUCCESS;
+}
+
+void rust_helper_vma_merge_existing_set_nomem(struct rust_vme_state *state)
+{
+	state->vmg->state = VMA_MERGE_ERROR_NOMEM;
+}
+
+bool rust_helper_vma_merge_existing_is_special(struct rust_vme_state *state)
+{
+	return vma_flags_test_any_mask(&state->vmg->vma_flags,
+				       VMA_SPECIAL_FLAGS);
+}
+
+bool rust_helper_vma_merge_existing_can_merge_left(struct rust_vme_state *state)
+{
+	return can_vma_merge_left(state->vmg);
+}
+
+bool rust_helper_vma_merge_existing_can_merge_right(struct rust_vme_state *state,
+						    bool can_merge_left)
+{
+	return can_vma_merge_right(state->vmg, can_merge_left);
+}
+
+bool rust_helper_vma_merge_existing_give_up_on_oom(struct rust_vme_state *state)
+{
+	return state->vmg->give_up_on_oom;
+}
+
+struct vm_area_struct *
+rust_helper_vma_merge_existing_middle(struct rust_vme_state *state)
+{
+	return state->vmg->middle;
+}
+
+struct vm_area_struct *
+rust_helper_vma_merge_existing_prev(struct rust_vme_state *state)
+{
+	return state->vmg->prev;
+}
+
+unsigned long
+rust_helper_vma_merge_existing_start(struct rust_vme_state *state)
+{
+	return state->vmg->start;
+}
+
+unsigned long
+rust_helper_vma_merge_existing_end(struct rust_vme_state *state)
+{
+	return state->vmg->end;
+}
+
+unsigned long rust_helper_vma_merge_existing_vma_start(struct vm_area_struct *vma)
+{
+	return vma->vm_start;
+}
+
+unsigned long rust_helper_vma_merge_existing_vma_end(struct vm_area_struct *vma)
+{
+	return vma->vm_end;
+}
+
+unsigned long rust_helper_vma_merge_existing_vma_start_pgoff(struct vm_area_struct *vma)
+{
+	return vma_start_pgoff(vma);
+}
+
+unsigned long rust_helper_vma_merge_existing_vma_start_anon_pgoff(struct vm_area_struct *vma)
+{
+	return vma_start_anon_pgoff(vma);
+}
+
+unsigned long rust_helper_vma_merge_existing_pages(struct rust_vme_state *state)
+{
+	return vmg_pages(state->vmg);
+}
+
+struct vm_area_struct *
+rust_helper_vma_merge_existing_iter_next_range(struct rust_vme_state *state)
+{
+	return vma_iter_next_range(state->vmg->vmi);
+}
+
+void rust_helper_vma_merge_existing_iter_prev_range(struct rust_vme_state *state)
+{
+	vma_iter_prev_range(state->vmg->vmi);
+}
+
+void rust_helper_vma_merge_existing_iter_set(struct rust_vme_state *state, unsigned long start)
+{
+	vma_iter_set(state->vmg->vmi, start);
+}
+
+void rust_helper_vma_merge_existing_iter_load(struct rust_vme_state *state)
+{
+	vma_iter_load(state->vmg->vmi);
+}
+
+void rust_helper_vma_merge_existing_set_next(struct rust_vme_state *state,
+					     struct vm_area_struct *next)
+{
+	state->vmg->next = next;
+}
+
+void rust_helper_vma_merge_existing_prev_range(struct rust_vme_state *state)
+{
+	vma_prev(state->vmg->vmi);
+}
+
+bool rust_helper_vma_merge_existing_can_remove(struct vm_area_struct *vma)
+{
+	return can_merge_remove_vma(vma);
+}
+
+void rust_helper_vma_merge_existing_start_write(struct vm_area_struct *vma)
+{
+	vma_start_write(vma);
+}
+
+void rust_helper_vma_merge_existing_add_target_sticky(struct rust_vme_state *state,
+						      struct vm_area_struct *vma)
+{
+	vma_flags_t sticky_flags =
+		vma_flags_and_mask(&vma->flags, VMA_STICKY_FLAGS);
+
+	vma_flags_set_mask(&state->sticky_flags, sticky_flags);
+}
+
+void rust_helper_vma_merge_existing_apply_sticky(struct rust_vme_state *state,
+						 struct vm_area_struct *vma)
+{
+	vma_set_flags_mask(vma, state->sticky_flags);
+}
+
+void rust_helper_vma_merge_existing_set_remove_middle(struct rust_vme_state *state, bool remove)
+{
+	state->vmg->__remove_middle = remove;
+}
+
+void rust_helper_vma_merge_existing_set_remove_next(struct rust_vme_state *state, bool remove)
+{
+	state->vmg->__remove_next = remove;
+}
+
+void rust_helper_vma_merge_existing_set_adjust_middle_start(struct rust_vme_state *state,
+							    bool adjust)
+{
+	state->vmg->__adjust_middle_start = adjust;
+}
+
+void rust_helper_vma_merge_existing_set_adjust_next_start(struct rust_vme_state *state,
+							  bool adjust)
+{
+	state->vmg->__adjust_next_start = adjust;
+}
+
+void rust_helper_vma_merge_existing_set_target(struct rust_vme_state *state,
+					       struct vm_area_struct *target)
+{
+	state->vmg->target = target;
+}
+
+void rust_helper_vma_merge_existing_set_start(struct rust_vme_state *state, unsigned long start)
+{
+	state->vmg->start = start;
+}
+
+void rust_helper_vma_merge_existing_set_end(struct rust_vme_state *state, unsigned long end)
+{
+	state->vmg->end = end;
+}
+
+void rust_helper_vma_merge_existing_set_start_pgoffs(struct rust_vme_state *state,
+						     struct vm_area_struct *vma)
+{
+	state->vmg->pgoff = vma_start_pgoff(vma);
+	state->vmg->anon_pgoff = vma_start_anon_pgoff(vma);
+}
+
+void rust_helper_vma_merge_existing_set_pgoffs(struct rust_vme_state *state, unsigned long pgoff,
+					       unsigned long anon_pgoff)
+{
+	state->vmg->pgoff = pgoff;
+	state->vmg->anon_pgoff = anon_pgoff;
+}
+
+bool rust_helper_vma_merge_existing_vma_has_anon_vma(struct vm_area_struct *vma)
+{
+	return vma->anon_vma;
+}
+
+int rust_helper_vma_merge_existing_dup_anon(struct rust_vme_state *state,
+					    struct vm_area_struct *dst,
+					    struct vm_area_struct *src)
+{
+	return dup_anon_vma(dst, src, &state->anon_dup);
+}
+
+void rust_helper_vma_merge_existing_unlink_anon(struct rust_vme_state *state)
+{
+	if (state->anon_dup)
+		unlink_anon_vmas(state->anon_dup);
+}
+
+int rust_helper_vma_merge_existing_commit(struct rust_vme_state *state)
+{
+	return commit_merge(state->vmg);
+}
+
+void rust_helper_vma_merge_existing_khugepaged_enter(struct rust_vme_state *state,
+						     struct vm_area_struct *target)
+{
+	khugepaged_enter_vma(target, state->vmg->vm_flags);
+}
+
+void rust_helper_vma_merge_existing_debug_right(struct rust_vme_state *state, bool merge_right)
+{
+	struct vma_merge_struct *vmg = state->vmg;
+	struct vm_area_struct *middle = vmg->middle;
+
+	VM_WARN_ON_VMG(!merge_right, vmg);
+	VM_WARN_ON_VMG(vmg->start > middle->vm_start &&
+		       vmg->prev && middle != vmg->prev, vmg);
+}
+
+#endif /* CONFIG_RUST_VMA_MERGE_EXISTING */
 
 /*
  * vma_merge_new_range - Attempt to merge a new VMA into address space

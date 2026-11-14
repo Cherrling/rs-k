@@ -11,8 +11,9 @@ production compatibility policy of VMA merging. The original C predicates
 remain available as a fallback.
 
 The policy is shared by new-range and existing-range merges. This includes the
-``mmap()``, ``brk``, ``mprotect()``, and ``mremap()`` paths. Rust owns these
-decisions:
+``mmap()``, ``brk``, ``mprotect()``, and ``mremap()`` paths. The native Rust
+existing-range orchestration calls this policy directly when both options are
+enabled. Rust owns these decisions:
 
 1. Whether a VMA may have inherited an anonymous mapping from a parent.
 2. Which anonymous-VMA duplication or sharing case applies.
@@ -52,7 +53,8 @@ Entry points and ownership
 When the option is enabled, the C ``can_vma_merge_left()`` and
 ``can_vma_merge_right()`` wrappers call the exported Rust policy entries. The
 Rust new-range orchestration calls the Rust policy directly and does not route
-through a C policy wrapper.
+through a C policy wrapper. The Rust existing-range orchestration follows the
+same direct-call rule.
 
 When the option is disabled, the original C compatibility functions remain the
 production policy. The Rust new-range orchestration uses its original C
