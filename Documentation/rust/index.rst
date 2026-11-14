@@ -40,6 +40,7 @@ more details.
     task-teardown
     task-release
     task-group-exit-sync
+    complete-signal
     signal-retarget
     signal-wake-select
     signal-wake-state

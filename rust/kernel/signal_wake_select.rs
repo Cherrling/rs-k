@@ -85,7 +85,7 @@ extern "C" fn rust_signal_wake_select_test_last_state() -> u32 {
 /// # Safety
 ///
 /// `task` must be live and the caller must hold `task->sighand->siglock`.
-unsafe fn signal_wake_up(task: *mut Task, fatal: bool) {
+pub(crate) unsafe fn signal_wake_up(task: *mut Task, fatal: bool) {
     #[cfg(CONFIG_SIGNAL_WAKE_SELECT_KUNIT_TEST)]
     FATAL_ENTRY_COUNT.fetch_add(1, Ordering::Relaxed);
 

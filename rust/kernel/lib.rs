@@ -55,6 +55,8 @@ pub mod block;
 pub mod bug;
 pub mod build_assert;
 pub mod clk;
+#[cfg(CONFIG_RUST_COMPLETE_SIGNAL)]
+mod complete_signal;
 #[cfg(CONFIG_RUST_COMPLETION)]
 mod completion_core;
 #[cfg(CONFIG_CONFIGFS_FS)]

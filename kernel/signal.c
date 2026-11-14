@@ -43,6 +43,7 @@
 #include <linux/user_namespace.h>
 #include <linux/uprobes.h>
 #include <linux/compat.h>
+#include <linux/complete-signal-rust.h>
 #include <linux/cn_proc.h>
 #include <linux/compiler.h>
 #include <linux/posix-timers.h>
@@ -974,6 +975,9 @@ static inline bool wants_signal(int sig, struct task_struct *p)
 
 static void complete_signal(int sig, struct task_struct *p, enum pid_type type)
 {
+#ifdef CONFIG_RUST_COMPLETE_SIGNAL
+	rust_complete_signal(sig, p, type);
+#else
 	struct signal_struct *signal = p->signal;
 	struct task_struct *t;
 
@@ -1042,7 +1046,17 @@ static void complete_signal(int sig, struct task_struct *p, enum pid_type type)
 	 */
 	signal_wake_up(t, sig == SIGKILL);
 	return;
+#endif /* !CONFIG_RUST_COMPLETE_SIGNAL */
 }
+
+#ifdef CONFIG_COMPLETE_SIGNAL_KUNIT_TEST
+void complete_signal_test_call(int sig, struct task_struct *task, int type)
+{
+	spin_lock_irq(&task->sighand->siglock);
+	complete_signal(sig, task, type);
+	spin_unlock_irq(&task->sighand->siglock);
+}
+#endif
 
 static inline bool legacy_queue(struct sigpending *signals, int sig)
 {

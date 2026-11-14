@@ -1380,6 +1380,23 @@ config RUST_SIGNAL_WAKE_SELECT
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_COMPLETE_SIGNAL
+	bool "Rust implementation of signal completion"
+	depends on RUST && RUST_SIGNAL_WAKE_SELECT
+	default y
+	help
+	  Use Rust for the production complete-signal state machine. Rust
+	  selects the notification target, balances the thread-group target,
+	  recognizes fatal group exits, prepares group-exit state, and chooses
+	  the final wakeup.
+
+	  Signal and job-control bit operations, task-state inspection, thread
+	  traversal, locking, scheduler wakeup, process kick, and the public
+	  adapter remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_EXIT_NOTIFY
 	bool "Rust implementation of task exit parent notification"
 	depends on RUST && RUST_TASK_RELEASE
