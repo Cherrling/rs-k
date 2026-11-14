@@ -2528,6 +2528,18 @@ config EXIT_MMAP_KUNIT_TEST
 
 	  If unsure, say N.
 
+config VMA_UNMAP_KUNIT_TEST
+	bool "KUnit test for address-space range unmapping" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y && RUST_VMA_UNMAP
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit coverage for Rust munmap() range
+	  validation, page alignment, empty ranges, and invalid boundaries.
+	  The suite also checks unaligned starts, oversized lengths, and
+	  arithmetic wraparound at the end of the task address space.
+
+	  If unsure, say N.
+
 config DUP_MMAP_KUNIT_TEST
 	bool "KUnit test for VMA-tree duplication" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y && RUST_DUP_MMAP

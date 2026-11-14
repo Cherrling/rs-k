@@ -10,6 +10,7 @@
  */
 #include "vma_internal.h"
 #include "vma.h"
+#include <linux/vma-unmap-rust.h>
 
 struct mmap_state {
 	struct mm_struct *mm;
@@ -1696,6 +1697,54 @@ gather_failed:
 	return error;
 }
 
+#ifdef CONFIG_RUST_VMA_UNMAP
+
+void rust_helper_vma_unmap_state_init(struct rust_vma_unmap_state *state,
+				      struct mm_struct *mm,
+				      unsigned long start)
+{
+	vma_iter_init(&state->vmi, mm, start);
+	INIT_LIST_HEAD(&state->userfaultfd);
+}
+
+int rust_helper_vma_unmap_write_lock_killable(struct mm_struct *mm)
+{
+	return mmap_write_lock_killable(mm);
+}
+
+void rust_helper_vma_unmap_write_unlock(struct mm_struct *mm)
+{
+	mmap_write_unlock(mm);
+}
+
+unsigned long rust_helper_vma_unmap_task_size(void)
+{
+	return TASK_SIZE;
+}
+
+struct vm_area_struct *
+rust_helper_vma_unmap_find(struct vma_iterator *vmi, unsigned long end)
+{
+	return vma_find(vmi, end);
+}
+
+int rust_helper_vma_unmap_align(struct vma_iterator *vmi,
+				struct vm_area_struct *vma,
+				struct mm_struct *mm,
+				unsigned long start, unsigned long end,
+				struct list_head *uf, bool unlock)
+{
+	return do_vmi_align_munmap(vmi, vma, mm, start, end, uf, unlock);
+}
+
+void rust_helper_vma_unmap_userfault_complete(struct mm_struct *mm,
+					      struct list_head *uf)
+{
+	userfaultfd_unmap_complete(mm, uf);
+}
+
+#endif /* CONFIG_RUST_VMA_UNMAP */
+
 /*
  * do_vmi_munmap() - munmap a given range.
  * @vmi: The vma iterator
@@ -1716,6 +1765,9 @@ int do_vmi_munmap(struct vma_iterator *vmi, struct mm_struct *mm,
 		  unsigned long start, size_t len, struct list_head *uf,
 		  bool unlock)
 {
+#ifdef CONFIG_RUST_VMA_UNMAP
+	return rust_do_vmi_munmap(vmi, mm, start, len, uf, unlock);
+#else
 	unsigned long end;
 	struct vm_area_struct *vma;
 
@@ -1735,6 +1787,7 @@ int do_vmi_munmap(struct vma_iterator *vmi, struct mm_struct *mm,
 	}
 
 	return do_vmi_align_munmap(vmi, vma, mm, start, end, uf, unlock);
+#endif
 }
 
 /*
@@ -3412,6 +3465,9 @@ int expand_downwards(struct vm_area_struct *vma, unsigned long address)
 
 int __vm_munmap(unsigned long start, size_t len, bool unlock)
 {
+#ifdef CONFIG_RUST_VMA_UNMAP
+	return rust_vma_unmap(current->mm, start, len, unlock);
+#else
 	int ret;
 	struct mm_struct *mm = current->mm;
 	LIST_HEAD(uf);
@@ -3426,6 +3482,7 @@ int __vm_munmap(unsigned long start, size_t len, bool unlock)
 
 	userfaultfd_unmap_complete(mm, &uf);
 	return ret;
+#endif
 }
 
 /*

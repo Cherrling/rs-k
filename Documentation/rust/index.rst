@@ -58,6 +58,7 @@ more details.
     mm-lifetime
     mm-teardown
     exit-mmap
+    vma-unmap
     copy-mm
     dup-mmap
     sched

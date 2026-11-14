@@ -1302,6 +1302,22 @@ config RUST_EXIT_MMAP
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_VMA_UNMAP
+	bool "Rust implementation of address-space range unmapping"
+	depends on RUST && MMU
+	depends on RUST_EXIT_MMAP
+	default y
+	help
+	  Use Rust for the production munmap() orchestration. Rust owns range
+	  validation, page alignment, first-overlap lookup, empty-range lock
+	  handling, mmap write locking, and userfaultfd completion ordering.
+
+	  Detached-tree gathering, partial VMA splitting, rollback, and munmap
+	  completion remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_COPY_MM
 	bool "Rust implementation of address-space copying"
 	depends on RUST && MMU

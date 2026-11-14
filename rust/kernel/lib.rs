@@ -233,6 +233,8 @@ pub mod types;
 pub mod uaccess;
 #[cfg(CONFIG_USB = "y")]
 pub mod usb;
+#[cfg(CONFIG_RUST_VMA_UNMAP)]
+mod vma_unmap;
 #[cfg(CONFIG_RUST_WAIT_BIT)]
 mod wait_bit_core;
 #[cfg(CONFIG_RUST_WAITQUEUE)]

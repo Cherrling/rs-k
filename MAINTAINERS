@@ -17478,14 +17478,17 @@ F:	Documentation/rust/dup-mmap.rst
 F:	Documentation/rust/exit-mmap.rst
 F:	Documentation/rust/mm-lifetime.rst
 F:	Documentation/rust/mm-teardown.rst
+F:	Documentation/rust/vma-unmap.rst
 F:	include/linux/copy-mm-rust.h
 F:	include/linux/dup-mmap-rust.h
 F:	include/linux/exit-mmap-rust.h
 F:	include/linux/mm-rust.h
+F:	include/linux/vma-unmap-rust.h
 F:	lib/tests/test_copy_mm.c
 F:	lib/tests/test_dup_mmap.c
 F:	lib/tests/test_exit_mmap.c
 F:	lib/tests/test_mm_lifetime.c
+F:	lib/tests/test_vma_unmap.c
 F:	rust/kernel/copy_mm.rs
 F:	rust/kernel/dup_mmap.rs
 F:	rust/kernel/exit_mmap.rs
@@ -17496,6 +17499,7 @@ F:	rust/kernel/mm_teardown.rs
 F:	rust/kernel/mm.rs
 F:	rust/kernel/mm/
 F:	rust/kernel/page.rs
+F:	rust/kernel/vma_unmap.rs
 
 MEMORY MAPPING
 M:	Andrew Morton <akpm@linux-foundation.org>
@@ -24026,6 +24030,7 @@ F:	include/linux/task-group-exit-sync-rust.h
 F:	include/linux/task-release-rust.h
 F:	include/linux/task-rust.h
 F:	include/linux/timerqueue-rust.h
+F:	include/linux/vma-unmap-rust.h
 F:	include/linux/wait-bit-rust.h
 F:	include/linux/wait-rust.h
 F:	include/trace/events/rust_sample.h
@@ -24062,6 +24067,7 @@ F:	lib/tests/test_task_group_exit_sync.c
 F:	lib/tests/test_task_release.c
 F:	lib/tests/test_task_teardown.c
 F:	lib/tests/test_timerqueue.c
+F:	lib/tests/test_vma_unmap.c
 F:	lib/tests/test_wait_bit.c
 F:	lib/tests/test_waitqueue.c
 F:	rust/
@@ -24071,6 +24077,7 @@ F:	tools/testing/selftests/copy_mm/
 F:	tools/testing/selftests/dup_mmap/
 F:	tools/testing/selftests/exit_mmap/
 F:	tools/testing/selftests/rust/
+F:	tools/testing/selftests/vma_unmap/
 K:	\b(?i:rust)\b
 
 RUST [ALLOC]

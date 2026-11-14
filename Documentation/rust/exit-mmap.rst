@@ -19,6 +19,10 @@ sequence. That sequence is the separate Rust unit described in
 :doc:`mm-teardown`. It also leaves individual maple-tree, VMA, TLB, notifier,
 architecture, and page-table primitives in C.
 
+Runtime range unmapping is a separate unit described in :doc:`vma-unmap`.
+``exit_mmap()`` remains responsible for tearing down the complete address
+space.
+
 Entry points and ownership
 --------------------------
 

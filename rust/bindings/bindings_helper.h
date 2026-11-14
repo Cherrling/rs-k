@@ -130,6 +130,7 @@
 #include <linux/timerqueue-rust.h>
 #include <linux/tracepoint.h>
 #include <linux/usb.h>
+#include <linux/vma-unmap-rust.h>
 #include <linux/wait.h>
 #include <linux/wait-bit-rust.h>
 #include <linux/wait-rust.h>
