@@ -58,6 +58,7 @@ more details.
     mm-lifetime
     mm-teardown
     copy-mm
+    dup-mmap
     sched
     cpupri
     itimer

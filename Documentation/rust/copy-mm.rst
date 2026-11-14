@@ -23,7 +23,10 @@ This unit covers:
 
 This unit excludes device drivers, the address-space slab allocator,
 architecture context implementations, VMA duplication internals, and
-subsystem-specific resource implementations.
+subsystem-specific resource implementations. ``CONFIG_RUST_DUP_MMAP``
+selects the separate native Rust VMA-tree unit described in
+:doc:`dup-mmap`. With that option disabled, the parent unit enters the
+original C VMA duplication implementation.
 
 Entry points and ownership
 --------------------------
@@ -70,7 +73,7 @@ The C boundary contains:
 * Per-CPU RSS counter initialization.
 * LRU-generation initialization.
 * Uprobe duplication serialization.
-* VMA-tree duplication.
+* VMA-tree duplication only when ``CONFIG_RUST_DUP_MMAP`` is disabled.
 * Binary-format module-reference acquisition and release.
 * Task scheduler-cache fork setup.
 
@@ -210,8 +213,8 @@ Reopen a retained C boundary if any of these conditions changes:
 * Architecture context or address-space ID hooks gain a stable Rust
   interface.
 * CPU-ID, scheduler accounting, or RSS initialization moves out of ``fork.c``.
-* VMA duplication gains a Rust-safe interface with the same locking and
-  failure contract.
+* A retained VMA duplication primitive gains a Rust-safe interface with the
+  same locking and failure contract.
 * Binary-format module references or scheduler-cache setup gain safe Rust
   abstractions.
 * Measurements show that the helper-call boundary causes an unacceptable

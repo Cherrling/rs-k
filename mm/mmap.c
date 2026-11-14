@@ -14,6 +14,7 @@
 #include <linux/backing-dev.h>
 #include <linux/mm.h>
 #include <linux/mm_inline.h>
+#include <linux/dup-mmap-rust.h>
 #include <linux/shm.h>
 #include <linux/mman.h>
 #include <linux/pagemap.h>
@@ -1707,6 +1708,9 @@ bool mmap_read_lock_maybe_expand(struct mm_struct *mm,
 
 __latent_entropy int dup_mmap(struct mm_struct *mm, struct mm_struct *oldmm)
 {
+#ifdef CONFIG_RUST_DUP_MMAP
+	return rust_dup_mmap(mm, oldmm);
+#else
 	struct vm_area_struct *mpnt, *tmp;
 	int retval;
 	unsigned long charge = 0;
@@ -1897,4 +1901,421 @@ fail_nomem:
 	retval = -ENOMEM;
 	vm_unacct_memory(charge);
 	goto loop_out;
+#endif /* !CONFIG_RUST_DUP_MMAP */
 }
+
+#ifdef CONFIG_RUST_DUP_MMAP
+
+void rust_helper_dup_mmap_state_init(struct rust_dup_mmap_state *state,
+				     struct mm_struct *mm)
+{
+	vma_iter_init(&state->vmi, mm, 0);
+	INIT_LIST_HEAD(&state->userfaultfd);
+	state->charge = 0;
+}
+
+int rust_helper_dup_mmap_lock_source(struct mm_struct *oldmm)
+{
+	return mmap_write_lock_killable(oldmm);
+}
+
+void rust_helper_dup_mmap_flush_cache(struct mm_struct *oldmm)
+{
+	flush_cache_dup_mm(oldmm);
+}
+
+void rust_helper_dup_mmap_uprobe(struct mm_struct *oldmm,
+				 struct mm_struct *mm)
+{
+	uprobe_dup_mmap(oldmm, mm);
+}
+
+void rust_helper_dup_mmap_lock_destination(struct mm_struct *mm)
+{
+	mmap_write_lock_nested(mm, SINGLE_DEPTH_NESTING);
+}
+
+void rust_helper_dup_mmap_exe_file(struct mm_struct *mm,
+				   struct mm_struct *oldmm)
+{
+	dup_mm_exe_file(mm, oldmm);
+}
+
+void rust_helper_dup_mmap_copy_accounting(struct mm_struct *mm,
+					  struct mm_struct *oldmm)
+{
+	mm->total_vm = oldmm->total_vm;
+	mm->data_vm = oldmm->data_vm;
+	mm->exec_vm = oldmm->exec_vm;
+	mm->stack_vm = oldmm->stack_vm;
+}
+
+int rust_helper_dup_mmap_copy_tree(struct mm_struct *mm,
+				   struct mm_struct *oldmm)
+{
+	return __mt_dup(&oldmm->mm_mt, &mm->mm_mt, GFP_KERNEL);
+}
+
+void rust_helper_dup_mmap_clear_tree_rcu(struct rust_dup_mmap_state *state)
+{
+	mt_clear_in_rcu(state->vmi.mas.tree);
+}
+
+struct vm_area_struct *
+rust_helper_dup_mmap_next(struct rust_dup_mmap_state *state)
+{
+	return vma_next(&state->vmi);
+}
+
+int rust_helper_dup_mmap_source_start_write(struct vm_area_struct *vma)
+{
+	return vma_start_write_killable(vma);
+}
+
+bool rust_helper_dup_mmap_dontcopy(struct vm_area_struct *vma)
+{
+	return vma_test(vma, VMA_DONTCOPY_BIT);
+}
+
+int rust_helper_dup_mmap_clear_dontcopy(struct rust_dup_mmap_state *state,
+					struct vm_area_struct *vma)
+{
+	return vma_iter_clear_gfp(&state->vmi, vma->vm_start, vma->vm_end,
+				  GFP_KERNEL);
+}
+
+void rust_helper_dup_mmap_unaccount_source(struct mm_struct *mm,
+					   struct vm_area_struct *vma)
+{
+	vm_stat_account(mm, vma->vm_flags, -vma_pages(vma));
+}
+
+bool rust_helper_dup_mmap_is_account(struct vm_area_struct *vma)
+{
+	return vma_test(vma, VMA_ACCOUNT_BIT);
+}
+
+unsigned long rust_helper_dup_mmap_nr_pages(struct vm_area_struct *vma)
+{
+	return vma_pages(vma);
+}
+
+bool rust_helper_dup_mmap_account_memory(struct mm_struct *mm,
+					 unsigned long pages)
+{
+	return security_vm_enough_memory_mm(mm, pages) == 0;
+}
+
+void rust_helper_dup_mmap_set_charge(struct rust_dup_mmap_state *state,
+				     unsigned long charge)
+{
+	state->charge = charge;
+}
+
+void
+rust_helper_dup_mmap_unaccount_charge(struct rust_dup_mmap_state *state)
+{
+	vm_unacct_memory(state->charge);
+	state->charge = 0;
+}
+
+struct vm_area_struct *
+rust_helper_dup_mmap_clone(struct vm_area_struct *vma)
+{
+	return vm_area_dup(vma);
+}
+
+int rust_helper_dup_mmap_dup_policy(struct vm_area_struct *source,
+				    struct vm_area_struct *duplicate)
+{
+	return vma_dup_policy(source, duplicate);
+}
+
+void rust_helper_dup_mmap_release_policy(struct vm_area_struct *vma)
+{
+	mpol_put(vma_policy(vma));
+}
+
+void rust_helper_dup_mmap_set_mm(struct vm_area_struct *vma,
+				 struct mm_struct *mm)
+{
+	vma->vm_mm = mm;
+}
+
+int rust_helper_dup_mmap_dup_userfaultfd(struct vm_area_struct *vma,
+					 struct rust_dup_mmap_state *state)
+{
+	return dup_userfaultfd(vma, &state->userfaultfd);
+}
+
+bool rust_helper_dup_mmap_wipeonfork(struct vm_area_struct *vma)
+{
+	return vma_test(vma, VMA_WIPEONFORK_BIT);
+}
+
+void rust_helper_dup_mmap_clear_anon(struct vm_area_struct *vma)
+{
+	vma->anon_vma = NULL;
+}
+
+int rust_helper_dup_mmap_anon_fork(struct vm_area_struct *duplicate,
+				   struct vm_area_struct *source)
+{
+	return anon_vma_fork(duplicate, source);
+}
+
+void rust_helper_dup_mmap_free_vma(struct vm_area_struct *vma)
+{
+	vm_area_free(vma);
+}
+
+void rust_helper_dup_mmap_dest_start_write(struct vm_area_struct *vma)
+{
+	vma_start_write(vma);
+}
+
+void rust_helper_dup_mmap_clear_locked(struct vm_area_struct *vma)
+{
+	vma_clear_flags_mask(vma, VMA_LOCKED_MASK);
+}
+
+bool rust_helper_dup_mmap_is_hugetlb(struct vm_area_struct *vma)
+{
+	return is_vm_hugetlb_page(vma);
+}
+
+void rust_helper_dup_mmap_dup_hugetlb(struct vm_area_struct *vma)
+{
+	hugetlb_dup_vma_private(vma);
+}
+
+void rust_helper_dup_mmap_store(struct rust_dup_mmap_state *state,
+				struct vm_area_struct *vma)
+{
+	(void)vma_iter_bulk_store(&state->vmi, vma);
+}
+
+void rust_helper_dup_mmap_inc_map_count(struct mm_struct *mm)
+{
+	mm->map_count++;
+}
+
+bool rust_helper_dup_mmap_has_open(struct vm_area_struct *vma)
+{
+	return vma->vm_ops && vma->vm_ops->open;
+}
+
+void rust_helper_dup_mmap_call_open(struct vm_area_struct *vma)
+{
+	vma->vm_ops->open(vma);
+}
+
+struct file *rust_helper_dup_mmap_file(struct vm_area_struct *vma)
+{
+	return vma->vm_file;
+}
+
+struct address_space *rust_helper_dup_mmap_mapping(struct file *file)
+{
+	return file->f_mapping;
+}
+
+void rust_helper_dup_mmap_get_file(struct file *file)
+{
+	get_file(file);
+}
+
+void rust_helper_dup_mmap_rmap_lock(struct address_space *mapping)
+{
+	i_mmap_lock_write(mapping);
+}
+
+bool rust_helper_dup_mmap_shared_maywrite(struct vm_area_struct *vma)
+{
+	return vma_is_shared_maywrite(vma);
+}
+
+void rust_helper_dup_mmap_allow_writable(struct address_space *mapping)
+{
+	mapping_allow_writable(mapping);
+}
+
+void rust_helper_dup_mmap_rmap_tree_lock(struct address_space *mapping)
+{
+	flush_dcache_mmap_lock(mapping);
+}
+
+void rust_helper_dup_mmap_rmap_insert_after(struct vm_area_struct *vma,
+					    struct vm_area_struct *source,
+					    struct address_space *mapping)
+{
+	mapping_rmap_tree_insert_after(vma, source, mapping);
+}
+
+void rust_helper_dup_mmap_rmap_tree_unlock(struct address_space *mapping)
+{
+	flush_dcache_mmap_unlock(mapping);
+}
+
+void rust_helper_dup_mmap_rmap_unlock(struct address_space *mapping)
+{
+	i_mmap_unlock_write(mapping);
+}
+
+int rust_helper_dup_mmap_copy_pages(struct vm_area_struct *vma,
+				    struct vm_area_struct *source)
+{
+	return copy_page_range(vma, source);
+}
+
+int rust_helper_dup_mmap_arch(struct mm_struct *oldmm,
+			      struct mm_struct *mm)
+{
+	return arch_dup_mmap(oldmm, mm);
+}
+
+unsigned long rust_helper_dup_mmap_map_count(struct mm_struct *mm)
+{
+	return mm->map_count;
+}
+
+void rust_helper_dup_mmap_oom_skip(struct mm_struct *mm)
+{
+	mm_flags_set(MMF_OOM_SKIP, mm);
+}
+
+unsigned long
+rust_helper_dup_mmap_vma_start(struct vm_area_struct *vma)
+{
+	return vma->vm_start;
+}
+
+void
+rust_helper_dup_mmap_cleanup_partial(struct rust_dup_mmap_state *state,
+				     struct mm_struct *mm,
+				     unsigned long end)
+{
+	struct vm_area_struct *vma;
+	unsigned long charge;
+
+	if (!end)
+		return;
+
+	vma_iter_set(&state->vmi, 0);
+	vma = vma_next(&state->vmi);
+	UNMAP_STATE(unmap, &state->vmi, vma,
+		    /* vma_start = */ 0, /* vma_end = */ end,
+		    /* prev = */ NULL, /* next = */ NULL);
+	unmap.tree_end = end;
+	flush_cache_mm(mm);
+	unmap_region(&unmap);
+	charge = tear_down_vmas(mm, &state->vmi, vma, end);
+	vm_unacct_memory(charge);
+}
+
+void rust_helper_dup_mmap_destroy_tree(struct mm_struct *mm)
+{
+	__mt_destroy(&mm->mm_mt);
+}
+
+void rust_helper_dup_mmap_set_unstable(struct mm_struct *mm)
+{
+	mm_flags_set(MMF_UNSTABLE, mm);
+}
+
+void rust_helper_dup_mmap_free_iterator(struct rust_dup_mmap_state *state)
+{
+	vma_iter_free(&state->vmi);
+}
+
+void rust_helper_dup_mmap_set_tree_rcu(struct rust_dup_mmap_state *state)
+{
+	mt_set_in_rcu(state->vmi.mas.tree);
+}
+
+void rust_helper_dup_mmap_ksm(struct mm_struct *mm,
+			      struct mm_struct *oldmm)
+{
+	ksm_fork(mm, oldmm);
+}
+
+void rust_helper_dup_mmap_khugepaged(struct mm_struct *mm,
+				     struct mm_struct *oldmm)
+{
+	khugepaged_fork(mm, oldmm);
+}
+
+void rust_helper_dup_mmap_unlock(struct mm_struct *mm)
+{
+	mmap_write_unlock(mm);
+}
+
+void rust_helper_dup_mmap_flush_tlb(struct mm_struct *oldmm)
+{
+	flush_tlb_mm(oldmm);
+}
+
+void
+rust_helper_dup_mmap_userfault_complete(struct rust_dup_mmap_state *state)
+{
+	dup_userfaultfd_complete(&state->userfaultfd);
+}
+
+void
+rust_helper_dup_mmap_userfault_fail(struct rust_dup_mmap_state *state)
+{
+	dup_userfaultfd_fail(&state->userfaultfd);
+}
+
+#ifdef CONFIG_DUP_MMAP_KUNIT_TEST
+
+int rust_helper_dup_mmap_test_add_anon(struct mm_struct *mm,
+				       unsigned long start,
+				       unsigned long end,
+				       vm_flags_t extra_flags)
+{
+	VMA_ITERATOR(vmi, mm, start);
+	vm_flags_t flags = VM_READ | VM_WRITE | VM_MAYREAD | VM_MAYWRITE;
+	struct vm_area_struct *vma;
+	unsigned long pages;
+
+	mmap_assert_write_locked(mm);
+	vma = vm_area_alloc(mm);
+	if (!vma)
+		return -ENOMEM;
+
+	vma->vm_start = start;
+	vma->vm_end = end;
+	vma->vm_pgoff = start >> PAGE_SHIFT;
+	flags |= extra_flags;
+	vm_flags_init(vma, flags);
+	vma->vm_page_prot = vm_get_page_prot(flags);
+	vma_set_anonymous(vma);
+	pages = vma_pages(vma);
+
+	if (vma_test(vma, VMA_ACCOUNT_BIT) &&
+	    security_vm_enough_memory_mm(mm, pages)) {
+		vm_area_free(vma);
+		return -ENOMEM;
+	}
+
+	vma_start_write(vma);
+	vma_iter_config(&vmi, start, end);
+	if (vma_iter_prealloc(&vmi, vma)) {
+		vma_iter_free(&vmi);
+		if (vma_test(vma, VMA_ACCOUNT_BIT))
+			vm_unacct_memory(pages);
+		vm_area_free(vma);
+		return -ENOMEM;
+	}
+
+	vma_iter_store_new(&vmi, vma);
+	vma_iter_free(&vmi);
+	mm->map_count++;
+	vm_stat_account(mm, flags, pages);
+	return 0;
+}
+
+#endif /* CONFIG_DUP_MMAP_KUNIT_TEST */
+
+#endif /* CONFIG_RUST_DUP_MMAP */

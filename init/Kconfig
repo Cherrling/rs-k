@@ -1296,8 +1296,25 @@ config RUST_COPY_MM
 	  address-space duplication, CLONE_VM sharing decision, and task pointer
 	  publication.
 
-	  Private allocators, architecture context hooks, VMA duplication,
-	  scheduler cache setup, and subsystem constructors remain in C.
+	  Private allocators, architecture context hooks, scheduler cache
+	  setup, and subsystem constructors remain in C. The separate
+	  RUST_DUP_MMAP option selects native Rust VMA-tree duplication.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
+config RUST_DUP_MMAP
+	bool "Rust implementation of VMA-tree duplication"
+	depends on RUST && MMU
+	depends on RUST_COPY_MM
+	default y
+	help
+	  Use Rust for the production VMA-tree duplication path. Rust owns
+	  locking, VMA iteration, per-VMA duplication, failure depth, rollback,
+	  and final success handling.
+
+	  Private VMA allocation, maple-tree primitives, architecture hooks,
+	  reverse mappings, userfaultfd, and page-table copying remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

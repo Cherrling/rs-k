@@ -78,6 +78,8 @@ pub mod dma;
 pub mod driver;
 #[cfg(CONFIG_DRM = "y")]
 pub mod drm;
+#[cfg(CONFIG_RUST_DUP_MMAP)]
+mod dup_mmap;
 #[cfg(CONFIG_RUST_DUP_TASK_STRUCT)]
 mod dup_task_struct;
 pub mod error;

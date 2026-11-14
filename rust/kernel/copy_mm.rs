@@ -360,9 +360,15 @@ unsafe fn duplicate_mm(task: *mut Task, oldmm: *mut Mm) -> *mut Mm {
         record_dup_failure();
         -errno(bindings::ENOMEM)
     } else {
+        #[cfg(CONFIG_RUST_DUP_MMAP)]
+        // SAFETY: Both address spaces are live and the duplicate is private.
+        let error = unsafe { crate::dup_mmap::duplicate(mm, oldmm) };
+        #[cfg(not(CONFIG_RUST_DUP_MMAP))]
         // SAFETY: Both address spaces are live and the task is under
         // construction.
-        unsafe { bindings::rust_helper_copy_mm_dup_mmap(mm, oldmm) }
+        let error = unsafe { bindings::rust_helper_copy_mm_dup_mmap(mm, oldmm) };
+
+        error
     };
     if error != 0 {
         // SAFETY: Initialization completed and no address space was published.

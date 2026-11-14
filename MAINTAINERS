@@ -17474,13 +17474,17 @@ S:	Maintained
 W:	http://www.linux-mm.org
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/akpm/mm
 F:	Documentation/rust/copy-mm.rst
+F:	Documentation/rust/dup-mmap.rst
 F:	Documentation/rust/mm-lifetime.rst
 F:	Documentation/rust/mm-teardown.rst
 F:	include/linux/copy-mm-rust.h
+F:	include/linux/dup-mmap-rust.h
 F:	include/linux/mm-rust.h
 F:	lib/tests/test_copy_mm.c
+F:	lib/tests/test_dup_mmap.c
 F:	lib/tests/test_mm_lifetime.c
 F:	rust/kernel/copy_mm.rs
+F:	rust/kernel/dup_mmap.rs
 F:	rust/helpers/mm.c
 F:	rust/helpers/page.c
 F:	rust/kernel/mm_core.rs
@@ -23990,6 +23994,7 @@ F:	include/linux/completion-rust.h
 F:	include/linux/copy-mm-rust.h
 F:	include/linux/cpupri-rust.h
 F:	include/linux/cpupri.h
+F:	include/linux/dup-mmap-rust.h
 F:	include/linux/dup-task-struct-rust.h
 F:	include/linux/hrtimer-rust.h
 F:	include/linux/itimer-rust.h
@@ -24022,6 +24027,7 @@ F:	include/trace/events/rust_sample.h
 F:	lib/tests/test_complete_signal.c
 F:	lib/tests/test_copy_mm.c
 F:	lib/tests/test_cpupri.c
+F:	lib/tests/test_dup_mmap.c
 F:	lib/tests/test_dup_task_struct.c
 F:	lib/tests/test_hrtimer_core.c
 F:	lib/tests/test_itimer.c
@@ -24056,6 +24062,7 @@ F:	rust/
 F:	samples/rust/
 F:	scripts/*rust*
 F:	tools/testing/selftests/copy_mm/
+F:	tools/testing/selftests/dup_mmap/
 F:	tools/testing/selftests/rust/
 K:	\b(?i:rust)\b
 

@@ -2517,6 +2517,18 @@ config COPY_MM_KUNIT_TEST
 
 	  If unsure, say N.
 
+config DUP_MMAP_KUNIT_TEST
+	bool "KUnit test for VMA-tree duplication" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y && RUST_DUP_MMAP
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit coverage for the native Rust VMA-tree
+	  duplication path. The tests cover a multi-VMA success path,
+	  DONTCOPY and WIPEONFORK handling, and injected failures at every
+	  production failure stage.
+
+	  If unsure, say N.
+
 config DUP_TASK_STRUCT_KUNIT_TEST
 	bool "KUnit test for task structure duplication" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y
