@@ -1333,6 +1333,22 @@ config RUST_VMA_MUNMAP_COMPLETE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_VMA_MUNMAP_GATHER
+	bool "Rust gathering and splitting for aligned VMA unmapping"
+	depends on RUST && MMU
+	depends on RUST_VMA_MUNMAP_COMPLETE
+	default y
+	help
+	  Use Rust for the production VMA gather loop during aligned unmapping.
+	  Rust owns split decisions, VMA iteration, detached-tree insertion
+	  order, accounting accumulation, userfaultfd preparation, and rollback.
+
+	  VMA splitting, maple-tree insertion, per-VMA locking, reverse-map and
+	  page-table operations, and userfaultfd event allocation remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_COPY_MM
 	bool "Rust implementation of address-space copying"
 	depends on RUST && MMU

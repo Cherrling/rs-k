@@ -11,6 +11,7 @@
 #include "vma_internal.h"
 #include "vma.h"
 #include <linux/vma-munmap-complete-rust.h>
+#include <linux/vma-munmap-gather-rust.h>
 #include <linux/vma-unmap-rust.h>
 
 struct rust_vma_munmap_align_state {
@@ -1537,6 +1538,63 @@ static void reattach_vmas(struct ma_state *mas_detach)
  *
  * Return: 0 on success, error otherwise
  */
+#ifdef CONFIG_RUST_VMA_MUNMAP_GATHER
+
+static void init_rust_gather_state(struct rust_vma_munmap_gather_state *state,
+				   struct vma_munmap_struct *vms,
+				   struct ma_state *mas_detach)
+{
+	state->vmi = vms->vmi;
+	state->first = vms->vma;
+	state->prev = vms->prev;
+	state->next = vms->next;
+	state->uf = vms->uf;
+	state->mas_detach = mas_detach;
+	state->start = vms->start;
+	state->end = vms->end;
+	state->unmap_start = vms->unmap_start;
+	state->unmap_end = vms->unmap_end;
+	state->vma_count = vms->vma_count;
+	state->clear_ptes = vms->clear_ptes;
+	state->nr_pages = vms->nr_pages;
+	state->locked_vm = vms->locked_vm;
+	state->nr_accounted = vms->nr_accounted;
+	state->exec_vm = vms->exec_vm;
+	state->stack_vm = vms->stack_vm;
+	state->data_vm = vms->data_vm;
+}
+
+static void copy_rust_gather_state(struct vma_munmap_struct *vms,
+				   const struct rust_vma_munmap_gather_state *state)
+{
+	vms->prev = state->prev;
+	vms->next = state->next;
+	vms->unmap_start = state->unmap_start;
+	vms->unmap_end = state->unmap_end;
+	vms->vma_count = state->vma_count;
+	vms->clear_ptes = state->clear_ptes;
+	vms->nr_pages = state->nr_pages;
+	vms->locked_vm = state->locked_vm;
+	vms->nr_accounted = state->nr_accounted;
+	vms->exec_vm = state->exec_vm;
+	vms->stack_vm = state->stack_vm;
+	vms->data_vm = state->data_vm;
+}
+
+static int vms_gather_munmap_vmas(struct vma_munmap_struct *vms,
+				  struct ma_state *mas_detach)
+{
+	struct rust_vma_munmap_gather_state state;
+	int error;
+
+	init_rust_gather_state(&state, vms, mas_detach);
+	error = rust_vma_munmap_gather(&state);
+	copy_rust_gather_state(vms, &state);
+	return error;
+}
+
+#else
+
 static int vms_gather_munmap_vmas(struct vma_munmap_struct *vms,
 		struct ma_state *mas_detach)
 {
@@ -1674,6 +1732,8 @@ start_split_failed:
 map_count_exceeded:
 	return error;
 }
+
+#endif /* CONFIG_RUST_VMA_MUNMAP_GATHER */
 
 /*
  * init_vma_munmap() - Initializer wrapper for vma_munmap_struct
@@ -1887,6 +1947,163 @@ void rust_helper_vma_munmap_align_validate(struct rust_vma_munmap_align_state *s
 }
 
 #endif /* CONFIG_RUST_VMA_MUNMAP_COMPLETE */
+
+#ifdef CONFIG_RUST_VMA_MUNMAP_GATHER
+
+unsigned long rust_helper_vma_munmap_vma_start(struct vm_area_struct *vma)
+{
+	return vma->vm_start;
+}
+
+unsigned long rust_helper_vma_munmap_vma_end(struct vm_area_struct *vma)
+{
+	return vma->vm_end;
+}
+
+int rust_helper_vma_munmap_map_count(struct vm_area_struct *vma)
+{
+	return vma->vm_mm->map_count;
+}
+
+int rust_helper_vma_munmap_max_map_count(void)
+{
+	return get_sysctl_max_map_count();
+}
+
+bool rust_helper_vma_munmap_vma_is_sealed(struct vm_area_struct *vma)
+{
+	return vma_is_sealed(vma);
+}
+
+int rust_helper_vma_munmap_split(struct vma_iterator *vmi,
+				 struct vm_area_struct *vma,
+				 unsigned long address, bool new_below)
+{
+	return __split_vma(vmi, vma, address, new_below);
+}
+
+struct vm_area_struct *
+rust_helper_vma_munmap_prev(struct vma_iterator *vmi)
+{
+	return vma_prev(vmi);
+}
+
+struct vm_area_struct *
+rust_helper_vma_munmap_find(struct vma_iterator *vmi, unsigned long end)
+{
+	return vma_find(vmi, end);
+}
+
+void rust_helper_vma_munmap_start_write(struct vm_area_struct *vma)
+{
+	vma_start_write(vma);
+}
+
+void rust_helper_vma_munmap_mas_set(struct ma_state *mas_detach, int index)
+{
+	mas_set(mas_detach, index);
+}
+
+int rust_helper_vma_munmap_mas_store(struct ma_state *mas_detach,
+				     struct vm_area_struct *vma)
+{
+	return mas_store_gfp(mas_detach, vma, GFP_KERNEL);
+}
+
+void rust_helper_vma_munmap_mark_detached(struct vm_area_struct *vma)
+{
+	vma_mark_detached(vma);
+}
+
+unsigned long rust_helper_vma_munmap_vma_pages(struct vm_area_struct *vma)
+{
+	return vma_pages(vma);
+}
+
+unsigned int rust_helper_vma_munmap_vma_flags(struct vm_area_struct *vma)
+{
+	unsigned int flags = 0;
+
+	if (vma_test(vma, VMA_LOCKED_BIT))
+		flags |= RUST_VMA_MUNMAP_VMA_LOCKED;
+	if (vma_test(vma, VMA_ACCOUNT_BIT))
+		flags |= RUST_VMA_MUNMAP_VMA_ACCOUNTED;
+	return flags;
+}
+
+enum rust_vma_munmap_account_kind
+rust_helper_vma_munmap_account_kind(struct vm_area_struct *vma)
+{
+	if (is_exec_mapping(vma->vm_flags))
+		return RUST_VMA_MUNMAP_ACCOUNT_EXEC;
+	if (is_stack_mapping(vma->vm_flags))
+		return RUST_VMA_MUNMAP_ACCOUNT_STACK;
+	if (is_data_mapping_vma_flags(&vma->flags))
+		return RUST_VMA_MUNMAP_ACCOUNT_DATA;
+	return RUST_VMA_MUNMAP_ACCOUNT_NONE;
+}
+
+int rust_helper_vma_munmap_userfault_prep(struct vm_area_struct *vma,
+					  unsigned long start,
+					  unsigned long end,
+					  struct list_head *uf)
+{
+	return userfaultfd_unmap_prep(vma, start, end, uf);
+}
+
+struct vm_area_struct *
+rust_helper_vma_munmap_next(struct vma_iterator *vmi)
+{
+	return vma_next(vmi);
+}
+
+void rust_helper_vma_munmap_debug_check_vma(struct vm_area_struct *vma,
+					    unsigned long start,
+					    unsigned long end)
+{
+#ifdef CONFIG_DEBUG_VM_MAPLE_TREE
+	BUG_ON(vma->vm_start < start);
+	BUG_ON(vma->vm_start > end);
+#else
+	(void)vma;
+	(void)start;
+	(void)end;
+#endif
+}
+
+void rust_helper_vma_munmap_debug_gather(struct rust_vma_munmap_gather_state *state)
+{
+#if defined(CONFIG_DEBUG_VM_MAPLE_TREE)
+	MA_STATE(test, state->mas_detach->tree, 0, 0);
+	struct vm_area_struct *vma_mas, *vma_test;
+	int test_count = 0;
+
+	vma_iter_set(state->vmi, state->start);
+	rcu_read_lock();
+	vma_test = mas_find(&test, state->vma_count - 1);
+	for_each_vma_range(*state->vmi, vma_mas, state->end) {
+		BUG_ON(vma_mas != vma_test);
+		test_count++;
+		vma_test = mas_next(&test, state->vma_count - 1);
+	}
+	rcu_read_unlock();
+	BUG_ON(state->vma_count != test_count);
+#else
+	(void)state;
+#endif
+}
+
+unsigned long rust_helper_vma_munmap_iter_addr(struct vma_iterator *vmi)
+{
+	return vma_iter_addr(vmi);
+}
+
+void rust_helper_vma_munmap_iter_prev_range(struct vma_iterator *vmi)
+{
+	vma_iter_prev_range(vmi);
+}
+
+#endif /* CONFIG_RUST_VMA_MUNMAP_GATHER */
 
 #ifdef CONFIG_RUST_VMA_UNMAP
 

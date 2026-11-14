@@ -40,7 +40,7 @@ those layouts beyond the operation lifetime.
 The C boundary contains:
 
 * Opaque state and iterator initialization.
-* VMA splitting and sealed-VMA checks.
+* The per-VMA split primitive and sealed-VMA property.
 * Detached-tree insertion and VMA isolation.
 * Page-table and reverse-map removal.
 * Individual VMA release.
@@ -49,9 +49,8 @@ The C boundary contains:
 * Virtual-memory charge accounting.
 * Address-space validation.
 
-The gather routine still performs its internal failure handling. It calls the
-native Rust reattachment entry for that rollback. A later unit can move the
-gather loop, split decisions, and per-VMA accounting into Rust.
+The gather loop, split decisions, and per-VMA accounting are the separate
+Rust unit described in :doc:`vma-munmap-gather`.
 
 Entry points and ownership
 --------------------------
@@ -72,9 +71,9 @@ iterates the detached tree, marks each VMA attached, and destroys the tree.
 Ordering and invariants
 -----------------------
 
-The gather phase runs before the main tree changes. If it fails, the C gather
-path invokes Rust reattachment and Rust returns the original error after
-address-space validation.
+The gather phase runs before the main tree changes. If it fails, the Rust
+gather path performs reattachment and the aligned entry returns the original
+error after address-space validation.
 
 After a successful gather, Rust snapshots all accounting fields and detached
 tree pointers. If clearing the main tree fails, Rust reattaches the snapshot
@@ -200,7 +199,7 @@ Review conditions
 Reopen a retained C boundary if any of these conditions changes:
 
 * The detached-tree representation becomes safe for Rust to own directly.
-* The gather loop gains Rust-safe split and insertion primitives.
+* The gather loop gains stable Rust split and insertion primitives.
 * The completion state grows fields that require a different synchronization
   contract.
 * Mmap lock downgrade or release semantics change.

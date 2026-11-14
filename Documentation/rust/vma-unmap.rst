@@ -16,8 +16,8 @@ the first-overlap lookup, empty-range lock handling, mmap write locking, and
 the userfaultfd completion order.
 
 The aligned unmap entry point, completion sequence, and rollback loops are the
-separate Rust unit described in :doc:`vma-munmap-complete`. The detached-tree
-gather and partial VMA split remain in C.
+separate Rust unit described in :doc:`vma-munmap-complete`. The gather loop and
+partial-split decisions are described in :doc:`vma-munmap-gather`.
 
 Entry points and ownership
 --------------------------
@@ -56,8 +56,8 @@ The C boundary contains:
 * First-overlap maple-tree lookup.
 * Userfaultfd unmap completion.
 
-``do_vmi_align_munmap()`` still gathers, splits, and detaches VMAs in C. The
-next unit moves its orchestration, completion, and rollback loops to Rust.
+``do_vmi_align_munmap()`` now gathers, splits, detaches, completes, and rolls
+back through Rust. C retains the individual VMA and maple-tree primitives.
 
 Ordering and invariants
 -----------------------
@@ -180,7 +180,7 @@ Review conditions
 
 Reopen a retained C boundary if any of these conditions changes:
 
-* ``do_vmi_align_munmap()`` gains Rust-callable gather and split primitives.
+* ``do_vmi_align_munmap()`` gains a stable Rust-callable split primitive.
 * The detached maple-tree representation becomes safe for Rust to own.
 * The mmap lock release contract changes.
 * The first-overlap lookup changes to another tree or index.

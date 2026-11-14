@@ -235,6 +235,8 @@ pub mod uaccess;
 pub mod usb;
 #[cfg(CONFIG_RUST_VMA_MUNMAP_COMPLETE)]
 mod vma_munmap_complete;
+#[cfg(CONFIG_RUST_VMA_MUNMAP_GATHER)]
+mod vma_munmap_gather;
 #[cfg(CONFIG_RUST_VMA_UNMAP)]
 mod vma_unmap;
 #[cfg(CONFIG_RUST_WAIT_BIT)]

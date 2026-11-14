@@ -60,6 +60,7 @@ more details.
     exit-mmap
     vma-unmap
     vma-munmap-complete
+    vma-munmap-gather
     copy-mm
     dup-mmap
     sched

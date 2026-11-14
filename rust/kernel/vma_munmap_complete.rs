@@ -82,7 +82,7 @@ unsafe fn complete(state: *mut CompleteState) {
 /// # Safety
 ///
 /// The caller must own `mas_detach` and all VMA references in its tree.
-unsafe fn reattach(mas_detach: *mut MapleState) {
+pub(super) unsafe fn reattach(mas_detach: *mut MapleState) {
     // SAFETY: The caller owns the detached tree and its VMA references.
     unsafe {
         bindings::rust_helper_vma_munmap_mas_reset(mas_detach);
