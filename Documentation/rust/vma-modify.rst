@@ -42,11 +42,12 @@ The C boundary contains:
 * Existing-range merge entry.
 * Linux error-pointer construction.
 * The OOM backup invariant warning.
-* The individual ``split_vma()`` operation.
+* The ``split_vma()`` adapter.
 
 The caller continues to hold the mmap write lock. C owns VMA allocation,
 policy and anonymous-VMA cloning, locking, structural completion, maple-tree
-updates, and debug invariants reached by the merge and split operations.
+updates, and debug invariants reached by the merge and split operations. The
+split orchestration itself is Rust-owned through ``CONFIG_RUST_VMA_SPLIT``.
 
 Entry points and ownership
 --------------------------
@@ -192,7 +193,6 @@ Reopen a retained C boundary if any of these conditions changes:
 
 * Rust gains sound mmap-lock and VMA field access.
 * The existing-range merge entry becomes a Rust-native internal function.
-* VMA splitting becomes a Rust-native operation.
 * Linux error-pointer construction gains a safe Rust abstraction.
 * The give-up-on-OOM contract changes.
 * The public modification constructors move to Rust.

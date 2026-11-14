@@ -17485,6 +17485,7 @@ F:	Documentation/rust/vma-merge-new-range.rst
 F:	Documentation/rust/vma-modify.rst
 F:	Documentation/rust/vma-munmap-complete.rst
 F:	Documentation/rust/vma-munmap-gather.rst
+F:	Documentation/rust/vma-split.rst
 F:	Documentation/rust/vma-unmap.rst
 F:	include/linux/copy-mm-rust.h
 F:	include/linux/dup-mmap-rust.h
@@ -17497,6 +17498,7 @@ F:	include/linux/vma-merge-new-range-rust.h
 F:	include/linux/vma-modify-rust.h
 F:	include/linux/vma-munmap-complete-rust.h
 F:	include/linux/vma-munmap-gather-rust.h
+F:	include/linux/vma-split-rust.h
 F:	include/linux/vma-unmap-rust.h
 F:	lib/tests/test_copy_mm.c
 F:	lib/tests/test_dup_mmap.c
@@ -17520,6 +17522,7 @@ F:	rust/kernel/vma_merge_new_range.rs
 F:	rust/kernel/vma_modify.rs
 F:	rust/kernel/vma_munmap_complete.rs
 F:	rust/kernel/vma_munmap_gather.rs
+F:	rust/kernel/vma_split.rs
 F:	rust/kernel/vma_unmap.rs
 F:	tools/testing/selftests/vma_merge/
 
@@ -24059,6 +24062,7 @@ F:	include/linux/vma-merge-new-range-rust.h
 F:	include/linux/vma-modify-rust.h
 F:	include/linux/vma-munmap-complete-rust.h
 F:	include/linux/vma-munmap-gather-rust.h
+F:	include/linux/vma-split-rust.h
 F:	include/linux/vma-unmap-rust.h
 F:	include/linux/wait-bit-rust.h
 F:	include/linux/wait-rust.h

@@ -57,7 +57,8 @@ The C boundary contains:
 * Userfaultfd unmap completion.
 
 ``do_vmi_align_munmap()`` now gathers, splits, detaches, completes, and rolls
-back through Rust. C retains the individual VMA and maple-tree primitives.
+back through Rust. Split orchestration is described in :doc:`vma-split`. C
+retains the individual VMA and maple-tree primitives.
 
 Ordering and invariants
 -----------------------
@@ -180,7 +181,6 @@ Review conditions
 
 Reopen a retained C boundary if any of these conditions changes:
 
-* ``do_vmi_align_munmap()`` gains a stable Rust-callable split primitive.
 * The detached maple-tree representation becomes safe for Rust to own.
 * The mmap lock release contract changes.
 * The first-overlap lookup changes to another tree or index.

@@ -40,7 +40,7 @@ those layouts beyond the operation lifetime.
 The C boundary contains:
 
 * Opaque state and iterator initialization.
-* The per-VMA split primitive and sealed-VMA property.
+* The sealed-VMA property.
 * Detached-tree insertion and VMA isolation.
 * Page-table and reverse-map removal.
 * Individual VMA release.
@@ -50,7 +50,8 @@ The C boundary contains:
 * Address-space validation.
 
 The gather loop, split decisions, and per-VMA accounting are the separate
-Rust unit described in :doc:`vma-munmap-gather`.
+Rust unit described in :doc:`vma-munmap-gather`. The split operation itself
+is described in :doc:`vma-split`.
 
 Entry points and ownership
 --------------------------
@@ -199,7 +200,6 @@ Review conditions
 Reopen a retained C boundary if any of these conditions changes:
 
 * The detached-tree representation becomes safe for Rust to own directly.
-* The gather loop gains stable Rust split and insertion primitives.
 * The completion state grows fields that require a different synchronization
   contract.
 * Mmap lock downgrade or release semantics change.

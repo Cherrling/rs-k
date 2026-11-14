@@ -40,7 +40,7 @@ The C boundary contains:
 * VMA start and end access.
 * Address-space map-count access.
 * The sealed-VMA property.
-* ``__split_vma()``.
+* The ``__split_vma()`` adapter.
 * VMA iterator search, previous, next, and rewind primitives.
 * Per-VMA write locking.
 * Detached maple-tree insertion and VMA isolation.
@@ -52,6 +52,9 @@ The C boundary contains:
 The original debug build contains deliberate ``BUG_ON()`` checks for
 corrupted VMA ranges and mismatched tree contents. The Rust path calls one
 debug-only C helper to retain those checks.
+
+The split operation called by this loop is a separate Rust unit. Its ownership
+and rollback contract are described in :doc:`vma-split`.
 
 Entry points and ownership
 --------------------------
@@ -189,8 +192,6 @@ Review conditions
 Reopen a retained C boundary if any of these conditions changes:
 
 * The maple-tree representation becomes safe for Rust to own directly.
-* VMA splitting gains a stable Rust interface with the same rollback
-  contract.
 * Map-count or sealed-VMA policy moves to another layer.
 * Userfaultfd unmap preparation changes its allocation or ordering contract.
 * Debug tree validation stops being a deliberate fatal invariant.

@@ -16,6 +16,7 @@
 #include <linux/vma-modify-rust.h>
 #include <linux/vma-munmap-complete-rust.h>
 #include <linux/vma-munmap-gather-rust.h>
+#include <linux/vma-split-rust.h>
 #include <linux/vma-unmap-rust.h>
 
 struct rust_vma_munmap_align_state {
@@ -750,6 +751,14 @@ void unmap_region(struct unmap_desc *unmap)
  * has already been checked or doesn't make sense to fail.
  * VMA Iterator will point to the original VMA.
  */
+#ifdef CONFIG_RUST_VMA_SPLIT
+static __must_check int
+__split_vma(struct vma_iterator *vmi, struct vm_area_struct *vma,
+	    unsigned long addr, int new_below)
+{
+	return rust_vma_split(vmi, vma, addr, new_below, false);
+}
+#else
 static __must_check int
 __split_vma(struct vma_iterator *vmi, struct vm_area_struct *vma,
 	    unsigned long addr, int new_below)
@@ -839,11 +848,19 @@ out_free_vma:
 	vm_area_free(new);
 	return err;
 }
+#endif /* CONFIG_RUST_VMA_SPLIT */
 
 /*
  * Split a vma into two pieces at address 'addr', a new vma is allocated
  * either for the first part or the tail.
  */
+#ifdef CONFIG_RUST_VMA_SPLIT
+int split_vma(struct vma_iterator *vmi, struct vm_area_struct *vma,
+	      unsigned long addr, int new_below)
+{
+	return rust_vma_split(vmi, vma, addr, new_below, true);
+}
+#else
 int split_vma(struct vma_iterator *vmi, struct vm_area_struct *vma,
 	      unsigned long addr, int new_below)
 {
@@ -852,6 +869,190 @@ int split_vma(struct vma_iterator *vmi, struct vm_area_struct *vma,
 
 	return __split_vma(vmi, vma, addr, new_below);
 }
+#endif /* CONFIG_RUST_VMA_SPLIT */
+
+#ifdef CONFIG_RUST_VMA_SPLIT
+
+int rust_helper_vma_split_map_count(struct vm_area_struct *vma)
+{
+	return vma->vm_mm->map_count;
+}
+
+int rust_helper_vma_split_max_map_count(void)
+{
+	return get_sysctl_max_map_count();
+}
+
+void rust_helper_vma_split_warn_on_invalid(struct vm_area_struct *vma,
+					   unsigned long addr)
+{
+	WARN_ON(vma->vm_start >= addr);
+	WARN_ON(vma->vm_end <= addr);
+}
+
+bool rust_helper_vma_split_has_may_split(struct vm_area_struct *vma)
+{
+	return vma->vm_ops && vma->vm_ops->may_split;
+}
+
+int rust_helper_vma_split_may_split(struct vm_area_struct *vma,
+				    unsigned long addr)
+{
+	return vma->vm_ops->may_split(vma, addr);
+}
+
+struct vm_area_struct *
+rust_helper_vma_split_dup(struct vm_area_struct *vma)
+{
+	return vm_area_dup(vma);
+}
+
+void rust_helper_vma_split_free(struct vm_area_struct *vma)
+{
+	vm_area_free(vma);
+}
+
+unsigned long rust_helper_vma_split_vma_start(struct vm_area_struct *vma)
+{
+	return vma->vm_start;
+}
+
+unsigned long rust_helper_vma_split_vma_end(struct vm_area_struct *vma)
+{
+	return vma->vm_end;
+}
+
+void rust_helper_vma_split_set_start(struct vm_area_struct *vma,
+				     unsigned long start)
+{
+	vma->vm_start = start;
+}
+
+void rust_helper_vma_split_set_end(struct vm_area_struct *vma,
+				   unsigned long end)
+{
+	vma->vm_end = end;
+}
+
+void rust_helper_vma_split_add_pgoff(struct vm_area_struct *target,
+				     struct vm_area_struct *source,
+				     unsigned long addr)
+{
+	vma_add_pgoff(target, linear_page_delta(source, addr));
+}
+
+void rust_helper_vma_split_iter_config(struct vma_iterator *vmi,
+				       unsigned long start, unsigned long end)
+{
+	vma_iter_config(vmi, start, end);
+}
+
+int rust_helper_vma_split_iter_prealloc(struct vma_iterator *vmi,
+					struct vm_area_struct *vma)
+{
+	return vma_iter_prealloc(vmi, vma);
+}
+
+void rust_helper_vma_split_iter_free(struct vma_iterator *vmi)
+{
+	vma_iter_free(vmi);
+}
+
+int rust_helper_vma_split_dup_policy(struct vm_area_struct *src,
+				     struct vm_area_struct *dst)
+{
+	return vma_dup_policy(src, dst);
+}
+
+int rust_helper_vma_split_anon_clone(struct vm_area_struct *dst,
+				     struct vm_area_struct *src)
+{
+	return anon_vma_clone(dst, src, VMA_OP_SPLIT);
+}
+
+void rust_helper_vma_split_policy_put(struct vm_area_struct *vma)
+{
+	mpol_put(vma_policy(vma));
+}
+
+bool rust_helper_vma_split_has_file(struct vm_area_struct *vma)
+{
+	return vma->vm_file;
+}
+
+void rust_helper_vma_split_get_file(struct vm_area_struct *vma)
+{
+	get_file(vma->vm_file);
+}
+
+bool rust_helper_vma_split_has_open(struct vm_area_struct *vma)
+{
+	return vma->vm_ops && vma->vm_ops->open;
+}
+
+void rust_helper_vma_split_open(struct vm_area_struct *vma)
+{
+	vma->vm_ops->open(vma);
+}
+
+void rust_helper_vma_split_start_write(struct vm_area_struct *vma)
+{
+	vma_start_write(vma);
+}
+
+void rust_helper_vma_split_init_prepare(struct vma_prepare *vp,
+					struct vm_area_struct *vma,
+					struct vm_area_struct *insert)
+{
+	init_vma_prep(vp, vma);
+	vp->insert = insert;
+}
+
+void rust_helper_vma_split_prepare(struct vma_prepare *vp)
+{
+	vma_prepare(vp);
+}
+
+void rust_helper_vma_split_adjust_trans_huge(struct vm_area_struct *vma,
+					     unsigned long addr)
+{
+	vma_adjust_trans_huge(vma, vma->vm_start, addr, NULL);
+}
+
+bool rust_helper_vma_split_is_hugetlb(struct vm_area_struct *vma)
+{
+	return is_vm_hugetlb_page(vma);
+}
+
+void rust_helper_vma_split_hugetlb(struct vm_area_struct *vma,
+				   unsigned long addr)
+{
+	hugetlb_split(vma, addr);
+}
+
+void rust_helper_vma_split_complete(struct vma_prepare *vp,
+				    struct vma_iterator *vmi,
+				    struct vm_area_struct *vma)
+{
+	vma_complete(vp, vmi, vma->vm_mm);
+}
+
+void rust_helper_vma_split_validate_mm(struct vm_area_struct *vma)
+{
+	validate_mm(vma->vm_mm);
+}
+
+void rust_helper_vma_split_next(struct vma_iterator *vmi)
+{
+	vma_next(vmi);
+}
+
+void rust_helper_vma_split_prev(struct vma_iterator *vmi)
+{
+	vma_prev(vmi);
+}
+
+#endif /* CONFIG_RUST_VMA_SPLIT */
 
 /*
  * dup_anon_vma() - Helper function to duplicate anon_vma on VMA merge in the

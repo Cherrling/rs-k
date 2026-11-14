@@ -1312,8 +1312,10 @@ config RUST_VMA_UNMAP
 	  validation, page alignment, first-overlap lookup, empty-range lock
 	  handling, mmap write locking, and userfaultfd completion ordering.
 
-	  Detached-tree gathering, partial VMA splitting, rollback, and munmap
-	  completion remain in C.
+	  Partial VMA splitting, detached-tree gathering, rollback, and munmap
+	  completion use separate Rust implementations when their options are
+	  enabled. Individual VMA, maple-tree, lock, and page-table primitives
+	  remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -1327,7 +1329,8 @@ config RUST_VMA_MUNMAP_COMPLETE
 	  Use Rust for aligned unmapping orchestration, address-space
 	  accounting, detached-VMA cleanup, and rollback.
 
-	  VMA splitting, detached-tree insertion, page-table and reverse-map
+	  Split decisions use the separate Rust VMA gather implementation.
+	  Individual split, detached-tree insertion, page-table and reverse-map
 	  removal, maple-tree operations, and lock primitives remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
@@ -1343,8 +1346,10 @@ config RUST_VMA_MUNMAP_GATHER
 	  Rust owns split decisions, VMA iteration, detached-tree insertion
 	  order, accounting accumulation, userfaultfd preparation, and rollback.
 
-	  VMA splitting, maple-tree insertion, per-VMA locking, reverse-map and
-	  page-table operations, and userfaultfd event allocation remain in C.
+	  The split operation uses the separate Rust VMA split implementation.
+	  Individual VMA allocation, callbacks, maple-tree operations, per-VMA
+	  locking, reverse-map and page-table operations, and userfaultfd event
+	  allocation remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -1422,7 +1427,25 @@ config RUST_VMA_MODIFY
 	  invariant, leading and trailing split order, and result selection.
 
 	  Merge-state and VMA field access, error pointers, warnings, the
-	  existing merge entry, and individual VMA split operations remain in C.
+	  existing merge entry, and the split adapter remain in C. The split
+	  orchestration is Rust-owned when CONFIG_RUST_VMA_SPLIT is enabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
+config RUST_VMA_SPLIT
+	bool "Rust orchestration for splitting VMAs"
+	depends on RUST && MMU
+	default y
+	help
+	  Use Rust for the production split_vma() and __split_vma() paths.
+	  Rust owns the map-count limit, split validation, allocation ordering,
+	  rollback ordering, huge-page boundary handling, range updates,
+	  structural completion, and iterator repositioning.
+
+	  Individual VMA field accesses, callbacks, allocation and policy
+	  primitives, file and open handling, locking, hugetlb handling, and
+	  debug invariants remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

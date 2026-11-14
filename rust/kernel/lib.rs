@@ -247,6 +247,8 @@ mod vma_modify;
 mod vma_munmap_complete;
 #[cfg(CONFIG_RUST_VMA_MUNMAP_GATHER)]
 mod vma_munmap_gather;
+#[cfg(CONFIG_RUST_VMA_SPLIT)]
+mod vma_split;
 #[cfg(CONFIG_RUST_VMA_UNMAP)]
 mod vma_unmap;
 #[cfg(CONFIG_RUST_WAIT_BIT)]
