@@ -50,7 +50,9 @@ The following operations remain in C:
 * Intrusive ``sigqueue`` list traversal.
 * ``collect_signal()`` queue matching, removal, siginfo copy, and release.
 * Synchronous queue removal, siginfo copy, and release.
-* Pending-state recalculation.
+* The pending-state recalculation adapter. When
+  ``CONFIG_RUST_SIGNAL_PENDING_RECALC`` is enabled, this adapter calls the
+  native Rust recalculation state machine.
 * POSIX timer rearm and delivery primitives.
 * Signal classification helpers.
 * The signal-handler lock assertion and public ABI adapters.

@@ -44,6 +44,7 @@ more details.
     send-signal
     prepare-signal
     signal-dequeue
+    signal-pending-recalc
     signal-retarget
     signal-wake-select
     signal-wake-state

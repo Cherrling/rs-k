@@ -1440,9 +1440,26 @@ config RUST_SIGNAL_DEQUEUE
 	  priority, synchronous signal dequeue, stop-dequeued tracking, and
 	  POSIX timer retry.
 
-	  Intrusive queue traversal, siginfo collection and release, pending
-	  state recalculation, timer operations, and public ABI adapters remain
-	  in C.
+	  Intrusive queue traversal, siginfo collection and release, timer
+	  operations, the pending-state recalculation adapter, and public ABI
+	  adapters remain in C. With CONFIG_RUST_SIGNAL_PENDING_RECALC enabled,
+	  the recalculation adapter calls the native Rust state machine.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
+config RUST_SIGNAL_PENDING_RECALC
+	bool "Rust implementation of pending-signal recalculation"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production pending-signal recalculation state
+	  machine. Rust owns the job-control, local pending, shared pending,
+	  blocked, cgroup-frozen, and freezer checks that set or clear
+	  TIF_SIGPENDING.
+
+	  Thread-flag operations, cgroup freeze queries, and freezer state
+	  queries remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
