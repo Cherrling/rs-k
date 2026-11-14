@@ -31,6 +31,7 @@
 #include <linux/syscalls.h>
 #include <linux/ptrace.h>
 #include <linux/signal.h>
+#include <linux/signal-retarget-rust.h>
 #include <linux/signalfd.h>
 #include <linux/ratelimit.h>
 #include <linux/task_work.h>
@@ -3167,6 +3168,9 @@ void signal_setup_done(int failed, struct ksignal *ksig, int stepping)
  */
 static void retarget_shared_pending(struct task_struct *tsk, sigset_t *which)
 {
+#ifdef CONFIG_RUST_SIGNAL_RETARGET
+	rust_signal_retarget_pending(tsk, which);
+#else
 	sigset_t retarget;
 	struct task_struct *t;
 
@@ -3193,7 +3197,17 @@ static void retarget_shared_pending(struct task_struct *tsk, sigset_t *which)
 		if (sigisemptyset(&retarget))
 			break;
 	}
+#endif /* !CONFIG_RUST_SIGNAL_RETARGET */
 }
+
+#ifdef CONFIG_SIGNAL_RETARGET_KUNIT_TEST
+void signal_retarget_test_call(struct task_struct *tsk, sigset_t *which)
+{
+	spin_lock_irq(&tsk->sighand->siglock);
+	retarget_shared_pending(tsk, which);
+	spin_unlock_irq(&tsk->sighand->siglock);
+}
+#endif
 
 void exit_signals(struct task_struct *tsk)
 {

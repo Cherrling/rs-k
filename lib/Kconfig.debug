@@ -2545,6 +2545,21 @@ config TASK_GROUP_EXIT_SYNC_KUNIT_TEST
 
 	  If unsure, say N.
 
+config SIGNAL_RETARGET_KUNIT_TEST
+	bool "KUnit test for shared pending signal retargeting" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for shared pending signal
+	  retargeting. The test creates a real shared thread group and calls
+	  the production retarget path under the signal-handler lock.
+
+	  The behavior cases run with either the C implementation or the
+	  native Rust implementation selected. The policy counters run only
+	  with the native Rust implementation.
+
+	  If unsure, say N.
+
 config TASK_EXIT_NOTIFY_KUNIT_TEST
 	bool "KUnit test for task exit parent notification" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

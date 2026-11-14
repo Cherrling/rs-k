@@ -180,6 +180,8 @@ mod semaphore_core;
 pub mod seq_file;
 #[cfg(CONFIG_RUST_SERIAL_DEV_BUS_ABSTRACTIONS)]
 pub mod serdev;
+#[cfg(CONFIG_RUST_SIGNAL_RETARGET)]
+mod signal_retarget;
 pub mod sizes;
 #[cfg(CONFIG_SOC_BUS)]
 pub mod soc;

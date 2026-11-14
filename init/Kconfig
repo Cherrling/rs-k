@@ -1332,6 +1332,22 @@ config RUST_TASK_GROUP_EXIT_SYNC
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SIGNAL_RETARGET
+	bool "Rust implementation of shared pending signal retargeting"
+	depends on RUST
+	default y
+	help
+	  Use Rust for production shared pending signal retargeting during
+	  thread exit. Rust owns signal-set intersection, thread-group
+	  traversal, exit-state filtering, target selection, wakeup decisions,
+	  and early completion.
+
+	  Thread traversal, pending-state inspection, and signal wakeup
+	  primitives remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_EXIT_NOTIFY
 	bool "Rust implementation of task exit parent notification"
 	depends on RUST && RUST_TASK_RELEASE

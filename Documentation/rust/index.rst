@@ -40,6 +40,7 @@ more details.
     task-teardown
     task-release
     task-group-exit-sync
+    signal-retarget
     task-exit-notify
     pid-allocation
     pid-association

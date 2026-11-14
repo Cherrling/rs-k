@@ -106,6 +106,7 @@
 #include <linux/security.h>
 #include <linux/semaphore-rust.h>
 #include <linux/serdev.h>
+#include <linux/signal-retarget-rust.h>
 #include <linux/slab.h>
 #include <linux/swait-rust.h>
 #include <linux/sys_soc.h>

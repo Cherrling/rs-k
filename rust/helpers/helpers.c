@@ -100,6 +100,7 @@
 #include "security.c"
 #include "serdev.c"
 #include "signal.c"
+#include "signal_retarget.c"
 #include "slab.c"
 #include "spinlock.c"
 #include "string.c"
