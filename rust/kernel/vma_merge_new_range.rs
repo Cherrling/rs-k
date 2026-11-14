@@ -3,15 +3,66 @@
 //! Native orchestration for merging a proposed VMA range.
 //!
 //! Rust owns merge scenario selection, range and target adjustment, iterator
-//! repositioning, and the success state transition. C retains VMA
-//! compatibility predicates, structural expansion, reverse-map updates, and
-//! khugepaged integration.
+//! repositioning, and the success state transition. The compatibility module
+//! owns left and right merge eligibility. C retains structural expansion,
+//! reverse-map updates, and khugepaged integration.
 
 use crate::bindings;
 use macros::export;
 
+#[cfg(CONFIG_RUST_VMA_MERGE_COMPAT)]
+use crate::vma_merge_compat;
+
 type MergeState = bindings::rust_vma_merge_new_range_state;
 type Vma = bindings::vm_area_struct;
+
+/// Tests left-neighbor compatibility with the native Rust policy.
+///
+/// # Safety
+///
+/// `vmg` must describe a live merge operation under the mmap write lock.
+#[cfg(CONFIG_RUST_VMA_MERGE_COMPAT)]
+unsafe fn can_merge_left(vmg: *mut bindings::vma_merge_struct) -> bool {
+    // SAFETY: The caller holds the mmap write lock and supplied live merge
+    // state to the new-range entry.
+    unsafe { vma_merge_compat::can_merge_left(vmg) }
+}
+
+/// Tests left-neighbor compatibility with the C fallback policy.
+///
+/// # Safety
+///
+/// `vmg` must describe a live merge operation under the mmap write lock.
+#[cfg(not(CONFIG_RUST_VMA_MERGE_COMPAT))]
+unsafe fn can_merge_left(vmg: *mut bindings::vma_merge_struct) -> bool {
+    // SAFETY: The caller holds the mmap write lock and supplied live merge
+    // state to the new-range entry.
+    unsafe { bindings::rust_helper_vma_merge_new_range_can_merge_left(vmg) }
+}
+
+/// Tests right-neighbor compatibility with the native Rust policy.
+///
+/// # Safety
+///
+/// `vmg` must describe a live merge operation under the mmap write lock.
+#[cfg(CONFIG_RUST_VMA_MERGE_COMPAT)]
+unsafe fn can_merge_right(vmg: *mut bindings::vma_merge_struct, can_merge_left: bool) -> bool {
+    // SAFETY: The caller holds the mmap write lock and supplied live merge
+    // state to the new-range entry.
+    unsafe { vma_merge_compat::can_merge_right(vmg, can_merge_left) }
+}
+
+/// Tests right-neighbor compatibility with the C fallback policy.
+///
+/// # Safety
+///
+/// `vmg` must describe a live merge operation under the mmap write lock.
+#[cfg(not(CONFIG_RUST_VMA_MERGE_COMPAT))]
+unsafe fn can_merge_right(vmg: *mut bindings::vma_merge_struct, can_merge_left: bool) -> bool {
+    // SAFETY: The caller holds the mmap write lock and supplied live merge
+    // state to the new-range entry.
+    unsafe { bindings::rust_helper_vma_merge_new_range_can_merge_right(vmg, can_merge_left) }
+}
 
 /// Attempts to merge a proposed new VMA range into an adjacent VMA.
 ///
@@ -38,9 +89,8 @@ unsafe fn merge_new_range(state: *mut MergeState) -> *mut Vma {
             return core::ptr::null_mut();
         }
 
-        let can_merge_left = bindings::rust_helper_vma_merge_new_range_can_merge_left(vmg);
-        let can_merge_right = !state.just_expand
-            && bindings::rust_helper_vma_merge_new_range_can_merge_right(vmg, can_merge_left);
+        let can_merge_left = can_merge_left(vmg);
+        let can_merge_right = !state.just_expand && can_merge_right(vmg, can_merge_left);
 
         if can_merge_right {
             bindings::rust_helper_vma_merge_new_range_set_end(

@@ -4,19 +4,21 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <linux/prctl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/io.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
+#include <sys/prctl.h>
 #include <sys/reboot.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
-#define CARVEOUT_PAGES	80
+#define CARVEOUT_PAGES	128
 #define QEMU_EXIT_PORT	0xf4
 #define QEMU_EXIT_SUCCESS	0x10
 #define QEMU_EXIT_FAILURE	0x11
@@ -139,6 +141,33 @@ static void *map_fixed(void *address, size_t length, int protection)
 		    -1, 0);
 }
 
+static void *map_file_fixed(void *address, size_t length, int fd,
+			    off_t offset)
+{
+	return mmap(address, length, PROT_READ | PROT_WRITE,
+		    MAP_SHARED | MAP_FIXED, fd, offset);
+}
+
+static int create_memfd(size_t size)
+{
+	int fd = memfd_create("vma-merge", 0);
+
+	if (fd < 0)
+		return -1;
+	if (ftruncate(fd, size)) {
+		close(fd);
+		return -1;
+	}
+	return fd;
+}
+
+static int name_vma(void *address, size_t length, const char *name)
+{
+	return prctl(PR_SET_VMA, PR_SET_VMA_ANON_NAME,
+		     (unsigned long)address, (unsigned long)length,
+		     (unsigned long)name);
+}
+
 static int test_new_range_merges(unsigned char *carveout)
 {
 	const size_t length = 5 * page_size;
@@ -202,6 +231,113 @@ static int test_incompatible_ranges(unsigned char *carveout)
 
 fail:
 	fprintf(stderr, "VMA_MERGE fixed mapping failed: %s\n", strerror(errno));
+	return 1;
+}
+
+static int test_file_mappings(unsigned char *carveout)
+{
+	const size_t length = 4 * page_size;
+	unsigned char *contiguous = carveout + 72 * page_size;
+	unsigned char *disjoint = contiguous + length;
+	unsigned char *identity = contiguous + 3 * length;
+	unsigned char *identity_second = identity + length;
+	int first_fd = -1;
+	int second_fd = -1;
+	int result = 1;
+
+	first_fd = create_memfd(32 * page_size);
+	second_fd = create_memfd(32 * page_size);
+	if (first_fd < 0 || second_fd < 0)
+		goto fail;
+
+	if (map_file_fixed(contiguous, length, first_fd, 0) != contiguous)
+		goto fail;
+	if (map_file_fixed(contiguous + length, length, first_fd,
+			   (off_t)length) != contiguous + length)
+		goto fail;
+	if (expect_one_vma((unsigned long)contiguous,
+			   (unsigned long)(contiguous + 2 * length),
+			   "contiguous file offsets"))
+		goto out;
+
+	if (map_file_fixed(disjoint, length, first_fd,
+			   (off_t)(12 * page_size)) != disjoint)
+		goto fail;
+	if (expect_two_vmas((unsigned long)contiguous,
+			    (unsigned long)disjoint,
+			    (unsigned long)(disjoint + length),
+			    "disjoint file offsets"))
+		goto out;
+
+	if (map_file_fixed(identity, length, first_fd, 0) != identity)
+		goto fail;
+	if (map_file_fixed(identity_second, length, second_fd,
+			   (off_t)length) != identity_second)
+		goto fail;
+	if (expect_two_vmas((unsigned long)identity,
+			    (unsigned long)identity_second,
+			    (unsigned long)(identity_second + length),
+			    "different files"))
+		goto out;
+
+	result = 0;
+	goto out;
+
+fail:
+	fprintf(stderr, "VMA_MERGE file mapping failed: %s\n", strerror(errno));
+out:
+	if (first_fd >= 0)
+		close(first_fd);
+	if (second_fd >= 0)
+		close(second_fd);
+	return result;
+}
+
+static int test_anon_names(unsigned char *carveout)
+{
+	const size_t length = 4 * page_size;
+	unsigned char *same_first = carveout + 92 * page_size;
+	unsigned char *same_second = same_first + length;
+	unsigned char *different_first = carveout + 100 * page_size;
+	unsigned char *different_second = different_first + length;
+
+	if (map_fixed(same_first, length, PROT_READ | PROT_WRITE) != same_first)
+		goto fail;
+	if (name_vma(same_first, length, "shared")) {
+		if (errno == EINVAL)
+			return 0;
+		goto fail;
+	}
+	if (map_fixed(same_second, length, PROT_READ) != same_second)
+		goto fail;
+	if (name_vma(same_second, length, "shared"))
+		goto fail;
+	if (mprotect(same_second, length, PROT_READ | PROT_WRITE))
+		goto fail;
+	if (expect_one_vma((unsigned long)same_first,
+			   (unsigned long)(same_second + length),
+			   "same anonymous name"))
+		return 1;
+
+	if (map_fixed(different_first, length,
+		      PROT_READ | PROT_WRITE) != different_first)
+		goto fail;
+	if (name_vma(different_first, length, "left"))
+		goto fail;
+	if (map_fixed(different_second, length, PROT_READ) != different_second)
+		goto fail;
+	if (name_vma(different_second, length, "right"))
+		goto fail;
+	if (mprotect(different_second, length, PROT_READ | PROT_WRITE))
+		goto fail;
+	return expect_two_vmas((unsigned long)different_first,
+			       (unsigned long)different_second,
+			       (unsigned long)(different_second + length),
+			       "different anonymous names");
+
+fail:
+	fprintf(stderr, "VMA_MERGE anonymous name failed: %s\n",
+		strerror(errno));
 	return 1;
 }
 
@@ -288,11 +424,12 @@ int main(void)
 
 	if (test_new_range_merges(carveout) ||
 	    test_incompatible_ranges(carveout) ||
+	    test_file_mappings(carveout) ||
+	    test_anon_names(carveout) ||
 	    test_forked_target(carveout) ||
 	    test_brk_expand())
 		goto out;
 
-	printf("vma_merge userspace: PASS\n");
 	result = 0;
 out:
 	report_result(!result);

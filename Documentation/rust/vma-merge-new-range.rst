@@ -14,8 +14,8 @@ This path is shared by ``mmap()``, ``brk`` expansion, ``mprotect()``, and
 ``mremap()``. Rust owns these decisions:
 
 1. Whether a special VMA or absent neighbors make the range unmergeable.
-2. Whether the proposed range can merge with the previous VMA.
-3. Whether the proposed range can merge with the next VMA.
+2. When to request the native Rust left-neighbor compatibility decision.
+3. When to request the native Rust right-neighbor compatibility decision.
 4. Whether a two-sided merge can remove the next VMA.
 5. How the proposed range, target VMA, page offsets, and iterator change.
 6. Whether the final structural expansion succeeded.
@@ -30,12 +30,15 @@ when each operation runs.
 The C boundary contains:
 
 * Special-flag detection.
-* Left and right VMA compatibility predicates.
 * VMA start, end, page-offset, and nestability access.
 * Structural VMA expansion.
 * Reverse-map, anonymous-VMA, uprobe, and lock updates reached by expansion.
 * khugepaged registration.
 * Debug write-lock and merge-state validation.
+
+When ``CONFIG_RUST_VMA_MERGE_COMPAT`` is enabled, Rust owns left and right
+compatibility policy as described in :doc:`vma-merge-compat`. The original C
+compatibility functions remain the fallback when that option is disabled.
 
 Entry points and ownership
 --------------------------
@@ -43,6 +46,9 @@ Entry points and ownership
 The C ``vma_merge_new_range()`` wrapper snapshots the merge state and calls
 ``rust_vma_merge_new_range()``. The Rust entry updates the shared merge state
 in place and returns the expanded target VMA or a null pointer.
+
+The Rust entry calls the compatibility module directly in the production
+configuration. It does not enter C to make a compatibility decision.
 
 On success, Rust returns the target after structural expansion and khugepaged
 registration. On failure, Rust returns a null pointer and leaves the
@@ -80,6 +86,9 @@ The userspace suite exercises:
 * A new range merging with both neighbors and removing the right VMA.
 * Incompatible protections blocking a merge.
 * A forked target VMA blocking a merge through the anonymous-VMA rule.
+* Contiguous and non-contiguous file page offsets.
+* Different file objects.
+* Equal and different anonymous-VMA names.
 * ``brk`` expansion through the expand-only path.
 
 The suite uses ``/proc/self/maps`` to verify VMA boundaries. The existing

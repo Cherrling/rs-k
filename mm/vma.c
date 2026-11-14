@@ -10,6 +10,7 @@
  */
 #include "vma_internal.h"
 #include "vma.h"
+#include <linux/vma-merge-compat-rust.h>
 #include <linux/vma-merge-new-range-rust.h>
 #include <linux/vma-munmap-complete-rust.h>
 #include <linux/vma-munmap-gather-rust.h>
@@ -103,6 +104,8 @@ static void vma_set_range(struct vm_area_struct *vma, unsigned long start,
 	vma_set_anon_pgoff(vma, anon_pgoff);
 }
 
+#ifndef CONFIG_RUST_VMA_MERGE_COMPAT
+
 /* Was this VMA ever forked from a parent, i.e. maybe contains CoW mappings? */
 static bool vma_is_fork_child(struct vm_area_struct *vma)
 {
@@ -168,6 +171,8 @@ static bool is_mergeable_anon_vma(struct vma_merge_struct *vmg, bool merge_next)
 	return src_anon == tgt_anon;
 }
 
+#endif /* CONFIG_RUST_VMA_MERGE_COMPAT */
+
 /*
  * init_multi_vma_prep() - Initializer for struct vma_prepare
  * @vp: The vma_prepare struct
@@ -214,6 +219,8 @@ static void init_multi_vma_prep(struct vma_prepare *vp,
 	if (vmg && vmg->skip_vma_uprobe)
 		vp->skip_vma_uprobe = true;
 }
+
+#ifndef CONFIG_RUST_VMA_MERGE_COMPAT
 
 /*
  * Does this merge require that adjacent VMAs must have adjacent anonymous page
@@ -283,6 +290,8 @@ static bool can_vma_merge_after(struct vma_merge_struct *vmg)
 		return false;
 	return true;
 }
+
+#endif /* CONFIG_RUST_VMA_MERGE_COMPAT */
 
 static void __vma_link_file(struct vm_area_struct *vma,
 			    struct address_space *mapping)
@@ -473,6 +482,192 @@ static void init_vma_prep(struct vma_prepare *vp, struct vm_area_struct *vma)
 	init_multi_vma_prep(vp, vma, NULL);
 }
 
+#ifdef CONFIG_RUST_VMA_MERGE_COMPAT
+
+struct vm_area_struct *
+rust_helper_vma_merge_compat_vmg_prev(struct vma_merge_struct *vmg)
+{
+	return vmg->prev;
+}
+
+struct vm_area_struct *
+rust_helper_vma_merge_compat_vmg_next(struct vma_merge_struct *vmg)
+{
+	return vmg->next;
+}
+
+struct vm_area_struct *
+rust_helper_vma_merge_compat_vmg_middle(struct vma_merge_struct *vmg)
+{
+	return vmg->middle;
+}
+
+struct vm_area_struct *
+rust_helper_vma_merge_compat_vmg_copied_from(struct vma_merge_struct *vmg)
+{
+	return vmg->copied_from;
+}
+
+bool rust_helper_vma_merge_compat_mempolicy_equal(struct vma_merge_struct *vmg,
+						  struct vm_area_struct *vma)
+{
+	return mpol_equal(vmg->policy, vma_policy(vma));
+}
+
+bool rust_helper_vma_merge_compat_flags_compatible(struct vma_merge_struct *vmg,
+						   struct vm_area_struct *vma)
+{
+	vma_flags_t diff = vma_flags_diff_pair(&vma->flags, &vmg->vma_flags);
+
+	vma_flags_clear_mask(&diff, VMA_IGNORE_MERGE_FLAGS);
+	return vma_flags_empty(&diff);
+}
+
+struct file *
+rust_helper_vma_merge_compat_vmg_file(struct vma_merge_struct *vmg)
+{
+	return vmg->file;
+}
+
+struct file *
+rust_helper_vma_merge_compat_vma_file(struct vm_area_struct *vma)
+{
+	return vma->vm_file;
+}
+
+bool rust_helper_vma_merge_compat_userfaultfd_compatible(struct vma_merge_struct *vmg,
+							 struct vm_area_struct *vma)
+{
+	return is_mergeable_vm_userfaultfd_ctx(vma, vmg->uffd_ctx);
+}
+
+bool rust_helper_vma_merge_compat_anon_name_equal(struct vma_merge_struct *vmg,
+						  struct vm_area_struct *vma)
+{
+	return anon_vma_name_eq(anon_vma_name(vma), vmg->anon_name);
+}
+
+bool rust_helper_vma_merge_compat_vma_has_anon_vma(struct vm_area_struct *vma)
+{
+	return vma && vma->anon_vma;
+}
+
+bool rust_helper_vma_merge_compat_anon_vma_chain_is_singular(struct vm_area_struct *vma)
+{
+	return list_is_singular(&vma->anon_vma_chain);
+}
+
+struct anon_vma *
+rust_helper_vma_merge_compat_vmg_anon_vma(struct vma_merge_struct *vmg)
+{
+	return vmg->anon_vma;
+}
+
+struct anon_vma *
+rust_helper_vma_merge_compat_vma_anon_vma(struct vm_area_struct *vma)
+{
+	return vma ? vma->anon_vma : NULL;
+}
+
+void
+rust_helper_vma_merge_compat_validate_anon_vma(struct vma_merge_struct *vmg)
+{
+	struct vm_area_struct *src = vmg->middle;
+
+	VM_WARN_ON(src && vmg->anon_vma != src->anon_vma);
+}
+
+bool
+rust_helper_vma_merge_compat_vmg_is_cow_mapping(struct vma_merge_struct *vmg)
+{
+	return vma_flags_is_cow_mapping(&vmg->vma_flags);
+}
+
+unsigned long
+rust_helper_vma_merge_compat_vmg_start(struct vma_merge_struct *vmg)
+{
+	return vmg->start;
+}
+
+unsigned long
+rust_helper_vma_merge_compat_vmg_end(struct vma_merge_struct *vmg)
+{
+	return vmg->end;
+}
+
+unsigned long
+rust_helper_vma_merge_compat_vmg_start_pgoff(struct vma_merge_struct *vmg)
+{
+	return vmg_start_pgoff(vmg);
+}
+
+unsigned long
+rust_helper_vma_merge_compat_vmg_end_pgoff(struct vma_merge_struct *vmg)
+{
+	return vmg_end_pgoff(vmg);
+}
+
+unsigned long
+rust_helper_vma_merge_compat_vmg_start_anon_pgoff(struct vma_merge_struct *vmg)
+{
+	return vmg_start_anon_pgoff(vmg);
+}
+
+unsigned long
+rust_helper_vma_merge_compat_vmg_end_anon_pgoff(struct vma_merge_struct *vmg)
+{
+	return vmg_end_anon_pgoff(vmg);
+}
+
+unsigned long
+rust_helper_vma_merge_compat_vma_start(struct vm_area_struct *vma)
+{
+	return vma->vm_start;
+}
+
+unsigned long
+rust_helper_vma_merge_compat_vma_end(struct vm_area_struct *vma)
+{
+	return vma->vm_end;
+}
+
+unsigned long
+rust_helper_vma_merge_compat_vma_start_pgoff(struct vm_area_struct *vma)
+{
+	return vma_start_pgoff(vma);
+}
+
+unsigned long
+rust_helper_vma_merge_compat_vma_end_pgoff(struct vm_area_struct *vma)
+{
+	return vma_end_pgoff(vma);
+}
+
+unsigned long
+rust_helper_vma_merge_compat_vma_start_anon_pgoff(struct vm_area_struct *vma)
+{
+	return vma_start_anon_pgoff(vma);
+}
+
+unsigned long
+rust_helper_vma_merge_compat_vma_end_anon_pgoff(struct vm_area_struct *vma)
+{
+	return vma_end_anon_pgoff(vma);
+}
+
+static bool can_vma_merge_left(struct vma_merge_struct *vmg)
+{
+	return rust_vma_merge_compat_can_merge_left(vmg);
+}
+
+static bool can_vma_merge_right(struct vma_merge_struct *vmg,
+				bool can_merge_left)
+{
+	return rust_vma_merge_compat_can_merge_right(vmg, can_merge_left);
+}
+
+#else
+
 /*
  * Can the proposed VMA be merged with the left (previous) VMA taking into
  * account the start position of the proposed range.
@@ -514,6 +709,8 @@ static bool can_vma_merge_right(struct vma_merge_struct *vmg,
 	return !prev->anon_vma || !next->anon_vma ||
 		prev->anon_vma == next->anon_vma;
 }
+
+#endif /* CONFIG_RUST_VMA_MERGE_COMPAT */
 
 /*
  * Close a vm structure and free it.
