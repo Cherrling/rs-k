@@ -15,9 +15,9 @@ This unit covers the public ``munmap()`` entry point and the internal
 the first-overlap lookup, empty-range lock handling, mmap write locking, and
 the userfaultfd completion order.
 
-The unit currently excludes the detached-tree gather, partial VMA split,
-rollback, and completion implementation in ``do_vmi_align_munmap()``. That
-complex interface remains the next migration boundary.
+The aligned unmap entry point, completion sequence, and rollback loops are the
+separate Rust unit described in :doc:`vma-munmap-complete`. The detached-tree
+gather and partial VMA split remain in C.
 
 Entry points and ownership
 --------------------------
@@ -54,13 +54,10 @@ The C boundary contains:
 * Mmap write-lock acquisition and release.
 * ``TASK_SIZE`` evaluation for the active thread.
 * First-overlap maple-tree lookup.
-* ``do_vmi_align_munmap()``.
 * Userfaultfd unmap completion.
 
-``do_vmi_align_munmap()`` retains its detached maple tree, VMA splitting,
-partial rollback, accounting, reverse-map, and page-table sequence. This unit
-does not duplicate that state machine. A later migration unit can expose its
-individual primitives and move the gather and completion loops into Rust.
+``do_vmi_align_munmap()`` still gathers, splits, and detaches VMAs in C. The
+next unit moves its orchestration, completion, and rollback loops to Rust.
 
 Ordering and invariants
 -----------------------
@@ -183,8 +180,7 @@ Review conditions
 
 Reopen a retained C boundary if any of these conditions changes:
 
-* ``do_vmi_align_munmap()`` gains Rust-callable split and rollback
-  primitives.
+* ``do_vmi_align_munmap()`` gains Rust-callable gather and split primitives.
 * The detached maple-tree representation becomes safe for Rust to own.
 * The mmap lock release contract changes.
 * The first-overlap lookup changes to another tree or index.

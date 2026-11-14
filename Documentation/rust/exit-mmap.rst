@@ -20,6 +20,8 @@ sequence. That sequence is the separate Rust unit described in
 architecture, and page-table primitives in C.
 
 Runtime range unmapping is a separate unit described in :doc:`vma-unmap`.
+Its aligned completion and rollback sequence is described in
+:doc:`vma-munmap-complete`.
 ``exit_mmap()`` remains responsible for tearing down the complete address
 space.
 

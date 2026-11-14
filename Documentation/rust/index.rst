@@ -59,6 +59,7 @@ more details.
     mm-teardown
     exit-mmap
     vma-unmap
+    vma-munmap-complete
     copy-mm
     dup-mmap
     sched

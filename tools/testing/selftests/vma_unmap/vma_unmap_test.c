@@ -10,9 +10,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ipc.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
 #include <sys/reboot.h>
+#include <sys/shm.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -256,6 +258,118 @@ fail:
 	return 1;
 }
 
+static int test_fixed_overlap(size_t page_size, int round)
+{
+	const size_t size = UNMAP_PAGES * page_size;
+	const size_t replacement = 8 * page_size;
+	unsigned char *address;
+	void *mapped;
+	size_t index;
+
+	address = mmap(NULL, size, PROT_READ | PROT_WRITE,
+		       MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	if (address == MAP_FAILED)
+		return 1;
+	for (index = 0; index < UNMAP_PAGES; index++)
+		address[index * page_size] = index + 1;
+
+	mapped = mmap(address + 3 * page_size, replacement, PROT_READ,
+		      MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+	if (mapped != address + 3 * page_size)
+		goto fail;
+	if (check_present(address, size, page_size, round))
+		goto fail;
+	if (address[0] != 1 || address[2 * page_size] != 3 ||
+	    address[11 * page_size] != 12 ||
+	    address[15 * page_size] != 16) {
+		fprintf(stderr, "VMA_UNMAP fixed overlap changed neighbors in round %d\n",
+			round);
+		goto fail;
+	}
+	if (munmap(address, size))
+		goto fail;
+	return 0;
+
+fail:
+	fprintf(stderr, "VMA_UNMAP fixed overlap failed in round %d: %s\n",
+		round, strerror(errno));
+	munmap(address, size);
+	return 1;
+}
+
+static int test_brk_shrink(size_t page_size, int round)
+{
+	const size_t size = UNMAP_PAGES * page_size;
+	char *original = sbrk(0);
+	char *base;
+	size_t index;
+
+	if (original == (void *)-1)
+		return 1;
+	base = (char *)(((uintptr_t)original + page_size - 1) &
+			~(page_size - 1));
+	if (brk(base) || brk(base + size))
+		goto fail;
+	for (index = 0; index < UNMAP_PAGES; index++)
+		base[index * page_size] = index + 1;
+
+	if (brk(base + 3 * page_size))
+		goto fail;
+	if (check_absent(base + 3 * page_size, size - 3 * page_size,
+			 page_size, round))
+		goto fail;
+	if (brk(base))
+		goto fail;
+	if (check_absent(base, 3 * page_size, page_size, round))
+		goto fail;
+	if (brk(original))
+		return 1;
+	return 0;
+
+fail:
+	fprintf(stderr, "VMA_UNMAP brk shrink failed in round %d: %s\n",
+		round, strerror(errno));
+	brk(base);
+	brk(original);
+	return 1;
+}
+
+static int test_sysv_shm(size_t page_size, int round)
+{
+	const size_t size = UNMAP_PAGES * page_size;
+	unsigned char *address = (void *)-1;
+	void *mapped;
+	size_t index;
+	int shmid;
+
+	shmid = shmget(IPC_PRIVATE, size, IPC_CREAT | 0600);
+	if (shmid < 0)
+		return 1;
+	address = shmat(shmid, NULL, 0);
+	if (address == (void *)-1)
+		goto fail;
+	for (index = 0; index < UNMAP_PAGES; index++)
+		address[index * page_size] = index + 1;
+
+	mapped = address;
+	if (shmdt(address))
+		goto fail;
+	address = (void *)-1;
+	if (check_absent(mapped, size, page_size, round))
+		goto fail;
+	if (shmctl(shmid, IPC_RMID, NULL))
+		return 1;
+	return 0;
+
+fail:
+	fprintf(stderr, "VMA_UNMAP SysV shared memory failed in round %d: %s\n",
+		round, strerror(errno));
+	if (address != (void *)-1)
+		shmdt(address);
+	shmctl(shmid, IPC_RMID, NULL);
+	return 1;
+}
+
 struct unmap_gate {
 	pthread_mutex_t lock;
 	pthread_cond_t cond;
@@ -378,6 +492,9 @@ static int test_unmap_ranges(size_t page_size)
 		if (test_anonymous_range(page_size, round) ||
 		    test_invalid_ranges(page_size, round) ||
 		    test_file_range(page_size, round) ||
+		    test_fixed_overlap(page_size, round) ||
+		    test_brk_shrink(page_size, round) ||
+		    test_sysv_shm(page_size, round) ||
 		    test_concurrent_ranges(page_size, round))
 			return 1;
 	}

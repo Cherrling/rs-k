@@ -17478,11 +17478,13 @@ F:	Documentation/rust/dup-mmap.rst
 F:	Documentation/rust/exit-mmap.rst
 F:	Documentation/rust/mm-lifetime.rst
 F:	Documentation/rust/mm-teardown.rst
+F:	Documentation/rust/vma-munmap-complete.rst
 F:	Documentation/rust/vma-unmap.rst
 F:	include/linux/copy-mm-rust.h
 F:	include/linux/dup-mmap-rust.h
 F:	include/linux/exit-mmap-rust.h
 F:	include/linux/mm-rust.h
+F:	include/linux/vma-munmap-complete-rust.h
 F:	include/linux/vma-unmap-rust.h
 F:	lib/tests/test_copy_mm.c
 F:	lib/tests/test_dup_mmap.c
@@ -17499,6 +17501,7 @@ F:	rust/kernel/mm_teardown.rs
 F:	rust/kernel/mm.rs
 F:	rust/kernel/mm/
 F:	rust/kernel/page.rs
+F:	rust/kernel/vma_munmap_complete.rs
 F:	rust/kernel/vma_unmap.rs
 
 MEMORY MAPPING
@@ -24030,6 +24033,7 @@ F:	include/linux/task-group-exit-sync-rust.h
 F:	include/linux/task-release-rust.h
 F:	include/linux/task-rust.h
 F:	include/linux/timerqueue-rust.h
+F:	include/linux/vma-munmap-complete-rust.h
 F:	include/linux/vma-unmap-rust.h
 F:	include/linux/wait-bit-rust.h
 F:	include/linux/wait-rust.h

@@ -10,7 +10,15 @@
  */
 #include "vma_internal.h"
 #include "vma.h"
+#include <linux/vma-munmap-complete-rust.h>
 #include <linux/vma-unmap-rust.h>
+
+struct rust_vma_munmap_align_state {
+	struct mm_struct *mm;
+	struct maple_tree mt_detach;
+	struct ma_state mas_detach;
+	struct vma_munmap_struct vms;
+};
 
 struct mmap_state {
 	struct mm_struct *mm;
@@ -1413,6 +1421,41 @@ static void vms_clean_up_area(struct vma_munmap_struct *vms,
  * used for the munmap() and may downgrade the lock - if requested.  Everything
  * needed to be done once the vma maple tree is updated.
  */
+#ifdef CONFIG_RUST_VMA_MUNMAP_COMPLETE
+
+static void init_rust_vma_munmap_complete_state(struct rust_vma_munmap_complete_state *state,
+						struct vma_munmap_struct *vms,
+						struct ma_state *mas_detach)
+{
+	state->mm = current->mm;
+	state->first = vms->vma;
+	state->mas_detach = mas_detach;
+	state->start = vms->start;
+	state->end = vms->end;
+	state->unmap_start = vms->unmap_start;
+	state->unmap_end = vms->unmap_end;
+	state->vma_count = vms->vma_count;
+	state->unlock = vms->unlock;
+	state->clear_ptes = vms->clear_ptes;
+	state->nr_pages = vms->nr_pages;
+	state->locked_vm = vms->locked_vm;
+	state->nr_accounted = vms->nr_accounted;
+	state->exec_vm = vms->exec_vm;
+	state->stack_vm = vms->stack_vm;
+	state->data_vm = vms->data_vm;
+}
+
+static void vms_complete_munmap_vmas(struct vma_munmap_struct *vms,
+				     struct ma_state *mas_detach)
+{
+	struct rust_vma_munmap_complete_state state;
+
+	init_rust_vma_munmap_complete_state(&state, vms, mas_detach);
+	rust_vma_munmap_complete(&state);
+}
+
+#else
+
 static void vms_complete_munmap_vmas(struct vma_munmap_struct *vms,
 		struct ma_state *mas_detach)
 {
@@ -1454,12 +1497,23 @@ static void vms_complete_munmap_vmas(struct vma_munmap_struct *vms,
 	__mt_destroy(mas_detach->tree);
 }
 
+#endif /* CONFIG_RUST_VMA_MUNMAP_COMPLETE */
+
 /*
  * reattach_vmas() - Undo any munmap work and free resources
  * @mas_detach: The maple state with the detached maple tree
  *
  * Reattach any detached vmas and free up the maple tree used to track the vmas.
  */
+#ifdef CONFIG_RUST_VMA_MUNMAP_COMPLETE
+
+static void reattach_vmas(struct ma_state *mas_detach)
+{
+	rust_vma_munmap_reattach(mas_detach);
+}
+
+#else
+
 static void reattach_vmas(struct ma_state *mas_detach)
 {
 	struct vm_area_struct *vma;
@@ -1470,6 +1524,8 @@ static void reattach_vmas(struct ma_state *mas_detach)
 
 	__mt_destroy(mas_detach->tree);
 }
+
+#endif /* CONFIG_RUST_VMA_MUNMAP_COMPLETE */
 
 /*
  * vms_gather_munmap_vmas() - Put all VMAs within a range into a maple tree
@@ -1670,6 +1726,18 @@ int do_vmi_align_munmap(struct vma_iterator *vmi, struct vm_area_struct *vma,
 		struct mm_struct *mm, unsigned long start, unsigned long end,
 		struct list_head *uf, bool unlock)
 {
+#ifdef CONFIG_RUST_VMA_MUNMAP_COMPLETE
+	struct rust_vma_munmap_align_state state = {
+		.mm = mm,
+	};
+
+	mt_init_flags(&state.mt_detach,
+		      vmi->mas.tree->ma_flags & MT_FLAGS_LOCK_MASK);
+	mt_on_stack(state.mt_detach);
+	mas_init(&state.mas_detach, &state.mt_detach, 0);
+	init_vma_munmap(&state.vms, vmi, vma, start, end, uf, unlock);
+	return rust_do_vmi_align_munmap(&state);
+#else
 	struct maple_tree mt_detach;
 	MA_STATE(mas_detach, &mt_detach, 0, 0);
 	mt_init_flags(&mt_detach, vmi->mas.tree->ma_flags & MT_FLAGS_LOCK_MASK);
@@ -1695,7 +1763,130 @@ clear_tree_failed:
 gather_failed:
 	validate_mm(mm);
 	return error;
+#endif /* CONFIG_RUST_VMA_MUNMAP_COMPLETE */
 }
+
+#ifdef CONFIG_RUST_VMA_MUNMAP_COMPLETE
+
+void rust_helper_vma_munmap_adjust_counts(struct mm_struct *mm, int vma_count,
+					  unsigned long locked_vm)
+{
+	mm->map_count -= vma_count;
+	mm->locked_vm -= locked_vm;
+}
+
+void rust_helper_vma_munmap_downgrade(struct mm_struct *mm)
+{
+	mmap_write_downgrade(mm);
+}
+
+void rust_helper_vma_munmap_clear_ptes(const struct rust_vma_munmap_complete_state *state)
+{
+	struct unmap_desc unmap = {
+		.mas = state->mas_detach,
+		.first = state->first,
+		.pg_start = state->unmap_start,
+		.pg_end = state->unmap_end,
+		.vma_start = state->start,
+		.vma_end = state->end,
+		.tree_reset = 1,
+		.tree_end = state->vma_count,
+		.mm_wr_locked = !state->unlock,
+	};
+
+	mas_set(state->mas_detach, 1);
+	unmap_region(&unmap);
+}
+
+void rust_helper_vma_munmap_update_hiwater(struct mm_struct *mm)
+{
+	update_hiwater_vm(mm);
+}
+
+void rust_helper_vma_munmap_sub_total_vm(struct mm_struct *mm,
+					 unsigned long pages)
+{
+	WRITE_ONCE(mm->total_vm, READ_ONCE(mm->total_vm) - pages);
+}
+
+void rust_helper_vma_munmap_adjust_stats(struct mm_struct *mm,
+					 unsigned long exec_vm,
+					 unsigned long stack_vm,
+					 unsigned long data_vm)
+{
+	VM_WARN_ON(exec_vm > mm->exec_vm);
+	VM_WARN_ON(stack_vm > mm->stack_vm);
+	VM_WARN_ON(data_vm > mm->data_vm);
+	mm->exec_vm -= exec_vm;
+	mm->stack_vm -= stack_vm;
+	mm->data_vm -= data_vm;
+}
+
+void rust_helper_vma_munmap_mas_reset(struct ma_state *mas_detach)
+{
+	mas_set(mas_detach, 0);
+}
+
+struct vm_area_struct *
+rust_helper_vma_munmap_mas_find(struct ma_state *mas_detach)
+{
+	return mas_find(mas_detach, ULONG_MAX);
+}
+
+void rust_helper_vma_munmap_remove_vma(struct vm_area_struct *vma)
+{
+	remove_vma(vma);
+}
+
+void rust_helper_vma_munmap_unaccount(unsigned long pages)
+{
+	vm_unacct_memory(pages);
+}
+
+void rust_helper_vma_munmap_validate(struct mm_struct *mm)
+{
+	validate_mm(mm);
+}
+
+void rust_helper_vma_munmap_read_unlock(struct mm_struct *mm)
+{
+	mmap_read_unlock(mm);
+}
+
+void rust_helper_vma_munmap_mark_attached(struct vm_area_struct *vma)
+{
+	vma_mark_attached(vma);
+}
+
+void rust_helper_vma_munmap_destroy_tree(struct ma_state *mas_detach)
+{
+	__mt_destroy(mas_detach->tree);
+}
+
+int rust_helper_vma_munmap_align_gather(struct rust_vma_munmap_align_state *state)
+{
+	return vms_gather_munmap_vmas(&state->vms, &state->mas_detach);
+}
+
+int rust_helper_vma_munmap_align_clear_tree(struct rust_vma_munmap_align_state *state)
+{
+	return vma_iter_clear_gfp(state->vms.vmi, state->vms.start,
+				  state->vms.end, GFP_KERNEL);
+}
+
+void rust_helper_vma_munmap_align_snapshot(struct rust_vma_munmap_align_state *state,
+					   struct rust_vma_munmap_complete_state *snapshot)
+{
+	init_rust_vma_munmap_complete_state(snapshot, &state->vms,
+					    &state->mas_detach);
+}
+
+void rust_helper_vma_munmap_align_validate(struct rust_vma_munmap_align_state *state)
+{
+	validate_mm(state->mm);
+}
+
+#endif /* CONFIG_RUST_VMA_MUNMAP_COMPLETE */
 
 #ifdef CONFIG_RUST_VMA_UNMAP
 
