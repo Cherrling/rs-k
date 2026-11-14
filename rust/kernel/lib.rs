@@ -241,6 +241,8 @@ mod vma_merge_compat;
 mod vma_merge_existing;
 #[cfg(CONFIG_RUST_VMA_MERGE_NEW_RANGE)]
 mod vma_merge_new_range;
+#[cfg(CONFIG_RUST_VMA_MODIFY)]
+mod vma_modify;
 #[cfg(CONFIG_RUST_VMA_MUNMAP_COMPLETE)]
 mod vma_munmap_complete;
 #[cfg(CONFIG_RUST_VMA_MUNMAP_GATHER)]

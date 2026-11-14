@@ -1412,6 +1412,21 @@ config RUST_VMA_MERGE_NEW_RANGE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_VMA_MODIFY
+	bool "Rust merge-or-split orchestration for VMA modifications"
+	depends on RUST && MMU
+	default y
+	help
+	  Use Rust for the production vma_modify() path. Rust owns the
+	  existing-range merge attempt, backup-error propagation, split
+	  invariant, leading and trailing split order, and result selection.
+
+	  Merge-state and VMA field access, error pointers, warnings, the
+	  existing merge entry, and individual VMA split operations remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_COPY_MM
 	bool "Rust implementation of address-space copying"
 	depends on RUST && MMU

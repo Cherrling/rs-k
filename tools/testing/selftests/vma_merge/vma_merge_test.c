@@ -134,6 +134,33 @@ static int expect_two_vmas(unsigned long start, unsigned long middle,
 	return 0;
 }
 
+static int expect_three_vmas(unsigned long start, unsigned long first,
+			     unsigned long second, unsigned long end,
+			     const char *name)
+{
+	unsigned long bounds[4] = { start, first, second, end };
+	unsigned long found_start = 0;
+	unsigned long found_end = 0;
+	int i;
+
+	for (i = 0; i < 3; i++) {
+		if (find_vma_bounds(bounds[i], &found_start, &found_end)) {
+			fprintf(stderr, "VMA_MERGE %s: VMA %d not found\n",
+				name, i + 1);
+			return 1;
+		}
+		if (found_start != bounds[i] || found_end != bounds[i + 1]) {
+			fprintf(stderr,
+				"VMA_MERGE %s: VMA %d expected %#lx-%#lx, found %#lx-%#lx\n",
+				name, i + 1, bounds[i], bounds[i + 1],
+				found_start, found_end);
+			return 1;
+		}
+	}
+
+	return 0;
+}
+
 static void *map_fixed(void *address, size_t length, int protection)
 {
 	return mmap(address, length, protection,
@@ -374,6 +401,8 @@ static int test_existing_range_merges(unsigned char *carveout)
 	unsigned char *anon_left = anon_left_prev + length;
 	unsigned char *anon_right = carveout + 212 * page_size;
 	unsigned char *anon_right_next = anon_right + length;
+	unsigned char *split_both = carveout + 220 * page_size;
+	const size_t split_length = 3 * page_size;
 
 	if (map_fixed(right, length, PROT_READ) != right)
 		goto fail;
@@ -465,6 +494,18 @@ static int test_existing_range_merges(unsigned char *carveout)
 	if (expect_one_vma((unsigned long)anon_right,
 			   (unsigned long)(anon_right_next + length),
 			   "existing right anon_vma copy"))
+		goto out;
+
+	if (map_fixed(split_both, split_length, PROT_READ) != split_both)
+		goto fail;
+	if (mprotect(split_both + page_size, page_size,
+		     PROT_READ | PROT_WRITE))
+		goto fail;
+	if (expect_three_vmas((unsigned long)split_both,
+			      (unsigned long)(split_both + page_size),
+			      (unsigned long)(split_both + 2 * page_size),
+			      (unsigned long)(split_both + split_length),
+			      "existing both-side split"))
 		goto out;
 
 	return 0;

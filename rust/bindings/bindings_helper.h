@@ -134,6 +134,7 @@
 #include <linux/vma-merge-commit-rust.h>
 #include <linux/vma-merge-existing-rust.h>
 #include <linux/vma-merge-new-range-rust.h>
+#include <linux/vma-modify-rust.h>
 #include <linux/vma-munmap-complete-rust.h>
 #include <linux/vma-munmap-gather-rust.h>
 #include <linux/vma-unmap-rust.h>

@@ -13,6 +13,7 @@
 #include <linux/vma-merge-compat-rust.h>
 #include <linux/vma-merge-existing-rust.h>
 #include <linux/vma-merge-new-range-rust.h>
+#include <linux/vma-modify-rust.h>
 #include <linux/vma-munmap-complete-rust.h>
 #include <linux/vma-munmap-gather-rust.h>
 #include <linux/vma-unmap-rust.h>
@@ -2902,6 +2903,9 @@ int do_vmi_munmap(struct vma_iterator *vmi, struct mm_struct *mm,
  */
 static struct vm_area_struct *vma_modify(struct vma_merge_struct *vmg)
 {
+#ifdef CONFIG_RUST_VMA_MODIFY
+	return rust_vma_modify(vmg);
+#else
 	struct vm_area_struct *vma = vmg->middle;
 	unsigned long start = vmg->start;
 	unsigned long end = vmg->end;
@@ -2938,7 +2942,69 @@ static struct vm_area_struct *vma_modify(struct vma_merge_struct *vmg)
 	}
 
 	return vma;
+#endif /* CONFIG_RUST_VMA_MODIFY */
 }
+
+#ifdef CONFIG_RUST_VMA_MODIFY
+
+struct vm_area_struct *
+rust_helper_vma_modify_middle(struct vma_merge_struct *vmg)
+{
+	return vmg->middle;
+}
+
+unsigned long rust_helper_vma_modify_start(struct vma_merge_struct *vmg)
+{
+	return vmg->start;
+}
+
+unsigned long rust_helper_vma_modify_end(struct vma_merge_struct *vmg)
+{
+	return vmg->end;
+}
+
+struct vm_area_struct *
+rust_helper_vma_modify_merge(struct vma_merge_struct *vmg)
+{
+	return vma_merge_existing_range(vmg);
+}
+
+int rust_helper_vma_modify_backup_error(struct vma_merge_struct *vmg)
+{
+	return vmg_nomem(vmg) ? -ENOMEM : 0;
+}
+
+void
+rust_helper_vma_modify_warn_if_give_up_on_oom(struct vma_merge_struct *vmg)
+{
+	VM_WARN_ON(vmg->give_up_on_oom &&
+		   (vmg->middle->vm_start != vmg->start ||
+		    vmg->middle->vm_end != vmg->end));
+}
+
+unsigned long rust_helper_vma_modify_vma_start(struct vm_area_struct *vma)
+{
+	return vma->vm_start;
+}
+
+unsigned long rust_helper_vma_modify_vma_end(struct vm_area_struct *vma)
+{
+	return vma->vm_end;
+}
+
+int rust_helper_vma_modify_split(struct vma_merge_struct *vmg,
+				 struct vm_area_struct *vma,
+				 unsigned long addr, int new_below)
+{
+	return split_vma(vmg->vmi, vma, addr, new_below);
+}
+
+struct vm_area_struct *rust_helper_vma_modify_error(int err)
+{
+	return ERR_PTR(err);
+}
+
+#endif /* CONFIG_RUST_VMA_MODIFY */
 
 struct vm_area_struct *vma_modify_flags(struct vma_iterator *vmi,
 		struct vm_area_struct *prev, struct vm_area_struct *vma,

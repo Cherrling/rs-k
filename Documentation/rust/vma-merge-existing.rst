@@ -209,7 +209,8 @@ Build and production checks:
   entry or helpers.
 * Both production and fallback images report no undefined symbols.
 * Production disassembly shows ``vma_modify()`` calling
-  ``rust_vma_merge_existing()``.
+  ``rust_vma_modify()``. The Rust modification path enters
+  ``rust_vma_merge_existing()`` through the merge helper.
 * Production Rust disassembly calls the native Rust compatibility entries
   directly. It does not call a C compatibility policy wrapper.
 * Mixed-configuration disassembly calls

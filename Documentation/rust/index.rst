@@ -65,6 +65,7 @@ more details.
     vma-merge-commit
     vma-merge-existing
     vma-merge-new-range
+    vma-modify
     copy-mm
     dup-mmap
     sched
