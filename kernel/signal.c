@@ -44,6 +44,7 @@
 #include <linux/uprobes.h>
 #include <linux/compat.h>
 #include <linux/complete-signal-rust.h>
+#include <linux/send-signal-rust.h>
 #include <linux/cn_proc.h>
 #include <linux/compiler.h>
 #include <linux/posix-timers.h>
@@ -1058,6 +1059,27 @@ void complete_signal_test_call(int sig, struct task_struct *task, int type)
 }
 #endif
 
+#ifdef CONFIG_RUST_SEND_SIGNAL
+struct sigqueue *
+rust_send_signal_alloc_queue_bridge(int sig, struct task_struct *task,
+				    int override_rlimit)
+{
+	return sigqueue_alloc(sig, task, GFP_ATOMIC, override_rlimit);
+}
+
+bool rust_send_signal_prepare_bridge(int sig, struct task_struct *task,
+				     bool force)
+{
+	return prepare_signal(sig, task, force);
+}
+
+void rust_send_signal_complete_bridge(int sig, struct task_struct *task,
+				      unsigned int type)
+{
+	complete_signal(sig, task, type);
+}
+#endif
+
 static inline bool legacy_queue(struct sigpending *signals, int sig)
 {
 	return (sig < SIGRTMIN) && sigismember(&signals->signal, sig);
@@ -1081,6 +1103,9 @@ static inline bool task_can_queue_signal(struct task_struct *t, enum pid_type ty
 static int __send_signal_locked(int sig, struct kernel_siginfo *info,
 				struct task_struct *t, enum pid_type type, bool force)
 {
+#ifdef CONFIG_RUST_SEND_SIGNAL
+	return rust_send_signal_locked(sig, info, t, type, force);
+#else
 	struct sigpending *pending;
 	struct sigqueue *q;
 	int override_rlimit;
@@ -1197,7 +1222,23 @@ out_set:
 ret:
 	trace_signal_generate(sig, info, t, type != PIDTYPE_PID, result);
 	return ret;
+#endif /* !CONFIG_RUST_SEND_SIGNAL */
 }
+
+#ifdef CONFIG_SEND_SIGNAL_KUNIT_TEST
+int send_signal_test_call(int sig, struct kernel_siginfo *info,
+			  struct task_struct *task, unsigned int type,
+			  bool force)
+{
+	int ret;
+
+	spin_lock_irq(&task->sighand->siglock);
+	ret = __send_signal_locked(sig, info, task, type, force);
+	spin_unlock_irq(&task->sighand->siglock);
+
+	return ret;
+}
+#endif
 
 static inline bool has_si_pid_and_uid(struct kernel_siginfo *info)
 {

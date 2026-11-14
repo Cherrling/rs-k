@@ -41,6 +41,7 @@ more details.
     task-release
     task-group-exit-sync
     complete-signal
+    send-signal
     signal-retarget
     signal-wake-select
     signal-wake-state

@@ -100,6 +100,9 @@
 #include "scatterlist.c"
 #include "security.c"
 #include "serdev.c"
+#ifdef CONFIG_RUST_SEND_SIGNAL
+#include "send_signal.c"
+#endif
 #include "signal.c"
 #include "signal_retarget.c"
 #include "signal_wake_state.c"

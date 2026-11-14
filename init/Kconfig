@@ -1397,6 +1397,23 @@ config RUST_COMPLETE_SIGNAL
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SEND_SIGNAL
+	bool "Rust implementation of locked signal queue insertion"
+	depends on RUST && RUST_COMPLETE_SIGNAL
+	default y
+	help
+	  Use Rust for the production locked signal queue insertion state
+	  machine. Rust selects queue admission, legacy de-duplication,
+	  siginfo allocation policy, pending-state updates, delayed
+	  multiprocess stop/continue updates, signal completion, and tracing.
+
+	  Queue allocation, intrusive-list operations, signal-set bit
+	  operations, credential formatting, tracepoints, and the surrounding
+	  signal policies remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_EXIT_NOTIFY
 	bool "Rust implementation of task exit parent notification"
 	depends on RUST && RUST_TASK_RELEASE
