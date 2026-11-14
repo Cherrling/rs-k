@@ -2545,6 +2545,22 @@ config TASK_GROUP_EXIT_SYNC_KUNIT_TEST
 
 	  If unsure, say N.
 
+config SIGNAL_STRUCT_COPY_KUNIT_TEST
+	bool "KUnit test for thread-group signal structure creation" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for production thread-group signal
+	  structure creation. One integration case creates a new kernel-thread
+	  group. Another case calls the production thread-copy entry directly
+	  to verify that it reuses the current signal structure.
+
+	  The shared-copy policy and Rust transition counters run only with the
+	  native Rust implementation. The kernel-thread creation case runs with
+	  either the C implementation or the native Rust implementation selected.
+
+	  If unsure, say N.
+
 config SIGNAL_RETARGET_KUNIT_TEST
 	bool "KUnit test for shared pending signal retargeting" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

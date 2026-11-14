@@ -46,6 +46,7 @@ more details.
     signal-dequeue
     signal-pending-recalc
     signal-retarget
+    signal-struct-copy
     signal-wake-select
     signal-wake-state
     task-exit-notify

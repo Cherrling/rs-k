@@ -1332,6 +1332,23 @@ config RUST_TASK_GROUP_EXIT_SYNC
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SIGNAL_STRUCT_COPY
+	bool "Rust implementation of thread-group signal structure creation"
+	depends on RUST
+	default y
+	help
+	  Use Rust for production creation of the signal structure for a new
+	  thread group. Rust owns the CLONE_THREAD decision and initialization
+	  order for counts, thread links, wait queue, shared pending state,
+	  statistics, timers, resource limits, audit state, autogroup state,
+	  cgroup locking, OOM scores, and execution locks.
+
+	  Allocation, subsystem constructors, locking primitives, and inherited
+	  value reads remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_SIGNAL_RETARGET
 	bool "Rust implementation of shared pending signal retargeting"
 	depends on RUST

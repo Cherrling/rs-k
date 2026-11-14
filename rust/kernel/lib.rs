@@ -192,6 +192,8 @@ mod signal_dequeue;
 mod signal_pending_recalc;
 #[cfg(CONFIG_RUST_SIGNAL_RETARGET)]
 mod signal_retarget;
+#[cfg(CONFIG_RUST_SIGNAL_STRUCT_COPY)]
+mod signal_struct_copy;
 #[cfg(CONFIG_RUST_SIGNAL_WAKE_SELECT)]
 mod signal_wake_select;
 #[cfg(CONFIG_RUST_SIGNAL_WAKE_STATE)]

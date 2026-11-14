@@ -24000,6 +24000,7 @@ F:	include/linux/semaphore-rust.h
 F:	include/linux/send-signal-rust.h
 F:	include/linux/signal-dequeue-rust.h
 F:	include/linux/signal-pending-recalc-rust.h
+F:	include/linux/signal-struct-copy-rust.h
 F:	include/linux/signal-retarget-rust.h
 F:	include/linux/signal-wake-select-rust.h
 F:	include/linux/signal-wake-state-rust.h
@@ -24031,6 +24032,7 @@ F:	lib/tests/test_semaphore.c
 F:	lib/tests/test_send_signal.c
 F:	lib/tests/test_signal_dequeue.c
 F:	lib/tests/test_signal_pending_recalc.c
+F:	lib/tests/test_signal_struct_copy.c
 F:	lib/tests/test_signal_retarget.c
 F:	lib/tests/test_signal_wake_select.c
 F:	lib/tests/test_signal_wake_state.c

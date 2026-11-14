@@ -111,6 +111,7 @@
 #include <linux/prepare-signal-rust.h>
 #include <linux/signal-dequeue-rust.h>
 #include <linux/signal-pending-recalc-rust.h>
+#include <linux/signal-struct-copy-rust.h>
 #include <linux/signal-retarget-rust.h>
 #include <linux/signal-wake-select-rust.h>
 #include <linux/signal-wake-state-rust.h>

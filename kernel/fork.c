@@ -108,6 +108,7 @@
 #include <linux/user_events.h>
 #include <linux/iommu.h>
 #include <linux/rseq.h>
+#include <linux/signal-struct-copy-rust.h>
 #include <uapi/linux/pidfd.h>
 #include <linux/pidfs.h>
 #include <linux/tick.h>
@@ -1953,8 +1954,106 @@ static void posix_cpu_timers_init_group(struct signal_struct *sig)
 	posix_cputimers_group_init(pct, cpu_limit);
 }
 
+#ifdef CONFIG_RUST_SIGNAL_STRUCT_COPY
+
+struct signal_struct *
+rust_helper_signal_struct_copy_alloc(struct task_struct *task)
+{
+	struct signal_struct *sig;
+
+	sig = kmem_cache_zalloc(signal_cachep, GFP_KERNEL);
+	task->signal = sig;
+	return sig;
+}
+
+void rust_helper_signal_struct_copy_counts(struct signal_struct *sig)
+{
+	atomic_set(&sig->live, 1);
+	refcount_set(&sig->sigcnt, 1);
+}
+
+void rust_helper_signal_struct_copy_waitqueue(struct signal_struct *sig)
+{
+	init_waitqueue_head(&sig->wait_chldexit);
+}
+
+void rust_helper_signal_struct_copy_pending(struct signal_struct *sig)
+{
+	init_sigpending(&sig->shared_pending);
+}
+
+void rust_helper_signal_struct_copy_stats_lock(struct signal_struct *sig)
+{
+	seqlock_init(&sig->stats_lock);
+}
+
+void rust_helper_signal_struct_copy_prev_cputime(struct signal_struct *sig)
+{
+	prev_cputime_init(&sig->prev_cputime);
+}
+
+void rust_helper_signal_struct_copy_posix_timers(struct signal_struct *sig)
+{
+#ifdef CONFIG_POSIX_TIMERS
+	INIT_HLIST_HEAD(&sig->posix_timers);
+	INIT_HLIST_HEAD(&sig->ignored_posix_timers);
+	hrtimer_setup(&sig->real_timer, it_real_fn, CLOCK_MONOTONIC,
+		      HRTIMER_MODE_REL);
+#endif
+}
+
+void rust_helper_signal_struct_copy_rlimits(struct signal_struct *sig)
+{
+	task_lock(current->group_leader);
+	memcpy(sig->rlim, current->signal->rlim, sizeof(sig->rlim));
+	task_unlock(current->group_leader);
+}
+
+void rust_helper_signal_struct_copy_cpu_timers(struct signal_struct *sig)
+{
+	posix_cpu_timers_init_group(sig);
+}
+
+void rust_helper_signal_struct_copy_tty_audit(struct signal_struct *sig)
+{
+	tty_audit_fork(sig);
+}
+
+void rust_helper_signal_struct_copy_autogroup(struct signal_struct *sig)
+{
+	sched_autogroup_fork(sig);
+}
+
+void rust_helper_signal_struct_copy_cgroup_lock(struct signal_struct *sig)
+{
+#ifdef CONFIG_CGROUPS
+	init_rwsem(&sig->cgroup_threadgroup_rwsem);
+#endif
+}
+
+void rust_helper_signal_struct_copy_oom_scores(struct signal_struct *sig)
+{
+	sig->oom_score_adj = current->signal->oom_score_adj;
+	sig->oom_score_adj_min = current->signal->oom_score_adj_min;
+}
+
+void rust_helper_signal_struct_copy_cred_guard_lock(struct signal_struct *sig)
+{
+	mutex_init(&sig->cred_guard_mutex);
+}
+
+void rust_helper_signal_struct_copy_exec_update_lock(struct signal_struct *sig)
+{
+	init_rwsem(&sig->exec_update_lock);
+}
+
+#endif /* CONFIG_RUST_SIGNAL_STRUCT_COPY */
+
 static int copy_signal(u64 clone_flags, struct task_struct *tsk)
 {
+#ifdef CONFIG_RUST_SIGNAL_STRUCT_COPY
+	return rust_signal_struct_copy(tsk, clone_flags);
+#else
 	struct signal_struct *sig;
 
 	if (clone_flags & CLONE_THREAD)
@@ -2007,7 +2106,18 @@ static int copy_signal(u64 clone_flags, struct task_struct *tsk)
 	init_rwsem(&sig->exec_update_lock);
 
 	return 0;
+#endif /* !CONFIG_RUST_SIGNAL_STRUCT_COPY */
 }
+
+#ifdef CONFIG_SIGNAL_STRUCT_COPY_KUNIT_TEST
+bool signal_struct_copy_test_shared(void)
+{
+	struct signal_struct *signal = current->signal;
+
+	return copy_signal(CLONE_THREAD, current) == 0 &&
+	       current->signal == signal;
+}
+#endif
 
 static void copy_seccomp(struct task_struct *p)
 {
