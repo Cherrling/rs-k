@@ -16,6 +16,7 @@
 #include <linux/vma-modify-rust.h>
 #include <linux/vma-munmap-complete-rust.h>
 #include <linux/vma-munmap-gather-rust.h>
+#include <linux/vma-resize-rust.h>
 #include <linux/vma-split-rust.h>
 #include <linux/vma-unmap-rust.h>
 
@@ -2047,6 +2048,15 @@ static struct vm_area_struct *vma_merge_copied_range(struct vma_merge_struct *vm
  * - The caller must hold a WRITE lock on the mm_struct->mmap_lock.
  * - The caller must have set @vmg->target and @vmg->next.
  */
+#ifdef CONFIG_RUST_VMA_EXPAND
+
+int vma_expand(struct vma_merge_struct *vmg)
+{
+	return rust_vma_expand(vmg);
+}
+
+#else
+
 int vma_expand(struct vma_merge_struct *vmg)
 {
 	struct vm_area_struct *anon_dup = NULL;
@@ -2120,6 +2130,121 @@ nomem:
 		vmg->state = VMA_MERGE_ERROR_NOMEM;
 	return -ENOMEM;
 }
+
+#endif /* CONFIG_RUST_VMA_EXPAND */
+
+#ifdef CONFIG_RUST_VMA_EXPAND
+
+void rust_helper_vma_expand_assert_write_locked(struct vma_merge_struct *vmg)
+{
+	mmap_assert_write_locked(vmg->mm);
+}
+
+struct vm_area_struct *
+rust_helper_vma_expand_target(struct vma_merge_struct *vmg)
+{
+	return vmg->target;
+}
+
+struct vm_area_struct *
+rust_helper_vma_expand_next(struct vma_merge_struct *vmg)
+{
+	return vmg->next;
+}
+
+struct vm_area_struct *
+rust_helper_vma_expand_copied_from(struct vma_merge_struct *vmg)
+{
+	return vmg->copied_from;
+}
+
+unsigned long rust_helper_vma_expand_end(struct vma_merge_struct *vmg)
+{
+	return vmg->end;
+}
+
+unsigned long rust_helper_vma_expand_vma_end(struct vm_area_struct *vma)
+{
+	return vma->vm_end;
+}
+
+void rust_helper_vma_expand_init_sticky(vma_flags_t *sticky,
+					struct vma_merge_struct *vmg)
+{
+	*sticky = vma_flags_and_mask(&vmg->vma_flags, VMA_STICKY_FLAGS);
+}
+
+void rust_helper_vma_expand_add_sticky(vma_flags_t *sticky,
+				       struct vm_area_struct *vma)
+{
+	vma_flags_t vma_sticky =
+		vma_flags_and_mask(&vma->flags, VMA_STICKY_FLAGS);
+
+	vma_flags_set_mask(sticky, vma_sticky);
+}
+
+void rust_helper_vma_expand_apply_sticky(struct vm_area_struct *vma,
+					 const vma_flags_t *sticky)
+{
+	vma_set_flags_mask(vma, *sticky);
+}
+
+void rust_helper_vma_expand_validate(struct vma_merge_struct *vmg,
+				     struct vm_area_struct *target,
+				     struct vm_area_struct *next,
+				     bool remove_next)
+{
+	/* We must have a target. */
+	VM_WARN_ON_VMG(!target, vmg);
+	/* This should have already been checked by this point. */
+	VM_WARN_ON_VMG(remove_next && !can_merge_remove_vma(next), vmg);
+	/* Not merging but overwriting any part of next is not handled. */
+	VM_WARN_ON_VMG(next && !remove_next &&
+		       next != target && vmg->end > next->vm_start, vmg);
+	/* Only handles expanding. */
+	VM_WARN_ON_VMG(target->vm_start < vmg->start ||
+		       target->vm_end > vmg->end, vmg);
+}
+
+void rust_helper_vma_expand_start_write(struct vm_area_struct *vma)
+{
+	vma_start_write(vma);
+}
+
+void rust_helper_vma_expand_set_remove_next(struct vma_merge_struct *vmg,
+					    bool remove)
+{
+	vmg->__remove_next = remove;
+}
+
+int rust_helper_vma_expand_dup_anon(struct vm_area_struct *target,
+				    struct vm_area_struct *src,
+				    struct vm_area_struct **anon_dup)
+{
+	return dup_anon_vma(target, src, anon_dup);
+}
+
+int rust_helper_vma_expand_commit(struct vma_merge_struct *vmg)
+{
+	return commit_merge(vmg);
+}
+
+void rust_helper_vma_expand_unlink_anon(struct vm_area_struct *anon_dup)
+{
+	unlink_anon_vmas(anon_dup);
+}
+
+bool rust_helper_vma_expand_give_up_on_oom(struct vma_merge_struct *vmg)
+{
+	return vmg->give_up_on_oom;
+}
+
+void rust_helper_vma_expand_set_nomem(struct vma_merge_struct *vmg)
+{
+	vmg->state = VMA_MERGE_ERROR_NOMEM;
+}
+
+#endif /* CONFIG_RUST_VMA_EXPAND */
 
 #ifdef CONFIG_RUST_VMA_MERGE_NEW_RANGE
 
@@ -2234,6 +2359,16 @@ void rust_helper_vma_merge_new_range_khugepaged_enter(struct vma_merge_struct *v
  *
  * Returns: 0 on success, -ENOMEM otherwise
  */
+#ifdef CONFIG_RUST_VMA_SHRINK
+
+int vma_shrink(struct vma_iterator *vmi, struct vm_area_struct *vma,
+	       unsigned long end)
+{
+	return rust_vma_shrink(vmi, vma, end);
+}
+
+#else
+
 int vma_shrink(struct vma_iterator *vmi, struct vm_area_struct *vma,
 	       unsigned long end)
 {
@@ -2257,6 +2392,79 @@ int vma_shrink(struct vma_iterator *vmi, struct vm_area_struct *vma,
 	validate_mm(vma->vm_mm);
 	return 0;
 }
+
+#endif /* CONFIG_RUST_VMA_SHRINK */
+
+#ifdef CONFIG_RUST_VMA_SHRINK
+
+void rust_helper_vma_shrink_validate(struct vm_area_struct *vma,
+				     unsigned long end)
+{
+	VM_WARN_ON_ONCE(end > vma->vm_end);
+}
+
+unsigned long rust_helper_vma_shrink_vma_end(struct vm_area_struct *vma)
+{
+	return vma->vm_end;
+}
+
+void rust_helper_vma_shrink_iter_config(struct vma_iterator *vmi,
+					unsigned long start, unsigned long end)
+{
+	vma_iter_config(vmi, start, end);
+}
+
+int rust_helper_vma_shrink_iter_prealloc(struct vma_iterator *vmi)
+{
+	return vma_iter_prealloc(vmi, NULL);
+}
+
+void rust_helper_vma_shrink_start_write(struct vm_area_struct *vma)
+{
+	vma_start_write(vma);
+}
+
+void rust_helper_vma_shrink_init_prepare(struct vma_prepare *vp,
+					 struct vm_area_struct *vma)
+{
+	init_vma_prep(vp, vma);
+}
+
+void rust_helper_vma_shrink_prepare(struct vma_prepare *vp)
+{
+	vma_prepare(vp);
+}
+
+void rust_helper_vma_shrink_adjust_trans_huge(struct vm_area_struct *vma,
+					      unsigned long end)
+{
+	vma_adjust_trans_huge(vma, vma->vm_start, end, NULL);
+}
+
+void rust_helper_vma_shrink_iter_clear(struct vma_iterator *vmi)
+{
+	vma_iter_clear(vmi);
+}
+
+void rust_helper_vma_shrink_set_end(struct vm_area_struct *vma,
+				    unsigned long end)
+{
+	__vma_set_range(vma, vma->vm_start, end);
+}
+
+void rust_helper_vma_shrink_complete(struct vma_prepare *vp,
+				     struct vma_iterator *vmi,
+				     struct vm_area_struct *vma)
+{
+	vma_complete(vp, vmi, vma->vm_mm);
+}
+
+void rust_helper_vma_shrink_validate_mm(struct vm_area_struct *vma)
+{
+	validate_mm(vma->vm_mm);
+}
+
+#endif /* CONFIG_RUST_VMA_SHRINK */
 
 static inline void vms_clear_ptes(struct vma_munmap_struct *vms,
 		    struct ma_state *mas_detach, bool mm_wr_locked)

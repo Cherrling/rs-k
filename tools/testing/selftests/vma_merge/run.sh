@@ -19,6 +19,7 @@ mkdir -p "$workdir/root"
 ${CC:-gcc} -static -O2 -Wall -Wextra -Werror \
 	"$srctree/tools/testing/selftests/vma_merge/vma_merge_test.c" \
 	-o "$workdir/root/init"
+cp "$workdir/root/init" "$workdir/root/resize-child"
 
 (
 	cd "$workdir/root"

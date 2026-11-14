@@ -1411,8 +1411,39 @@ config RUST_VMA_MERGE_NEW_RANGE
 	  range. Rust owns merge scenario selection, range and target
 	  adjustment, iterator repositioning, and the merge state transition.
 
-	  Structural expansion, reverse-map updates, and khugepaged integration
-	  remain in C.
+	  Structural expansion uses the separate Rust implementation when
+	  CONFIG_RUST_VMA_EXPAND is enabled. Reverse-map updates, merge
+	  commitment, and khugepaged integration remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
+config RUST_VMA_EXPAND
+	bool "Rust orchestration for expanding VMAs"
+	depends on RUST && MMU
+	default y
+	help
+	  Use Rust for the production vma_expand() path. Rust owns target and
+	  next-VMA selection, the removal decision, sticky-flag propagation,
+	  anonymous-VMA duplication order, structural commit, and rollback.
+
+	  Individual flag operations, anonymous-VMA helpers, locking, merge
+	  commitment, reverse-map updates, and debug checks remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
+config RUST_VMA_SHRINK
+	bool "Rust orchestration for shrinking VMAs"
+	depends on RUST && MMU
+	default y
+	help
+	  Use Rust for the production vma_shrink() path. Rust owns iterator
+	  configuration, preallocation failure handling, lock and preparation
+	  order, huge-page adjustment, range update, completion, and validation.
+
+	  Individual iterator, locking, preparation, range, completion, and
+	  debug primitives remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

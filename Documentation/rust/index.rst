@@ -65,6 +65,8 @@ more details.
     vma-merge-commit
     vma-merge-existing
     vma-merge-new-range
+    vma-expand
+    vma-shrink
     vma-modify
     vma-split
     copy-mm

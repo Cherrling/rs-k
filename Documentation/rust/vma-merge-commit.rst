@@ -11,9 +11,10 @@ structural commit shared by VMA merge paths. The original C implementation
 remains available as a fallback.
 
 The commit is used by existing-range merges, new-range merges, and
-``vma_expand()``. When the existing-range orchestration is native Rust, it
-calls the Rust commit directly. The C ``commit_merge()`` adapter calls the
-same Rust entry for C merge orchestration.
+``vma_expand()``. Native Rust orchestration calls the Rust commit through its
+operation adapter. The C ``commit_merge()`` adapter calls the same Rust entry
+for C merge orchestration. Rust expansion ownership is described in
+:doc:`vma-expand`.
 
 Rust owns these decisions:
 
@@ -177,9 +178,10 @@ Build and ownership checks:
 * The C fallback image omits the Rust commit entry and helpers.
 * The C-orchestration configuration omits the Rust existing-range,
   new-range, and compatibility entries while retaining the Rust commit entry.
-* Production disassembly shows ``vma_expand()`` and the native existing-range
-  path calling the Rust commit.
-* C-orchestration disassembly shows ``vma_expand()`` calling the Rust commit.
+* Production disassembly shows the Rust expansion and native existing-range
+  paths entering the Rust commit adapter.
+* C-orchestration disassembly shows ``vma_expand()`` entering the Rust commit
+  adapter.
 * Rust commit disassembly calls the iterator, preallocation, preparation,
   huge-page, range, storage, and completion helpers in the documented order.
 * ``nm -u vmlinux`` reports no undefined symbols.

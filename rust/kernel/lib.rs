@@ -233,6 +233,8 @@ pub mod types;
 pub mod uaccess;
 #[cfg(CONFIG_USB = "y")]
 pub mod usb;
+#[cfg(CONFIG_RUST_VMA_EXPAND)]
+mod vma_expand;
 #[cfg(CONFIG_RUST_VMA_MERGE_COMMIT)]
 mod vma_merge_commit;
 #[cfg(CONFIG_RUST_VMA_MERGE_COMPAT)]
@@ -247,6 +249,8 @@ mod vma_modify;
 mod vma_munmap_complete;
 #[cfg(CONFIG_RUST_VMA_MUNMAP_GATHER)]
 mod vma_munmap_gather;
+#[cfg(CONFIG_RUST_VMA_SHRINK)]
+mod vma_shrink;
 #[cfg(CONFIG_RUST_VMA_SPLIT)]
 mod vma_split;
 #[cfg(CONFIG_RUST_VMA_UNMAP)]

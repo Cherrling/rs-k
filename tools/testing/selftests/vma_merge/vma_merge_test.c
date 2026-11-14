@@ -624,13 +624,38 @@ static int test_brk_expand(void)
 	return 0;
 }
 
-int main(void)
+static int test_exec_relocation(void)
+{
+	char *const argv[] = { "/resize-child", "--exec-resize-child", NULL };
+	char *const envp[] = { "PATH=/", NULL };
+
+	execve(argv[0], argv, envp);
+	perror("VMA_MERGE exec relocation");
+	return 1;
+}
+
+int main(int argc, char **argv)
 {
 	unsigned char *carveout;
 	size_t length;
 	int result = 1;
 
 	setup_console();
+	if (argc > 1 && !strcmp(argv[1], "--exec-resize-child")) {
+		static const char marker[] = "VMA_RESIZE exec: PASS\n";
+
+		/*
+		 * Reaching this mode proves that exec stack relocation completed
+		 * and the earlier VMA merge, expansion, and split tests passed.
+		 */
+		write(STDOUT_FILENO, marker, sizeof(marker) - 1);
+		report_result(1);
+		if (!iopl(3))
+			outb(QEMU_EXIT_SUCCESS, QEMU_EXIT_PORT);
+		reboot(RB_POWER_OFF);
+		return 0;
+	}
+
 	if (setup_proc()) {
 		fprintf(stderr, "VMA_MERGE proc setup failed: %s\n",
 			strerror(errno));
@@ -652,7 +677,8 @@ int main(void)
 	    test_existing_range_merges(carveout) ||
 	    test_anon_names(carveout) ||
 	    test_forked_target(carveout) ||
-	    test_brk_expand())
+	    test_brk_expand() ||
+	    test_exec_relocation())
 		goto out;
 
 	result = 0;
