@@ -6,7 +6,7 @@
 //! siginfo selection, pending-state transitions, multiprocess stop/continue
 //! updates, completion, and trace result selection. C helpers provide queue
 //! allocation, intrusive-list operations, signal-set bit operations, credential
-//! formatting, tracing, and the surrounding signal policies.
+//! formatting, tracing, and the remaining low-level signal policies.
 
 use crate::bindings;
 use macros::export;

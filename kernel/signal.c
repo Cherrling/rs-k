@@ -44,6 +44,7 @@
 #include <linux/uprobes.h>
 #include <linux/compat.h>
 #include <linux/complete-signal-rust.h>
+#include <linux/prepare-signal-rust.h>
 #include <linux/send-signal-rust.h>
 #include <linux/cn_proc.h>
 #include <linux/compiler.h>
@@ -872,6 +873,31 @@ static void ptrace_trap_notify(struct task_struct *t)
 	ptrace_signal_wake_up(t, t->jobctl & JOBCTL_LISTENING);
 }
 
+#ifdef CONFIG_RUST_PREPARE_SIGNAL
+void rust_prepare_signal_flush_bridge(struct task_struct *task, sigset_t *mask,
+				      struct sigpending *pending)
+{
+	flush_sigqueue_mask(task, mask, pending);
+}
+
+void rust_prepare_signal_ptrace_notify_bridge(struct task_struct *task)
+{
+	ptrace_trap_notify(task);
+}
+
+void rust_prepare_signal_set_stop_flags_bridge(struct signal_struct *signal,
+					       unsigned int flags)
+{
+	signal_set_stop_flags(signal, flags);
+}
+
+bool rust_prepare_signal_ignored_bridge(struct task_struct *task, int sig,
+					bool force)
+{
+	return sig_ignored(task, sig, force);
+}
+#endif
+
 /*
  * Handle magic process-wide effects of stop/continue signals. Unlike
  * the signal actions, these happen immediately at signal-generation
@@ -884,6 +910,9 @@ static void ptrace_trap_notify(struct task_struct *t)
  */
 static bool prepare_signal(int sig, struct task_struct *p, bool force)
 {
+#ifdef CONFIG_RUST_PREPARE_SIGNAL
+	return rust_prepare_signal(sig, p, force);
+#else
 	struct signal_struct *signal = p->signal;
 	struct task_struct *t;
 	sigset_t flush;
@@ -947,7 +976,21 @@ static bool prepare_signal(int sig, struct task_struct *p, bool force)
 	}
 
 	return !sig_ignored(p, sig, force);
+#endif /* !CONFIG_RUST_PREPARE_SIGNAL */
 }
+
+#ifdef CONFIG_PREPARE_SIGNAL_KUNIT_TEST
+bool prepare_signal_test_call(int sig, struct task_struct *task, bool force)
+{
+	bool ret;
+
+	spin_lock_irq(&task->sighand->siglock);
+	ret = prepare_signal(sig, task, force);
+	spin_unlock_irq(&task->sighand->siglock);
+
+	return ret;
+}
+#endif
 
 /*
  * Test if P wants to take SIG.  After we've checked all threads with this,
@@ -1070,7 +1113,11 @@ rust_send_signal_alloc_queue_bridge(int sig, struct task_struct *task,
 bool rust_send_signal_prepare_bridge(int sig, struct task_struct *task,
 				     bool force)
 {
+#ifdef CONFIG_RUST_PREPARE_SIGNAL
+	return rust_prepare_signal(sig, task, force);
+#else
 	return prepare_signal(sig, task, force);
+#endif
 }
 
 void rust_send_signal_complete_bridge(int sig, struct task_struct *task,

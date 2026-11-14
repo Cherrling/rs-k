@@ -142,6 +142,8 @@ pub mod pid_namespace;
 mod pid_number;
 pub mod platform;
 pub mod prelude;
+#[cfg(CONFIG_RUST_PREPARE_SIGNAL)]
+mod prepare_signal;
 pub mod print;
 pub mod processor;
 pub mod ptr;

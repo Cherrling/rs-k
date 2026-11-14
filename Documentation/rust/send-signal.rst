@@ -50,7 +50,8 @@ The following operations remain in C:
 * Credential, PID namespace, and ``siginfo`` formatting.
 * Special ``siginfo`` pointer recognition.
 * ``signalfd_notify()``.
-* ``prepare_signal()``, including its immediate process-wide effects.
+* The ``prepare_signal()`` calling convention. Its state machine moves to
+  Rust when ``CONFIG_RUST_PREPARE_SIGNAL`` is enabled.
 * ``complete_signal()``, including its native Rust completion dispatch.
 * Delayed multiprocess list traversal.
 * Signal classification and the generation tracepoint.
@@ -154,7 +155,6 @@ Reopen the retained C boundary decision if any of these conditions changes:
 * Kernel Rust gains safe abstractions for signal queues, signal sets, or
   intrusive lists.
 * A helper starts to select queue insertion policy or operation order.
-* ``prepare_signal()`` moves into native Rust.
 * The ``sighand->siglock`` contract changes.
 * Signal queue allocation or resource-limit rules change.
 * Delayed multiprocess list ordering changes.

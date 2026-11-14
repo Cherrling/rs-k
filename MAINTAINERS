@@ -23992,6 +23992,7 @@ F:	include/linux/pid-allocation-rust.h
 F:	include/linux/pid-association-rust.h
 F:	include/linux/pid-number-rust.h
 F:	include/linux/pid-rust.h
+F:	include/linux/prepare-signal-rust.h
 F:	include/linux/rwlock-rust.h
 F:	include/linux/rwsem-rust.h
 F:	include/linux/sched-rust.h
@@ -24020,6 +24021,7 @@ F:	lib/tests/test_pid_allocation.c
 F:	lib/tests/test_pid_association.c
 F:	lib/tests/test_pid_number.c
 F:	lib/tests/test_pid_lifecycle.c
+F:	lib/tests/test_prepare_signal.c
 F:	lib/tests/test_rwlock.c
 F:	lib/tests/test_rwsem.c
 F:	lib/tests/test_sched_wake.c

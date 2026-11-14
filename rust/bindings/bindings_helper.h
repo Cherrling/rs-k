@@ -108,6 +108,7 @@
 #include <linux/semaphore-rust.h>
 #include <linux/serdev.h>
 #include <linux/send-signal-rust.h>
+#include <linux/prepare-signal-rust.h>
 #include <linux/signal-retarget-rust.h>
 #include <linux/signal-wake-select-rust.h>
 #include <linux/signal-wake-state-rust.h>

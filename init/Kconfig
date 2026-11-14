@@ -1414,6 +1414,23 @@ config RUST_SEND_SIGNAL
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_PREPARE_SIGNAL
+	bool "Rust implementation of signal preparation"
+	depends on RUST && RUST_SEND_SIGNAL
+	default y
+	help
+	  Use Rust for the production signal-preparation state machine. Rust
+	  owns process-exit rejection, stop and continue queue transitions,
+	  job-control wake policy, stop notification selection, and the final
+	  delivery decision.
+
+	  Signal-set masks, queue-mask cleanup, thread traversal, ptrace trap
+	  scheduling, scheduler wakeup, stop-flag bit operations, and the
+	  low-level ignored-signal policy remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_EXIT_NOTIFY
 	bool "Rust implementation of task exit parent notification"
 	depends on RUST && RUST_TASK_RELEASE
