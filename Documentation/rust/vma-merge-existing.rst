@@ -44,9 +44,9 @@ The C boundary contains:
 * Per-VMA write locks.
 * ``can_merge_remove_vma()``.
 * ``dup_anon_vma()`` and ``unlink_anon_vmas()``.
-* ``commit_merge()``.
+* The individual operations used by the structural commit.
 * Maple-tree storage, reverse-map updates, file-map updates, uprobe handling,
-  and huge-page adjustment reached by ``commit_merge()``.
+  and huge-page adjustment reached by the structural commit.
 * khugepaged registration.
 * ``VM_WARN_ON_VMG`` and merge-state debug invariants.
 
@@ -95,6 +95,10 @@ The two-sided case selects the next VMA for anonymous-VMA duplication when the
 next VMA has an ``anon_vma``. Otherwise, it selects the middle VMA. The left
 case duplicates from the middle VMA. The right case duplicates from the middle
 VMA into the next VMA.
+
+When ``CONFIG_RUST_VMA_MERGE_COMMIT`` is enabled, step 10 calls the native
+Rust structural commit described in :doc:`vma-merge-commit`. Otherwise, the
+original C commit remains the fallback.
 
 Testing
 -------

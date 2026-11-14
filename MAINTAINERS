@@ -17478,6 +17478,7 @@ F:	Documentation/rust/dup-mmap.rst
 F:	Documentation/rust/exit-mmap.rst
 F:	Documentation/rust/mm-lifetime.rst
 F:	Documentation/rust/mm-teardown.rst
+F:	Documentation/rust/vma-merge-commit.rst
 F:	Documentation/rust/vma-merge-compat.rst
 F:	Documentation/rust/vma-merge-existing.rst
 F:	Documentation/rust/vma-merge-new-range.rst
@@ -17488,6 +17489,7 @@ F:	include/linux/copy-mm-rust.h
 F:	include/linux/dup-mmap-rust.h
 F:	include/linux/exit-mmap-rust.h
 F:	include/linux/mm-rust.h
+F:	include/linux/vma-merge-commit-rust.h
 F:	include/linux/vma-merge-compat-rust.h
 F:	include/linux/vma-merge-existing-rust.h
 F:	include/linux/vma-merge-new-range-rust.h
@@ -17509,6 +17511,7 @@ F:	rust/kernel/mm_teardown.rs
 F:	rust/kernel/mm.rs
 F:	rust/kernel/mm/
 F:	rust/kernel/page.rs
+F:	rust/kernel/vma_merge_commit.rs
 F:	rust/kernel/vma_merge_compat.rs
 F:	rust/kernel/vma_merge_existing.rs
 F:	rust/kernel/vma_merge_new_range.rs
@@ -24046,6 +24049,7 @@ F:	include/linux/task-group-exit-sync-rust.h
 F:	include/linux/task-release-rust.h
 F:	include/linux/task-rust.h
 F:	include/linux/timerqueue-rust.h
+F:	include/linux/vma-merge-commit-rust.h
 F:	include/linux/vma-merge-compat-rust.h
 F:	include/linux/vma-merge-existing-rust.h
 F:	include/linux/vma-merge-new-range-rust.h

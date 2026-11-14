@@ -31,7 +31,7 @@ The C boundary contains:
 
 * Special-flag detection.
 * VMA start, end, page-offset, and nestability access.
-* Structural VMA expansion.
+* Anonymous-VMA duplication and sticky-flag selection in ``vma_expand()``.
 * Reverse-map, anonymous-VMA, uprobe, and lock updates reached by expansion.
 * khugepaged registration.
 * Debug write-lock and merge-state validation.
@@ -49,6 +49,10 @@ in place and returns the expanded target VMA or a null pointer.
 
 The Rust entry calls the compatibility module directly in the production
 configuration. It does not enter C to make a compatibility decision.
+
+When ``CONFIG_RUST_VMA_MERGE_COMMIT`` is enabled, the structural commit from
+``vma_expand()`` uses the Rust path described in :doc:`vma-merge-commit`.
+Otherwise, the original C structural commit remains the fallback.
 
 On success, Rust returns the target after structural expansion and khugepaged
 registration. On failure, Rust returns a null pointer and leaves the

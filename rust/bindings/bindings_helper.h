@@ -131,6 +131,7 @@
 #include <linux/tracepoint.h>
 #include <linux/usb.h>
 #include <linux/vma-merge-compat-rust.h>
+#include <linux/vma-merge-commit-rust.h>
 #include <linux/vma-merge-existing-rust.h>
 #include <linux/vma-merge-new-range-rust.h>
 #include <linux/vma-munmap-complete-rust.h>

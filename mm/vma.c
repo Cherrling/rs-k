@@ -1017,6 +1017,15 @@ static void vmg_adjust_set_range(struct vma_merge_struct *vmg)
  *
  * Returns 0 on success, or an error value on failure.
  */
+#ifdef CONFIG_RUST_VMA_MERGE_COMMIT
+
+static int commit_merge(struct vma_merge_struct *vmg)
+{
+	return rust_vma_merge_commit(vmg);
+}
+
+#else
+
 static int commit_merge(struct vma_merge_struct *vmg)
 {
 	struct vm_area_struct *vma;
@@ -1059,6 +1068,88 @@ static int commit_merge(struct vma_merge_struct *vmg)
 
 	return 0;
 }
+
+#endif /* CONFIG_RUST_VMA_MERGE_COMMIT */
+
+#ifdef CONFIG_RUST_VMA_MERGE_COMMIT
+
+bool rust_helper_vma_merge_commit_adjust_next_start(struct vma_merge_struct *vmg)
+{
+	return vmg->__adjust_next_start;
+}
+
+struct vm_area_struct *
+rust_helper_vma_merge_commit_middle(struct vma_merge_struct *vmg)
+{
+	return vmg->middle;
+}
+
+struct vm_area_struct *
+rust_helper_vma_merge_commit_target(struct vma_merge_struct *vmg)
+{
+	return vmg->target;
+}
+
+void rust_helper_vma_merge_commit_config_next(struct vma_merge_struct *vmg)
+{
+	vma_iter_config(vmg->vmi, vmg->end, vmg->next->vm_end);
+}
+
+void rust_helper_vma_merge_commit_config_range(struct vma_merge_struct *vmg)
+{
+	vma_iter_config(vmg->vmi, vmg->start, vmg->end);
+}
+
+void rust_helper_vma_merge_commit_init_prepare(struct vma_prepare *vp,
+					       struct vm_area_struct *vma,
+					       struct vma_merge_struct *vmg)
+{
+	init_multi_vma_prep(vp, vma, vmg);
+}
+
+int rust_helper_vma_merge_commit_prealloc(struct vma_merge_struct *vmg,
+					  struct vm_area_struct *vma)
+{
+	return vma_iter_prealloc(vmg->vmi, vma);
+}
+
+void rust_helper_vma_merge_commit_prepare(struct vma_prepare *vp)
+{
+	vma_prepare(vp);
+}
+
+void rust_helper_vma_merge_commit_adjust_huge(struct vma_merge_struct *vmg,
+					      struct vm_area_struct *vma)
+{
+	vma_adjust_trans_huge(vma, vmg->start, vmg->end,
+			      vmg->__adjust_middle_start ? vmg->middle : NULL);
+}
+
+void rust_helper_vma_merge_commit_set_range(struct vma_merge_struct *vmg,
+					    struct vm_area_struct *vma)
+{
+	vma_set_range(vma, vmg->start, vmg->end, vmg_start_pgoff(vmg),
+		      vmg_start_anon_pgoff(vmg));
+}
+
+void rust_helper_vma_merge_commit_adjust_set_range(struct vma_merge_struct *vmg)
+{
+	vmg_adjust_set_range(vmg);
+}
+
+void rust_helper_vma_merge_commit_store(struct vma_merge_struct *vmg)
+{
+	vma_iter_store_overwrite(vmg->vmi, vmg->target);
+}
+
+void rust_helper_vma_merge_commit_complete(struct vma_prepare *vp,
+					   struct vma_merge_struct *vmg,
+					   struct vm_area_struct *vma)
+{
+	vma_complete(vp, vmg->vmi, vma->vm_mm);
+}
+
+#endif /* CONFIG_RUST_VMA_MERGE_COMMIT */
 
 /* We can only remove VMAs when merging if they do not have a close hook. */
 static bool can_merge_remove_vma(struct vm_area_struct *vma)

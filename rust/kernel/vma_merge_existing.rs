@@ -10,6 +10,8 @@
 use crate::bindings;
 use macros::export;
 
+#[cfg(CONFIG_RUST_VMA_MERGE_COMMIT)]
+use crate::vma_merge_commit;
 #[cfg(CONFIG_RUST_VMA_MERGE_COMPAT)]
 use crate::vma_merge_compat;
 
@@ -90,6 +92,28 @@ unsafe fn abort(state: *mut MergeState, start: usize) {
             bindings::rust_helper_vma_merge_existing_set_nomem(state);
         }
     }
+}
+
+/// Commits the structural merge through the native Rust implementation.
+///
+/// # Safety
+///
+/// `state` must describe a live merge operation under the mmap write lock.
+#[cfg(CONFIG_RUST_VMA_MERGE_COMMIT)]
+unsafe fn commit(state: *mut MergeState) -> i32 {
+    // SAFETY: The caller supplies a live merge operation.
+    unsafe { vma_merge_commit::commit((*state).vmg) }
+}
+
+/// Commits the structural merge through the C fallback implementation.
+///
+/// # Safety
+///
+/// `state` must describe a live merge operation under the mmap write lock.
+#[cfg(not(CONFIG_RUST_VMA_MERGE_COMMIT))]
+unsafe fn commit(state: *mut MergeState) -> i32 {
+    // SAFETY: The caller supplies a live merge operation.
+    unsafe { bindings::rust_helper_vma_merge_existing_commit(state) }
 }
 
 /// Attempts to merge adjacent VMAs after an existing VMA range changed.
@@ -236,7 +260,7 @@ unsafe fn merge_existing(state: *mut MergeState) -> *mut Vma {
             target = next;
         }
 
-        if err != 0 || bindings::rust_helper_vma_merge_existing_commit(state) != 0 {
+        if err != 0 || commit(state) != 0 {
             abort(state, start);
             return core::ptr::null_mut();
         }
