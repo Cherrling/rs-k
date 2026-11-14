@@ -13,6 +13,7 @@
 #include <linux/sched/task.h>
 #include <linux/sched/task_stack.h>
 #include <linux/sched/cputime.h>
+#include <linux/task-group-exit-sync-rust.h>
 #include <linux/task-exit-notify-rust.h>
 #include <linux/task-release-rust.h>
 #include <linux/interrupt.h>
@@ -902,6 +903,22 @@ static void check_stack_usage(void)
 static inline void check_stack_usage(void) {}
 #endif /* CONFIG_DEBUG_STACK_USAGE */
 
+#ifdef CONFIG_RUST_TASK_GROUP_EXIT_SYNC
+
+void
+rust_helper_task_group_exit_sync_coredump(struct task_struct *task,
+					  struct core_state *core_state)
+{
+	coredump_task_exit(task, core_state);
+}
+
+static void synchronize_group_exit(struct task_struct *tsk, long code)
+{
+	rust_task_group_exit_sync(tsk, code);
+}
+
+#else /* !CONFIG_RUST_TASK_GROUP_EXIT_SYNC */
+
 static void synchronize_group_exit(struct task_struct *tsk, long code)
 {
 	struct sighand_struct *sighand = tsk->sighand;
@@ -930,6 +947,8 @@ static void synchronize_group_exit(struct task_struct *tsk, long code)
 	if (unlikely(core_state))
 		coredump_task_exit(tsk, core_state);
 }
+
+#endif /* !CONFIG_RUST_TASK_GROUP_EXIT_SYNC */
 
 void __noreturn do_exit(long code)
 {

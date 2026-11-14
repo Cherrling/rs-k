@@ -1316,6 +1316,22 @@ config RUST_TASK_RELEASE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_TASK_GROUP_EXIT_SYNC
+	bool "Rust implementation of task group exit synchronization"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production task thread-group exit synchronization
+	  state machine. Rust owns quick-thread convergence, group exit-code
+	  publication, stop-count clearing, post-coredump marking, and coredump
+	  entry selection.
+
+	  The signal-handler lock and active coredump synchronization primitive
+	  remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_EXIT_NOTIFY
 	bool "Rust implementation of task exit parent notification"
 	depends on RUST && RUST_TASK_RELEASE

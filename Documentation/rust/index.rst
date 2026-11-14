@@ -39,6 +39,7 @@ more details.
     testing
     task-teardown
     task-release
+    task-group-exit-sync
     task-exit-notify
     pid-allocation
     pid-association
