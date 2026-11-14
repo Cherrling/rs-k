@@ -2501,6 +2501,22 @@ config MM_LIFETIME_KUNIT_TEST
 
 	  If unsure, say N.
 
+config DUP_TASK_STRUCT_KUNIT_TEST
+	bool "KUnit test for task structure duplication" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables a KUnit test for production task-structure
+	  duplication. The test creates and stops a kernel thread so the child
+	  task, kernel stack, reference counts, and initialized transient
+	  fields pass through the production copy_process() path.
+
+	  The Rust transition counters run only with the native Rust
+	  implementation. The real task-creation case runs with either the C
+	  implementation or the native Rust implementation selected.
+
+	  If unsure, say N.
+
 config TASK_TEARDOWN_KUNIT_TEST
 	bool "KUnit test for final task resource teardown" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

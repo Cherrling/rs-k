@@ -1285,6 +1285,23 @@ config RUST_MM_TEARDOWN
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_DUP_TASK_STRUCT
+	bool "Rust implementation of task structure duplication"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production task-structure duplication path. Rust
+	  owns the NUMA node decision, allocation failure handling, stack
+	  publication, inherited CPU state setup, task reference
+	  initialization, conditional field resets, and cleanup order.
+
+	  Task and stack allocation, architecture copying, stack-accounting,
+	  CPU-mask, random-canary, and subsystem initialization primitives
+	  remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_TEARDOWN
 	bool "Rust implementation of final task teardown"
 	depends on RUST

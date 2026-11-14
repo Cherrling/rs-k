@@ -37,6 +37,7 @@ more details.
     coding-guidelines
     arch-support
     testing
+    dup-task-struct
     task-teardown
     task-release
     task-group-exit-sync

@@ -25,6 +25,7 @@ obj-$(CONFIG_ITIMER_KUNIT_TEST) += test_itimer.o
 obj-$(CONFIG_HRTIMER_KUNIT_TEST) += test_hrtimer_core.o
 obj-$(CONFIG_SCHED_WAKE_KUNIT_TEST) += test_sched_wake.o
 obj-$(CONFIG_MM_LIFETIME_KUNIT_TEST) += test_mm_lifetime.o
+obj-$(CONFIG_DUP_TASK_STRUCT_KUNIT_TEST) += test_dup_task_struct.o
 obj-$(CONFIG_TASK_TEARDOWN_KUNIT_TEST) += test_task_teardown.o
 obj-$(CONFIG_TASK_RELEASE_KUNIT_TEST) += test_task_release.o
 obj-$(CONFIG_TASK_GROUP_EXIT_SYNC_KUNIT_TEST) += test_task_group_exit_sync.o

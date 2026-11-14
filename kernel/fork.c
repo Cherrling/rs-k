@@ -108,6 +108,7 @@
 #include <linux/user_events.h>
 #include <linux/iommu.h>
 #include <linux/rseq.h>
+#include <linux/dup-task-struct-rust.h>
 #include <linux/signal-struct-copy-rust.h>
 #include <uapi/linux/pidfd.h>
 #include <linux/pidfs.h>
@@ -979,8 +980,166 @@ void set_task_stack_end_magic(struct task_struct *tsk)
 	*stackend = STACK_END_MAGIC;	/* for overflow detection */
 }
 
+#ifdef CONFIG_RUST_DUP_TASK_STRUCT
+
+int rust_helper_dup_task_struct_resolve_node(struct task_struct *orig, int node)
+{
+	if (node == NUMA_NO_NODE)
+		node = tsk_fork_get_node(orig);
+	return node;
+}
+
+struct task_struct *rust_helper_dup_task_struct_alloc(int node)
+{
+	return alloc_task_struct_node(node);
+}
+
+int rust_helper_dup_task_struct_arch_copy(struct task_struct *dst,
+					  struct task_struct *src)
+{
+	return arch_dup_task_struct(dst, src);
+}
+
+int rust_helper_dup_task_struct_alloc_stack(struct task_struct *task, int node)
+{
+	return alloc_thread_stack_node(task, node);
+}
+
+void rust_helper_dup_task_struct_account_stack(struct task_struct *task)
+{
+#ifdef CONFIG_THREAD_INFO_IN_TASK
+	refcount_set(&task->stack_refcount, 1);
+#endif
+	account_kernel_stack(task, 1);
+}
+
+int rust_helper_dup_task_struct_alloc_ipi_mask(struct task_struct *task)
+{
+	return smp_task_ipi_mask_alloc(task);
+}
+
+int rust_helper_dup_task_struct_prepare_scs(struct task_struct *task, int node)
+{
+	return scs_prepare(task, node);
+}
+
+void rust_helper_dup_task_struct_init_thread_stack(struct task_struct *task,
+						   struct task_struct *orig)
+{
+	setup_thread_stack(task, orig);
+}
+
+void rust_helper_dup_task_struct_clear_thread_flags(struct task_struct *task)
+{
+	clear_user_return_notifier(task);
+	clear_tsk_need_resched(task);
+}
+
+void rust_helper_dup_task_struct_set_stack_magic(struct task_struct *task)
+{
+	set_task_stack_end_magic(task);
+}
+
+void rust_helper_dup_task_struct_clear_syscall_dispatch(struct task_struct *task)
+{
+	clear_syscall_work_syscall_user_dispatch(task);
+}
+
+void rust_helper_dup_task_struct_init_canary(struct task_struct *task)
+{
+#ifdef CONFIG_STACKPROTECTOR
+	task->stack_canary = get_random_canary();
+#endif
+}
+
+void rust_helper_dup_task_struct_init_cpus(struct task_struct *task,
+					   struct task_struct *orig, int node)
+{
+	if (orig->cpus_ptr == &orig->cpus_mask)
+		task->cpus_ptr = &task->cpus_mask;
+	dup_user_cpus_ptr(task, orig, node);
+}
+
+void rust_helper_dup_task_struct_init_refcounts(struct task_struct *task)
+{
+	/*
+	 * One for the user space visible state that goes away when reaped.
+	 * One for the scheduler.
+	 */
+	refcount_set(&task->rcu_users, 2);
+	/* One for the rcu users. */
+	refcount_set(&task->usage, 1);
+}
+
+void rust_helper_dup_task_struct_init_subsystems(struct task_struct *task)
+{
+	kcov_task_init(task);
+	kmsan_task_create(task);
+	kmap_local_fork(task);
+}
+
+void rust_helper_dup_task_struct_init_conditional_fields(struct task_struct *task)
+{
+#ifdef CONFIG_FAULT_INJECTION
+	task->fail_nth = 0;
+#endif
+
+#ifdef CONFIG_BLK_CGROUP
+	task->throttle_disk = NULL;
+	task->use_memdelay = 0;
+#endif
+
+#ifdef CONFIG_ARCH_HAS_CPU_PASID
+	task->pasid_activated = 0;
+#endif
+
+#ifdef CONFIG_MEMCG
+	task->active_memcg = NULL;
+#endif
+
+#ifdef CONFIG_X86_BUS_LOCK_DETECT
+	task->reported_split_lock = 0;
+#endif
+
+#ifdef CONFIG_SCHED_MM_CID
+	task->mm_cid.cid = MM_CID_UNSET;
+	task->mm_cid.active = 0;
+	INIT_HLIST_NODE(&task->mm_cid.node);
+#endif
+
+#ifdef CONFIG_BPF_SYSCALL
+	RCU_INIT_POINTER(task->bpf_storage, NULL);
+	task->bpf_ctx = NULL;
+#endif
+}
+
+void rust_helper_dup_task_struct_free_ipi_mask(struct task_struct *task)
+{
+	smp_task_ipi_mask_free(task);
+}
+
+void rust_helper_dup_task_struct_exit_stack_account(struct task_struct *task)
+{
+	exit_task_stack_account(task);
+}
+
+void rust_helper_dup_task_struct_free_stack(struct task_struct *task)
+{
+	free_thread_stack(task);
+}
+
+void rust_helper_dup_task_struct_free_task(struct task_struct *task)
+{
+	free_task_struct(task);
+}
+
+#endif /* CONFIG_RUST_DUP_TASK_STRUCT */
+
 static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 {
+#ifdef CONFIG_RUST_DUP_TASK_STRUCT
+	return rust_dup_task_struct(orig, node);
+#else
 	struct task_struct *tsk;
 	int err;
 
@@ -1096,6 +1255,7 @@ free_stack:
 free_tsk:
 	free_task_struct(tsk);
 	return NULL;
+#endif /* !CONFIG_RUST_DUP_TASK_STRUCT */
 }
 
 __cacheline_aligned_in_smp DEFINE_SPINLOCK(mmlist_lock);

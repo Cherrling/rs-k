@@ -76,6 +76,8 @@ pub mod dma;
 pub mod driver;
 #[cfg(CONFIG_DRM = "y")]
 pub mod drm;
+#[cfg(CONFIG_RUST_DUP_TASK_STRUCT)]
+mod dup_task_struct;
 pub mod error;
 pub mod faux;
 #[cfg(CONFIG_RUST_FW_LOADER_ABSTRACTIONS)]

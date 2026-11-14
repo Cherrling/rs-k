@@ -23985,6 +23985,7 @@ F:	include/linux/complete-signal-rust.h
 F:	include/linux/completion-rust.h
 F:	include/linux/cpupri-rust.h
 F:	include/linux/cpupri.h
+F:	include/linux/dup-task-struct-rust.h
 F:	include/linux/hrtimer-rust.h
 F:	include/linux/itimer-rust.h
 F:	include/linux/mutex-rust.h
@@ -24015,6 +24016,7 @@ F:	include/linux/wait-rust.h
 F:	include/trace/events/rust_sample.h
 F:	lib/tests/test_complete_signal.c
 F:	lib/tests/test_cpupri.c
+F:	lib/tests/test_dup_task_struct.c
 F:	lib/tests/test_hrtimer_core.c
 F:	lib/tests/test_itimer.c
 F:	lib/tests/test_mm_lifetime.c
