@@ -1349,6 +1349,21 @@ config RUST_VMA_MUNMAP_GATHER
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_VMA_MERGE_NEW_RANGE
+	bool "Rust orchestration for new-range VMA merging"
+	depends on RUST && MMU
+	default y
+	help
+	  Use Rust for the production merge orchestration of a proposed VMA
+	  range. Rust owns merge scenario selection, range and target
+	  adjustment, iterator repositioning, and the merge state transition.
+
+	  VMA compatibility predicates, structural expansion, reverse-map
+	  updates, and khugepaged integration remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_COPY_MM
 	bool "Rust implementation of address-space copying"
 	depends on RUST && MMU

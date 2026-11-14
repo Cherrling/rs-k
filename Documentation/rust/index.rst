@@ -61,6 +61,7 @@ more details.
     vma-unmap
     vma-munmap-complete
     vma-munmap-gather
+    vma-merge-new-range
     copy-mm
     dup-mmap
     sched

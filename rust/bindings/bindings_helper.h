@@ -130,6 +130,7 @@
 #include <linux/timerqueue-rust.h>
 #include <linux/tracepoint.h>
 #include <linux/usb.h>
+#include <linux/vma-merge-new-range-rust.h>
 #include <linux/vma-munmap-complete-rust.h>
 #include <linux/vma-munmap-gather-rust.h>
 #include <linux/vma-unmap-rust.h>

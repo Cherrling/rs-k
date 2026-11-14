@@ -10,6 +10,7 @@
  */
 #include "vma_internal.h"
 #include "vma.h"
+#include <linux/vma-merge-new-range-rust.h>
 #include <linux/vma-munmap-complete-rust.h>
 #include <linux/vma-munmap-gather-rust.h>
 #include <linux/vma-unmap-rust.h>
@@ -1147,6 +1148,23 @@ abort:
  * - The caller must have specified the next vma in @vmg->next.
  * - The caller must have positioned the vmi at or before the gap.
  */
+#ifdef CONFIG_RUST_VMA_MERGE_NEW_RANGE
+
+struct vm_area_struct *vma_merge_new_range(struct vma_merge_struct *vmg)
+{
+	struct rust_vma_merge_new_range_state state = {
+		.vmg = vmg,
+		.prev = vmg->prev,
+		.next = vmg->next,
+		.end = vmg->end,
+		.just_expand = vmg->just_expand,
+	};
+
+	return rust_vma_merge_new_range(&state);
+}
+
+#else
+
 struct vm_area_struct *vma_merge_new_range(struct vma_merge_struct *vmg)
 {
 	struct vm_area_struct *prev = vmg->prev;
@@ -1210,6 +1228,8 @@ struct vm_area_struct *vma_merge_new_range(struct vma_merge_struct *vmg)
 
 	return NULL;
 }
+
+#endif /* CONFIG_RUST_VMA_MERGE_NEW_RANGE */
 
 /*
  * vma_merge_copied_range - Attempt to merge a VMA that is being copied by
@@ -1332,6 +1352,109 @@ nomem:
 		vmg->state = VMA_MERGE_ERROR_NOMEM;
 	return -ENOMEM;
 }
+
+#ifdef CONFIG_RUST_VMA_MERGE_NEW_RANGE
+
+void rust_helper_vma_merge_new_range_validate(struct vma_merge_struct *vmg,
+					      unsigned long end)
+{
+	mmap_assert_write_locked(vmg->mm);
+	VM_WARN_ON_VMG(vmg->middle, vmg);
+	VM_WARN_ON_VMG(vmg->target, vmg);
+	VM_WARN_ON_VMG(vma_iter_addr(vmg->vmi) > end, vmg);
+}
+
+void rust_helper_vma_merge_new_range_set_nomerge(struct vma_merge_struct *vmg)
+{
+	vmg->state = VMA_MERGE_NOMERGE;
+}
+
+void rust_helper_vma_merge_new_range_set_success(struct vma_merge_struct *vmg)
+{
+	vmg->state = VMA_MERGE_SUCCESS;
+}
+
+bool rust_helper_vma_merge_new_range_is_special(struct vma_merge_struct *vmg)
+{
+	return vma_flags_test_any_mask(&vmg->vma_flags, VMA_SPECIAL_FLAGS);
+}
+
+bool rust_helper_vma_merge_new_range_can_merge_left(struct vma_merge_struct *vmg)
+{
+	return can_vma_merge_left(vmg);
+}
+
+bool rust_helper_vma_merge_new_range_can_merge_right(struct vma_merge_struct *vmg,
+						     bool can_merge_left)
+{
+	return can_vma_merge_right(vmg, can_merge_left);
+}
+
+unsigned long
+rust_helper_vma_merge_new_range_prev_start(struct vm_area_struct *prev)
+{
+	return prev->vm_start;
+}
+
+unsigned long
+rust_helper_vma_merge_new_range_next_end(struct vm_area_struct *next)
+{
+	return next->vm_end;
+}
+
+bool rust_helper_vma_merge_new_range_can_remove_next(struct vm_area_struct *next)
+{
+	return can_merge_remove_vma(next);
+}
+
+void rust_helper_vma_merge_new_range_set_end(struct vma_merge_struct *vmg,
+					     unsigned long end)
+{
+	vmg->end = end;
+}
+
+void rust_helper_vma_merge_new_range_set_start(struct vma_merge_struct *vmg,
+					       unsigned long start)
+{
+	vmg->start = start;
+}
+
+void rust_helper_vma_merge_new_range_set_target(struct vma_merge_struct *vmg,
+						struct vm_area_struct *target)
+{
+	vmg->target = target;
+}
+
+struct vm_area_struct *
+rust_helper_vma_merge_new_range_target(struct vma_merge_struct *vmg)
+{
+	return vmg->target;
+}
+
+void rust_helper_vma_merge_new_range_set_start_pgoffs(struct vma_merge_struct *vmg,
+						      struct vm_area_struct *vma)
+{
+	vmg->pgoff = vma_start_pgoff(vma);
+	vmg->anon_pgoff = vma_start_anon_pgoff(vma);
+}
+
+void rust_helper_vma_merge_new_range_prev(struct vma_merge_struct *vmg)
+{
+	vma_prev(vmg->vmi);
+}
+
+int rust_helper_vma_merge_new_range_expand(struct vma_merge_struct *vmg)
+{
+	return vma_expand(vmg);
+}
+
+void rust_helper_vma_merge_new_range_khugepaged_enter(struct vma_merge_struct *vmg,
+						      struct vm_area_struct *target)
+{
+	khugepaged_enter_vma(target, vmg->vm_flags);
+}
+
+#endif /* CONFIG_RUST_VMA_MERGE_NEW_RANGE */
 
 /**
  * vma_shrink() - Shrink the end of a VMA
