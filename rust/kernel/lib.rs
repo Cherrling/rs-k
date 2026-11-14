@@ -182,6 +182,8 @@ pub mod seq_file;
 pub mod serdev;
 #[cfg(CONFIG_RUST_SIGNAL_RETARGET)]
 mod signal_retarget;
+#[cfg(CONFIG_RUST_SIGNAL_WAKE_STATE)]
+mod signal_wake_state;
 pub mod sizes;
 #[cfg(CONFIG_SOC_BUS)]
 pub mod soc;

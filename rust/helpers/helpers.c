@@ -101,6 +101,7 @@
 #include "serdev.c"
 #include "signal.c"
 #include "signal_retarget.c"
+#include "signal_wake_state.c"
 #include "slab.c"
 #include "spinlock.c"
 #include "string.c"

@@ -2560,6 +2560,21 @@ config SIGNAL_RETARGET_KUNIT_TEST
 
 	  If unsure, say N.
 
+config SIGNAL_WAKE_STATE_KUNIT_TEST
+	bool "KUnit test for signal wakeup state" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for the production signal wakeup
+	  state. The tests create real sleeping and running kernel threads and
+	  call the production path under the signal-handler lock.
+
+	  The behavior cases run with either the C implementation or the
+	  native Rust implementation selected. The policy counters run only
+	  with the native Rust implementation.
+
+	  If unsure, say N.
+
 config TASK_EXIT_NOTIFY_KUNIT_TEST
 	bool "KUnit test for task exit parent notification" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

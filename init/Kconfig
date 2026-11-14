@@ -1348,6 +1348,21 @@ config RUST_SIGNAL_RETARGET
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SIGNAL_WAKE_STATE
+	bool "Rust implementation of signal wakeup state"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production signal wakeup state machine. Rust sets
+	  the pending flag, derives the scheduler wake mask, attempts to wake
+	  the target, and selects the process-kick fallback.
+
+	  The signal-handler lock assertion, thread-flag bit operation,
+	  scheduler wakeup, process kick, and public ABI adapter remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_EXIT_NOTIFY
 	bool "Rust implementation of task exit parent notification"
 	depends on RUST && RUST_TASK_RELEASE

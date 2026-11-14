@@ -41,6 +41,7 @@ more details.
     task-release
     task-group-exit-sync
     signal-retarget
+    signal-wake-state
     task-exit-notify
     pid-allocation
     pid-association
