@@ -11,8 +11,9 @@ production ``signal_wake_up_state()`` function in ``kernel/signal.c``. The
 original C implementation remains available as a fallback.
 
 This unit covers the ordered wakeup sequence for a task that must process a
-signal. It excludes fatal-signal state selection in ``signal_wake_up()``,
-ptrace state selection, signal queue manipulation, and signal delivery.
+signal. Fatal-signal state selection in ``signal_wake_up()`` and ptrace state
+selection are handled by :doc:`signal-wake-select`. This unit excludes signal
+queue manipulation and signal delivery.
 
 The Rust code owns these decisions and transitions:
 
@@ -121,6 +122,7 @@ Reopen the retained C boundary decision if any of these conditions changes:
 * Kernel Rust gains safe abstractions for thread flags or scheduler wakeup.
 * A helper starts to select wake policy or operation order.
 * The ``sighand->siglock`` contract changes.
-* ``signal_wake_up()`` or ptrace wake-state selection moves to Rust.
+* The interface from :doc:`signal-wake-select` to this wakeup state machine
+  changes.
 * Signal delivery no longer requires ``TIF_SIGPENDING`` publication before
   wakeup.

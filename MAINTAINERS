@@ -23996,6 +23996,7 @@ F:	include/linux/rwsem-rust.h
 F:	include/linux/sched-rust.h
 F:	include/linux/semaphore-rust.h
 F:	include/linux/signal-retarget-rust.h
+F:	include/linux/signal-wake-select-rust.h
 F:	include/linux/signal-wake-state-rust.h
 F:	include/linux/swait-rust.h
 F:	include/linux/task-exit-notify-rust.h
@@ -24021,6 +24022,7 @@ F:	lib/tests/test_rwsem.c
 F:	lib/tests/test_sched_wake.c
 F:	lib/tests/test_semaphore.c
 F:	lib/tests/test_signal_retarget.c
+F:	lib/tests/test_signal_wake_select.c
 F:	lib/tests/test_signal_wake_state.c
 F:	lib/tests/test_swait.c
 F:	lib/tests/test_task_exit_notify.c

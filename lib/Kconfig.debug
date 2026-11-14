@@ -2575,6 +2575,22 @@ config SIGNAL_WAKE_STATE_KUNIT_TEST
 
 	  If unsure, say N.
 
+config SIGNAL_WAKE_SELECT_KUNIT_TEST
+	bool "KUnit test for signal wakeup state selection" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for fatal-signal and ptrace wake
+	  state selection. The test creates a real running kernel thread and
+	  calls both production inline wakeup adapters under the signal-handler
+	  lock.
+
+	  The behavior cases run with either the C implementation or the
+	  native Rust implementation selected. The policy counters run only
+	  with the native Rust implementation.
+
+	  If unsure, say N.
+
 config TASK_EXIT_NOTIFY_KUNIT_TEST
 	bool "KUnit test for task exit parent notification" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

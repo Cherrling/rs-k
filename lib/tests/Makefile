@@ -29,6 +29,7 @@ obj-$(CONFIG_TASK_TEARDOWN_KUNIT_TEST) += test_task_teardown.o
 obj-$(CONFIG_TASK_RELEASE_KUNIT_TEST) += test_task_release.o
 obj-$(CONFIG_TASK_GROUP_EXIT_SYNC_KUNIT_TEST) += test_task_group_exit_sync.o
 obj-$(CONFIG_SIGNAL_RETARGET_KUNIT_TEST) += test_signal_retarget.o
+obj-$(CONFIG_SIGNAL_WAKE_SELECT_KUNIT_TEST) += test_signal_wake_select.o
 obj-$(CONFIG_SIGNAL_WAKE_STATE_KUNIT_TEST) += test_signal_wake_state.o
 obj-$(CONFIG_TASK_EXIT_NOTIFY_KUNIT_TEST) += test_task_exit_notify.o
 obj-$(CONFIG_PID_LIFECYCLE_KUNIT_TEST) += test_pid_lifecycle.o

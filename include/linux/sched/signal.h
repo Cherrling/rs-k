@@ -8,6 +8,7 @@
 #include <linux/sched.h>
 #include <linux/sched/jobctl.h>
 #include <linux/sched/task.h>
+#include <linux/signal-wake-select-rust.h>
 #include <linux/cred.h>
 #include <linux/refcount.h>
 #include <linux/pid.h>
@@ -466,21 +467,29 @@ extern void signal_wake_up_state(struct task_struct *t, unsigned int state);
 
 static inline void signal_wake_up(struct task_struct *t, bool fatal)
 {
+#ifdef CONFIG_RUST_SIGNAL_WAKE_SELECT
+	rust_signal_wake_up(t, fatal);
+#else
 	unsigned int state = 0;
 	if (fatal && !(t->jobctl & JOBCTL_PTRACE_FROZEN)) {
 		t->jobctl &= ~(JOBCTL_STOPPED | JOBCTL_TRACED);
 		state = TASK_WAKEKILL | __TASK_TRACED;
 	}
 	signal_wake_up_state(t, state);
+#endif
 }
 static inline void ptrace_signal_wake_up(struct task_struct *t, bool resume)
 {
+#ifdef CONFIG_RUST_SIGNAL_WAKE_SELECT
+	rust_ptrace_signal_wake_up(t, resume);
+#else
 	unsigned int state = 0;
 	if (resume) {
 		t->jobctl &= ~JOBCTL_TRACED;
 		state = __TASK_TRACED;
 	}
 	signal_wake_up_state(t, state);
+#endif
 }
 
 void task_join_group_stop(struct task_struct *task);

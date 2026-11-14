@@ -1363,6 +1363,23 @@ config RUST_SIGNAL_WAKE_STATE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SIGNAL_WAKE_SELECT
+	bool "Rust implementation of signal wakeup state selection"
+	depends on RUST && RUST_SIGNAL_WAKE_STATE
+	default y
+	help
+	  Use Rust for the production fatal-signal and ptrace wake state
+	  selection. Rust reads and updates the task job-control state,
+	  selects the task wake state, and calls the native Rust wakeup state
+	  machine.
+
+	  Task and signal-handler locking, public inline ABI adapters, thread
+	  flags, scheduler wakeup, process kick, and debug assertions remain
+	  in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_EXIT_NOTIFY
 	bool "Rust implementation of task exit parent notification"
 	depends on RUST && RUST_TASK_RELEASE
