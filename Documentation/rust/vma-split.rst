@@ -48,7 +48,8 @@ The C boundary contains:
 * File-reference acquisition.
 * Mmap write-lock primitives.
 * Maple-tree iterator and preallocation primitives.
-* VMA preparation and completion.
+* VMA preparation-state initialization and shared preparation/completion
+  adapters.
 * Transparent huge-page and hugetlb operations.
 * Debug address-space validation.
 
@@ -69,6 +70,10 @@ absent.
 The caller must hold the mmap write lock. The original VMA and iterator must
 remain live for the complete operation. The split address must lie strictly
 inside the original VMA.
+
+The shared reverse-map, file-map, uprobe, lock, and VMA release order is
+Rust-owned when ``CONFIG_RUST_VMA_PREPARE_COMPLETE`` is enabled, as described
+in :doc:`vma-prepare-complete`.
 
 Ordering and rollback invariants
 --------------------------------

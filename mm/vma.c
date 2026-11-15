@@ -16,6 +16,7 @@
 #include <linux/vma-modify-rust.h>
 #include <linux/vma-munmap-complete-rust.h>
 #include <linux/vma-munmap-gather-rust.h>
+#include <linux/vma-prepare-complete-rust.h>
 #include <linux/vma-resize-rust.h>
 #include <linux/vma-split-rust.h>
 #include <linux/vma-unmap-rust.h>
@@ -184,6 +185,17 @@ static bool is_mergeable_anon_vma(struct vma_merge_struct *vmg, bool merge_next)
  * @vmg: The merge state that will be used to determine adjustment and VMA
  *       removal.
  */
+#ifdef CONFIG_RUST_VMA_PREPARE_COMPLETE
+
+static void init_multi_vma_prep(struct vma_prepare *vp,
+				struct vm_area_struct *vma,
+				struct vma_merge_struct *vmg)
+{
+	rust_vma_init_prepare(vp, vma, vmg);
+}
+
+#else
+
 static void init_multi_vma_prep(struct vma_prepare *vp,
 				struct vm_area_struct *vma,
 				struct vma_merge_struct *vmg)
@@ -223,6 +235,8 @@ static void init_multi_vma_prep(struct vma_prepare *vp,
 	if (vmg && vmg->skip_vma_uprobe)
 		vp->skip_vma_uprobe = true;
 }
+
+#endif /* CONFIG_RUST_VMA_PREPARE_COMPLETE */
 
 #ifndef CONFIG_RUST_VMA_MERGE_COMPAT
 
@@ -358,6 +372,15 @@ anon_rmap_tree_post_update_vma(struct vm_area_struct *vma)
  * vma_prepare() - Helper function for handling locking VMAs prior to altering
  * @vp: The initialized vma_prepare struct
  */
+#ifdef CONFIG_RUST_VMA_PREPARE_COMPLETE
+
+static void vma_prepare(struct vma_prepare *vp)
+{
+	rust_vma_prepare(vp);
+}
+
+#else
+
 static void vma_prepare(struct vma_prepare *vp)
 {
 	if (vp->file) {
@@ -396,6 +419,8 @@ static void vma_prepare(struct vma_prepare *vp)
 
 }
 
+#endif /* CONFIG_RUST_VMA_PREPARE_COMPLETE */
+
 /*
  * vma_complete- Helper function for handling the unlocking after altering VMAs,
  * or for inserting a VMA.
@@ -404,6 +429,16 @@ static void vma_prepare(struct vma_prepare *vp)
  * @vmi: The vma iterator
  * @mm: The mm_struct
  */
+#ifdef CONFIG_RUST_VMA_PREPARE_COMPLETE
+
+static void vma_complete(struct vma_prepare *vp, struct vma_iterator *vmi,
+			 struct mm_struct *mm)
+{
+	rust_vma_complete(vp, vmi, mm);
+}
+
+#else
+
 static void vma_complete(struct vma_prepare *vp, struct vma_iterator *vmi,
 			 struct mm_struct *mm)
 {
@@ -475,6 +510,209 @@ again:
 	if (vp->insert && vp->file)
 		uprobe_mmap(vp->insert);
 }
+
+#endif /* CONFIG_RUST_VMA_PREPARE_COMPLETE */
+
+#ifdef CONFIG_RUST_VMA_PREPARE_COMPLETE
+
+bool rust_helper_vma_init_prepare_remove_middle(struct vma_merge_struct *vmg)
+{
+	return vmg->__remove_middle;
+}
+
+bool rust_helper_vma_init_prepare_remove_next(struct vma_merge_struct *vmg)
+{
+	return vmg->__remove_next;
+}
+
+bool rust_helper_vma_init_prepare_adjust_middle(struct vma_merge_struct *vmg)
+{
+	return vmg->__adjust_middle_start;
+}
+
+bool rust_helper_vma_init_prepare_adjust_next(struct vma_merge_struct *vmg)
+{
+	return vmg->__adjust_next_start;
+}
+
+struct vm_area_struct *
+rust_helper_vma_init_prepare_middle(struct vma_merge_struct *vmg)
+{
+	return vmg->middle;
+}
+
+struct vm_area_struct *
+rust_helper_vma_init_prepare_next(struct vma_merge_struct *vmg)
+{
+	return vmg->next;
+}
+
+struct file *
+rust_helper_vma_init_prepare_vma_file(struct vm_area_struct *vma)
+{
+	return vma->vm_file;
+}
+
+struct address_space *
+rust_helper_vma_init_prepare_vma_mapping(struct vm_area_struct *vma)
+{
+	return vma->vm_file->f_mapping;
+}
+
+void rust_helper_vma_init_prepare_warn_anon(struct vma_prepare *vp)
+{
+	struct vm_area_struct *adjust = vp->adj_next;
+
+	VM_WARN_ON(vp->anon_vma && adjust && adjust->anon_vma &&
+		   vp->anon_vma != adjust->anon_vma);
+}
+
+bool rust_helper_vma_init_prepare_skip_uprobe(struct vma_merge_struct *vmg)
+{
+	return vmg->skip_vma_uprobe;
+}
+
+unsigned long
+rust_helper_vma_prepare_vma_start(struct vm_area_struct *vma)
+{
+	return vma->vm_start;
+}
+
+unsigned long
+rust_helper_vma_prepare_vma_end(struct vm_area_struct *vma)
+{
+	return vma->vm_end;
+}
+
+void rust_helper_vma_prepare_uprobe_munmap(struct vm_area_struct *vma,
+					   unsigned long start,
+					   unsigned long end)
+{
+	uprobe_munmap(vma, start, end);
+}
+
+void rust_helper_vma_prepare_immap_lock_write(struct address_space *mapping)
+{
+	i_mmap_lock_write(mapping);
+}
+
+void rust_helper_vma_prepare_link_file(struct vm_area_struct *vma,
+				       struct address_space *mapping)
+{
+	__vma_link_file(vma, mapping);
+}
+
+void rust_helper_vma_prepare_anon_lock_write(struct anon_vma *anon_vma)
+{
+	anon_vma_lock_write(anon_vma);
+}
+
+void rust_helper_vma_prepare_anon_rmap_pre_update(struct vm_area_struct *vma)
+{
+	anon_rmap_tree_pre_update_vma(vma);
+}
+
+void rust_helper_vma_prepare_dcache_lock(struct address_space *mapping)
+{
+	flush_dcache_mmap_lock(mapping);
+}
+
+void rust_helper_vma_prepare_mapping_remove(struct vm_area_struct *vma,
+					    struct address_space *mapping)
+{
+	mapping_rmap_tree_remove(vma, mapping);
+}
+
+void rust_helper_vma_prepare_mapping_insert(struct vm_area_struct *vma,
+					    struct address_space *mapping)
+{
+	mapping_rmap_tree_insert(vma, mapping);
+}
+
+void rust_helper_vma_prepare_dcache_unlock(struct address_space *mapping)
+{
+	flush_dcache_mmap_unlock(mapping);
+}
+
+void rust_helper_vma_prepare_remove_shared(struct vm_area_struct *vma,
+					   struct address_space *mapping)
+{
+	__remove_shared_vm_struct(vma, mapping);
+}
+
+void rust_helper_vma_prepare_iter_store(struct vma_iterator *vmi,
+					struct vm_area_struct *vma)
+{
+	vma_iter_store_new(vmi, vma);
+}
+
+void rust_helper_vma_prepare_inc_map_count(struct mm_struct *mm)
+{
+	mm->map_count++;
+}
+
+void rust_helper_vma_prepare_anon_rmap_post_update(struct vm_area_struct *vma)
+{
+	anon_rmap_tree_post_update_vma(vma);
+}
+
+void rust_helper_vma_prepare_anon_unlock_write(struct anon_vma *anon_vma)
+{
+	anon_vma_unlock_write(anon_vma);
+}
+
+void rust_helper_vma_prepare_immap_unlock_write(struct address_space *mapping)
+{
+	i_mmap_unlock_write(mapping);
+}
+
+bool rust_helper_vma_prepare_skip_uprobe(struct vma_prepare *vp)
+{
+	return vp->skip_vma_uprobe;
+}
+
+void rust_helper_vma_prepare_uprobe_mmap(struct vm_area_struct *vma)
+{
+	uprobe_mmap(vma);
+}
+
+void rust_helper_vma_prepare_mark_detached(struct vm_area_struct *vma)
+{
+	vma_mark_detached(vma);
+}
+
+void rust_helper_vma_prepare_fput(struct file *file)
+{
+	fput(file);
+}
+
+void rust_helper_vma_prepare_unlink_anon(struct vm_area_struct *vma)
+{
+	unlink_anon_vmas(vma);
+}
+
+void rust_helper_vma_prepare_dec_map_count(struct mm_struct *mm)
+{
+	mm->map_count--;
+}
+
+void rust_helper_vma_prepare_policy_put(struct vm_area_struct *vma)
+{
+	mpol_put(vma_policy(vma));
+}
+
+void rust_helper_vma_prepare_warn_remove_end(struct vm_area_struct *vma,
+					     struct vm_area_struct *remove)
+{
+	WARN_ON_ONCE(vma->vm_end < remove->vm_end);
+}
+
+void rust_helper_vma_prepare_free_vma(struct vm_area_struct *vma)
+{
+	vm_area_free(vma);
+}
+
+#endif /* CONFIG_RUST_VMA_PREPARE_COMPLETE */
 
 /*
  * init_vma_prep() - Initializer wrapper for vma_prepare struct

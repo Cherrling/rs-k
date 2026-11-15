@@ -24,12 +24,17 @@ contains:
 * VMA start and end access.
 * Iterator configuration, preallocation, and clearing.
 * VMA write locking.
-* Preparation-state initialization and execution.
+* Preparation-state initialization and shared preparation/completion
+  adapters.
 * Transparent huge-page adjustment.
-* VMA range update and completion.
+* VMA range update and shared completion adapter.
 * Debug address-space validation.
 
 No helper chooses success, failure, or operation order.
+
+The shared reverse-map, file-map, uprobe, lock, and VMA release order is
+Rust-owned when ``CONFIG_RUST_VMA_PREPARE_COMPLETE`` is enabled, as described
+in :doc:`vma-prepare-complete`.
 
 Entry points and ownership
 --------------------------

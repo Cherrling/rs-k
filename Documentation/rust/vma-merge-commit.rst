@@ -43,15 +43,19 @@ The C boundary contains:
 * Merge-state and VMA field access.
 * VMA iterator configuration.
 * Maple-tree preallocation and storage.
-* VMA preparation and completion.
+* VMA preparation-state initialization and shared preparation/completion
+  adapters.
 * VMA range and page-offset updates.
 * Transparent huge-page adjustment.
-* Reverse-map, file-map, uprobe, and lock updates reached by VMA completion.
 * Architecture hooks reached by VMA completion.
 * Debug and lock invariants.
 
 The caller continues to hold the mmap write lock. C owns the implementation of
 the individual primitives. C does not choose the commit flow.
+
+The shared reverse-map, file-map, uprobe, lock, and VMA release order is
+Rust-owned when ``CONFIG_RUST_VMA_PREPARE_COMPLETE`` is enabled, as described
+in :doc:`vma-prepare-complete`.
 
 Entry points and ownership
 --------------------------
@@ -61,8 +65,9 @@ Rust-owned ``struct vma_prepare`` value on the kernel stack and passes a
 pointer to the narrow C operations.
 
 The C definition of ``struct vma_prepare`` is available through
-``include/linux/vma-merge-commit-rust.h``. Rust does not access its fields.
-Rust owns its storage and passes it to C only while the commit is active.
+``include/linux/vma-merge-commit-rust.h``. The commit module owns the storage.
+The shared preparation and completion module reads its fields when its option
+is enabled.
 
 The C ``commit_merge()`` function becomes an adapter when the option is
 enabled. The original C implementation is compiled when the option is
@@ -196,7 +201,7 @@ Reopen a retained C boundary if any of these conditions changes:
 * Rust gains a native VMA iterator or maple-tree storage interface.
 * ``struct vma_prepare`` gains Rust-managed fields or changes ownership.
 * Maple-tree preallocation loses its before-mutation guarantee.
-* ``vma_complete()`` becomes safe to implement as a Rust-native operation.
+* The shared ``vma_complete()`` contract changes.
 * VMA locking, reverse-map updates, file handling, or uprobe handling moves to
   Rust.
 * Architecture hooks or huge-page adjustment gain a sound Rust interface.

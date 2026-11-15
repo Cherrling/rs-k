@@ -45,9 +45,11 @@ The C boundary contains:
 * The ``split_vma()`` adapter.
 
 The caller continues to hold the mmap write lock. C owns VMA allocation,
-policy and anonymous-VMA cloning, locking, structural completion, maple-tree
-updates, and debug invariants reached by the merge and split operations. The
-split orchestration itself is Rust-owned through ``CONFIG_RUST_VMA_SPLIT``.
+policy and anonymous-VMA cloning, locking primitives, maple-tree primitives,
+and debug invariants reached by the merge and split operations. The split
+orchestration itself is Rust-owned through ``CONFIG_RUST_VMA_SPLIT``. Shared
+preparation and completion are Rust-owned through
+``CONFIG_RUST_VMA_PREPARE_COMPLETE``.
 
 Entry points and ownership
 --------------------------

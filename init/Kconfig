@@ -1386,6 +1386,23 @@ config RUST_VMA_MERGE_COMMIT
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_VMA_PREPARE_COMPLETE
+	bool "Rust preparation and completion for VMA updates"
+	depends on RUST && MMU
+	default y
+	help
+	  Use Rust for the production VMA preparation-object initialization,
+	  vma_prepare(), and vma_complete() paths shared by VMA merge, split,
+	  resize, and unmap operations. Rust owns removal-slot selection, file,
+	  anonymous-VMA, uprobe, reverse-map, iterator, accounting, policy, and
+	  VMA release ordering.
+
+	  Individual lock, callback, map-tree, iterator, accounting, and lifecycle
+	  primitives remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_VMA_MERGE_EXISTING
 	bool "Rust orchestration for existing-range VMA merging"
 	depends on RUST && MMU
