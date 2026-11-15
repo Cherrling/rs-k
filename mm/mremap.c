@@ -24,6 +24,7 @@
 #include <linux/mmu_notifier.h>
 #include <linux/mremap-copy-rust.h>
 #include <linux/mremap-move-rust.h>
+#include <linux/mremap-to-rust.h>
 #include <linux/uaccess.h>
 #include <linux/userfaultfd_k.h>
 #include <linux/mempolicy.h>
@@ -1743,6 +1744,27 @@ static unsigned long shrink_vma(struct vma_remap_struct *vrm,
 	return 0;
 }
 
+#ifdef CONFIG_RUST_MREMAP_TO
+
+struct rust_mremap_to_state {
+	struct vma_remap_struct *vrm;
+};
+
+/*
+ * mremap_to() - remap a vma to a new location.
+ * Returns: The new address of the vma or an error.
+ */
+static unsigned long mremap_to(struct vma_remap_struct *vrm)
+{
+	struct rust_mremap_to_state state = {
+		.vrm = vrm,
+	};
+
+	return rust_mremap_to(&state);
+}
+
+#else
+
 /*
  * mremap_to() - remap a vma to a new location.
  * Returns: The new address of the vma or an error.
@@ -1799,6 +1821,77 @@ static unsigned long mremap_to(struct vma_remap_struct *vrm)
 
 	return move_vma(vrm);
 }
+
+#endif /* CONFIG_RUST_MREMAP_TO */
+
+#ifdef CONFIG_RUST_MREMAP_TO
+
+bool rust_helper_mremap_to_is_fixed(struct rust_mremap_to_state *state)
+{
+	return state->vrm->flags & MREMAP_FIXED;
+}
+
+unsigned long
+rust_helper_mremap_to_unmap_destination(struct rust_mremap_to_state *state)
+{
+	return do_munmap(current->mm, state->vrm->new_addr, state->vrm->new_len,
+			 state->vrm->uf_unmap_early);
+}
+
+void rust_helper_mremap_to_invalidate_source(struct rust_mremap_to_state *state)
+{
+	state->vrm->vma = NULL;
+	state->vrm->vmi_needs_invalidate = true;
+}
+
+bool rust_helper_mremap_to_reload_source(struct rust_mremap_to_state *state)
+{
+	state->vrm->vma = vma_lookup(current->mm, state->vrm->addr);
+	return state->vrm->vma;
+}
+
+bool rust_helper_mremap_to_is_shrink(struct rust_mremap_to_state *state)
+{
+	return state->vrm->remap_type == MREMAP_SHRINK;
+}
+
+unsigned long
+rust_helper_mremap_to_shrink_source(struct rust_mremap_to_state *state)
+{
+	return shrink_vma(state->vrm, /* drop_lock= */false);
+}
+
+void rust_helper_mremap_to_shrink_complete(struct rust_mremap_to_state *state)
+{
+	state->vrm->old_len = state->vrm->new_len;
+	vrm_populate_calculated(state->vrm);
+}
+
+bool rust_helper_mremap_to_keeps_source(struct rust_mremap_to_state *state)
+{
+	return state->vrm->flags & MREMAP_DONTUNMAP;
+}
+
+bool rust_helper_mremap_to_can_expand_for_dontunmap(struct rust_mremap_to_state *state)
+{
+	vma_flags_t vma_flags = state->vrm->vma->flags;
+	unsigned long pages = state->vrm->old_len >> PAGE_SHIFT;
+
+	return may_expand_vm(current->mm, &vma_flags, pages);
+}
+
+unsigned long
+rust_helper_mremap_to_set_new_addr(struct rust_mremap_to_state *state)
+{
+	return vrm_set_new_addr(state->vrm);
+}
+
+unsigned long rust_helper_mremap_to_move(struct rust_mremap_to_state *state)
+{
+	return move_vma(state->vrm);
+}
+
+#endif /* CONFIG_RUST_MREMAP_TO */
 
 static int vma_expandable(struct vm_area_struct *vma, unsigned long delta)
 {

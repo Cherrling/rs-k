@@ -785,6 +785,53 @@ out:
 	return result;
 }
 
+static int test_fixed_sealed_destination(unsigned char *carveout)
+{
+	const size_t length = page_size;
+	unsigned char *source = carveout + 272 * page_size;
+	unsigned char *target = carveout + 288 * page_size;
+	int saved_errno;
+	void *moved;
+
+	if (map_fixed(source, length) != source)
+		goto fail;
+	if (map_fixed(target, length) != target)
+		goto fail;
+	if (syscall(__NR_mseal, target, length, 0))
+		goto fail;
+
+	moved = mremap(source, length, length,
+		       MREMAP_MAYMOVE | MREMAP_FIXED, target);
+	saved_errno = errno;
+	if (moved != MAP_FAILED) {
+		fprintf(stderr,
+			"COPY_VMA sealed destination unexpectedly moved to %p\n",
+			moved);
+		return 1;
+	}
+	if (saved_errno != EPERM) {
+		fprintf(stderr,
+			"COPY_VMA sealed destination failed with %s, expected EPERM\n",
+			strerror(saved_errno));
+		return 1;
+	}
+	if (expect_vma((unsigned long)source, (unsigned long)source,
+		       (unsigned long)(source + length),
+		       "sealed destination source"))
+		return 1;
+	if (expect_vma((unsigned long)target, (unsigned long)target,
+		       (unsigned long)(target + length),
+		       "sealed destination target"))
+		return 1;
+
+	return 0;
+
+fail:
+	fprintf(stderr, "COPY_VMA sealed destination setup failed: %s\n",
+		strerror(errno));
+	return 1;
+}
+
 static int test_partial_move_failure(void)
 {
 	const unsigned long pgd_span = 1UL << 39;
@@ -998,6 +1045,7 @@ int main(void)
 	    test_shrink_move(carveout) ||
 	    test_vdso_move(carveout) ||
 	    test_aio_callback_failure(carveout) ||
+	    test_fixed_sealed_destination(carveout) ||
 	    test_partial_move_failure())
 		goto out;
 

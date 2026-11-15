@@ -70,6 +70,7 @@ more details.
     vma-copy
     mremap-copy
     mremap-move
+    mremap-to
     vma-expand
     vma-shrink
     vma-modify

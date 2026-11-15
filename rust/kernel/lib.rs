@@ -130,6 +130,8 @@ pub mod module_param;
 mod mremap_copy;
 #[cfg(CONFIG_RUST_MREMAP_MOVE)]
 mod mremap_move;
+#[cfg(CONFIG_RUST_MREMAP_TO)]
+mod mremap_to;
 #[cfg(CONFIG_RUST_MUTEX)]
 mod mutex_core;
 #[cfg(CONFIG_NET)]

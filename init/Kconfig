@@ -1567,6 +1567,23 @@ config RUST_MREMAP_MOVE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_MREMAP_TO
+	bool "Rust orchestration for selecting and moving to a mremap destination"
+	depends on RUST && MMU
+	depends on RUST_MREMAP_MOVE
+	default y
+	help
+	  Use Rust for the production mremap_to() path. Rust owns fixed
+	  destination release, source invalidation and reload, shrink
+	  completion, MREMAP_DONTUNMAP expansion checks, destination
+	  selection, and the final move decision.
+
+	  Destination unmapping, source lookup, shrinking, VM expansion
+	  checks, unmapped-area selection, and VMA movement remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_COPY_MM
 	bool "Rust implementation of address-space copying"
 	depends on RUST && MMU
