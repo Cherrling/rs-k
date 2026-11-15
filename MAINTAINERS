@@ -17487,6 +17487,7 @@ F:	Documentation/rust/mmap-region-new-vma.rst
 F:	Documentation/rust/mmap-region-prepare.rst
 F:	Documentation/rust/mmap-region-setup.rst
 F:	Documentation/rust/mmap-region.rst
+F:	Documentation/rust/mprotect.rst
 F:	Documentation/rust/move-page-tables.rst
 F:	Documentation/rust/move-pgt-entry.rst
 F:	Documentation/rust/mremap-batch.rst
@@ -17522,6 +17523,7 @@ F:	include/linux/mmap-region-new-vma-rust.h
 F:	include/linux/mmap-region-prepare-rust.h
 F:	include/linux/mmap-region-rust.h
 F:	include/linux/mmap-region-setup-rust.h
+F:	include/linux/mprotect-rust.h
 F:	include/linux/move-page-tables-rust.h
 F:	include/linux/move-pgt-entry-rust.h
 F:	include/linux/mremap-batch-rust.h
@@ -17563,6 +17565,7 @@ F:	rust/kernel/mmap_region_new_vma.rs
 F:	rust/kernel/mmap_region.rs
 F:	rust/kernel/mmap_region_setup.rs
 F:	rust/kernel/mm/
+F:	rust/kernel/mprotect.rs
 F:	rust/kernel/move_page_tables.rs
 F:	rust/kernel/move_pgt_entry.rs
 F:	rust/kernel/mremap_batch.rs
@@ -17589,6 +17592,7 @@ F:	rust/kernel/vma_unmap.rs
 F:	tools/testing/selftests/brk/
 F:	tools/testing/selftests/copy_vma/
 F:	tools/testing/selftests/mmap_entry/
+F:	tools/testing/selftests/mprotect/
 F:	tools/testing/selftests/vma_merge/
 
 MEMORY MAPPING

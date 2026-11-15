@@ -66,6 +66,7 @@ more details.
     mmap-region-new-vma
     mmap-region-prepare
     mmap-region-setup
+    mprotect
     exit-mmap
     vma-unmap
     vma-munmap-complete

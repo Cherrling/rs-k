@@ -1633,6 +1633,22 @@ config RUST_BRK
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_MPROTECT
+	bool "Rust orchestration for memory protection changes"
+	depends on RUST && MMU
+	default y
+	help
+	  Use Rust for the production mprotect() and pkey_mprotect() paths.
+	  Rust owns request validation, growth-policy selection, the VMA loop,
+	  per-VMA permission conversion, security ordering, memory accounting,
+	  VMA modification, page-protection changes, and population decisions.
+
+	  Architecture validation, flag conversion, page-table walks, field
+	  access, and the existing mm primitives remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_MMAP_ENTRY
 	bool "Rust orchestration for creating user mappings"
 	depends on RUST && MMU

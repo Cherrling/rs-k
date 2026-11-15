@@ -22,6 +22,7 @@
 #include <linux/swap.h>
 #include <linux/swapops.h>
 #include <linux/mmu_notifier.h>
+#include <linux/mprotect-rust.h>
 #include <linux/migrate.h>
 #include <linux/perf_event.h>
 #include <linux/pkeys.h>
@@ -756,6 +757,7 @@ static const struct mm_walk_ops prot_none_walk_ops = {
 	.walk_lock		= PGWALK_WRLOCK,
 };
 
+#ifndef CONFIG_RUST_MPROTECT
 int
 mprotect_fixup(struct vma_iterator *vmi, struct mmu_gather *tlb,
 	       struct vm_area_struct *vma, struct vm_area_struct **pprev,
@@ -1016,6 +1018,455 @@ out:
 	mmap_write_unlock(current->mm);
 	return error;
 }
+#else
+
+struct rust_mprotect_state {
+	struct mm_struct *mm;
+	unsigned long start;
+	size_t len;
+	unsigned long prot;
+	int pkey;
+	struct vma_iterator *vmi;
+	struct mmu_gather *tlb;
+	struct vm_area_struct *prev;
+	vma_flags_t old_vma_flags;
+	vma_flags_t new_vma_flags;
+	vm_flags_t newflags;
+};
+
+unsigned long
+rust_helper_mprotect_state_start(struct rust_mprotect_state *state)
+{
+	return state->start;
+}
+
+size_t
+rust_helper_mprotect_state_len(struct rust_mprotect_state *state)
+{
+	return state->len;
+}
+
+unsigned long
+rust_helper_mprotect_state_prot(struct rust_mprotect_state *state)
+{
+	return state->prot;
+}
+
+unsigned long
+rust_helper_mprotect_untagged_addr(unsigned long addr)
+{
+	return untagged_addr(addr);
+}
+
+int
+rust_helper_mprotect_write_lock_killable(struct rust_mprotect_state *state)
+{
+	return mmap_write_lock_killable(state->mm);
+}
+
+void
+rust_helper_mprotect_write_unlock(struct rust_mprotect_state *state)
+{
+	mmap_write_unlock(state->mm);
+}
+
+bool
+rust_helper_mprotect_read_implies_exec(void)
+{
+	return current->personality & READ_IMPLIES_EXEC;
+}
+
+bool
+rust_helper_mprotect_validate_prot(unsigned long prot, unsigned long start)
+{
+	return arch_validate_prot(prot, start);
+}
+
+bool
+rust_helper_mprotect_pkey_allowed(struct rust_mprotect_state *state)
+{
+	return state->pkey == -1 || mm_pkey_is_allocated(state->mm, state->pkey);
+}
+
+void
+rust_helper_mprotect_iterator_init(struct rust_mprotect_state *state,
+				   unsigned long start)
+{
+	vma_iter_init(state->vmi, state->mm, start);
+}
+
+struct vm_area_struct *
+rust_helper_mprotect_find(struct rust_mprotect_state *state, unsigned long end)
+{
+	return vma_find(state->vmi, end);
+}
+
+unsigned long
+rust_helper_mprotect_vma_start(struct vm_area_struct *vma)
+{
+	return vma->vm_start;
+}
+
+unsigned long
+rust_helper_mprotect_vma_end(struct vm_area_struct *vma)
+{
+	return vma->vm_end;
+}
+
+bool
+rust_helper_mprotect_vma_growsdown(struct vm_area_struct *vma)
+{
+	return vma_test(vma, VMA_GROWSDOWN_BIT);
+}
+
+bool
+rust_helper_mprotect_vma_growsup(struct vm_area_struct *vma)
+{
+	return vma_test_single_mask(vma, VMA_GROWSUP);
+}
+
+bool
+rust_helper_mprotect_vma_mayexec(struct vm_area_struct *vma)
+{
+	return vma_test(vma, VMA_MAYEXEC_BIT);
+}
+
+struct vm_area_struct *
+rust_helper_mprotect_vma_prev(struct rust_mprotect_state *state)
+{
+	return vma_prev(state->vmi);
+}
+
+void
+rust_helper_mprotect_tlb_gather(struct rust_mprotect_state *state)
+{
+	tlb_gather_mmu(state->tlb, state->mm);
+}
+
+void
+rust_helper_mprotect_tlb_finish(struct rust_mprotect_state *state)
+{
+	tlb_finish_mmu(state->tlb);
+}
+
+void
+rust_helper_mprotect_prepare_flags(struct rust_mprotect_state *state,
+				   struct vm_area_struct *vma,
+				   unsigned long prot)
+{
+	const vm_flags_t mask_off_old_flags = VM_ACCESS_FLAGS | VM_FLAGS_CLEAR;
+	int new_vma_pkey;
+
+	new_vma_pkey = arch_override_mprotect_pkey(vma, prot, state->pkey);
+	state->newflags = calc_vm_prot_bits(prot, new_vma_pkey);
+	state->newflags |= vma->vm_flags & ~mask_off_old_flags;
+	state->new_vma_flags = legacy_to_vma_flags(state->newflags);
+}
+
+bool
+rust_helper_mprotect_access_flags_invalid(struct rust_mprotect_state *state)
+{
+	return (state->newflags & ~(state->newflags >> 4)) & VM_ACCESS_FLAGS;
+}
+
+bool
+rust_helper_mprotect_deny_write_exec(struct rust_mprotect_state *state,
+				     struct vm_area_struct *vma)
+{
+	return map_deny_write_exec(&vma->flags, &state->new_vma_flags);
+}
+
+bool
+rust_helper_mprotect_validate_flags(struct rust_mprotect_state *state)
+{
+	return arch_validate_flags(state->newflags);
+}
+
+int
+rust_helper_mprotect_security_file(struct vm_area_struct *vma,
+				   unsigned long reqprot, unsigned long prot)
+{
+	return security_file_mprotect(vma, reqprot, prot);
+}
+
+bool
+rust_helper_mprotect_has_vm_op(struct vm_area_struct *vma)
+{
+	return vma->vm_ops && vma->vm_ops->mprotect;
+}
+
+int
+rust_helper_mprotect_call_vm_op(struct rust_mprotect_state *state,
+				struct vm_area_struct *vma,
+				unsigned long start, unsigned long end)
+{
+	return vma->vm_ops->mprotect(vma, start, end, state->newflags);
+}
+
+unsigned long
+rust_helper_mprotect_iter_end(struct rust_mprotect_state *state)
+{
+	return vma_iter_end(state->vmi);
+}
+
+void
+rust_helper_mprotect_load_old_flags(struct rust_mprotect_state *state,
+				    struct vm_area_struct *vma)
+{
+	state->old_vma_flags = READ_ONCE(vma->flags);
+}
+
+bool
+rust_helper_mprotect_vma_sealed(struct vm_area_struct *vma)
+{
+	return vma_is_sealed(vma);
+}
+
+bool
+rust_helper_mprotect_same_flags(struct rust_mprotect_state *state)
+{
+	return vma_flags_same_pair(&state->old_vma_flags,
+				   &state->new_vma_flags);
+}
+
+bool
+rust_helper_mprotect_pfn_check_required(struct rust_mprotect_state *state)
+{
+	return arch_has_pfn_modify_check() &&
+	       vma_flags_test_any(&state->old_vma_flags, VMA_PFNMAP_BIT,
+				  VMA_MIXEDMAP_BIT) &&
+	       !vma_flags_test_any_mask(&state->new_vma_flags,
+					VMA_ACCESS_FLAGS);
+}
+
+int
+rust_helper_mprotect_pfn_check(struct rust_mprotect_state *state,
+			       struct vm_area_struct *vma,
+			       unsigned long start, unsigned long end)
+{
+	pgprot_t new_pgprot = vm_get_page_prot(state->newflags);
+
+	return walk_page_range_vma(vma, start, end, &prot_none_walk_ops,
+				   &new_pgprot);
+}
+
+bool
+rust_helper_mprotect_new_writable(struct rust_mprotect_state *state)
+{
+	return vma_flags_test(&state->new_vma_flags, VMA_WRITE_BIT);
+}
+
+bool
+rust_helper_mprotect_may_expand(struct rust_mprotect_state *state,
+				bool use_new_flags, unsigned long nrpages)
+{
+	const vma_flags_t *flags;
+
+	flags = use_new_flags ? &state->new_vma_flags :
+			       &state->old_vma_flags;
+	return may_expand_vm(state->mm, flags, nrpages);
+}
+
+bool
+rust_helper_mprotect_old_charge_exempt(struct rust_mprotect_state *state)
+{
+	return vma_flags_test_any(&state->old_vma_flags,
+				  VMA_ACCOUNT_BIT, VMA_WRITE_BIT,
+				  VMA_HUGETLB_BIT, VMA_SHARED_BIT,
+				  VMA_NORESERVE_BIT);
+}
+
+int
+rust_helper_mprotect_enough_memory(struct rust_mprotect_state *state,
+				   unsigned long nrpages)
+{
+	return security_vm_enough_memory_mm(state->mm, nrpages);
+}
+
+void
+rust_helper_mprotect_set_new_account(struct rust_mprotect_state *state)
+{
+	vma_flags_set(&state->new_vma_flags, VMA_ACCOUNT_BIT);
+}
+
+bool
+rust_helper_mprotect_old_accounted(struct rust_mprotect_state *state)
+{
+	return vma_flags_test(&state->old_vma_flags, VMA_ACCOUNT_BIT);
+}
+
+bool
+rust_helper_mprotect_new_accounted(struct rust_mprotect_state *state)
+{
+	return vma_flags_test(&state->new_vma_flags, VMA_ACCOUNT_BIT);
+}
+
+bool
+rust_helper_mprotect_can_clear_account(struct vm_area_struct *vma)
+{
+	return vma_is_anonymous(vma) && !vma->anon_vma;
+}
+
+void
+rust_helper_mprotect_clear_new_account(struct rust_mprotect_state *state)
+{
+	vma_flags_clear(&state->new_vma_flags, VMA_ACCOUNT_BIT);
+}
+
+struct vm_area_struct *
+rust_helper_mprotect_modify(struct rust_mprotect_state *state,
+			    struct vm_area_struct *vma,
+			    unsigned long start, unsigned long end)
+{
+	return vma_modify_flags(state->vmi, state->prev, vma, start, end,
+				&state->new_vma_flags);
+}
+
+bool
+rust_helper_mprotect_is_error(struct vm_area_struct *vma)
+{
+	return IS_ERR(vma);
+}
+
+int
+rust_helper_mprotect_pointer_error(struct vm_area_struct *vma)
+{
+	return PTR_ERR(vma);
+}
+
+void
+rust_helper_mprotect_set_prev(struct rust_mprotect_state *state,
+			      struct vm_area_struct *vma)
+{
+	state->prev = vma;
+}
+
+void
+rust_helper_mprotect_start_write(struct vm_area_struct *vma)
+{
+	vma_start_write(vma);
+}
+
+void
+rust_helper_mprotect_reset_flags(struct rust_mprotect_state *state,
+				 struct vm_area_struct *vma)
+{
+	vma_flags_reset_once(vma, &state->new_vma_flags);
+}
+
+bool
+rust_helper_mprotect_manual_write_upgrade(struct vm_area_struct *vma)
+{
+	return vma_wants_manual_pte_write_upgrade(vma);
+}
+
+void
+rust_helper_mprotect_set_page_prot(struct vm_area_struct *vma)
+{
+	vma_set_page_prot(vma);
+}
+
+void
+rust_helper_mprotect_change_protection(struct rust_mprotect_state *state,
+				       struct vm_area_struct *vma,
+				       unsigned long start, unsigned long end,
+				       unsigned int cp_flags)
+{
+	change_protection(state->tlb, vma, start, end, cp_flags);
+}
+
+void
+rust_helper_mprotect_unaccount(unsigned long nrpages)
+{
+	vm_unacct_memory(nrpages);
+}
+
+bool
+rust_helper_mprotect_old_locked(struct rust_mprotect_state *state)
+{
+	return vma_flags_test(&state->old_vma_flags, VMA_LOCKED_BIT);
+}
+
+bool
+rust_helper_mprotect_old_write(struct rust_mprotect_state *state)
+{
+	return vma_flags_test(&state->old_vma_flags, VMA_WRITE_BIT);
+}
+
+bool
+rust_helper_mprotect_old_shared(struct rust_mprotect_state *state)
+{
+	return vma_flags_test(&state->old_vma_flags, VMA_SHARED_BIT);
+}
+
+void
+rust_helper_mprotect_populate(struct vm_area_struct *vma,
+			      unsigned long start, unsigned long end)
+{
+	populate_vma_page_range(vma, start, end, NULL);
+}
+
+void
+rust_helper_mprotect_account_old(struct rust_mprotect_state *state,
+				 long nrpages)
+{
+	vm_stat_account(state->mm,
+			vma_flags_to_legacy(state->old_vma_flags), nrpages);
+}
+
+void
+rust_helper_mprotect_account_new(struct rust_mprotect_state *state,
+				 long nrpages)
+{
+	vm_stat_account(state->mm,
+			vma_flags_to_legacy(state->new_vma_flags), nrpages);
+}
+
+void
+rust_helper_mprotect_perf_event(struct vm_area_struct *vma)
+{
+	perf_event_mmap(vma);
+}
+
+int
+mprotect_fixup(struct vma_iterator *vmi, struct mmu_gather *tlb,
+	       struct vm_area_struct *vma, struct vm_area_struct **pprev,
+	       unsigned long start, unsigned long end, vm_flags_t newflags)
+{
+	struct rust_mprotect_state state = {
+		.mm = vma->vm_mm,
+		.vmi = vmi,
+		.tlb = tlb,
+		.prev = *pprev,
+		.new_vma_flags = legacy_to_vma_flags(newflags),
+		.newflags = newflags,
+	};
+	int ret;
+
+	ret = rust_mprotect_fixup(&state, vma, start, end);
+	if (!ret)
+		*pprev = state.prev;
+	return ret;
+}
+
+static int do_mprotect_pkey(unsigned long start, size_t len,
+			    unsigned long prot, int pkey)
+{
+	struct vma_iterator vmi;
+	struct mmu_gather tlb;
+	struct rust_mprotect_state state = {
+		.mm = current->mm,
+		.start = start,
+		.len = len,
+		.prot = prot,
+		.pkey = pkey,
+		.vmi = &vmi,
+		.tlb = &tlb,
+	};
+
+	return rust_mprotect_do(&state);
+}
+#endif /* CONFIG_RUST_MPROTECT */
 
 SYSCALL_DEFINE3(mprotect, unsigned long, start, size_t, len,
 		unsigned long, prot)

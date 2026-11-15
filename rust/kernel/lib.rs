@@ -148,6 +148,8 @@ pub mod module_param;
 mod move_page_tables;
 #[cfg(CONFIG_RUST_MOVE_PGT_ENTRY)]
 mod move_pgt_entry;
+#[cfg(CONFIG_RUST_MPROTECT)]
+mod mprotect;
 #[cfg(CONFIG_RUST_MREMAP_BATCH)]
 mod mremap_batch;
 #[cfg(CONFIG_RUST_MREMAP_COPY)]

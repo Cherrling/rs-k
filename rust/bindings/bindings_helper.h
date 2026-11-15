@@ -92,6 +92,7 @@
 #include <linux/mmap-region-prepare-rust.h>
 #include <linux/mmap-region-rust.h>
 #include <linux/mmap-region-setup-rust.h>
+#include <linux/mprotect-rust.h>
 #include <linux/move-page-tables-rust.h>
 #include <linux/move-pgt-entry-rust.h>
 #include <linux/mremap-batch-rust.h>
