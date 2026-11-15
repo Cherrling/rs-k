@@ -14,6 +14,7 @@
 #include <linux/mmap-region-create-rust.h>
 #include <linux/mmap-region-file-rust.h>
 #include <linux/mmap-region-new-vma-rust.h>
+#include <linux/mmap-region-prepare-rust.h>
 #include <linux/mmap-region-rust.h>
 #include <linux/mmap-region-setup-rust.h>
 #include <linux/vma-copy-rust.h>
@@ -5039,6 +5040,7 @@ static void __mmap_complete(struct mmap_state *map, struct vm_area_struct *vma)
 }
 #endif /* CONFIG_RUST_MMAP_REGION_COMPLETE */
 
+#ifndef CONFIG_RUST_MMAP_REGION_PREPARE
 static int call_action_prepare(struct mmap_state *map,
 			       struct vm_area_desc *desc)
 {
@@ -5090,6 +5092,7 @@ static int call_mmap_prepare(struct mmap_state *map,
 
 	return 0;
 }
+#endif /* CONFIG_RUST_MMAP_REGION_PREPARE */
 
 static void set_vma_user_defined_fields(struct vm_area_struct *vma,
 		struct mmap_state *map)
@@ -5665,7 +5668,11 @@ rust_helper_mmap_create_have_prepare(struct rust_mmap_create_state *state)
 int
 rust_helper_mmap_create_prepare(struct rust_mmap_create_state *state)
 {
+#ifdef CONFIG_RUST_MMAP_REGION_PREPARE
+	return rust_mmap_region_prepare(state);
+#else
 	return call_mmap_prepare(&state->map, &state->desc);
+#endif
 }
 
 bool
@@ -5770,6 +5777,45 @@ rust_helper_mmap_create_addr(struct rust_mmap_create_state *state)
 }
 
 #endif /* CONFIG_RUST_MMAP_REGION_CREATE */
+
+#ifdef CONFIG_RUST_MMAP_REGION_PREPARE
+
+int
+rust_helper_mmap_prepare_call_file(struct rust_mmap_create_state *state)
+{
+	return vfs_mmap_prepare(state->map.file, &state->desc);
+}
+
+int
+rust_helper_mmap_prepare_call_action(struct rust_mmap_create_state *state)
+{
+	return mmap_action_prepare(&state->desc);
+}
+
+bool
+rust_helper_mmap_prepare_file_changed(struct rust_mmap_create_state *state)
+{
+	return state->desc.vm_file != state->map.file;
+}
+
+void
+rust_helper_mmap_prepare_adopt_file(struct rust_mmap_create_state *state)
+{
+	state->map.file_doesnt_need_get = true;
+	state->map.file = state->desc.vm_file;
+}
+
+void
+rust_helper_mmap_prepare_sync_fields(struct rust_mmap_create_state *state)
+{
+	state->map.pgoff = state->desc.pgoff;
+	state->map.vma_flags = state->desc.vma_flags;
+	state->map.page_prot = state->desc.page_prot;
+	state->map.vm_ops = state->desc.vm_ops;
+	state->map.vm_private_data = state->desc.private_data;
+}
+
+#endif /* CONFIG_RUST_MMAP_REGION_PREPARE */
 
 /**
  * mmap_region() - Actually perform the userland mapping of a VMA into

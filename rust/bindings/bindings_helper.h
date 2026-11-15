@@ -88,6 +88,7 @@
 #include <linux/mmap-region-create-rust.h>
 #include <linux/mmap-region-file-rust.h>
 #include <linux/mmap-region-new-vma-rust.h>
+#include <linux/mmap-region-prepare-rust.h>
 #include <linux/mmap-region-rust.h>
 #include <linux/mmap-region-setup-rust.h>
 #include <linux/move-page-tables-rust.h>

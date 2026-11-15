@@ -30,7 +30,8 @@ The retained boundary contains:
 
 * VMA iterator, mapping state, and descriptor initialization.
 * The existing overlapping-VMA setup operation when Rust setup is disabled.
-* The existing ``mmap_prepare`` callback operation.
+* The existing ``mmap_prepare`` callback operation when Rust preparation is
+  disabled.
 * The existing KSM flag operation.
 * The existing adjacent merge operation.
 * The existing new-VMA allocation operation when Rust new-VMA allocation is
@@ -45,6 +46,10 @@ cleanup branch. Rust performs each selection and orders the helper calls.
 
 When ``CONFIG_RUST_MMAP_REGION_SETUP`` is enabled, setup control flow is
 provided by the Rust entry described in :doc:`mmap-region-setup`.
+
+When ``CONFIG_RUST_MMAP_REGION_PREPARE`` is enabled, preparation callback
+control flow and descriptor synchronization are provided by the Rust entry
+described in :doc:`mmap-region-prepare`.
 
 When ``CONFIG_RUST_MMAP_REGION_NEW_VMA`` is enabled, new-VMA allocation
 control flow is provided by the Rust entry described in

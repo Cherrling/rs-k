@@ -136,6 +136,8 @@ mod mmap_region_create;
 mod mmap_region_file;
 #[cfg(CONFIG_RUST_MMAP_REGION_NEW_VMA)]
 mod mmap_region_new_vma;
+#[cfg(CONFIG_RUST_MMAP_REGION_PREPARE)]
+mod mmap_region_prepare;
 #[cfg(CONFIG_RUST_MMAP_REGION_SETUP)]
 mod mmap_region_setup;
 pub mod module;

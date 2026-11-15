@@ -795,6 +795,61 @@ static int test_file_mapping(void)
 	return 0;
 }
 
+static int test_zero_file_prepare(void)
+{
+	unsigned char *private_mapping;
+	unsigned char *mapping;
+	pid_t child;
+	int status;
+	int fd;
+
+	fd = open("/dev/zero", O_RDWR);
+	if (fd < 0) {
+		fprintf(stderr, "MMAP_ENTRY /dev/zero setup failed\n");
+		return 1;
+	}
+
+	mapping = raw_mmap(NULL, page_size, PROT_READ | PROT_WRITE,
+			   MAP_SHARED, fd, 0);
+	if (mapping == MAP_FAILED) {
+		fprintf(stderr, "MMAP_ENTRY /dev/zero map failed: %s\n",
+			strerror(errno));
+		return 1;
+	}
+	mapping[0] = 0x5a;
+
+	private_mapping = raw_mmap(NULL, page_size, PROT_READ | PROT_WRITE,
+				   MAP_PRIVATE, fd, 0);
+	close(fd);
+	if (private_mapping == MAP_FAILED) {
+		fprintf(stderr, "MMAP_ENTRY /dev/zero private map failed: %s\n",
+			strerror(errno));
+		return 1;
+	}
+	private_mapping[0] = 0x3c;
+
+	child = fork();
+	if (child < 0)
+		return 1;
+	if (!child) {
+		mapping[0] = 0xa5;
+		_exit(0);
+	}
+	if (waitpid(child, &status, 0) != child ||
+	    !WIFEXITED(status) || WEXITSTATUS(status) ||
+	    mapping[0] != 0xa5) {
+		fprintf(stderr, "MMAP_ENTRY /dev/zero shared write failed\n");
+		return 1;
+	}
+	if (private_mapping[0] != 0x3c) {
+		fprintf(stderr, "MMAP_ENTRY /dev/zero private write failed\n");
+		return 1;
+	}
+	if (munmap(mapping, page_size))
+		return 1;
+	return munmap(private_mapping, page_size);
+}
+
 static int test_secretmem_prepare(void)
 {
 #ifdef SYS_memfd_secret
@@ -1081,6 +1136,10 @@ int main(void)
 	}
 	if (test_file_mapping()) {
 		fprintf(stderr, "MMAP_ENTRY file mapping test failed\n");
+		goto out;
+	}
+	if (test_zero_file_prepare()) {
+		fprintf(stderr, "MMAP_ENTRY /dev/zero prepare test failed\n");
 		goto out;
 	}
 	if (test_secretmem_prepare()) {

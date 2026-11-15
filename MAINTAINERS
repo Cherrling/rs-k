@@ -17483,6 +17483,7 @@ F:	Documentation/rust/mmap-region-complete.rst
 F:	Documentation/rust/mmap-region-create.rst
 F:	Documentation/rust/mmap-region-file.rst
 F:	Documentation/rust/mmap-region-new-vma.rst
+F:	Documentation/rust/mmap-region-prepare.rst
 F:	Documentation/rust/mmap-region-setup.rst
 F:	Documentation/rust/mmap-region.rst
 F:	Documentation/rust/move-page-tables.rst
@@ -17516,6 +17517,7 @@ F:	include/linux/mmap-region-complete-rust.h
 F:	include/linux/mmap-region-create-rust.h
 F:	include/linux/mmap-region-file-rust.h
 F:	include/linux/mmap-region-new-vma-rust.h
+F:	include/linux/mmap-region-prepare-rust.h
 F:	include/linux/mmap-region-rust.h
 F:	include/linux/mmap-region-setup-rust.h
 F:	include/linux/move-page-tables-rust.h
