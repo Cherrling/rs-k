@@ -107,6 +107,7 @@ more details.
     native-find-bit
     native-bitmap-ops
     native-kfifo
+    native-genradix
     native-percpu-refcount
     refcount
     swait

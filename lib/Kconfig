@@ -437,6 +437,21 @@ config RUST_KFIFO
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_GENRADIX
+	bool "Rust implementation of generic radix trees"
+	depends on RUST && X86_64
+	default y
+	help
+	  Use Rust for the production generic-radix-tree traversal, growth,
+	  iteration, preallocation, and recursive release algorithms.
+
+	  Node allocation, atomic root and child publication, root exchange,
+	  and the node representation remain in C. The exported entry points
+	  remain as ABI adapters.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RBTREE_RUST_KUNIT_TEST
 	bool "KUnit tests for the Rust rbtree implementation"
 	depends on RUST_RBTREE && KUNIT

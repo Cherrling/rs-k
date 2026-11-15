@@ -98,6 +98,8 @@ pub mod fmt;
 pub mod fs;
 #[cfg(CONFIG_RUST_FWCTL_ABSTRACTIONS)]
 pub mod fwctl;
+#[cfg(CONFIG_RUST_GENRADIX)]
+mod genradix;
 #[cfg(CONFIG_GPU_BUDDY = "y")]
 pub mod gpu;
 #[cfg(CONFIG_RUST_HRTIMER)]

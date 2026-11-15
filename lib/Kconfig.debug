@@ -3391,6 +3391,20 @@ config KFIFO_KUNIT_TEST
 
 	  If unsure, say N.
 
+config GENRADIX_KUNIT_TEST
+	tristate "KUnit Test for generic radix trees" if !KUNIT_ALL_TESTS
+	depends on KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This builds the generic radix tree KUnit test suite.
+	  It tests sparse allocation, deep trees, preallocation, forward and
+	  reverse iteration, recursive release, and concurrent allocation.
+
+	  For more information on KUnit and unit tests in general please refer
+	  to the KUnit documentation in Documentation/dev-tools/kunit/.
+
+	  If unsure, say N.
+
 config LIST_KUNIT_TEST
 	tristate "KUnit Test for Kernel Linked-list structures" if !KUNIT_ALL_TESTS
 	depends on KUNIT

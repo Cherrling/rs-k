@@ -201,10 +201,14 @@ static inline void *__genradix_ptr_inlined(struct __genradix *radix, size_t offs
 	return n ? &n->data[offset] : NULL;
 }
 
+#ifdef CONFIG_RUST_GENRADIX
+#define genradix_ptr_inlined(_radix, _idx)	genradix_ptr(_radix, _idx)
+#else
 #define genradix_ptr_inlined(_radix, _idx)			\
 	(__genradix_cast(_radix)				\
 	 __genradix_ptr_inlined(&(_radix)->tree,		\
 			__genradix_idx_to_offset(_radix, _idx)))
+#endif
 
 void *__genradix_ptr(struct __genradix *, size_t);
 
@@ -223,6 +227,12 @@ void *__genradix_ptr(struct __genradix *, size_t);
 void *__genradix_ptr_alloc(struct __genradix *, size_t,
 			   struct genradix_node **, gfp_t);
 
+#ifdef CONFIG_RUST_GENRADIX
+#define genradix_ptr_alloc_inlined(_radix, _idx, _gfp)	\
+	genradix_ptr_alloc(_radix, _idx, _gfp)
+#define genradix_ptr_alloc_preallocated_inlined(_radix, _idx, _new_node, _gfp) \
+	genradix_ptr_alloc_preallocated(_radix, _idx, _new_node, _gfp)
+#else
 #define genradix_ptr_alloc_inlined(_radix, _idx, _gfp)			\
 	(__genradix_cast(_radix)					\
 	 (__genradix_ptr_inlined(&(_radix)->tree,			\
@@ -235,9 +245,10 @@ void *__genradix_ptr_alloc(struct __genradix *, size_t,
 	(__genradix_cast(_radix)					\
 	 (__genradix_ptr_inlined(&(_radix)->tree,			\
 			__genradix_idx_to_offset(_radix, _idx)) ?:	\
-	  __genradix_ptr_alloc(&(_radix)->tree,				\
+	  __genradix_ptr_alloc(&(_radix)->tree,			\
 			__genradix_idx_to_offset(_radix, _idx),		\
 			_new_node, _gfp)))
+#endif
 
 /**
  * genradix_ptr_alloc - get a pointer to a genradix entry, allocating it

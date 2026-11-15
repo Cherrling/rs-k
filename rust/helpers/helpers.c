@@ -66,6 +66,9 @@
 #include "err.c"
 #include "fs.c"
 #include "fwctl.c"
+#ifdef CONFIG_RUST_GENRADIX
+#include "genradix.c"
+#endif
 #include "gpu.c"
 #include "interrupt.c"
 #include "io.c"
