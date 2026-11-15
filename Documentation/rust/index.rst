@@ -69,6 +69,7 @@ more details.
     vma-region-teardown
     vma-copy
     move-pgt-entry
+    move-page-tables
     mremap-batch
     mremap-copy
     mremap-entry

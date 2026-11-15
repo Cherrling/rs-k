@@ -32,6 +32,11 @@
 
 static size_t page_size;
 
+static const char rust_move_pmd_alloc_symbol[] =
+	"rust_helper_move_page_tables_alloc_new_pmd";
+static const char rust_move_ptes_symbol[] =
+	"rust_helper_move_page_tables_move_ptes";
+
 static void setup_console(void)
 {
 	int console;
@@ -273,6 +278,39 @@ static int find_kernel_symbol_range(const char *name, unsigned long *start,
 	}
 	fclose(file);
 	return found && *end > *start ? 0 : -1;
+}
+
+static int find_kernel_symbol_span(const char *first_name,
+				   const char *last_name,
+				   unsigned long *start,
+				   unsigned long *end)
+{
+	char symbol[256];
+	unsigned long value;
+	char type;
+	FILE *file;
+	int found_first = 0;
+	int found_last = 0;
+
+	file = fopen("/proc/kallsyms", "r");
+	if (!file)
+		return -1;
+	while (fscanf(file, "%lx %c %255s", &value, &type, symbol) == 3) {
+		if (!found_first) {
+			if (strcmp(symbol, first_name))
+				continue;
+			*start = value;
+			found_first = value != 0;
+			continue;
+		}
+		if (!strcmp(symbol, last_name) && value > *start) {
+			*end = value;
+			found_last = 1;
+			break;
+		}
+	}
+	fclose(file);
+	return found_first && found_last ? 0 : -1;
 }
 
 static int expect_vma(unsigned long address, unsigned long expected_start,
@@ -1276,6 +1314,63 @@ fail:
 	return 1;
 }
 
+static int test_pmd_boundary_move(void)
+{
+	const size_t pmd_size = 2 * 1024 * 1024;
+	const size_t length = 3 * page_size;
+	const unsigned long source_base = (8UL << 30) + pmd_size - page_size;
+	const unsigned long target_base = (10UL << 30) + pmd_size - page_size;
+	const unsigned char patterns[] = { 0x31, 0x72, 0xb4 };
+	unsigned char *source;
+	unsigned char *moved;
+	size_t offset;
+
+	source = mmap((void *)source_base, length, PROT_READ | PROT_WRITE,
+		      MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE |
+			      MAP_NORESERVE,
+		      -1, 0);
+	if (source != (void *)source_base)
+		goto fail;
+	if (madvise(source, length, MADV_NOHUGEPAGE) && errno != EINVAL)
+		goto fail;
+
+	for (offset = 0; offset < length; offset += page_size)
+		source[offset] = patterns[offset / page_size];
+
+	moved = mremap(source, length, length,
+		       MREMAP_MAYMOVE | MREMAP_FIXED, (void *)target_base);
+	if (moved == MAP_FAILED)
+		goto fail;
+	if (moved != (void *)target_base) {
+		fprintf(stderr,
+			"COPY_VMA PMD boundary move: returned %p, expected %#lx\n",
+			moved, target_base);
+		goto fail;
+	}
+	for (offset = 0; offset < length; offset += page_size) {
+		if (moved[offset] == patterns[offset / page_size])
+			continue;
+		fprintf(stderr,
+			"COPY_VMA PMD boundary move: page %zu mismatch\n",
+			offset / page_size);
+		goto fail;
+	}
+	if (expect_vma(target_base, target_base, target_base + length,
+		       "PMD boundary move target") ||
+	    expect_unmapped(source_base, "PMD boundary move source"))
+		goto fail;
+
+	munmap((void *)target_base, length);
+	return 0;
+
+fail:
+	fprintf(stderr, "COPY_VMA PMD boundary move failed: %s\n",
+		strerror(errno));
+	munmap((void *)source_base, length);
+	munmap((void *)target_base, length);
+	return 1;
+}
+
 static int test_vdso_move(unsigned char *carveout)
 {
 	unsigned long source_start;
@@ -1520,7 +1615,11 @@ static int test_partial_move_failure(void)
 	    !(before_last & (1ULL << 63)))
 		goto fail;
 
-	if (find_kernel_symbol_range("move_page_tables", &symbol, &symbol_end))
+	if (find_kernel_symbol_span(rust_move_pmd_alloc_symbol,
+				    rust_move_ptes_symbol,
+				    &symbol, &symbol_end) &&
+	    find_kernel_symbol_range("move_page_tables", &symbol,
+				     &symbol_end))
 		goto fail;
 	if (write_fail_page_alloc("probability", "0") ||
 	    write_fail_page_alloc("verbose", "0") ||
@@ -1663,6 +1762,7 @@ int main(void)
 	    test_batch_contiguous_move(carveout) ||
 	    test_batch_gap_move(carveout) ||
 	    test_pmd_aligned_move() ||
+	    test_pmd_boundary_move() ||
 	    test_vdso_move(carveout) ||
 	    test_aio_callback_failure(carveout) ||
 	    test_fixed_sealed_destination(carveout) ||

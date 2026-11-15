@@ -22,6 +22,7 @@
 #include <linux/security.h>
 #include <linux/syscalls.h>
 #include <linux/mmu_notifier.h>
+#include <linux/move-page-tables-rust.h>
 #include <linux/move-pgt-entry-rust.h>
 #include <linux/mremap-batch-rust.h>
 #include <linux/mremap-copy-rust.h>
@@ -542,6 +543,7 @@ static bool move_huge_pud(struct pagetable_move_control *pmc,
 }
 #endif
 
+#ifndef CONFIG_RUST_MOVE_PAGE_TABLES
 /*
  * Returns an extent of the corresponding size for the pgt_entry specified if
  * valid. Else returns a smaller extent bounded by the end of the source and
@@ -581,6 +583,7 @@ static __always_inline unsigned long get_extent(enum pgt_entry entry,
 		extent = next - new_addr;
 	return extent;
 }
+#endif /* !CONFIG_RUST_MOVE_PAGE_TABLES */
 
 /*
  * Should move_pgt_entry() acquire the rmap locks? This is either expressed in
@@ -842,6 +845,8 @@ static void try_realign_addr(struct pagetable_move_control *pmc,
 	pmc->new_addr &= pagetable_mask;
 }
 
+#ifndef CONFIG_RUST_MOVE_PAGE_TABLES
+
 /* Is the page table move operation done? */
 static bool pmc_done(struct pagetable_move_control *pmc)
 {
@@ -957,6 +962,248 @@ again:
 
 	return pmc_progress(pmc);
 }
+
+#else /* CONFIG_RUST_MOVE_PAGE_TABLES */
+
+struct rust_move_page_tables_state {
+	struct pagetable_move_control *pmc;
+	struct mmu_notifier_range range;
+	pmd_t *old_pmd;
+	pmd_t *new_pmd;
+	pud_t *old_pud;
+	pud_t *new_pud;
+};
+
+unsigned long move_page_tables(struct pagetable_move_control *pmc)
+{
+	struct rust_move_page_tables_state state = {
+		.pmc = pmc,
+	};
+
+	return rust_move_page_tables(&state);
+}
+
+unsigned long
+rust_helper_move_page_tables_len(struct rust_move_page_tables_state *state)
+{
+	return state->pmc->len_in;
+}
+
+bool
+rust_helper_move_page_tables_is_hugetlb(struct rust_move_page_tables_state *state)
+{
+	return is_vm_hugetlb_page(state->pmc->old);
+}
+
+unsigned long
+rust_helper_move_page_tables_move_hugetlb(struct rust_move_page_tables_state *state)
+{
+	struct pagetable_move_control *pmc = state->pmc;
+
+	return move_hugetlb_page_tables(pmc->old, pmc->new, pmc->old_addr,
+					pmc->new_addr, pmc->len_in);
+}
+
+void
+rust_helper_move_page_tables_realign_pmd(struct rust_move_page_tables_state *state)
+{
+	try_realign_addr(state->pmc, PMD_MASK);
+}
+
+void rust_helper_move_page_tables_start(struct rust_move_page_tables_state *state)
+{
+	struct pagetable_move_control *pmc = state->pmc;
+
+	flush_cache_range(pmc->old, pmc->old_addr, pmc->old_end);
+	mmu_notifier_range_init(&state->range, MMU_NOTIFY_UNMAP, 0,
+				pmc->old->vm_mm, pmc->old_addr, pmc->old_end);
+	mmu_notifier_invalidate_range_start(&state->range);
+}
+
+bool rust_helper_move_page_tables_done(struct rust_move_page_tables_state *state)
+{
+	return state->pmc->old_addr >= state->pmc->old_end;
+}
+
+void rust_helper_move_page_tables_next(struct rust_move_page_tables_state *state,
+				       unsigned long extent)
+{
+	state->pmc->old_addr += extent;
+	state->pmc->new_addr += extent;
+}
+
+unsigned long
+rust_helper_move_page_tables_old_addr(struct rust_move_page_tables_state *state)
+{
+	return state->pmc->old_addr;
+}
+
+unsigned long
+rust_helper_move_page_tables_old_end(struct rust_move_page_tables_state *state)
+{
+	return state->pmc->old_end;
+}
+
+unsigned long
+rust_helper_move_page_tables_new_addr(struct rust_move_page_tables_state *state)
+{
+	return state->pmc->new_addr;
+}
+
+unsigned long rust_helper_move_page_tables_pmd_size(void)
+{
+	return PMD_SIZE;
+}
+
+unsigned long rust_helper_move_page_tables_pmd_mask(void)
+{
+	return PMD_MASK;
+}
+
+unsigned long rust_helper_move_page_tables_pud_size(void)
+{
+	return PUD_SIZE;
+}
+
+unsigned long rust_helper_move_page_tables_pud_mask(void)
+{
+	return PUD_MASK;
+}
+
+unsigned long rust_helper_move_page_tables_hpage_pmd_size(void)
+{
+	return HPAGE_PMD_SIZE;
+}
+
+unsigned long rust_helper_move_page_tables_hpage_pud_size(void)
+{
+	return HPAGE_PUD_SIZE;
+}
+
+void rust_helper_move_page_tables_cond_resched(void)
+{
+	cond_resched();
+}
+
+bool
+rust_helper_move_page_tables_get_old_pud(struct rust_move_page_tables_state *state)
+{
+	struct pagetable_move_control *pmc = state->pmc;
+
+	state->old_pud = get_old_pud(pmc->old->vm_mm, pmc->old_addr);
+	return state->old_pud;
+}
+
+bool
+rust_helper_move_page_tables_alloc_new_pud(struct rust_move_page_tables_state *state)
+{
+	struct pagetable_move_control *pmc = state->pmc;
+
+	state->new_pud = alloc_new_pud(pmc->old->vm_mm, pmc->new_addr);
+	return state->new_pud;
+}
+
+bool
+rust_helper_move_page_tables_pud_trans_huge(struct rust_move_page_tables_state *state)
+{
+	return pud_trans_huge(*state->old_pud);
+}
+
+bool rust_helper_move_page_tables_can_move_pud(void)
+{
+	return IS_ENABLED(CONFIG_HAVE_MOVE_PUD);
+}
+
+bool
+rust_helper_move_page_tables_get_old_pmd(struct rust_move_page_tables_state *state)
+{
+	struct pagetable_move_control *pmc = state->pmc;
+
+	state->old_pmd = get_old_pmd(pmc->old->vm_mm, pmc->old_addr);
+	return state->old_pmd;
+}
+
+bool
+rust_helper_move_page_tables_alloc_new_pmd(struct rust_move_page_tables_state *state)
+{
+	struct pagetable_move_control *pmc = state->pmc;
+
+	state->new_pmd = alloc_new_pmd(pmc->old->vm_mm, pmc->new_addr);
+	return state->new_pmd;
+}
+
+bool
+rust_helper_move_page_tables_pmd_is_huge(struct rust_move_page_tables_state *state)
+{
+	return pmd_is_huge(*state->old_pmd);
+}
+
+bool rust_helper_move_page_tables_can_move_pmd(void)
+{
+	return IS_ENABLED(CONFIG_HAVE_MOVE_PMD);
+}
+
+bool
+rust_helper_move_page_tables_move_entry(struct rust_move_page_tables_state *state,
+					enum pgt_entry entry)
+{
+	void *old_entry;
+	void *new_entry;
+
+	switch (entry) {
+	case NORMAL_PMD:
+	case HPAGE_PMD:
+		old_entry = state->old_pmd;
+		new_entry = state->new_pmd;
+		break;
+	case NORMAL_PUD:
+	case HPAGE_PUD:
+		old_entry = state->old_pud;
+		new_entry = state->new_pud;
+		break;
+	default:
+		return false;
+	}
+
+	return move_pgt_entry(state->pmc, entry, old_entry, new_entry);
+}
+
+void
+rust_helper_move_page_tables_split_huge_pmd(struct rust_move_page_tables_state *state)
+{
+	split_huge_pmd(state->pmc->old, state->old_pmd, state->pmc->old_addr);
+}
+
+bool
+rust_helper_move_page_tables_pmd_none(struct rust_move_page_tables_state *state)
+{
+	return pmd_none(*state->old_pmd);
+}
+
+bool
+rust_helper_move_page_tables_pte_alloc(struct rust_move_page_tables_state *state)
+{
+	return pte_alloc(state->pmc->new->vm_mm, state->new_pmd);
+}
+
+int
+rust_helper_move_page_tables_move_ptes(struct rust_move_page_tables_state *state,
+				       unsigned long extent)
+{
+	return move_ptes(state->pmc, extent, state->old_pmd, state->new_pmd);
+}
+
+void rust_helper_move_page_tables_end(struct rust_move_page_tables_state *state)
+{
+	mmu_notifier_invalidate_range_end(&state->range);
+}
+
+void rust_helper_move_page_tables_warn_invalid(void)
+{
+	WARN_ON_ONCE(1);
+}
+
+#endif /* CONFIG_RUST_MOVE_PAGE_TABLES */
 
 /* Determine what kind of remap this is - shrink, expand or no resize at all. */
 static enum mremap_type vrm_remap_type(struct vma_remap_struct *vrm)

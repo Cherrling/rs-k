@@ -1651,6 +1651,24 @@ config RUST_MOVE_PGT_ENTRY
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_MOVE_PAGE_TABLES
+	bool "Rust orchestration for page-table range moves"
+	depends on RUST && MMU
+	depends on RUST_MOVE_PGT_ENTRY
+	default y
+	help
+	  Use Rust for the production page-table range move. Rust owns range
+	  termination, extent calculation, PUD and PMD size selection, huge-page
+	  splitting decisions, PTE retry handling, failure exits, and moved-byte
+	  accounting.
+
+	  Page-table lookup and allocation, architecture move operations, TLB
+	  and cache maintenance, notifier operations, and address realignment
+	  remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_COPY_MM
 	bool "Rust implementation of address-space copying"
 	depends on RUST && MMU
