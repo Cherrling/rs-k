@@ -3235,6 +3235,18 @@ config FIND_BIT_RUST_KUNIT_TEST
 
 	  If unsure, say N.
 
+config BITMAP_OPS_RUST_KUNIT_TEST
+	bool "KUnit tests for the Rust bitmap operations"
+	depends on RUST_BITMAP_OPS && KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for the native Rust generic bitmap
+	  operations.
+
+	  These tests are only for development and testing.
+
+	  If unsure, say N.
+
 config TEST_FIRMWARE
 	tristate "Test firmware loading via userspace interface"
 	depends on FW_LOADER

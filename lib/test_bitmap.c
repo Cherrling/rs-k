@@ -1292,7 +1292,9 @@ static void __init test_bitmap_const_eval(void)
 	unsigned long initvar = BIT(2);
 	unsigned long bitopvar = 0;
 	unsigned long var = 0;
+#ifndef CONFIG_RUST_BITMAP_OPS
 	int res;
+#endif
 
 	/*
 	 * Compilers must be able to optimize all of those to compile-time
@@ -1316,6 +1318,16 @@ static void __init test_bitmap_const_eval(void)
 	if (var & BIT(0))
 		var ^= GENMASK(9, 6);
 
+#ifdef CONFIG_RUST_BITMAP_OPS
+	/*
+	 * Rust bitmap operations cross an ABI boundary and cannot be folded into
+	 * compile-time constants. Validate the same invariants at runtime.
+	 */
+	expect_eq_uint(2, bitmap_weight(bitmap, 20));
+	expect_eq_uint(1, !test_bit(18, &bitopvar));
+	expect_eq_uint(0, initvar & GENMASK(14, 8));
+	expect_eq_ulong(~BIT(25), ~var);
+#else
 	/* __const_hweight<32|64>(GENMASK(6, 5)) == 2 */
 	res = bitmap_weight(bitmap, 20);
 	BUILD_BUG_ON(!__builtin_constant_p(res));
@@ -1334,15 +1346,20 @@ static void __init test_bitmap_const_eval(void)
 	/* ~BIT(25) */
 	BUILD_BUG_ON(!__builtin_constant_p(~var));
 	BUILD_BUG_ON(~var != ~BIT(25));
+#endif
 
 	/* ~BIT(25) | BIT(25) == ~0UL */
 	bitmap_complement(&var, &var, BITS_PER_LONG);
 	__assign_bit(25, &var, true);
 
+#ifdef CONFIG_RUST_BITMAP_OPS
+	expect_eq_uint(1, bitmap_full(&var, BITS_PER_LONG));
+#else
 	/* !(~(~0UL)) == 1 */
 	res = bitmap_full(&var, BITS_PER_LONG);
 	BUILD_BUG_ON(!__builtin_constant_p(res));
 	BUILD_BUG_ON(!res);
+#endif
 }
 
 /*

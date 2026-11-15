@@ -49,6 +49,8 @@ pub mod alloc;
 pub mod auxiliary;
 pub mod bitfield;
 pub mod bitmap;
+#[cfg(CONFIG_RUST_BITMAP_OPS)]
+mod bitmap_ops;
 pub mod bits;
 #[cfg(CONFIG_BLOCK)]
 pub mod block;

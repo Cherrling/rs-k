@@ -105,6 +105,7 @@ more details.
     waitqueue
     wait-bit
     native-find-bit
+    native-bitmap-ops
     native-percpu-refcount
     refcount
     swait

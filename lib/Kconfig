@@ -406,6 +406,21 @@ config RUST_FIND_BIT
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_BITMAP_OPS
+	bool "Rust implementation of generic bitmap operations"
+	depends on RUST && X86_64 && RUST_FIND_BIT
+	default y
+	help
+	  Use Rust for the production implementation of the generic bitmap
+	  operations in lib/bitmap.c, including logical operations, shifts,
+	  range updates, population counts, mappings, and array conversions.
+
+	  The exported C entry points remain as ABI adapters. Bitmap allocation,
+	  text parsing, and sequence-file formatting remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RBTREE_RUST_KUNIT_TEST
 	bool "KUnit tests for the Rust rbtree implementation"
 	depends on RUST_RBTREE && KUNIT

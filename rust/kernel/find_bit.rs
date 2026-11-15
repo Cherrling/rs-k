@@ -191,6 +191,67 @@ unsafe fn find_nth<const OP: u8>(
     size
 }
 
+/// Finds the next set bit without crossing the exported ABI boundary.
+///
+/// # Safety
+///
+/// `addr` must be valid for `size` bits.
+#[cfg(CONFIG_RUST_BITMAP_OPS)]
+pub(crate) unsafe fn find_next_set(addr: *const Word, size: usize, start: usize) -> usize {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { find_next::<ONE>(addr, ptr::null(), ptr::null(), size, start) }
+}
+
+/// Finds the next clear bit without crossing the exported ABI boundary.
+///
+/// # Safety
+///
+/// `addr` must be valid for `size` bits.
+#[cfg(CONFIG_RUST_BITMAP_OPS)]
+pub(crate) unsafe fn find_next_clear(addr: *const Word, size: usize, start: usize) -> usize {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { find_next::<NOT>(addr, ptr::null(), ptr::null(), size, start) }
+}
+
+/// Finds the `n`th set bit without crossing the exported ABI boundary.
+///
+/// # Safety
+///
+/// `addr` must be valid for `size` bits.
+#[cfg(CONFIG_RUST_BITMAP_OPS)]
+pub(crate) unsafe fn find_nth_set(addr: *const Word, size: usize, n: usize) -> usize {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { find_nth::<ONE>(addr, ptr::null(), ptr::null(), size, n) }
+}
+
+/// Finds the last set bit without crossing the exported ABI boundary.
+///
+/// # Safety
+///
+/// `addr` must be valid for `size` bits.
+#[cfg(CONFIG_RUST_BITMAP_OPS)]
+pub(crate) unsafe fn find_last_set(addr: *const Word, size: usize) -> usize {
+    if size == 0 {
+        return 0;
+    }
+
+    let mut index = (size - 1) / BITS;
+    loop {
+        // SAFETY: The initial index and loop bound keep the read inside the bitmap.
+        let mut word = unsafe { ptr::read(addr.add(index)) };
+        if (index + 1) * BITS > size {
+            word &= last_word_mask(size);
+        }
+        if word != 0 {
+            return index * BITS + BITS - 1 - word.leading_zeros() as usize;
+        }
+        if index == 0 {
+            return size;
+        }
+        index -= 1;
+    }
+}
+
 /// Counts set bits while honoring the logical bitmap size.
 ///
 /// # Safety
