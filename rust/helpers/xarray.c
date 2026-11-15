@@ -26,3 +26,76 @@ __rust_helper void rust_helper_xa_unlock(struct xarray *xa)
 {
 	return xa_unlock(xa);
 }
+
+#ifdef CONFIG_RUST_XARRAY_LOAD
+__rust_helper void *rust_helper_xarray_head(const struct xarray *xa)
+{
+	return xa_head(xa);
+}
+
+__rust_helper void *rust_helper_xarray_entry(const struct xarray *xa,
+					     const struct xa_node *node,
+					     unsigned int offset)
+{
+	return xa_entry(xa, node, offset);
+}
+
+__rust_helper bool rust_helper_xarray_is_node(const void *entry)
+{
+	return xa_is_node(entry);
+}
+
+__rust_helper struct xa_node *
+rust_helper_xarray_to_node(const void *entry)
+{
+	return xa_to_node(entry);
+}
+
+__rust_helper bool rust_helper_xarray_is_sibling(const void *entry)
+{
+	return xa_is_sibling(entry);
+}
+
+__rust_helper unsigned long
+rust_helper_xarray_to_sibling(const void *entry)
+{
+	return xa_to_sibling(entry);
+}
+
+__rust_helper bool rust_helper_xarray_is_retry(const void *entry)
+{
+	return xa_is_retry(entry);
+}
+
+__rust_helper bool rust_helper_xarray_is_zero(const void *entry)
+{
+	return xa_is_zero(entry);
+}
+
+__rust_helper void *rust_helper_xarray_retry_entry(void)
+{
+	return XA_RETRY_ENTRY;
+}
+
+__rust_helper void rust_helper_xarray_set_bounds(struct xa_state *xas)
+{
+	xas->xa_node = XAS_BOUNDS;
+}
+
+__rust_helper void rust_helper_xarray_reset(struct xa_state *xas)
+{
+	xas_reset(xas);
+}
+
+__rust_helper int rust_helper_xarray_error(const struct xa_state *xas)
+{
+	return xas_error(xas);
+}
+
+__rust_helper void rust_helper_xarray_state_init(struct xa_state *xas,
+						 struct xarray *xa,
+						 unsigned long index)
+{
+	*xas = (struct xa_state)__XA_STATE(xa, index, 0, 0);
+}
+#endif

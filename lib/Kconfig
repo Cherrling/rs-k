@@ -452,6 +452,20 @@ config RUST_GENRADIX
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_XARRAY_LOAD
+	bool "Rust implementation of XArray load traversal"
+	depends on RUST && X86_64
+	default y
+	help
+	  Use Rust for the production XArray root selection, node descent,
+	  sibling expansion, and RCU retry loop behind xa_load() and xas_load().
+
+	  RCU primitives, tagged entry encoding, node layout, and slot loads
+	  remain in C. The exported entry points remain as ABI adapters.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RBTREE_RUST_KUNIT_TEST
 	bool "KUnit tests for the Rust rbtree implementation"
 	depends on RUST_RBTREE && KUNIT

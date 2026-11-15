@@ -24139,10 +24139,12 @@ F:	include/linux/vma-split-rust.h
 F:	include/linux/vma-unmap-rust.h
 F:	include/linux/wait-bit-rust.h
 F:	include/linux/wait-rust.h
+F:	include/linux/xarray-rust.h
 F:	include/trace/events/rust_sample.h
 F:	lib/tests/bitmap_ops_kunit.c
 F:	lib/tests/genradix_kunit.c
 F:	lib/tests/kfifo_kunit.c
+F:	lib/tests/xarray_rust_kunit.c
 F:	lib/tests/test_complete_signal.c
 F:	lib/tests/test_copy_mm.c
 F:	lib/tests/test_cpupri.c

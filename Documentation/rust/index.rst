@@ -108,6 +108,7 @@ more details.
     native-bitmap-ops
     native-kfifo
     native-genradix
+    native-xarray-load
     native-percpu-refcount
     refcount
     swait

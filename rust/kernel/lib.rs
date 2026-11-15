@@ -311,6 +311,8 @@ mod wait_bit_core;
 mod waitqueue_core;
 pub mod workqueue;
 pub mod xarray;
+#[cfg(CONFIG_RUST_XARRAY_LOAD)]
+mod xarray_load;
 
 #[doc(hidden)]
 pub use bindings;

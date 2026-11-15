@@ -170,6 +170,7 @@
 #include <linux/wait-rust.h>
 #include <linux/workqueue.h>
 #include <linux/xarray.h>
+#include <linux/xarray-rust.h>
 #include <net/genetlink.h>
 #include <net/netlink.h>
 #include <trace/events/rust_sample.h>

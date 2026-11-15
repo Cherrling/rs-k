@@ -3405,6 +3405,17 @@ config GENRADIX_KUNIT_TEST
 
 	  If unsure, say N.
 
+config XARRAY_LOAD_KUNIT_TEST
+	tristate "KUnit Test for XArray load traversal" if !KUNIT_ALL_TESTS
+	depends on KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This builds the KUnit test suite for XArray load traversal. It tests
+	  the active implementation, including the Rust production path and the
+	  C fallback.
+
+	  If unsure, say N.
+
 config LIST_KUNIT_TEST
 	tristate "KUnit Test for Kernel Linked-list structures" if !KUNIT_ALL_TESTS
 	depends on KUNIT

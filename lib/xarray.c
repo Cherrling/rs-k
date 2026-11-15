@@ -11,6 +11,7 @@
 #include <linux/list.h>
 #include <linux/slab.h>
 #include <linux/xarray.h>
+#include <linux/xarray-rust.h>
 
 #include "radix-tree.h"
 
@@ -234,6 +235,7 @@ static __always_inline void *xas_descend(struct xa_state *xas,
  * Context: Any context.  The caller should hold the xa_lock or the RCU lock.
  * Return: Usually an entry in the XArray, but see description for exceptions.
  */
+#ifndef CONFIG_RUST_XARRAY_LOAD
 void *xas_load(struct xa_state *xas)
 {
 	void *entry = xas_start(xas);
@@ -250,6 +252,13 @@ void *xas_load(struct xa_state *xas)
 	return entry;
 }
 EXPORT_SYMBOL_GPL(xas_load);
+#else
+void *xas_load(struct xa_state *xas)
+{
+	return rust_xarray_load_advanced(xas);
+}
+EXPORT_SYMBOL_GPL(xas_load);
+#endif
 
 #define XA_RCU_FREE	((struct xarray *)1)
 
@@ -1612,6 +1621,7 @@ EXPORT_SYMBOL_GPL(xas_find_conflict);
  * Context: Any context.  Takes and releases the RCU lock.
  * Return: The entry at @index in @xa.
  */
+#ifndef CONFIG_RUST_XARRAY_LOAD
 void *xa_load(struct xarray *xa, unsigned long index)
 {
 	XA_STATE(xas, xa, index);
@@ -1626,6 +1636,13 @@ void *xa_load(struct xarray *xa, unsigned long index)
 	return entry;
 }
 EXPORT_SYMBOL(xa_load);
+#else
+void *xa_load(struct xarray *xa, unsigned long index)
+{
+	return rust_xarray_load(xa, index);
+}
+EXPORT_SYMBOL(xa_load);
+#endif
 
 static void *xas_result(struct xa_state *xas, void *curr)
 {
