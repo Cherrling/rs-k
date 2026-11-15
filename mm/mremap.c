@@ -22,6 +22,7 @@
 #include <linux/security.h>
 #include <linux/syscalls.h>
 #include <linux/mmu_notifier.h>
+#include <linux/mremap-copy-rust.h>
 #include <linux/uaccess.h>
 #include <linux/userfaultfd_k.h>
 #include <linux/mempolicy.h>
@@ -1293,6 +1294,39 @@ static void unmap_source_vma(struct vma_remap_struct *vrm)
  * Outputs the newly installed VMA to new_vma_ptr. Returns 0 on success or an
  * error code.
  */
+#ifdef CONFIG_RUST_MREMAP_COPY
+
+struct rust_mremap_copy_state {
+	struct vma_remap_struct *vrm;
+	struct vm_area_struct *vma;
+	struct vm_area_struct *new_vma;
+	struct vm_area_struct **new_vma_ptr;
+	struct pagetable_move_control pmc;
+	struct pagetable_move_control pmc_revert;
+};
+
+static int copy_vma_and_data(struct vma_remap_struct *vrm,
+			     struct vm_area_struct **new_vma_ptr)
+{
+	struct rust_mremap_copy_state state = {
+		.vrm = vrm,
+		.vma = vrm->vma,
+		.new_vma_ptr = new_vma_ptr,
+		.pmc = {
+			.old = NULL,
+			.new = NULL,
+			.old_addr = vrm->addr,
+			.old_end = vrm->addr + vrm->old_len,
+			.new_addr = vrm->new_addr,
+			.len_in = vrm->old_len,
+		},
+	};
+
+	return rust_mremap_copy(&state);
+}
+
+#else
+
 static int copy_vma_and_data(struct vma_remap_struct *vrm,
 			     struct vm_area_struct **new_vma_ptr)
 {
@@ -1365,6 +1399,127 @@ static int copy_vma_and_data(struct vma_remap_struct *vrm,
 	*new_vma_ptr = new_vma;
 	return err;
 }
+
+#endif /* CONFIG_RUST_MREMAP_COPY */
+
+#ifdef CONFIG_RUST_MREMAP_COPY
+
+struct vm_area_struct *
+rust_helper_mremap_copy_vma(struct rust_mremap_copy_state *state)
+{
+	const pgoff_t new_pgoff =
+		linear_page_index(state->vma, state->vrm->addr);
+	const pgoff_t new_anon_pgoff =
+		__linear_anon_page_index(state->vma, state->vrm->addr);
+	struct vm_area_struct *vma = state->vma;
+
+	state->new_vma = copy_vma(&vma, state->vrm->new_addr,
+				  state->vrm->new_len, new_pgoff,
+				  new_anon_pgoff,
+				  &state->pmc.need_rmap_locks,
+				  state->vrm->flags & MREMAP_DONTUNMAP);
+	state->vma = vma;
+	return state->new_vma;
+}
+
+bool rust_helper_mremap_copy_source_changed(struct rust_mremap_copy_state *state)
+{
+	return state->vma != state->vrm->vma;
+}
+
+void rust_helper_mremap_copy_mark_vmi_invalid(struct rust_mremap_copy_state *state)
+{
+	state->vrm->vmi_needs_invalidate = true;
+}
+
+void rust_helper_mremap_copy_commit_source(struct rust_mremap_copy_state *state)
+{
+	state->vrm->vma = state->vma;
+	state->pmc.old = state->vma;
+}
+
+void rust_helper_mremap_copy_set_new_vma(struct rust_mremap_copy_state *state,
+					 struct vm_area_struct *vma)
+{
+	state->new_vma = vma;
+	state->pmc.new = vma;
+}
+
+unsigned long
+rust_helper_mremap_copy_page_tables(struct rust_mremap_copy_state *state)
+{
+	return move_page_tables(&state->pmc);
+}
+
+unsigned long
+rust_helper_mremap_copy_old_len(struct rust_mremap_copy_state *state)
+{
+	return state->vrm->old_len;
+}
+
+bool rust_helper_mremap_copy_has_mremap(struct rust_mremap_copy_state *state)
+{
+	return state->vma->vm_ops && state->vma->vm_ops->mremap;
+}
+
+int rust_helper_mremap_copy_invoke_mremap(struct rust_mremap_copy_state *state)
+{
+	return state->vma->vm_ops->mremap(state->new_vma);
+}
+
+void rust_helper_mremap_copy_prepare_revert(struct rust_mremap_copy_state *state,
+					    unsigned long moved_len)
+{
+	state->pmc_revert = (struct pagetable_move_control) {
+		.old = state->new_vma,
+		.new = state->vma,
+		.old_addr = state->vrm->new_addr,
+		.old_end = state->vrm->new_addr + moved_len,
+		.new_addr = state->vrm->addr,
+		.len_in = moved_len,
+		.need_rmap_locks = true,
+	};
+}
+
+void rust_helper_mremap_copy_page_tables_back(struct rust_mremap_copy_state *state)
+{
+	move_page_tables(&state->pmc_revert);
+}
+
+bool rust_helper_mremap_copy_keeps_source(struct rust_mremap_copy_state *state)
+{
+	return state->vrm->flags & MREMAP_DONTUNMAP;
+}
+
+void rust_helper_mremap_copy_uncharge(struct rust_mremap_copy_state *state)
+{
+	vrm_uncharge(state->vrm);
+}
+
+void rust_helper_mremap_copy_set_error_destination(struct rust_mremap_copy_state *state)
+{
+	state->vrm->vma = state->new_vma;
+	state->vrm->old_len = state->vrm->new_len;
+	state->vrm->addr = state->vrm->new_addr;
+}
+
+void rust_helper_mremap_copy_userfaultfd_prepare(struct rust_mremap_copy_state *state)
+{
+	mremap_userfaultfd_prep(state->new_vma, state->vrm->uf);
+}
+
+void rust_helper_mremap_copy_fixup_hugetlb(struct rust_mremap_copy_state *state)
+{
+	fixup_hugetlb_reservations(state->vrm->vma);
+}
+
+void rust_helper_mremap_copy_set_output(struct rust_mremap_copy_state *state,
+					struct vm_area_struct *vma)
+{
+	*state->new_vma_ptr = vma;
+}
+
+#endif /* CONFIG_RUST_MREMAP_COPY */
 
 /*
  * Perform final tasks for MADV_DONTUNMAP operation, clearing mlock() flag on

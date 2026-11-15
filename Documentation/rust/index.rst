@@ -68,6 +68,7 @@ more details.
     vma-prepare-complete
     vma-region-teardown
     vma-copy
+    mremap-copy
     vma-expand
     vma-shrink
     vma-modify

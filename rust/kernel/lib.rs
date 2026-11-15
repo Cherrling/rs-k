@@ -126,6 +126,8 @@ mod mm_core;
 mod mm_teardown;
 pub mod module;
 pub mod module_param;
+#[cfg(CONFIG_RUST_MREMAP_COPY)]
+mod mremap_copy;
 #[cfg(CONFIG_RUST_MUTEX)]
 mod mutex_core;
 #[cfg(CONFIG_NET)]

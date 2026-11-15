@@ -1532,6 +1532,23 @@ config RUST_VMA_COPY
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_MREMAP_COPY
+	bool "Rust orchestration for mremap copy and page-table move"
+	depends on RUST && MMU
+	depends on RUST_VMA_COPY
+	default y
+	help
+	  Use Rust for the production copy_vma_and_data() path used by
+	  mremap(). Rust owns the VMA-copy result handling, page-table move
+	  result, mremap callback decision, rollback order, accounting
+	  correction, userfaultfd preparation, and remap-state transitions.
+
+	  Page-table move, callback invocation, field access, accounting,
+	  userfaultfd, and hugetlb repair primitives remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_COPY_MM
 	bool "Rust implementation of address-space copying"
 	depends on RUST && MMU
