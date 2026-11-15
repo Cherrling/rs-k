@@ -80,6 +80,8 @@
 #include <linux/iosys-map.h>
 #include <linux/jiffies.h>
 #include <linux/jump_label.h>
+#include <linux/kfifo.h>
+#include <linux/kfifo-rust.h>
 #include <linux/list_sort.h>
 #include <linux/mdio.h>
 #include <linux/mm.h>

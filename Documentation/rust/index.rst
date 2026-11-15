@@ -106,6 +106,7 @@ more details.
     wait-bit
     native-find-bit
     native-bitmap-ops
+    native-kfifo
     native-percpu-refcount
     refcount
     swait

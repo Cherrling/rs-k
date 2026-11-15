@@ -24101,6 +24101,7 @@ F:	include/linux/dup-task-struct-rust.h
 F:	include/linux/exit-mmap-rust.h
 F:	include/linux/hrtimer-rust.h
 F:	include/linux/itimer-rust.h
+F:	include/linux/kfifo-rust.h
 F:	include/linux/mutex-rust.h
 F:	include/linux/pid-allocation-rust.h
 F:	include/linux/pid-association-rust.h
@@ -24139,6 +24140,7 @@ F:	include/linux/wait-bit-rust.h
 F:	include/linux/wait-rust.h
 F:	include/trace/events/rust_sample.h
 F:	lib/tests/bitmap_ops_kunit.c
+F:	lib/tests/kfifo_kunit.c
 F:	lib/tests/test_complete_signal.c
 F:	lib/tests/test_copy_mm.c
 F:	lib/tests/test_cpupri.c

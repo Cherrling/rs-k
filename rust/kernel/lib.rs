@@ -118,6 +118,8 @@ pub mod irq;
 #[cfg(CONFIG_RUST_ITIMER)]
 mod itimer_core;
 pub mod jump_label;
+#[cfg(CONFIG_RUST_KFIFO)]
+mod kfifo;
 #[cfg(CONFIG_KUNIT)]
 pub mod kunit;
 pub mod list;

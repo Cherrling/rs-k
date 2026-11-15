@@ -421,6 +421,22 @@ config RUST_BITMAP_OPS
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_KFIFO
+	bool "Rust implementation of generic kernel FIFOs"
+	depends on RUST && X86_64
+	default y
+	help
+	  Use Rust for the production ring-buffer algorithms in lib/kfifo.c,
+	  including wrap-around, record framing, user-copy orchestration,
+	  scatterlist preparation, and index advancement.
+
+	  Allocation, low-level user access, memory barriers, and scatterlist
+	  mutation remain in C. The exported entry points remain as ABI
+	  adapters.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RBTREE_RUST_KUNIT_TEST
 	bool "KUnit tests for the Rust rbtree implementation"
 	depends on RUST_RBTREE && KUNIT
