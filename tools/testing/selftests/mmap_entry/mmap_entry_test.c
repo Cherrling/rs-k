@@ -39,6 +39,11 @@
 #define MAP_SHARED_VALIDATE	0x03
 #endif
 
+#ifndef PR_SET_MDWE
+#define PR_SET_MDWE			65
+#define PR_MDWE_REFUSE_EXEC_GAIN	1UL
+#endif
+
 static size_t page_size;
 
 static void report_result(int passed)
@@ -404,6 +409,39 @@ static int test_exec_policy(void)
 	return munmap(mapping, page_size);
 }
 
+static int test_mdwe(void)
+{
+	pid_t child;
+	int status;
+
+	child = fork();
+	if (child < 0)
+		return 1;
+	if (!child) {
+		void *mapping;
+
+		if (prctl(PR_SET_MDWE, PR_MDWE_REFUSE_EXEC_GAIN, 0L, 0L,
+			  0L))
+			_exit(1);
+		if (expect_mmap_error(NULL, page_size,
+				      PROT_READ | PROT_WRITE | PROT_EXEC,
+				      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0,
+				      EACCES, "MDWE writable execute"))
+			_exit(1);
+
+		mapping = raw_mmap(NULL, page_size, PROT_READ | PROT_EXEC,
+				   MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+		if (mapping == MAP_FAILED || munmap(mapping, page_size))
+			_exit(1);
+		_exit(0);
+	}
+
+	if (waitpid(child, &status, 0) != child ||
+	    !WIFEXITED(status) || WEXITSTATUS(status))
+		return 1;
+	return 0;
+}
+
 static int test_file_mapping(void)
 {
 	const char *path = "/mnt/mapping-file";
@@ -413,6 +451,7 @@ static int test_file_mapping(void)
 	int mprotect_errno;
 	void *mapping;
 	int read_fd;
+	int rw_fd;
 	int write_fd;
 	int memfd;
 
@@ -430,8 +469,9 @@ static int test_file_mapping(void)
 	close(read_fd);
 
 	read_fd = open(path, O_RDONLY);
+	rw_fd = open(path, O_RDWR);
 	write_fd = open(path, O_WRONLY);
-	if (read_fd < 0 || write_fd < 0) {
+	if (read_fd < 0 || rw_fd < 0 || write_fd < 0) {
 		fprintf(stderr, "MMAP_ENTRY file reopen failed\n");
 		return 1;
 	}
@@ -462,6 +502,14 @@ static int test_file_mapping(void)
 		return 1;
 
 	mapping = raw_mmap(NULL, page_size, PROT_READ | PROT_WRITE,
+			   MAP_SHARED, rw_fd, 0);
+	if (mapping == MAP_FAILED || ((char *)mapping)[0] != 0x3c) {
+		fprintf(stderr, "MMAP_ENTRY writable shared map failed\n");
+		return 1;
+	}
+	munmap(mapping, page_size);
+
+	mapping = raw_mmap(NULL, page_size, PROT_READ | PROT_WRITE,
 			   MAP_PRIVATE, read_fd, 0);
 	if (mapping == MAP_FAILED || ((char *)mapping)[0] != 0x3c) {
 		fprintf(stderr, "MMAP_ENTRY private file map failed\n");
@@ -477,6 +525,7 @@ static int test_file_mapping(void)
 	}
 	munmap(mapping, page_size);
 	close(read_fd);
+	close(rw_fd);
 	close(write_fd);
 
 	memfd = syscall(SYS_memfd_create, "sealed", MFD_ALLOW_SEALING);
@@ -704,6 +753,10 @@ int main(void)
 	}
 	if (test_exec_policy()) {
 		fprintf(stderr, "MMAP_ENTRY exec policy test failed\n");
+		goto out;
+	}
+	if (test_mdwe()) {
+		fprintf(stderr, "MMAP_ENTRY MDWE test failed\n");
 		goto out;
 	}
 	if (test_file_mapping()) {

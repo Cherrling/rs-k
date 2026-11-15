@@ -1636,6 +1636,23 @@ config RUST_MMAP_ENTRY
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_MMAP_REGION
+	bool "Rust orchestration for creating VMA regions"
+	depends on RUST && MMU
+	default y
+	help
+	  Use Rust for the production mmap_region() entry path. Rust owns the
+	  preparation order, denial and validation exits, writable shared file
+	  mapping accounting, core region dispatch, cleanup, and final
+	  validation.
+
+	  The mmap write-lock assertion, MDWE and architecture flag predicates,
+	  shared writable mapping predicate, address_space writable accounting,
+	  existing region creation operation, and mm validation remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_MREMAP_BATCH
 	bool "Rust orchestration for batched mremap moves"
 	depends on RUST && MMU

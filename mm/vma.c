@@ -10,6 +10,7 @@
  */
 #include "vma_internal.h"
 #include "vma.h"
+#include <linux/mmap-region-rust.h>
 #include <linux/vma-copy-rust.h>
 #include <linux/vma-merge-compat-rust.h>
 #include <linux/vma-merge-existing-rust.h>
@@ -5218,6 +5219,7 @@ abort_munmap:
  * Returns: Either an error, or the address at which the requested mapping has
  * been performed.
  */
+#ifndef CONFIG_RUST_MMAP_REGION
 unsigned long mmap_region(struct file *file, unsigned long addr,
 			  unsigned long len, vma_flags_t vma_flags,
 			  unsigned long pgoff, struct list_head *uf)
@@ -5253,6 +5255,90 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 	validate_mm(current->mm);
 	return ret;
 }
+#else
+
+struct rust_mmap_region_state {
+	struct mm_struct *mm;
+	struct file *file;
+	unsigned long addr;
+	unsigned long len;
+	vma_flags_t vma_flags;
+	unsigned long pgoff;
+	struct list_head *uf;
+	unsigned long ret;
+};
+
+unsigned long mmap_region(struct file *file, unsigned long addr,
+			  unsigned long len, vma_flags_t vma_flags,
+			  unsigned long pgoff, struct list_head *uf)
+{
+	struct rust_mmap_region_state state = {
+		.mm = current->mm,
+		.file = file,
+		.addr = addr,
+		.len = len,
+		.vma_flags = vma_flags,
+		.pgoff = pgoff,
+		.uf = uf,
+	};
+
+	return rust_mmap_region(&state);
+}
+
+void
+rust_helper_mmap_region_assert_write_locked(struct rust_mmap_region_state *state)
+{
+	mmap_assert_write_locked(state->mm);
+}
+
+bool
+rust_helper_mmap_region_deny_write_exec(struct rust_mmap_region_state *state)
+{
+	return map_deny_write_exec(&state->vma_flags, &state->vma_flags);
+}
+
+bool rust_helper_mmap_region_arch_valid(struct rust_mmap_region_state *state)
+{
+	return arch_validate_flags(vma_flags_to_legacy(state->vma_flags));
+}
+
+bool
+rust_helper_mmap_region_shared_maywrite(struct rust_mmap_region_state *state)
+{
+	return state->file && is_shared_maywrite(&state->vma_flags);
+}
+
+int
+rust_helper_mmap_region_map_writable(struct rust_mmap_region_state *state)
+{
+	return mapping_map_writable(state->file->f_mapping);
+}
+
+void
+rust_helper_mmap_region_unmap_writable(struct rust_mmap_region_state *state)
+{
+	mapping_unmap_writable(state->file->f_mapping);
+}
+
+void rust_helper_mmap_region_create(struct rust_mmap_region_state *state)
+{
+	state->ret = __mmap_region(state->file, state->addr, state->len,
+				   state->vma_flags, state->pgoff, state->uf);
+}
+
+unsigned long
+rust_helper_mmap_region_ret(struct rust_mmap_region_state *state)
+{
+	return state->ret;
+}
+
+void
+rust_helper_mmap_region_validate_mm(struct rust_mmap_region_state *state)
+{
+	validate_mm(state->mm);
+}
+
+#endif /* CONFIG_RUST_MMAP_REGION */
 
 /**
  * do_brk_flags() - Increase the brk vma if the flags match.

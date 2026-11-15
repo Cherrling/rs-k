@@ -58,6 +58,7 @@ more details.
     mm-lifetime
     mm-teardown
     mmap-entry
+    mmap-region
     exit-mmap
     vma-unmap
     vma-munmap-complete
