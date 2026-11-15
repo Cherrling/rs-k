@@ -776,6 +776,29 @@ static void update_node(struct xa_state *xas, struct xa_node *node,
 		xas_delete_node(xas);
 }
 
+#ifdef CONFIG_RUST_XARRAY_STORE
+void *rust_xarray_create_for_store(struct xa_state *xas, bool allow_root)
+{
+	return xas_create(xas, allow_root);
+}
+
+void rust_xarray_free_nodes(struct xa_state *xas, struct xa_node *top)
+{
+	xas_free_nodes(xas, top);
+}
+
+void rust_xarray_update_node(struct xa_state *xas, struct xa_node *node,
+			     int count, int values)
+{
+	update_node(xas, node, count, values);
+}
+
+void rust_xarray_squash_marks(const struct xa_state *xas)
+{
+	xas_squash_marks(xas);
+}
+#endif
+
 /**
  * xas_store() - Store this entry in the XArray.
  * @xas: XArray operation state.
@@ -789,6 +812,7 @@ static void update_node(struct xa_state *xas, struct xa_node *node,
  *
  * Return: The old entry at this index.
  */
+#ifndef CONFIG_RUST_XARRAY_STORE
 void *xas_store(struct xa_state *xas, void *entry)
 {
 	struct xa_node *node;
@@ -862,6 +886,13 @@ void *xas_store(struct xa_state *xas, void *entry)
 	return first;
 }
 EXPORT_SYMBOL_GPL(xas_store);
+#else
+void *xas_store(struct xa_state *xas, void *entry)
+{
+	return rust_xarray_store(xas, entry);
+}
+EXPORT_SYMBOL_GPL(xas_store);
+#endif
 
 /**
  * xas_get_mark() - Returns the state of this mark.

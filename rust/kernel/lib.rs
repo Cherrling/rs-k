@@ -313,6 +313,8 @@ pub mod workqueue;
 pub mod xarray;
 #[cfg(CONFIG_RUST_XARRAY_LOAD)]
 mod xarray_load;
+#[cfg(CONFIG_RUST_XARRAY_STORE)]
+mod xarray_store;
 
 #[doc(hidden)]
 pub use bindings;

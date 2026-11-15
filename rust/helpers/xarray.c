@@ -99,3 +99,33 @@ __rust_helper void rust_helper_xarray_state_init(struct xa_state *xas,
 	*xas = (struct xa_state)__XA_STATE(xa, index, 0, 0);
 }
 #endif
+
+#ifdef CONFIG_RUST_XARRAY_STORE
+__rust_helper bool rust_helper_xarray_is_value(const void *entry)
+{
+	return xa_is_value(entry);
+}
+
+__rust_helper void *rust_helper_xarray_mk_sibling(unsigned int offset)
+{
+	return xa_mk_sibling(offset);
+}
+
+__rust_helper void *rust_helper_xarray_slot_locked(const struct xa_state *xas,
+						   const struct xa_node *node,
+						   unsigned int offset)
+{
+	return xa_entry_locked(xas->xa, node, offset);
+}
+
+__rust_helper void rust_helper_xarray_assign_slot(struct xa_state *xas,
+						  struct xa_node *node,
+						  unsigned int offset,
+						  void *entry)
+{
+	if (node)
+		rcu_assign_pointer(node->slots[offset], entry);
+	else
+		rcu_assign_pointer(xas->xa->xa_head, entry);
+}
+#endif

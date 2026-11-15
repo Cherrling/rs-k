@@ -109,6 +109,7 @@ more details.
     native-kfifo
     native-genradix
     native-xarray-load
+    native-xarray-store
     native-percpu-refcount
     refcount
     swait
