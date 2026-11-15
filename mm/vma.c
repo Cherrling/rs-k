@@ -10,6 +10,7 @@
  */
 #include "vma_internal.h"
 #include "vma.h"
+#include <linux/vma-copy-rust.h>
 #include <linux/vma-merge-compat-rust.h>
 #include <linux/vma-merge-existing-rust.h>
 #include <linux/vma-merge-new-range-rust.h>
@@ -3913,6 +3914,54 @@ static int vma_link(struct mm_struct *mm, struct vm_area_struct *vma)
  * Copy the vma structure to a new location in the same mm,
  * prior to moving page table entries, to effect an mremap move.
  */
+#ifdef CONFIG_RUST_VMA_COPY
+
+struct rust_vma_copy_state {
+	struct vm_area_struct **vmap;
+	struct vm_area_struct *vma;
+	struct mm_struct *mm;
+	struct vma_iterator vmi;
+	struct vma_merge_struct vmg;
+	unsigned long old_vma_start;
+	unsigned long addr;
+	unsigned long len;
+	pgoff_t pgoff;
+	pgoff_t anon_pgoff;
+	bool *need_rmap_locks;
+	bool keep_source;
+	bool can_self_merge;
+};
+
+struct vm_area_struct *copy_vma(struct vm_area_struct **vmap,
+				unsigned long addr, unsigned long len,
+				pgoff_t pgoff, pgoff_t anon_pgoff,
+				bool *need_rmap_locks, bool keep_source)
+{
+	struct vm_area_struct *vma = *vmap;
+
+	VMA_ITERATOR(vmi, vma->vm_mm, addr);
+	VMG_VMA_STATE(vmg, &vmi, NULL, vma, addr, addr + len);
+	struct rust_vma_copy_state state = {
+		.vmap = vmap,
+		.vma = vma,
+		.mm = vma->vm_mm,
+		.vmi = vmi,
+		.vmg = vmg,
+		.old_vma_start = vma->vm_start,
+		.addr = addr,
+		.len = len,
+		.pgoff = pgoff,
+		.anon_pgoff = anon_pgoff,
+		.need_rmap_locks = need_rmap_locks,
+		.keep_source = keep_source,
+	};
+
+	state.vmg.vmi = &state.vmi;
+	return rust_vma_copy(&state);
+}
+
+#else
+
 struct vm_area_struct *copy_vma(struct vm_area_struct **vmap,
 	unsigned long addr, unsigned long len, pgoff_t pgoff,
 	pgoff_t anon_pgoff, bool *need_rmap_locks, bool keep_source)
@@ -4024,6 +4073,240 @@ out_free_vma:
 out:
 	return NULL;
 }
+
+#endif /* CONFIG_RUST_VMA_COPY */
+
+#ifdef CONFIG_RUST_VMA_COPY
+
+bool rust_helper_vma_copy_has_anon_vma(struct rust_vma_copy_state *state)
+{
+	return state->vma->anon_vma;
+}
+
+bool rust_helper_vma_copy_is_anonymous(struct rust_vma_copy_state *state)
+{
+	return vma_is_anonymous(state->vma);
+}
+
+unsigned long
+rust_helper_vma_copy_page_index(struct rust_vma_copy_state *state)
+{
+	return state->addr >> PAGE_SHIFT;
+}
+
+void rust_helper_vma_copy_set_anon_pgoff(struct rust_vma_copy_state *state,
+					 unsigned long anon_pgoff)
+{
+	state->anon_pgoff = anon_pgoff;
+}
+
+void rust_helper_vma_copy_set_pgoff(struct rust_vma_copy_state *state,
+				    unsigned long pgoff)
+{
+	state->pgoff = pgoff;
+}
+
+void rust_helper_vma_copy_set_can_self_merge(struct rust_vma_copy_state *state,
+					     bool can_self_merge)
+{
+	state->can_self_merge = can_self_merge;
+}
+
+bool rust_helper_vma_copy_source_has_file(struct rust_vma_copy_state *state)
+{
+	return state->vma->vm_file;
+}
+
+bool rust_helper_vma_copy_has_file(struct vm_area_struct *vma)
+{
+	return vma->vm_file;
+}
+
+void rust_helper_vma_copy_skip_uprobe(struct rust_vma_copy_state *state)
+{
+	state->vmg.skip_vma_uprobe = true;
+}
+
+struct vm_area_struct *
+rust_helper_vma_copy_find_prev(struct rust_vma_copy_state *state)
+{
+	return find_vma_prev(state->mm, state->addr, &state->vmg.prev);
+}
+
+unsigned long rust_helper_vma_copy_range_end(struct rust_vma_copy_state *state)
+{
+	return state->addr + state->len;
+}
+
+unsigned long rust_helper_vma_copy_vma_start(struct vm_area_struct *vma)
+{
+	return vma->vm_start;
+}
+
+unsigned long rust_helper_vma_copy_vma_end(struct vm_area_struct *vma)
+{
+	return vma->vm_end;
+}
+
+void rust_helper_vma_copy_prepare_merge(struct rust_vma_copy_state *state)
+{
+	state->vmg.pgoff = state->pgoff;
+	state->vmg.anon_pgoff = state->anon_pgoff;
+	state->vmg.next = vma_iter_next_rewind(&state->vmi, NULL);
+}
+
+bool rust_helper_vma_copy_keep_source(struct rust_vma_copy_state *state)
+{
+	return state->keep_source;
+}
+
+struct vm_area_struct *
+rust_helper_vma_copy_source(struct rust_vma_copy_state *state)
+{
+	return state->vma;
+}
+
+struct vm_area_struct *
+rust_helper_vma_copy_prev(struct rust_vma_copy_state *state)
+{
+	return state->vmg.prev;
+}
+
+struct vm_area_struct *
+rust_helper_vma_copy_next(struct rust_vma_copy_state *state)
+{
+	return state->vmg.next;
+}
+
+void rust_helper_vma_copy_clear_prev(struct rust_vma_copy_state *state)
+{
+	state->vmg.prev = NULL;
+}
+
+void rust_helper_vma_copy_clear_next(struct rust_vma_copy_state *state)
+{
+	state->vmg.next = NULL;
+}
+
+void rust_helper_vma_copy_clear_self_merge(struct rust_vma_copy_state *state)
+{
+	state->can_self_merge = false;
+}
+
+struct vm_area_struct *
+rust_helper_vma_copy_merge(struct rust_vma_copy_state *state)
+{
+	return vma_merge_copied_range(&state->vmg);
+}
+
+unsigned long
+rust_helper_vma_copy_old_start(struct rust_vma_copy_state *state)
+{
+	return state->old_vma_start;
+}
+
+void rust_helper_vma_copy_warn_replaced_self(struct rust_vma_copy_state *state,
+					     struct vm_area_struct *vma)
+{
+	VM_WARN_ON_ONCE_VMA(!state->can_self_merge, vma);
+}
+
+void rust_helper_vma_copy_replace_source(struct rust_vma_copy_state *state,
+					 struct vm_area_struct *vma)
+{
+	state->vma = vma;
+	*state->vmap = vma;
+}
+
+unsigned long
+rust_helper_vma_copy_start_pgoff(struct vm_area_struct *vma)
+{
+	return vma_start_pgoff(vma);
+}
+
+void rust_helper_vma_copy_set_need_rmap_locks(struct rust_vma_copy_state *state,
+					      bool need_rmap_locks)
+{
+	*state->need_rmap_locks = need_rmap_locks;
+}
+
+struct vm_area_struct *
+rust_helper_vma_copy_dup(struct rust_vma_copy_state *state)
+{
+	return vm_area_dup(state->vma);
+}
+
+void rust_helper_vma_copy_set_range(struct rust_vma_copy_state *state,
+				    struct vm_area_struct *vma)
+{
+	vma_set_range(vma, state->addr, state->addr + state->len,
+		      state->pgoff, state->anon_pgoff);
+}
+
+int rust_helper_vma_copy_dup_policy(struct rust_vma_copy_state *state,
+				    struct vm_area_struct *vma)
+{
+	return vma_dup_policy(state->vma, vma);
+}
+
+int rust_helper_vma_copy_anon_clone(struct rust_vma_copy_state *state,
+				    struct vm_area_struct *vma)
+{
+	return anon_vma_clone(vma, state->vma, VMA_OP_REMAP);
+}
+
+bool rust_helper_vma_copy_has_open(struct vm_area_struct *vma)
+{
+	return vma->vm_ops && vma->vm_ops->open;
+}
+
+void rust_helper_vma_copy_get_file(struct vm_area_struct *vma)
+{
+	get_file(vma->vm_file);
+}
+
+void rust_helper_vma_copy_open(struct vm_area_struct *vma)
+{
+	vma->vm_ops->open(vma);
+}
+
+int rust_helper_vma_copy_link(struct rust_vma_copy_state *state,
+			      struct vm_area_struct *vma)
+{
+	return vma_link(state->mm, vma);
+}
+
+void rust_helper_vma_copy_fixup_hugetlb(struct vm_area_struct *vma)
+{
+	fixup_hugetlb_reservations(vma);
+}
+
+void rust_helper_vma_copy_close(struct vm_area_struct *vma)
+{
+	vma_close(vma);
+}
+
+void rust_helper_vma_copy_fput(struct vm_area_struct *vma)
+{
+	fput(vma->vm_file);
+}
+
+void rust_helper_vma_copy_unlink_anon(struct vm_area_struct *vma)
+{
+	unlink_anon_vmas(vma);
+}
+
+void rust_helper_vma_copy_policy_put(struct vm_area_struct *vma)
+{
+	mpol_put(vma_policy(vma));
+}
+
+void rust_helper_vma_copy_free(struct vm_area_struct *vma)
+{
+	vm_area_free(vma);
+}
+
+#endif /* CONFIG_RUST_VMA_COPY */
 
 /*
  * Rough compatibility check to quickly see if it's even worth looking

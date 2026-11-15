@@ -17478,6 +17478,7 @@ F:	Documentation/rust/dup-mmap.rst
 F:	Documentation/rust/exit-mmap.rst
 F:	Documentation/rust/mm-lifetime.rst
 F:	Documentation/rust/mm-teardown.rst
+F:	Documentation/rust/vma-copy.rst
 F:	Documentation/rust/vma-expand.rst
 F:	Documentation/rust/vma-merge-commit.rst
 F:	Documentation/rust/vma-merge-compat.rst
@@ -17495,6 +17496,7 @@ F:	include/linux/copy-mm-rust.h
 F:	include/linux/dup-mmap-rust.h
 F:	include/linux/exit-mmap-rust.h
 F:	include/linux/mm-rust.h
+F:	include/linux/vma-copy-rust.h
 F:	include/linux/vma-merge-commit-rust.h
 F:	include/linux/vma-merge-compat-rust.h
 F:	include/linux/vma-merge-existing-rust.h
@@ -17522,6 +17524,7 @@ F:	rust/kernel/mm_teardown.rs
 F:	rust/kernel/mm.rs
 F:	rust/kernel/mm/
 F:	rust/kernel/page.rs
+F:	rust/kernel/vma_copy.rs
 F:	rust/kernel/vma_expand.rs
 F:	rust/kernel/vma_merge_commit.rs
 F:	rust/kernel/vma_merge_compat.rs
@@ -17535,6 +17538,7 @@ F:	rust/kernel/vma_region_teardown.rs
 F:	rust/kernel/vma_shrink.rs
 F:	rust/kernel/vma_split.rs
 F:	rust/kernel/vma_unmap.rs
+F:	tools/testing/selftests/copy_vma/
 F:	tools/testing/selftests/vma_merge/
 
 MEMORY MAPPING

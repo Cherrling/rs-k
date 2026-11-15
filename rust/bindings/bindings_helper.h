@@ -130,6 +130,7 @@
 #include <linux/timerqueue-rust.h>
 #include <linux/tracepoint.h>
 #include <linux/usb.h>
+#include <linux/vma-copy-rust.h>
 #include <linux/vma-merge-compat-rust.h>
 #include <linux/vma-merge-commit-rust.h>
 #include <linux/vma-merge-existing-rust.h>
