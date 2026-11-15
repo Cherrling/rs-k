@@ -18,10 +18,17 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define CARVEOUT_PAGES	512
+#define CARVEOUT_PAGES	640
 #define QEMU_EXIT_PORT	0xf4
 #define QEMU_EXIT_SUCCESS	0x10
 #define QEMU_EXIT_FAILURE	0x11
+
+#ifndef COPY_VMA_FAIL_INTERVAL
+#define COPY_VMA_FAIL_INTERVAL 3
+#endif
+
+#define STRINGIFY_INNER(value) #value
+#define STRINGIFY(value) STRINGIFY_INNER(value)
 
 static size_t page_size;
 
@@ -239,7 +246,8 @@ static int read_fail_page_alloc(const char *name, unsigned long *value)
 	return read_ulong_file(path, value);
 }
 
-static int find_kernel_symbol(const char *name, unsigned long *address)
+static int find_kernel_symbol_range(const char *name, unsigned long *start,
+				    unsigned long *end)
 {
 	char symbol[256];
 	unsigned long value;
@@ -251,14 +259,20 @@ static int find_kernel_symbol(const char *name, unsigned long *address)
 	if (!file)
 		return -1;
 	while (fscanf(file, "%lx %c %255s", &value, &type, symbol) == 3) {
-		if (strcmp(symbol, name))
+		if (!found) {
+			if (strcmp(symbol, name))
+				continue;
+			*start = value;
+			found = value != 0;
 			continue;
-		*address = value;
-		found = value != 0;
-		break;
+		}
+		if (value > *start) {
+			*end = value;
+			break;
+		}
 	}
 	fclose(file);
-	return found ? 0 : -1;
+	return found && *end > *start ? 0 : -1;
 }
 
 static int expect_vma(unsigned long address, unsigned long expected_start,
@@ -278,6 +292,20 @@ static int expect_vma(unsigned long address, unsigned long expected_start,
 		return 1;
 	}
 	return 0;
+}
+
+static int expect_unmapped(unsigned long address, const char *name)
+{
+	unsigned long start = 0;
+	unsigned long end = 0;
+
+	if (find_vma_bounds(address, &start, &end))
+		return 0;
+
+	fprintf(stderr,
+		"COPY_VMA %s: expected unmapped at %#lx, found %#lx-%#lx\n",
+		name, address, start, end);
+	return 1;
 }
 
 static int expect_mremap_failure(void *address, size_t old_length,
@@ -1059,6 +1087,146 @@ fail:
 	return 1;
 }
 
+static int test_batch_contiguous_move(unsigned char *carveout)
+{
+	const size_t left_length = 2 * page_size;
+	const size_t right_length = 2 * page_size;
+	const size_t length = left_length + right_length;
+	unsigned char *source = carveout + 512 * page_size;
+	unsigned char *source_right = source + left_length;
+	unsigned char *target = carveout + 520 * page_size;
+	unsigned char *moved;
+	int fd = -1;
+
+	fd = memfd_create("copy-vma-batch", 0);
+	if (fd < 0)
+		goto fail;
+	if (ftruncate(fd, right_length))
+		goto fail;
+	if (munmap(source, length) || munmap(target, length))
+		goto fail;
+	if (map_fixed(source, left_length) != source)
+		goto fail;
+	if (mmap(source_right, right_length, PROT_READ | PROT_WRITE,
+		 MAP_SHARED | MAP_FIXED, fd, 0) != source_right)
+		goto fail;
+	if (fill_and_check(source, left_length, 0x71, "batch contiguous left") ||
+	    fill_and_check(source_right, right_length, 0x72,
+			   "batch contiguous right"))
+		goto fail;
+	if (expect_vma((unsigned long)source, (unsigned long)source,
+		       (unsigned long)source_right, "batch contiguous source left") ||
+	    expect_vma((unsigned long)source_right, (unsigned long)source_right,
+		       (unsigned long)(source + length),
+		       "batch contiguous source right"))
+		goto fail;
+
+	moved = mremap(source, length, length,
+		       MREMAP_MAYMOVE | MREMAP_FIXED, target);
+	if (moved == MAP_FAILED)
+		goto fail;
+	if (moved != target) {
+		fprintf(stderr,
+			"COPY_VMA batch contiguous: returned %p, expected %p\n",
+			moved, target);
+		goto fail;
+	}
+	if (fill_and_check(target, left_length, 0x71, "batch contiguous left") ||
+	    fill_and_check(target + left_length, right_length, 0x72,
+			   "batch contiguous right"))
+		goto fail;
+	if (expect_vma((unsigned long)target, (unsigned long)target,
+		       (unsigned long)(target + left_length),
+		       "batch contiguous target left") ||
+	    expect_vma((unsigned long)(target + left_length),
+		       (unsigned long)(target + left_length),
+		       (unsigned long)(target + length),
+		       "batch contiguous target right") ||
+	    expect_unmapped((unsigned long)source, "batch contiguous source"))
+		goto fail;
+
+	munmap(target, length);
+	close(fd);
+	return 0;
+
+fail:
+	fprintf(stderr, "COPY_VMA batch contiguous failed: %s\n",
+		strerror(errno));
+	if (target != MAP_FAILED)
+		munmap(target, length);
+	if (fd >= 0)
+		close(fd);
+	return 1;
+}
+
+static int test_batch_gap_move(unsigned char *carveout)
+{
+	const size_t left_length = 2 * page_size;
+	const size_t gap_length = 2 * page_size;
+	const size_t right_length = 2 * page_size;
+	const size_t length = left_length + gap_length + right_length;
+	unsigned char *source = carveout + 544 * page_size;
+	unsigned char *source_gap = source + left_length;
+	unsigned char *source_right = source_gap + gap_length;
+	unsigned char *target = carveout + 560 * page_size;
+	unsigned char *target_gap = target + left_length;
+	unsigned char *target_right = target_gap + gap_length;
+	unsigned char *moved;
+
+	if (munmap(source, length) || munmap(target, length))
+		goto fail;
+	if (map_fixed(source, left_length) != source ||
+	    map_fixed(source_right, right_length) != source_right)
+		goto fail;
+	if (fill_and_check(source, left_length, 0x81, "batch gap left") ||
+	    fill_and_check(source_right, right_length, 0x82, "batch gap right"))
+		goto fail;
+	if (expect_unmapped((unsigned long)source_gap, "batch source gap"))
+		goto fail;
+
+	if (expect_mremap_failure(source_gap, length - left_length,
+				  length - left_length,
+				  MREMAP_MAYMOVE | MREMAP_FIXED, target,
+				  EFAULT, "batch leading gap"))
+		goto fail;
+	if (expect_vma((unsigned long)source, (unsigned long)source,
+		       (unsigned long)source_gap, "batch leading gap source left") ||
+	    expect_vma((unsigned long)source_right, (unsigned long)source_right,
+		       (unsigned long)(source + length),
+		       "batch leading gap source right"))
+		goto fail;
+
+	moved = mremap(source, length, length,
+		       MREMAP_MAYMOVE | MREMAP_FIXED, target);
+	if (moved == MAP_FAILED)
+		goto fail;
+	if (moved != target) {
+		fprintf(stderr, "COPY_VMA batch gap: returned %p, expected %p\n",
+			moved, target);
+		goto fail;
+	}
+	if (fill_and_check(target, left_length, 0x81, "batch gap left") ||
+	    fill_and_check(target_right, right_length, 0x82, "batch gap right"))
+		goto fail;
+	if (expect_vma((unsigned long)target, (unsigned long)target,
+		       (unsigned long)target_gap, "batch gap target left") ||
+	    expect_vma((unsigned long)target_right, (unsigned long)target_right,
+		       (unsigned long)(target + length),
+		       "batch gap target right") ||
+	    expect_unmapped((unsigned long)target_gap, "batch target gap") ||
+	    expect_unmapped((unsigned long)source, "batch gap source"))
+		goto fail;
+
+	munmap(target, length);
+	return 0;
+
+fail:
+	fprintf(stderr, "COPY_VMA batch gap failed: %s\n", strerror(errno));
+	if (target != MAP_FAILED)
+		munmap(target, length);
+	return 1;
+}
+
 static int test_vdso_move(unsigned char *carveout)
 {
 	unsigned long source_start;
@@ -1235,14 +1403,15 @@ static int test_partial_move_failure(void)
 	const size_t source_length = pgd_span + 2 * page_size;
 	const size_t move_length = pgd_span;
 	char value[64];
-	unsigned long target_start;
-	unsigned long target_end;
-	unsigned long symbol;
+	unsigned long symbol = 0;
+	unsigned long symbol_end = 0;
 	unsigned long failures;
 	uint64_t before_first;
 	uint64_t before_last;
 	uint64_t after_first;
 	uint64_t after_last;
+	unsigned char *first_map;
+	unsigned char *last_map;
 	void *source = MAP_FAILED;
 	void *target = MAP_FAILED;
 	void *probe;
@@ -1253,8 +1422,7 @@ static int test_partial_move_failure(void)
 
 	if (setup_debugfs() ||
 	    access("/sys/kernel/debug/fail_page_alloc", F_OK) ||
-	    access("/proc/self/make-it-fail", F_OK) ||
-	    access("/proc/self/clear_refs", F_OK)) {
+	    access("/proc/self/make-it-fail", F_OK)) {
 		fprintf(stderr,
 			"COPY_VMA partial move: fault-injection test skipped\n");
 		return 0;
@@ -1290,23 +1458,26 @@ static int test_partial_move_failure(void)
 	if (source != (void *)source_base)
 		goto fail;
 
-	if (madvise((void *)source_page, page_size, MADV_POPULATE_READ) ||
-	    madvise((void *)last_page, page_size, MADV_POPULATE_READ))
+	if (madvise((void *)source_page, page_size, MADV_POPULATE_WRITE) ||
+	    madvise((void *)last_page, page_size, MADV_POPULATE_WRITE))
 		goto fail;
-	if (write_string_file("/proc/self/clear_refs", "4\n"))
-		goto fail;
+	first_map = (unsigned char *)source_page;
+	last_map = (unsigned char *)last_page;
+	first_map[0] = 0x5a;
+	last_map[0] = 0xa5;
 	if (read_pagemap_entry(source_page, &before_first) ||
 	    read_pagemap_entry(last_page, &before_last) ||
 	    !(before_first & (1ULL << 63)) ||
 	    !(before_last & (1ULL << 63)))
 		goto fail;
 
-	if (find_kernel_symbol("move_page_tables", &symbol))
+	if (find_kernel_symbol_range("move_page_tables", &symbol, &symbol_end))
 		goto fail;
 	if (write_fail_page_alloc("probability", "0") ||
 	    write_fail_page_alloc("verbose", "0") ||
 	    write_fail_page_alloc("space", "0") ||
-	    write_fail_page_alloc("interval", "5") ||
+	    write_fail_page_alloc("interval",
+				  STRINGIFY(COPY_VMA_FAIL_INTERVAL)) ||
 	    write_fail_page_alloc("times", "1") ||
 	    write_fail_page_alloc("task-filter", "Y") ||
 	    write_fail_page_alloc("ignore-gfp-wait", "N") ||
@@ -1318,7 +1489,7 @@ static int test_partial_move_failure(void)
 	snprintf(value, sizeof(value), "0x%lx\n", symbol);
 	if (write_fail_page_alloc("require-start", value))
 		goto fail;
-	snprintf(value, sizeof(value), "0x%lx\n", symbol + 0x1000);
+	snprintf(value, sizeof(value), "0x%lx\n", symbol_end);
 	if (write_fail_page_alloc("require-end", value))
 		goto fail;
 
@@ -1362,11 +1533,8 @@ static int test_partial_move_failure(void)
 	if (expect_vma(source_page, source_base, source_base + source_length,
 		       "partial move source"))
 		goto out;
-	if (!find_vma_bounds(target_base, &target_start, &target_end)) {
-		fprintf(stderr,
-			"COPY_VMA partial move left destination mapped\n");
+	if (expect_unmapped(target_base, "partial move destination"))
 		goto out;
-	}
 	if (read_pagemap_entry(source_page, &after_first) ||
 	    read_pagemap_entry(last_page, &after_last))
 		goto out;
@@ -1380,9 +1548,9 @@ static int test_partial_move_failure(void)
 			"COPY_VMA partial move did not restore source pages\n");
 		goto out;
 	}
-	if (!(after_first & (1ULL << 55)) || (after_last & (1ULL << 55))) {
+	if (first_map[0] != 0x5a || last_map[0] != 0xa5) {
 		fprintf(stderr,
-			"COPY_VMA partial move stopped at the wrong page\n");
+			"COPY_VMA partial move did not restore source data\n");
 		goto out;
 	}
 
@@ -1443,6 +1611,8 @@ int main(void)
 	    test_in_place_shrink(carveout) ||
 	    test_same_size_resize(carveout) ||
 	    test_parameter_validation(carveout) ||
+	    test_batch_contiguous_move(carveout) ||
+	    test_batch_gap_move(carveout) ||
 	    test_vdso_move(carveout) ||
 	    test_aio_callback_failure(carveout) ||
 	    test_fixed_sealed_destination(carveout) ||

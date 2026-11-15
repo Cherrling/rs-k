@@ -22,6 +22,7 @@
 #include <linux/security.h>
 #include <linux/syscalls.h>
 #include <linux/mmu_notifier.h>
+#include <linux/mremap-batch-rust.h>
 #include <linux/mremap-copy-rust.h>
 #include <linux/mremap-entry-rust.h>
 #include <linux/mremap-move-rust.h>
@@ -2420,6 +2421,8 @@ static unsigned long check_mremap_params(struct vma_remap_struct *vrm)
 
 #endif /* CONFIG_RUST_MREMAP_ENTRY */
 
+#ifndef CONFIG_RUST_MREMAP_BATCH
+
 static unsigned long remap_move(struct vma_remap_struct *vrm)
 {
 	struct vm_area_struct *vma;
@@ -2508,6 +2511,148 @@ static unsigned long remap_move(struct vma_remap_struct *vrm)
 
 	return res;
 }
+
+#else
+
+struct rust_mremap_batch_state {
+	struct vma_iterator vmi;
+	struct vma_remap_struct *vrm;
+	unsigned long end;
+};
+
+static unsigned long remap_move(struct vma_remap_struct *vrm)
+{
+	struct rust_mremap_batch_state state = {};
+
+	rust_helper_mremap_batch_state_init(&state, vrm);
+	return rust_mremap_batch(&state);
+}
+
+void
+rust_helper_mremap_batch_state_init(struct rust_mremap_batch_state *state,
+				    struct vma_remap_struct *vrm)
+{
+	state->vrm = vrm;
+	state->end = vrm->addr + vrm->old_len;
+	vma_iter_init(&state->vmi, current->mm, vrm->addr);
+}
+
+unsigned long
+rust_helper_mremap_batch_start(struct rust_mremap_batch_state *state)
+{
+	return state->vrm->addr;
+}
+
+unsigned long
+rust_helper_mremap_batch_end(struct rust_mremap_batch_state *state)
+{
+	return state->end;
+}
+
+unsigned long
+rust_helper_mremap_batch_new_addr(struct rust_mremap_batch_state *state)
+{
+	return state->vrm->new_addr;
+}
+
+unsigned long rust_helper_mremap_batch_vma_start(struct vm_area_struct *vma)
+{
+	return vma->vm_start;
+}
+
+unsigned long rust_helper_mremap_batch_vma_end(struct vm_area_struct *vma)
+{
+	return vma->vm_end;
+}
+
+unsigned long
+rust_helper_mremap_batch_new_len(struct rust_mremap_batch_state *state)
+{
+	return state->vrm->new_len;
+}
+
+struct vm_area_struct *
+rust_helper_mremap_batch_next(struct rust_mremap_batch_state *state)
+{
+	return vma_find(&state->vmi, state->end);
+}
+
+void
+rust_helper_mremap_batch_configure(struct rust_mremap_batch_state *state,
+				   struct vm_area_struct *vma,
+				   unsigned long addr, unsigned long new_addr,
+				   unsigned long len)
+{
+	state->vrm->vma = vma;
+	state->vrm->addr = addr;
+	state->vrm->new_addr = new_addr;
+	state->vrm->old_len = len;
+	state->vrm->new_len = len;
+}
+
+bool rust_helper_mremap_batch_multi_allowed(struct vm_area_struct *vma)
+{
+	return vma_multi_allowed(vma);
+}
+
+unsigned long
+rust_helper_mremap_batch_check_prepare(struct rust_mremap_batch_state *state)
+{
+	return check_prep_vma(state->vrm);
+}
+
+unsigned long
+rust_helper_mremap_batch_mremap_to(struct rust_mremap_batch_state *state)
+{
+	return mremap_to(state->vrm);
+}
+
+bool rust_helper_mremap_batch_is_error_value(unsigned long value)
+{
+	return IS_ERR_VALUE(value);
+}
+
+bool
+rust_helper_mremap_batch_mmap_locked(struct rust_mremap_batch_state *state)
+{
+	return state->vrm->mmap_locked;
+}
+
+bool
+rust_helper_mremap_batch_populate_expand(struct rust_mremap_batch_state *state)
+{
+	return state->vrm->populate_expand;
+}
+
+bool
+rust_helper_mremap_batch_needs_invalidate(struct rust_mremap_batch_state *state)
+{
+	return state->vrm->vmi_needs_invalidate;
+}
+
+void rust_helper_mremap_batch_warn_multi_destination(bool condition)
+{
+	VM_WARN_ON_ONCE(condition);
+}
+
+void rust_helper_mremap_batch_warn_locked(bool condition)
+{
+	VM_WARN_ON_ONCE(condition);
+}
+
+void rust_helper_mremap_batch_warn_populate(bool condition)
+{
+	VM_WARN_ON_ONCE(condition);
+}
+
+void
+rust_helper_mremap_batch_invalidate(struct rust_mremap_batch_state *state)
+{
+	vma_iter_invalidate(&state->vmi);
+	state->vrm->vmi_needs_invalidate = false;
+}
+
+#endif /* CONFIG_RUST_MREMAP_BATCH */
 
 #ifndef CONFIG_RUST_MREMAP_ENTRY
 

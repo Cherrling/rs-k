@@ -17478,6 +17478,7 @@ F:	Documentation/rust/dup-mmap.rst
 F:	Documentation/rust/exit-mmap.rst
 F:	Documentation/rust/mm-lifetime.rst
 F:	Documentation/rust/mm-teardown.rst
+F:	Documentation/rust/mremap-batch.rst
 F:	Documentation/rust/mremap-copy.rst
 F:	Documentation/rust/mremap-entry.rst
 F:	Documentation/rust/mremap-move.rst
@@ -17501,6 +17502,7 @@ F:	include/linux/copy-mm-rust.h
 F:	include/linux/dup-mmap-rust.h
 F:	include/linux/exit-mmap-rust.h
 F:	include/linux/mm-rust.h
+F:	include/linux/mremap-batch-rust.h
 F:	include/linux/mremap-copy-rust.h
 F:	include/linux/mremap-entry-rust.h
 F:	include/linux/mremap-move-rust.h
@@ -17533,6 +17535,7 @@ F:	rust/kernel/mm_core.rs
 F:	rust/kernel/mm_teardown.rs
 F:	rust/kernel/mm.rs
 F:	rust/kernel/mm/
+F:	rust/kernel/mremap_batch.rs
 F:	rust/kernel/mremap_copy.rs
 F:	rust/kernel/mremap_entry.rs
 F:	rust/kernel/mremap_move.rs
