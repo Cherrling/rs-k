@@ -138,6 +138,7 @@
 #include <linux/vma-munmap-complete-rust.h>
 #include <linux/vma-munmap-gather-rust.h>
 #include <linux/vma-prepare-complete-rust.h>
+#include <linux/vma-region-teardown-rust.h>
 #include <linux/vma-resize-rust.h>
 #include <linux/vma-split-rust.h>
 #include <linux/vma-unmap-rust.h>

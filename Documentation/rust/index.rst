@@ -66,6 +66,7 @@ more details.
     vma-merge-existing
     vma-merge-new-range
     vma-prepare-complete
+    vma-region-teardown
     vma-expand
     vma-shrink
     vma-modify

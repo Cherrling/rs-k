@@ -17,6 +17,7 @@
 #include <linux/vma-munmap-complete-rust.h>
 #include <linux/vma-munmap-gather-rust.h>
 #include <linux/vma-prepare-complete-rust.h>
+#include <linux/vma-region-teardown-rust.h>
 #include <linux/vma-resize-rust.h>
 #include <linux/vma-split-rust.h>
 #include <linux/vma-unmap-rust.h>
@@ -957,6 +958,15 @@ static bool can_vma_merge_right(struct vma_merge_struct *vmg,
 /*
  * Close a vm structure and free it.
  */
+#ifdef CONFIG_RUST_VMA_REGION_TEARDOWN
+
+void remove_vma(struct vm_area_struct *vma)
+{
+	rust_vma_region_remove(vma);
+}
+
+#else
+
 void remove_vma(struct vm_area_struct *vma)
 {
 	might_sleep();
@@ -967,11 +977,24 @@ void remove_vma(struct vm_area_struct *vma)
 	vm_area_free(vma);
 }
 
+#endif /* CONFIG_RUST_VMA_REGION_TEARDOWN */
+
 /*
  * Get rid of page table information in the indicated region.
  *
  * Called with the mm semaphore held.
  */
+#ifdef CONFIG_RUST_VMA_REGION_TEARDOWN
+
+void unmap_region(struct unmap_desc *unmap)
+{
+	struct mmu_gather tlb;
+
+	rust_vma_region_unmap(unmap, &tlb);
+}
+
+#else
+
 void unmap_region(struct unmap_desc *unmap)
 {
 	struct mm_struct *mm = unmap->first->vm_mm;
@@ -984,6 +1007,87 @@ void unmap_region(struct unmap_desc *unmap)
 	free_pgtables(&tlb, unmap);
 	tlb_finish_mmu(&tlb);
 }
+
+#endif /* CONFIG_RUST_VMA_REGION_TEARDOWN */
+
+#ifdef CONFIG_RUST_VMA_REGION_TEARDOWN
+
+void rust_helper_vma_region_might_sleep(void)
+{
+	might_sleep();
+}
+
+bool rust_helper_vma_region_needs_close(struct vm_area_struct *vma)
+{
+	return vma->vm_ops && vma->vm_ops->close;
+}
+
+void rust_helper_vma_region_close(struct vm_area_struct *vma)
+{
+	vma->vm_ops->close(vma);
+	vma->vm_ops = &vma_dummy_vm_ops;
+}
+
+struct file *rust_helper_vma_region_file(struct vm_area_struct *vma)
+{
+	return vma->vm_file;
+}
+
+void rust_helper_vma_region_fput(struct file *file)
+{
+	fput(file);
+}
+
+void rust_helper_vma_region_policy_put(struct vm_area_struct *vma)
+{
+	mpol_put(vma_policy(vma));
+}
+
+void rust_helper_vma_region_free_vma(struct vm_area_struct *vma)
+{
+	vm_area_free(vma);
+}
+
+struct mm_struct *
+rust_helper_vma_region_unmap_mm(struct unmap_desc *unmap)
+{
+	return unmap->first->vm_mm;
+}
+
+void rust_helper_vma_region_tlb_gather(struct mmu_gather *tlb,
+				       struct mm_struct *mm)
+{
+	tlb_gather_mmu(tlb, mm);
+}
+
+void rust_helper_vma_region_update_hiwater(struct mm_struct *mm)
+{
+	update_hiwater_rss(mm);
+}
+
+void rust_helper_vma_region_unmap_vmas(struct mmu_gather *tlb,
+				       struct unmap_desc *unmap)
+{
+	unmap_vmas(tlb, unmap);
+}
+
+void rust_helper_vma_region_iterator_reset(struct unmap_desc *unmap)
+{
+	mas_set(unmap->mas, unmap->tree_reset);
+}
+
+void rust_helper_vma_region_free_pgtables(struct mmu_gather *tlb,
+					  struct unmap_desc *unmap)
+{
+	free_pgtables(tlb, unmap);
+}
+
+void rust_helper_vma_region_tlb_finish(struct mmu_gather *tlb)
+{
+	tlb_finish_mmu(tlb);
+}
+
+#endif /* CONFIG_RUST_VMA_REGION_TEARDOWN */
 
 /*
  * __split_vma() bypasses sysctl_max_map_count checking.  We use this where it

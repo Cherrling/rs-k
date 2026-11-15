@@ -61,7 +61,8 @@ The boundary contains:
 * Maple-tree iterator advance, RCU clearing, and tree destruction.
 * Full-mm TLB gather and finish.
 * Range unmap and page-table free primitives.
-* VMA detached marking, removal, and accounting inspection.
+* VMA detached marking, the shared VMA removal adapter, and accounting
+  inspection.
 * ``cond_resched()`` and the final map-count diagnostic.
 * The mmap-exit tracepoint and VM accounting release.
 
@@ -186,7 +187,8 @@ Reopen a retained C boundary if any of these conditions changes:
 * Maple-tree or TLB operations gain safe Rust representations with the same
   locking contract.
 * Architecture mapping exit gains a suitable Rust interface.
-* VMA detached marking or removal gains a safe Rust abstraction.
+* VMA detached marking, the shared VMA release contract, or exit-loop
+  removal ordering changes.
 * ``exit_mmap()`` gains a new lock transition or failure path.
 * Reverse-map removal or page-table freeing changes its mmap-lock contract.
 * A helper starts selecting teardown policy instead of performing one

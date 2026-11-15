@@ -1403,6 +1403,23 @@ config RUST_VMA_PREPARE_COMPLETE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_VMA_REGION_TEARDOWN
+	bool "Rust region unmapping and VMA release"
+	depends on RUST && MMU
+	default y
+	help
+	  Use Rust for the shared unmap_region() page-table teardown sequence
+	  and remove_vma() resource-release sequence. Rust owns the TLB gather,
+	  high-water update, VMA unmap, iterator reset, page-table free, and TLB
+	  finish order. Rust also owns the close callback decision, file and
+	  memory-policy release decisions, and final VMA free order.
+
+	  Individual TLB, page-table, callback, file, memory-policy, allocator,
+	  and maple-tree primitives remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_VMA_MERGE_EXISTING
 	bool "Rust orchestration for existing-range VMA merging"
 	depends on RUST && MMU

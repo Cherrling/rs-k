@@ -66,7 +66,9 @@ The C boundary contains:
 * Architecture address-space duplication and TLB flushing.
 * KSM and khugepaged subsystem entry points.
 * Partial unmap and VMA teardown through the existing complex
-  ``UNMAP_STATE`` and ``tear_down_vmas()`` interfaces.
+  ``UNMAP_STATE`` and ``tear_down_vmas()`` interfaces. Shared
+  ``unmap_region()`` and ``remove_vma()`` ordering moves to Rust when
+  ``CONFIG_RUST_VMA_REGION_TEARDOWN`` is enabled.
 
 These helpers use kernel-private inline functions, C layout rules, subsystem
 interfaces, or a lock contract that Rust cannot currently express without

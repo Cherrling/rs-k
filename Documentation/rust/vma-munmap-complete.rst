@@ -43,7 +43,7 @@ The C boundary contains:
 * The sealed-VMA property.
 * Detached-tree insertion and VMA isolation.
 * Page-table and reverse-map removal.
-* Individual VMA release.
+* Shared region-unmap and VMA release adapters.
 * Maple-tree state changes and destruction.
 * Mmap lock downgrade and release.
 * Virtual-memory charge accounting.
@@ -51,7 +51,10 @@ The C boundary contains:
 
 The gather loop, split decisions, and per-VMA accounting are the separate
 Rust unit described in :doc:`vma-munmap-gather`. The split operation itself
-is described in :doc:`vma-split`.
+is described in :doc:`vma-split`. The shared ``unmap_region()`` and
+``remove_vma()`` sequences are Rust-owned when
+``CONFIG_RUST_VMA_REGION_TEARDOWN`` is enabled, as described in
+:doc:`vma-region-teardown`.
 
 Entry points and ownership
 --------------------------

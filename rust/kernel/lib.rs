@@ -251,6 +251,8 @@ mod vma_munmap_complete;
 mod vma_munmap_gather;
 #[cfg(CONFIG_RUST_VMA_PREPARE_COMPLETE)]
 mod vma_prepare_complete;
+#[cfg(CONFIG_RUST_VMA_REGION_TEARDOWN)]
+mod vma_region_teardown;
 #[cfg(CONFIG_RUST_VMA_SHRINK)]
 mod vma_shrink;
 #[cfg(CONFIG_RUST_VMA_SPLIT)]
