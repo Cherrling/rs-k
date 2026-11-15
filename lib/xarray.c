@@ -902,6 +902,7 @@ EXPORT_SYMBOL_GPL(xas_store);
  * Return: true if the mark is set, false if the mark is clear or @xas
  * is in an error state.
  */
+#ifndef CONFIG_RUST_XARRAY_MARKS
 bool xas_get_mark(const struct xa_state *xas, xa_mark_t mark)
 {
 	if (xas_invalid(xas))
@@ -910,6 +911,12 @@ bool xas_get_mark(const struct xa_state *xas, xa_mark_t mark)
 		return xa_marked(xas->xa, mark);
 	return node_get_mark(xas->xa_node, xas->xa_offset, mark);
 }
+#else
+bool xas_get_mark(const struct xa_state *xas, xa_mark_t mark)
+{
+	return rust_xarray_mark_get(xas, mark);
+}
+#endif
 EXPORT_SYMBOL_GPL(xas_get_mark);
 
 /**
@@ -921,6 +928,7 @@ EXPORT_SYMBOL_GPL(xas_get_mark);
  * on all the ancestor entries.  Does nothing if @xas has not been walked to
  * an entry, or is in an error state.
  */
+#ifndef CONFIG_RUST_XARRAY_MARKS
 void xas_set_mark(const struct xa_state *xas, xa_mark_t mark)
 {
 	struct xa_node *node = xas->xa_node;
@@ -939,6 +947,12 @@ void xas_set_mark(const struct xa_state *xas, xa_mark_t mark)
 	if (!xa_marked(xas->xa, mark))
 		xa_mark_set(xas->xa, mark);
 }
+#else
+void xas_set_mark(const struct xa_state *xas, xa_mark_t mark)
+{
+	rust_xarray_mark_set(xas, mark);
+}
+#endif
 EXPORT_SYMBOL_GPL(xas_set_mark);
 
 /**
@@ -950,6 +964,7 @@ EXPORT_SYMBOL_GPL(xas_set_mark);
  * attempting to clear it on all the ancestor entries.  Does nothing if
  * @xas has not been walked to an entry, or is in an error state.
  */
+#ifndef CONFIG_RUST_XARRAY_MARKS
 void xas_clear_mark(const struct xa_state *xas, xa_mark_t mark)
 {
 	struct xa_node *node = xas->xa_node;
@@ -971,6 +986,12 @@ void xas_clear_mark(const struct xa_state *xas, xa_mark_t mark)
 	if (xa_marked(xas->xa, mark))
 		xa_mark_clear(xas->xa, mark);
 }
+#else
+void xas_clear_mark(const struct xa_state *xas, xa_mark_t mark)
+{
+	rust_xarray_mark_clear(xas, mark);
+}
+#endif
 EXPORT_SYMBOL_GPL(xas_clear_mark);
 
 /**
@@ -984,6 +1005,7 @@ EXPORT_SYMBOL_GPL(xas_clear_mark);
  * This implementation is not as efficient as it could be; we may walk
  * up the tree multiple times.
  */
+#ifndef CONFIG_RUST_XARRAY_MARKS
 void xas_init_marks(const struct xa_state *xas)
 {
 	xa_mark_t mark = 0;
@@ -998,6 +1020,12 @@ void xas_init_marks(const struct xa_state *xas)
 		mark_inc(mark);
 	}
 }
+#else
+void xas_init_marks(const struct xa_state *xas)
+{
+	rust_xarray_marks_init(xas);
+}
+#endif
 EXPORT_SYMBOL_GPL(xas_init_marks);
 
 #ifdef CONFIG_XARRAY_MULTI

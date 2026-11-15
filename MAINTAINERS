@@ -29899,6 +29899,7 @@ F:	include/linux/xarray.h
 F:	lib/idr.c
 F:	lib/region_alloc_benchmark.c
 F:	lib/test_xarray.c
+F:	lib/tests/xarray_marks_kunit.c
 F:	lib/tests/xarray_rust_kunit.c
 F:	lib/tests/xarray_store_kunit.c
 F:	lib/xarray.c
@@ -29915,6 +29916,7 @@ C:	https://rust-for-linux.zulipchat.com
 T:	git https://github.com/Rust-for-Linux/linux.git xarray-next
 F:	rust/kernel/xarray.rs
 F:	rust/kernel/xarray_load.rs
+F:	rust/kernel/xarray_marks.rs
 F:	rust/kernel/xarray_store.rs
 
 XBOX DVD IR REMOTE

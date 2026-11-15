@@ -129,3 +129,67 @@ __rust_helper void rust_helper_xarray_assign_slot(struct xa_state *xas,
 		rcu_assign_pointer(xas->xa->xa_head, entry);
 }
 #endif
+
+#ifdef CONFIG_RUST_XARRAY_MARKS
+__rust_helper bool rust_helper_xarray_node_mark_get(const struct xa_node *node,
+						    unsigned int offset,
+						    xa_mark_t mark)
+{
+	return test_bit(offset, node->marks[(__force unsigned int)mark]);
+}
+
+__rust_helper bool
+rust_helper_xarray_node_mark_test_and_set(struct xa_node *node,
+					  unsigned int offset,
+					  xa_mark_t mark)
+{
+	return __test_and_set_bit(offset,
+				  node->marks[(__force unsigned int)mark]);
+}
+
+__rust_helper bool
+rust_helper_xarray_node_mark_test_and_clear(struct xa_node *node,
+					    unsigned int offset,
+					    xa_mark_t mark)
+{
+	return __test_and_clear_bit(offset,
+				    node->marks[(__force unsigned int)mark]);
+}
+
+__rust_helper bool rust_helper_xarray_node_any_mark(const struct xa_node *node,
+						    xa_mark_t mark)
+{
+	return !bitmap_empty(node->marks[(__force unsigned int)mark],
+			     XA_CHUNK_SIZE);
+}
+
+__rust_helper bool rust_helper_xarray_root_marked(const struct xarray *xa,
+						  xa_mark_t mark)
+{
+	return xa_marked(xa, mark);
+}
+
+__rust_helper void rust_helper_xarray_root_mark_set(struct xarray *xa,
+						    xa_mark_t mark)
+{
+	xa->xa_flags |= XA_FLAGS_MARK(mark);
+}
+
+__rust_helper void rust_helper_xarray_root_mark_clear(struct xarray *xa,
+						      xa_mark_t mark)
+{
+	xa->xa_flags &= ~XA_FLAGS_MARK(mark);
+}
+
+__rust_helper bool rust_helper_xarray_track_free(const struct xarray *xa)
+{
+	return xa->xa_flags & XA_FLAGS_TRACK_FREE;
+}
+
+__rust_helper struct xa_node *
+rust_helper_xarray_parent_locked(const struct xarray *xa,
+				 const struct xa_node *node)
+{
+	return xa_parent_locked(xa, node);
+}
+#endif

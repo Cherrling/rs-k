@@ -30,4 +30,18 @@ void rust_xarray_squash_marks(const struct xa_state *xas);
 
 #endif /* CONFIG_RUST_XARRAY_STORE */
 
+#ifdef CONFIG_RUST_XARRAY_MARKS
+
+enum rust_xarray_mark_constant {
+	RUST_XARRAY_MARK_MAX = XA_MARK_MAX,
+	RUST_XARRAY_FREE_MARK = XA_FREE_MARK,
+};
+
+bool rust_xarray_mark_get(const struct xa_state *xas, xa_mark_t mark);
+void rust_xarray_mark_set(const struct xa_state *xas, xa_mark_t mark);
+void rust_xarray_mark_clear(const struct xa_state *xas, xa_mark_t mark);
+void rust_xarray_marks_init(const struct xa_state *xas);
+
+#endif /* CONFIG_RUST_XARRAY_MARKS */
+
 #endif /* _LINUX_XARRAY_RUST_H */

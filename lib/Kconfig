@@ -481,6 +481,22 @@ config RUST_XARRAY_STORE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_XARRAY_MARKS
+	bool "Rust implementation of XArray mark lifecycle"
+	depends on RUST_XARRAY_STORE && X86_64
+	default y
+	help
+	  Use Rust for the production XArray mark lookup, ancestor
+	  propagation, clearing, and initialization algorithms behind the
+	  xas_*_mark() interfaces.
+
+	  Mark bitmaps, root flag storage, parent traversal, locked roots, and
+	  the node layout remain in C. The exported entry points remain as ABI
+	  adapters.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RBTREE_RUST_KUNIT_TEST
 	bool "KUnit tests for the Rust rbtree implementation"
 	depends on RUST_RBTREE && KUNIT
