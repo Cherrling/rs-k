@@ -88,6 +88,8 @@ pub mod error;
 #[cfg(CONFIG_RUST_EXIT_MMAP)]
 mod exit_mmap;
 pub mod faux;
+#[cfg(CONFIG_RUST_FIND_BIT)]
+mod find_bit;
 #[cfg(CONFIG_RUST_FW_LOADER_ABSTRACTIONS)]
 pub mod firmware;
 pub mod fmt;

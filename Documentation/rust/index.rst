@@ -104,6 +104,7 @@ more details.
     semaphore
     waitqueue
     wait-bit
+    native-find-bit
     native-percpu-refcount
     refcount
     swait

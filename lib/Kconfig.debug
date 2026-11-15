@@ -3222,6 +3222,19 @@ config FIND_BIT_BENCHMARK_RUST
 
 	  If unsure, say N.
 
+config FIND_BIT_RUST_KUNIT_TEST
+	bool "KUnit tests for the Rust find_bit implementation"
+	depends on RUST_FIND_BIT && KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for the native Rust generic
+	  find_first_bit(), find_next_bit(), find_nth_bit(),
+	  find_last_bit(), clump, and random-bit operations.
+
+	  These tests are only for development and testing.
+
+	  If unsure, say N.
+
 config TEST_FIRMWARE
 	tristate "Test firmware loading via userspace interface"
 	depends on FW_LOADER

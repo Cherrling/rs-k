@@ -391,6 +391,21 @@ config RUST_TIMERQUEUE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_FIND_BIT
+	bool "Rust implementation of generic bit searches"
+	depends on RUST && X86_64
+	default y
+	help
+	  Use Rust for the production implementation of the generic
+	  find_first_bit(), find_next_bit(), find_nth_bit(),
+	  find_last_bit(), and related bitmap searches.
+
+	  The exported C entry points remain as ABI adapters. This option
+	  currently supports x86_64, where the generic C searches are used.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RBTREE_RUST_KUNIT_TEST
 	bool "KUnit tests for the Rust rbtree implementation"
 	depends on RUST_RBTREE && KUNIT

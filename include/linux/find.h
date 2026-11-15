@@ -44,6 +44,58 @@ unsigned long _find_next_bit_le(const unsigned long *addr, unsigned
 
 unsigned long find_random_bit(const unsigned long *addr, unsigned long size);
 
+#ifdef CONFIG_RUST_FIND_BIT
+unsigned long rust_find_first_bit(const unsigned long *addr, unsigned long size);
+unsigned long rust_find_first_and_bit(const unsigned long *addr1,
+				      const unsigned long *addr2,
+				      unsigned long size);
+unsigned long rust_find_first_andnot_bit(const unsigned long *addr1,
+					 const unsigned long *addr2,
+					 unsigned long size);
+unsigned long rust_find_first_and_and_bit(const unsigned long *addr1,
+					  const unsigned long *addr2,
+					  const unsigned long *addr3,
+					  unsigned long size);
+unsigned long rust_find_first_zero_bit(const unsigned long *addr,
+				       unsigned long size);
+unsigned long rust_find_next_bit(const unsigned long *addr,
+				 unsigned long size, unsigned long start);
+unsigned long rust_find_next_and_bit(const unsigned long *addr1,
+				     const unsigned long *addr2,
+				     unsigned long size, unsigned long start);
+unsigned long rust_find_next_andnot_bit(const unsigned long *addr1,
+					const unsigned long *addr2,
+					unsigned long size,
+					unsigned long start);
+unsigned long rust_find_next_or_bit(const unsigned long *addr1,
+				    const unsigned long *addr2,
+				    unsigned long size, unsigned long start);
+unsigned long rust_find_next_zero_bit(const unsigned long *addr,
+				      unsigned long size, unsigned long start);
+unsigned long rust_find_nth_bit(const unsigned long *addr,
+				unsigned long size, unsigned long n);
+unsigned long rust_find_nth_and_bit(const unsigned long *addr1,
+				    const unsigned long *addr2,
+				    unsigned long size, unsigned long n);
+unsigned long rust_find_nth_and_andnot_bit(const unsigned long *addr1,
+					   const unsigned long *addr2,
+					   const unsigned long *addr3,
+					   unsigned long size,
+					   unsigned long n);
+unsigned long rust_find_last_bit(const unsigned long *addr, unsigned long size);
+unsigned long rust_find_next_clump8(unsigned long *clump,
+				    const unsigned long *addr,
+				    unsigned long size, unsigned long offset);
+unsigned long rust_find_random_bit(const unsigned long *addr,
+				   unsigned long size);
+#endif /* CONFIG_RUST_FIND_BIT */
+
+#ifdef CONFIG_RUST_FIND_BIT
+#define FIND_BIT_INLINE_FAST_PATH(nbits)	(false && (nbits))
+#else
+#define FIND_BIT_INLINE_FAST_PATH(nbits)	small_const_nbits(nbits)
+#endif
+
 #ifndef find_next_bit
 /**
  * find_next_bit - find the next set bit in a memory region
@@ -58,7 +110,7 @@ static __always_inline
 unsigned long find_next_bit(const unsigned long *addr, unsigned long size,
 			    unsigned long offset)
 {
-	if (small_const_nbits(size)) {
+	if (FIND_BIT_INLINE_FAST_PATH(size)) {
 		unsigned long val;
 
 		if (unlikely(offset >= size))
@@ -88,7 +140,7 @@ unsigned long find_next_and_bit(const unsigned long *addr1,
 		const unsigned long *addr2, unsigned long size,
 		unsigned long offset)
 {
-	if (small_const_nbits(size)) {
+	if (FIND_BIT_INLINE_FAST_PATH(size)) {
 		unsigned long val;
 
 		if (unlikely(offset >= size))
@@ -119,7 +171,7 @@ unsigned long find_next_andnot_bit(const unsigned long *addr1,
 		const unsigned long *addr2, unsigned long size,
 		unsigned long offset)
 {
-	if (small_const_nbits(size)) {
+	if (FIND_BIT_INLINE_FAST_PATH(size)) {
 		unsigned long val;
 
 		if (unlikely(offset >= size))
@@ -149,7 +201,7 @@ unsigned long find_next_or_bit(const unsigned long *addr1,
 		const unsigned long *addr2, unsigned long size,
 		unsigned long offset)
 {
-	if (small_const_nbits(size)) {
+	if (FIND_BIT_INLINE_FAST_PATH(size)) {
 		unsigned long val;
 
 		if (unlikely(offset >= size))
@@ -177,7 +229,7 @@ static __always_inline
 unsigned long find_next_zero_bit(const unsigned long *addr, unsigned long size,
 				 unsigned long offset)
 {
-	if (small_const_nbits(size)) {
+	if (FIND_BIT_INLINE_FAST_PATH(size)) {
 		unsigned long val;
 
 		if (unlikely(offset >= size))
@@ -203,7 +255,7 @@ unsigned long find_next_zero_bit(const unsigned long *addr, unsigned long size,
 static __always_inline
 unsigned long find_first_bit(const unsigned long *addr, unsigned long size)
 {
-	if (small_const_nbits(size)) {
+	if (FIND_BIT_INLINE_FAST_PATH(size)) {
 		unsigned long val = *addr & GENMASK(size - 1, 0);
 
 		return val ? __ffs(val) : size;
@@ -232,7 +284,7 @@ unsigned long find_nth_bit(const unsigned long *addr, unsigned long size, unsign
 	if (n >= size)
 		return size;
 
-	if (small_const_nbits(size)) {
+	if (FIND_BIT_INLINE_FAST_PATH(size)) {
 		unsigned long val =  *addr & GENMASK(size - 1, 0);
 
 		return val ? fns(val, n) : size;
@@ -258,7 +310,7 @@ unsigned long find_nth_and_bit(const unsigned long *addr1, const unsigned long *
 	if (n >= size)
 		return size;
 
-	if (small_const_nbits(size)) {
+	if (FIND_BIT_INLINE_FAST_PATH(size)) {
 		unsigned long val =  *addr1 & *addr2 & GENMASK(size - 1, 0);
 
 		return val ? fns(val, n) : size;
@@ -288,7 +340,7 @@ unsigned long find_nth_and_andnot_bit(const unsigned long *addr1,
 	if (n >= size)
 		return size;
 
-	if (small_const_nbits(size)) {
+	if (FIND_BIT_INLINE_FAST_PATH(size)) {
 		unsigned long val =  *addr1 & *addr2 & (~*addr3) & GENMASK(size - 1, 0);
 
 		return val ? fns(val, n) : size;
@@ -312,7 +364,7 @@ unsigned long find_first_and_bit(const unsigned long *addr1,
 				 const unsigned long *addr2,
 				 unsigned long size)
 {
-	if (small_const_nbits(size)) {
+	if (FIND_BIT_INLINE_FAST_PATH(size)) {
 		unsigned long val = *addr1 & *addr2 & GENMASK(size - 1, 0);
 
 		return val ? __ffs(val) : size;
@@ -336,7 +388,7 @@ unsigned long find_first_andnot_bit(const unsigned long *addr1,
 				 const unsigned long *addr2,
 				 unsigned long size)
 {
-	if (small_const_nbits(size)) {
+	if (FIND_BIT_INLINE_FAST_PATH(size)) {
 		unsigned long val = *addr1 & (~*addr2) & GENMASK(size - 1, 0);
 
 		return val ? __ffs(val) : size;
@@ -361,7 +413,7 @@ unsigned long find_first_and_and_bit(const unsigned long *addr1,
 				     const unsigned long *addr3,
 				     unsigned long size)
 {
-	if (small_const_nbits(size)) {
+	if (FIND_BIT_INLINE_FAST_PATH(size)) {
 		unsigned long val = *addr1 & *addr2 & *addr3 & GENMASK(size - 1, 0);
 
 		return val ? __ffs(val) : size;
@@ -382,7 +434,7 @@ unsigned long find_first_and_and_bit(const unsigned long *addr1,
 static __always_inline
 unsigned long find_first_zero_bit(const unsigned long *addr, unsigned long size)
 {
-	if (small_const_nbits(size)) {
+	if (FIND_BIT_INLINE_FAST_PATH(size)) {
 		unsigned long val = *addr | ~GENMASK(size - 1, 0);
 
 		return val == ~0UL ? size : ffz(val);
@@ -403,7 +455,7 @@ unsigned long find_first_zero_bit(const unsigned long *addr, unsigned long size)
 static __always_inline
 unsigned long find_last_bit(const unsigned long *addr, unsigned long size)
 {
-	if (small_const_nbits(size)) {
+	if (FIND_BIT_INLINE_FAST_PATH(size)) {
 		unsigned long val = *addr & GENMASK(size - 1, 0);
 
 		return val ? __fls(val) : size;
@@ -529,7 +581,7 @@ static __always_inline
 unsigned long find_next_zero_bit_le(const void *addr, unsigned
 		long size, unsigned long offset)
 {
-	if (small_const_nbits(size)) {
+	if (FIND_BIT_INLINE_FAST_PATH(size)) {
 		unsigned long val = *(const unsigned long *)addr;
 
 		if (unlikely(offset >= size))
@@ -547,7 +599,7 @@ unsigned long find_next_zero_bit_le(const void *addr, unsigned
 static __always_inline
 unsigned long find_first_zero_bit_le(const void *addr, unsigned long size)
 {
-	if (small_const_nbits(size)) {
+	if (FIND_BIT_INLINE_FAST_PATH(size)) {
 		unsigned long val = swab(*(const unsigned long *)addr) | ~GENMASK(size - 1, 0);
 
 		return val == ~0UL ? size : ffz(val);
@@ -562,7 +614,7 @@ static __always_inline
 unsigned long find_next_bit_le(const void *addr, unsigned
 		long size, unsigned long offset)
 {
-	if (small_const_nbits(size)) {
+	if (FIND_BIT_INLINE_FAST_PATH(size)) {
 		unsigned long val = *(const unsigned long *)addr;
 
 		if (unlikely(offset >= size))
@@ -579,6 +631,8 @@ unsigned long find_next_bit_le(const void *addr, unsigned
 #else
 #error "Please fix <asm/byteorder.h>"
 #endif
+
+#undef FIND_BIT_INLINE_FAST_PATH
 
 #define for_each_set_bit(bit, addr, size) \
 	for ((bit) = 0; (bit) = find_next_bit((addr), (size), (bit)), (bit) < (size); (bit)++)

@@ -49,6 +49,7 @@ obj-$(CONFIG_PID_ASSOCIATION_KUNIT_TEST) += test_pid_association.o
 obj-$(CONFIG_PID_NUMBER_KUNIT_TEST) += test_pid_number.o
 obj-$(CONFIG_CPUMASK_KUNIT_TEST) += cpumask_kunit.o
 obj-$(CONFIG_FFS_KUNIT_TEST) += ffs_kunit.o
+obj-$(CONFIG_FIND_BIT_RUST_KUNIT_TEST) += find_bit_rust_kunit.o
 CFLAGS_fortify_kunit.o += $(call cc-disable-warning, unsequenced)
 CFLAGS_fortify_kunit.o += $(call cc-disable-warning, stringop-overread)
 CFLAGS_fortify_kunit.o += $(call cc-disable-warning, stringop-truncation)
