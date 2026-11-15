@@ -84,6 +84,7 @@
 #include <linux/mm.h>
 #include <linux/mm-rust.h>
 #include <linux/mmap-entry-rust.h>
+#include <linux/mmap-region-complete-rust.h>
 #include <linux/mmap-region-create-rust.h>
 #include <linux/mmap-region-new-vma-rust.h>
 #include <linux/mmap-region-rust.h>

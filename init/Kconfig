@@ -1700,6 +1700,21 @@ config RUST_MMAP_REGION_NEW_VMA
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_MMAP_REGION_COMPLETE
+	bool "Rust orchestration for mapping completion"
+	depends on RUST_MMAP_REGION_CREATE
+	default y
+	help
+	  Use Rust for the production __mmap_complete() high-level path. Rust
+	  owns completion ordering, locked-VMA handling, file callback
+	  selection, soft-dirty selection, and page-protection selection.
+
+	  Existing VMA, accounting, unmap, file callback, and page-protection
+	  operations remain in C. Each helper exposes one operation or predicate.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_MREMAP_BATCH
 	bool "Rust orchestration for batched mremap moves"
 	depends on RUST && MMU

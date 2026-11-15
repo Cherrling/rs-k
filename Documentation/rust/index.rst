@@ -59,6 +59,7 @@ more details.
     mm-teardown
     mmap-entry
     mmap-region
+    mmap-region-complete
     mmap-region-create
     mmap-region-new-vma
     mmap-region-setup

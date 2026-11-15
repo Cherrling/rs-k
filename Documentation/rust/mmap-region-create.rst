@@ -50,6 +50,9 @@ When ``CONFIG_RUST_MMAP_REGION_NEW_VMA`` is enabled, new-VMA allocation
 control flow is provided by the Rust entry described in
 :doc:`mmap-region-new-vma`.
 
+When ``CONFIG_RUST_MMAP_REGION_COMPLETE`` is enabled, completion control flow
+is provided by the Rust entry described in :doc:`mmap-region-complete`.
+
 Ordering and invariants
 -----------------------
 

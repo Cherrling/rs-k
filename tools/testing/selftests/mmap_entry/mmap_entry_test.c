@@ -210,6 +210,29 @@ static int committed_as_kb(unsigned long *value)
 	return -1;
 }
 
+static int status_kb(const char *field, unsigned long *value)
+{
+	size_t field_length = strlen(field);
+	char line[256];
+	FILE *file;
+
+	file = fopen("/proc/self/status", "r");
+	if (!file)
+		return -1;
+	while (fgets(line, sizeof(line), file)) {
+		if (strncmp(line, field, field_length) ||
+		    line[field_length] != ':')
+			continue;
+		if (sscanf(line + field_length + 1, " %lu kB", value) == 1) {
+			fclose(file);
+			return 0;
+		}
+		break;
+	}
+	fclose(file);
+	return -1;
+}
+
 static int smaps_has_flag(unsigned long address, const char *wanted)
 {
 	char line[512];
@@ -827,6 +850,9 @@ static int test_secretmem_prepare(void)
 static int test_mapping_policy(void)
 {
 	unsigned long old_overcommit;
+	unsigned long locked_before;
+	unsigned long locked_after;
+	unsigned long locked_delta;
 	unsigned long min_addr;
 	void *mapping;
 
@@ -869,6 +895,11 @@ static int test_mapping_policy(void)
 	}
 	munmap(mapping, page_size);
 
+	locked_delta = (page_size + 1023) / 1024;
+	if (status_kb("VmLck", &locked_before)) {
+		fprintf(stderr, "MMAP_ENTRY read initial VmLck failed\n");
+		return 1;
+	}
 	mapping = raw_mmap(NULL, page_size, PROT_READ | PROT_WRITE,
 			   MAP_PRIVATE | MAP_ANONYMOUS | MAP_LOCKED,
 			   -1, 0);
@@ -877,7 +908,18 @@ static int test_mapping_policy(void)
 		fprintf(stderr, "MMAP_ENTRY locked flag failed\n");
 		return 1;
 	}
-	munmap(mapping, page_size);
+	if (status_kb("VmLck", &locked_after) ||
+	    locked_after < locked_before + locked_delta) {
+		fprintf(stderr, "MMAP_ENTRY locked accounting failed\n");
+		return 1;
+	}
+	if (munmap(mapping, page_size))
+		return 1;
+	if (status_kb("VmLck", &locked_after) ||
+	    locked_after > locked_before + 1) {
+		fprintf(stderr, "MMAP_ENTRY locked rollback failed\n");
+		return 1;
+	}
 
 	mapping = raw_mmap(NULL, page_size, PROT_READ | PROT_WRITE,
 			   MAP_DROPPABLE | MAP_ANONYMOUS,

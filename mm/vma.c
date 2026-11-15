@@ -10,6 +10,7 @@
  */
 #include "vma_internal.h"
 #include "vma.h"
+#include <linux/mmap-region-complete-rust.h>
 #include <linux/mmap-region-create-rust.h>
 #include <linux/mmap-region-new-vma-rust.h>
 #include <linux/mmap-region-rust.h>
@@ -5000,6 +5001,7 @@ free_vma:
  * @map: Mapping state.
  * @vma: Merged or newly allocated VMA for the mmap()'d region.
  */
+#ifndef CONFIG_RUST_MMAP_REGION_COMPLETE
 static void __mmap_complete(struct mmap_state *map, struct vm_area_struct *vma)
 {
 	struct mm_struct *mm = map->mm;
@@ -5032,6 +5034,7 @@ static void __mmap_complete(struct mmap_state *map, struct vm_area_struct *vma)
 
 	vma_set_page_prot(vma);
 }
+#endif /* CONFIG_RUST_MMAP_REGION_COMPLETE */
 
 static int call_action_prepare(struct mmap_state *map,
 			       struct vm_area_desc *desc)
@@ -5424,6 +5427,82 @@ rust_helper_mmap_new_vma_free(struct rust_mmap_create_state *state)
 
 #endif /* CONFIG_RUST_MMAP_REGION_NEW_VMA */
 
+#ifdef CONFIG_RUST_MMAP_REGION_COMPLETE
+
+void
+rust_helper_mmap_complete_perf_event(struct rust_mmap_create_state *state)
+{
+	perf_event_mmap(state->vma);
+}
+
+void
+rust_helper_mmap_complete_unmap_overlap(struct rust_mmap_create_state *state)
+{
+	vms_complete_munmap_vmas(&state->map.vms, &state->map.mas_detach);
+}
+
+void
+rust_helper_mmap_complete_account_stats(struct rust_mmap_create_state *state)
+{
+	vm_stat_account(state->map.mm, state->vma->vm_flags, state->map.pglen);
+}
+
+bool
+rust_helper_mmap_complete_is_locked(struct rust_mmap_create_state *state)
+{
+	return vma_test(state->vma, VMA_LOCKED_BIT);
+}
+
+bool
+rust_helper_mmap_complete_supports_mlock(struct rust_mmap_create_state *state)
+{
+	return vma_supports_mlock(state->vma);
+}
+
+void
+rust_helper_mmap_complete_account_locked(struct rust_mmap_create_state *state)
+{
+	state->map.mm->locked_vm += state->map.pglen;
+}
+
+void
+rust_helper_mmap_complete_clear_locked(struct rust_mmap_create_state *state)
+{
+	vma_clear_flags_mask(state->vma, VMA_LOCKED_MASK);
+}
+
+bool
+rust_helper_mmap_complete_has_file(struct rust_mmap_create_state *state)
+{
+	return state->vma->vm_file;
+}
+
+void
+rust_helper_mmap_complete_uprobe(struct rust_mmap_create_state *state)
+{
+	uprobe_mmap(state->vma);
+}
+
+bool
+rust_helper_mmap_complete_supports_soft_dirty(void)
+{
+	return pgtable_supports_soft_dirty();
+}
+
+void
+rust_helper_mmap_complete_set_soft_dirty(struct rust_mmap_create_state *state)
+{
+	vma_set_flags(state->vma, VMA_SOFTDIRTY_BIT);
+}
+
+void
+rust_helper_mmap_complete_set_page_prot(struct rust_mmap_create_state *state)
+{
+	vma_set_page_prot(state->vma);
+}
+
+#endif /* CONFIG_RUST_MMAP_REGION_COMPLETE */
+
 static unsigned long __mmap_region(struct file *file, unsigned long addr,
 				   unsigned long len, vma_flags_t vma_flags,
 				   unsigned long pgoff, struct list_head *uf)
@@ -5534,7 +5613,11 @@ rust_helper_mmap_create_set_user_fields(struct rust_mmap_create_state *state)
 void
 rust_helper_mmap_create_complete(struct rust_mmap_create_state *state)
 {
+#ifdef CONFIG_RUST_MMAP_REGION_COMPLETE
+	rust_mmap_region_complete(state);
+#else
 	__mmap_complete(&state->map, state->vma);
+#endif
 }
 
 int

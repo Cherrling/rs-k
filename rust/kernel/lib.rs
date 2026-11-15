@@ -128,6 +128,8 @@ mod mm_teardown;
 mod mmap_entry;
 #[cfg(CONFIG_RUST_MMAP_REGION)]
 mod mmap_region;
+#[cfg(CONFIG_RUST_MMAP_REGION_COMPLETE)]
+mod mmap_region_complete;
 #[cfg(CONFIG_RUST_MMAP_REGION_CREATE)]
 mod mmap_region_create;
 #[cfg(CONFIG_RUST_MMAP_REGION_NEW_VMA)]
