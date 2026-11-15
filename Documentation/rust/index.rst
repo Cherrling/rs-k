@@ -68,6 +68,7 @@ more details.
     vma-prepare-complete
     vma-region-teardown
     vma-copy
+    move-pgt-entry
     mremap-batch
     mremap-copy
     mremap-entry

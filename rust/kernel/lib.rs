@@ -126,6 +126,8 @@ mod mm_core;
 mod mm_teardown;
 pub mod module;
 pub mod module_param;
+#[cfg(CONFIG_RUST_MOVE_PGT_ENTRY)]
+mod move_pgt_entry;
 #[cfg(CONFIG_RUST_MREMAP_BATCH)]
 mod mremap_batch;
 #[cfg(CONFIG_RUST_MREMAP_COPY)]

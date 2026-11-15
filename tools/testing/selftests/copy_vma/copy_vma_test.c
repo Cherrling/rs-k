@@ -1227,6 +1227,55 @@ fail:
 	return 1;
 }
 
+static int test_pmd_aligned_move(void)
+{
+	const size_t pmd_size = 2 * 1024 * 1024;
+	const unsigned long source_base = 8UL << 30;
+	const unsigned long target_base = 10UL << 30;
+	unsigned char *source;
+	unsigned char *moved;
+
+	source = mmap((void *)source_base, pmd_size, PROT_READ | PROT_WRITE,
+		      MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE |
+			      MAP_NORESERVE,
+		      -1, 0);
+	if (source != (void *)source_base)
+		goto fail;
+	if (madvise(source, pmd_size, MADV_NOHUGEPAGE) && errno != EINVAL)
+		goto fail;
+
+	memset(source, 0xd3, page_size);
+	source[page_size - 1] = 0xc4;
+
+	moved = mremap(source, pmd_size, pmd_size,
+		       MREMAP_MAYMOVE | MREMAP_FIXED, (void *)target_base);
+	if (moved == MAP_FAILED)
+		goto fail;
+	if (moved != (void *)target_base) {
+		fprintf(stderr,
+			"COPY_VMA PMD move: returned %p, expected %#lx\n",
+			moved, target_base);
+		goto fail;
+	}
+	if (moved[0] != 0xd3 || moved[page_size - 1] != 0xc4) {
+		fprintf(stderr, "COPY_VMA PMD move: destination data mismatch\n");
+		goto fail;
+	}
+	if (expect_vma(target_base, target_base, target_base + pmd_size,
+		       "PMD move target") ||
+	    expect_unmapped(source_base, "PMD move source"))
+		goto fail;
+
+	munmap((void *)target_base, pmd_size);
+	return 0;
+
+fail:
+	fprintf(stderr, "COPY_VMA PMD move failed: %s\n", strerror(errno));
+	munmap((void *)source_base, pmd_size);
+	munmap((void *)target_base, pmd_size);
+	return 1;
+}
+
 static int test_vdso_move(unsigned char *carveout)
 {
 	unsigned long source_start;
@@ -1613,6 +1662,7 @@ int main(void)
 	    test_parameter_validation(carveout) ||
 	    test_batch_contiguous_move(carveout) ||
 	    test_batch_gap_move(carveout) ||
+	    test_pmd_aligned_move() ||
 	    test_vdso_move(carveout) ||
 	    test_aio_callback_failure(carveout) ||
 	    test_fixed_sealed_destination(carveout) ||

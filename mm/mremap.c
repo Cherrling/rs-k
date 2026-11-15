@@ -22,6 +22,7 @@
 #include <linux/security.h>
 #include <linux/syscalls.h>
 #include <linux/mmu_notifier.h>
+#include <linux/move-pgt-entry-rust.h>
 #include <linux/mremap-batch-rust.h>
 #include <linux/mremap-copy-rust.h>
 #include <linux/mremap-entry-rust.h>
@@ -541,13 +542,6 @@ static bool move_huge_pud(struct pagetable_move_control *pmc,
 }
 #endif
 
-enum pgt_entry {
-	NORMAL_PMD,
-	HPAGE_PMD,
-	NORMAL_PUD,
-	HPAGE_PUD,
-};
-
 /*
  * Returns an extent of the corresponding size for the pgt_entry specified if
  * valid. Else returns a smaller extent bounded by the end of the source and
@@ -592,6 +586,7 @@ static __always_inline unsigned long get_extent(enum pgt_entry entry,
  * Should move_pgt_entry() acquire the rmap locks? This is either expressed in
  * the PMC, or overridden in the case of normal, larger page tables.
  */
+#ifndef CONFIG_RUST_MOVE_PGT_ENTRY
 static bool should_take_rmap_locks(struct pagetable_move_control *pmc,
 				   enum pgt_entry entry)
 {
@@ -603,11 +598,13 @@ static bool should_take_rmap_locks(struct pagetable_move_control *pmc,
 		return pmc->need_rmap_locks;
 	}
 }
+#endif /* !CONFIG_RUST_MOVE_PGT_ENTRY */
 
 /*
  * Attempts to speedup the move by moving entry at the level corresponding to
  * pgt_entry. Returns true if the move was successful, else false.
  */
+#ifndef CONFIG_RUST_MOVE_PGT_ENTRY
 static bool move_pgt_entry(struct pagetable_move_control *pmc,
 			   enum pgt_entry entry, void *old_entry, void *new_entry)
 {
@@ -645,6 +642,74 @@ static bool move_pgt_entry(struct pagetable_move_control *pmc,
 
 	return moved;
 }
+#else
+
+struct rust_move_pgt_entry_state {
+	struct pagetable_move_control *pmc;
+};
+
+static bool move_pgt_entry(struct pagetable_move_control *pmc,
+			   enum pgt_entry entry, void *old_entry, void *new_entry)
+{
+	struct rust_move_pgt_entry_state state = {
+		.pmc = pmc,
+	};
+
+	return rust_move_pgt_entry(&state, entry, old_entry, new_entry);
+}
+
+bool rust_helper_move_pgt_entry_need_rmap_locks(struct rust_move_pgt_entry_state *state)
+{
+	return state->pmc->need_rmap_locks;
+}
+
+void rust_helper_move_pgt_entry_take_rmap_locks(struct rust_move_pgt_entry_state *state)
+{
+	take_rmap_locks(state->pmc->old);
+}
+
+void rust_helper_move_pgt_entry_drop_rmap_locks(struct rust_move_pgt_entry_state *state)
+{
+	drop_rmap_locks(state->pmc->old);
+}
+
+bool rust_helper_move_pgt_entry_normal_pmd(struct rust_move_pgt_entry_state *state,
+					   void *old_entry, void *new_entry)
+{
+	return move_normal_pmd(state->pmc, old_entry, new_entry);
+}
+
+bool rust_helper_move_pgt_entry_normal_pud(struct rust_move_pgt_entry_state *state,
+					   void *old_entry, void *new_entry)
+{
+	return move_normal_pud(state->pmc, old_entry, new_entry);
+}
+
+bool rust_helper_move_pgt_entry_huge_pmd(struct rust_move_pgt_entry_state *state,
+					 void *old_entry, void *new_entry)
+{
+	if (!IS_ENABLED(CONFIG_TRANSPARENT_HUGEPAGE))
+		return false;
+
+	return move_huge_pmd(state->pmc->old, state->pmc->old_addr,
+			     state->pmc->new_addr, old_entry, new_entry);
+}
+
+bool rust_helper_move_pgt_entry_huge_pud(struct rust_move_pgt_entry_state *state,
+					 void *old_entry, void *new_entry)
+{
+	if (!IS_ENABLED(CONFIG_TRANSPARENT_HUGEPAGE))
+		return false;
+
+	return move_huge_pud(state->pmc, old_entry, new_entry);
+}
+
+void rust_helper_move_pgt_entry_warn_invalid(void)
+{
+	WARN_ON_ONCE(1);
+}
+
+#endif /* CONFIG_RUST_MOVE_PGT_ENTRY */
 
 /*
  * A helper to check if aligning down is OK. The aligned address should fall

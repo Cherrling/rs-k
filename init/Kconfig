@@ -1635,6 +1635,22 @@ config RUST_MREMAP_BATCH
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_MOVE_PGT_ENTRY
+	bool "Rust orchestration for page-table entry moves"
+	depends on RUST && MMU
+	default y
+	help
+	  Use Rust for the production page-table entry move decision. Rust
+	  selects normal or huge PMD and PUD moves, controls the required
+	  rmap locking, dispatches the existing move operation, and propagates
+	  its result.
+
+	  The architecture-specific page-table updates and the existing
+	  normal and huge-page move operations remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_COPY_MM
 	bool "Rust implementation of address-space copying"
 	depends on RUST && MMU
