@@ -45,6 +45,10 @@ When ``CONFIG_RUST_MMAP_REGION_NEW_VMA`` is disabled, the region creation
 entry uses the original C implementation described in
 :doc:`mmap-region-create`.
 
+When ``CONFIG_RUST_MMAP_REGION_FILE`` is enabled, file attachment and mapping
+callback control flow are provided by the Rust entry described in
+:doc:`mmap-region-file`.
+
 Ordering and invariants
 -----------------------
 

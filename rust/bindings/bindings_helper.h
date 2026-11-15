@@ -86,6 +86,7 @@
 #include <linux/mmap-entry-rust.h>
 #include <linux/mmap-region-complete-rust.h>
 #include <linux/mmap-region-create-rust.h>
+#include <linux/mmap-region-file-rust.h>
 #include <linux/mmap-region-new-vma-rust.h>
 #include <linux/mmap-region-rust.h>
 #include <linux/mmap-region-setup-rust.h>

@@ -61,6 +61,7 @@ more details.
     mmap-region
     mmap-region-complete
     mmap-region-create
+    mmap-region-file
     mmap-region-new-vma
     mmap-region-setup
     exit-mmap

@@ -12,6 +12,7 @@
 #include "vma.h"
 #include <linux/mmap-region-complete-rust.h>
 #include <linux/mmap-region-create-rust.h>
+#include <linux/mmap-region-file-rust.h>
 #include <linux/mmap-region-new-vma-rust.h>
 #include <linux/mmap-region-rust.h>
 #include <linux/mmap-region-setup-rust.h>
@@ -4867,6 +4868,7 @@ static int __mmap_setup(struct mmap_state *map, struct vm_area_desc *desc,
 #endif /* CONFIG_RUST_MMAP_REGION_SETUP */
 
 
+#ifndef CONFIG_RUST_MMAP_REGION_FILE
 static int __mmap_new_file_vma(struct mmap_state *map,
 			       struct vm_area_struct *vma)
 {
@@ -4908,6 +4910,7 @@ static int __mmap_new_file_vma(struct mmap_state *map,
 
 	return 0;
 }
+#endif /* CONFIG_RUST_MMAP_REGION_FILE */
 
 #ifndef CONFIG_RUST_MMAP_REGION_NEW_VMA
 /*
@@ -5215,6 +5218,9 @@ struct rust_mmap_create_state {
 	struct vm_area_struct *vma;
 	struct list_head *uf;
 	bool have_mmap_prepare;
+#ifdef CONFIG_RUST_MMAP_REGION_FILE
+	struct unmap_desc partial_unmap;
+#endif
 };
 
 #ifdef CONFIG_RUST_MMAP_REGION_SETUP
@@ -5364,7 +5370,11 @@ rust_helper_mmap_new_vma_has_file(struct rust_mmap_create_state *state)
 int
 rust_helper_mmap_new_vma_map_file(struct rust_mmap_create_state *state)
 {
+#ifdef CONFIG_RUST_MMAP_REGION_FILE
+	return rust_mmap_region_file(state);
+#else
 	return __mmap_new_file_vma(&state->map, state->vma);
+#endif
 }
 
 int
@@ -5426,6 +5436,102 @@ rust_helper_mmap_new_vma_free(struct rust_mmap_create_state *state)
 }
 
 #endif /* CONFIG_RUST_MMAP_REGION_NEW_VMA */
+
+#ifdef CONFIG_RUST_MMAP_REGION_FILE
+
+bool
+rust_helper_mmap_file_needs_get(struct rust_mmap_create_state *state)
+{
+	return !state->map.file_doesnt_need_get;
+}
+
+void
+rust_helper_mmap_file_set(struct rust_mmap_create_state *state)
+{
+	state->vma->vm_file = state->map.file;
+}
+
+void
+rust_helper_mmap_file_get(struct rust_mmap_create_state *state)
+{
+	get_file(state->map.file);
+}
+
+bool
+rust_helper_mmap_file_has_callback(struct rust_mmap_create_state *state)
+{
+	return state->map.file->f_op->mmap;
+}
+
+int
+rust_helper_mmap_file_map(struct rust_mmap_create_state *state)
+{
+	return mmap_file(state->vma->vm_file, state->vma);
+}
+
+void
+rust_helper_mmap_file_put(struct rust_mmap_create_state *state)
+{
+	fput(state->vma->vm_file);
+	state->vma->vm_file = NULL;
+}
+
+void
+rust_helper_mmap_file_prepare_unmap(struct rust_mmap_create_state *state)
+{
+	struct vm_area_struct *vma = state->vma;
+
+	UNMAP_STATE(unmap, state->map.vmi, vma, vma->vm_start, vma->vm_end,
+		    state->map.prev, state->map.next);
+
+	state->partial_unmap = unmap;
+}
+
+void
+rust_helper_mmap_file_unmap_partial(struct rust_mmap_create_state *state)
+{
+	vma_iter_set(state->map.vmi, state->vma->vm_end);
+	unmap_region(&state->partial_unmap);
+}
+
+bool
+rust_helper_mmap_file_address_changed(struct rust_mmap_create_state *state)
+{
+	return state->map.addr != state->vma->vm_start;
+}
+
+bool
+rust_helper_mmap_file_adds_write(struct rust_mmap_create_state *s)
+{
+	return !vma_flags_same_pair(&s->map.vma_flags, &s->vma->flags) &&
+		!vma_flags_test(&s->map.vma_flags, VMA_MAYWRITE_BIT) &&
+		vma_test(s->vma, VMA_MAYWRITE_BIT);
+}
+
+void
+rust_helper_mmap_file_warn_addr(struct rust_mmap_create_state *s)
+{
+	WARN_ON_ONCE(s->map.addr != s->vma->vm_start);
+}
+
+void
+rust_helper_mmap_file_warn_write(struct rust_mmap_create_state *s)
+{
+	VM_WARN_ON_ONCE(!vma_flags_same_pair(&s->map.vma_flags,
+					     &s->vma->flags) &&
+			!vma_flags_test(&s->map.vma_flags,
+					VMA_MAYWRITE_BIT) &&
+			vma_test(s->vma, VMA_MAYWRITE_BIT));
+}
+
+void
+rust_helper_mmap_file_sync_state(struct rust_mmap_create_state *state)
+{
+	state->map.file = state->vma->vm_file;
+	state->map.vma_flags = state->vma->flags;
+}
+
+#endif /* CONFIG_RUST_MMAP_REGION_FILE */
 
 #ifdef CONFIG_RUST_MMAP_REGION_COMPLETE
 

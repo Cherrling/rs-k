@@ -17481,6 +17481,7 @@ F:	Documentation/rust/mm-teardown.rst
 F:	Documentation/rust/mmap-entry.rst
 F:	Documentation/rust/mmap-region-complete.rst
 F:	Documentation/rust/mmap-region-create.rst
+F:	Documentation/rust/mmap-region-file.rst
 F:	Documentation/rust/mmap-region-new-vma.rst
 F:	Documentation/rust/mmap-region-setup.rst
 F:	Documentation/rust/mmap-region.rst
@@ -17513,6 +17514,7 @@ F:	include/linux/mm-rust.h
 F:	include/linux/mmap-entry-rust.h
 F:	include/linux/mmap-region-complete-rust.h
 F:	include/linux/mmap-region-create-rust.h
+F:	include/linux/mmap-region-file-rust.h
 F:	include/linux/mmap-region-new-vma-rust.h
 F:	include/linux/mmap-region-rust.h
 F:	include/linux/mmap-region-setup-rust.h
