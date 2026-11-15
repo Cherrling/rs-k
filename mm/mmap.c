@@ -12,6 +12,7 @@
 #include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/backing-dev.h>
+#include <linux/brk-rust.h>
 #include <linux/mm.h>
 #include <linux/mm_inline.h>
 #include <linux/mmap-entry-rust.h>
@@ -117,6 +118,7 @@ static int check_brk_limits(unsigned long addr, unsigned long len)
 	return mlock_future_ok(mm, is_def_locked, len) ? 0 : -EAGAIN;
 }
 
+#ifndef CONFIG_RUST_BRK
 SYSCALL_DEFINE1(brk, unsigned long, brk)
 {
 	unsigned long newbrk, oldbrk, origbrk;
@@ -217,6 +219,150 @@ out:
 	mmap_write_unlock(mm);
 	return origbrk;
 }
+#else
+
+SYSCALL_DEFINE1(brk, unsigned long, brk)
+{
+	struct rust_brk_state state = {
+		.mm = current->mm,
+		.brk = brk,
+	};
+
+	INIT_LIST_HEAD(&state.uf);
+	return rust_brk(&state);
+}
+
+int
+rust_helper_brk_write_lock_killable(struct rust_brk_state *state)
+{
+	return mmap_write_lock_killable(state->mm);
+}
+
+void
+rust_helper_brk_write_unlock(struct rust_brk_state *state)
+{
+	mmap_write_unlock(state->mm);
+}
+
+unsigned long
+rust_helper_brk_current(struct rust_brk_state *state)
+{
+	return state->mm->brk;
+}
+
+unsigned long
+rust_helper_brk_start(struct rust_brk_state *state)
+{
+	return state->mm->start_brk;
+}
+
+bool
+rust_helper_brk_use_end_data(void)
+{
+#ifdef CONFIG_COMPAT_BRK
+	return !current->brk_randomized;
+#else
+	return false;
+#endif
+}
+
+unsigned long
+rust_helper_brk_end_data(struct rust_brk_state *state)
+{
+	return state->mm->end_data;
+}
+
+int
+rust_helper_brk_check_data_rlimit(struct rust_brk_state *state)
+{
+	return check_data_rlimit(rlimit(RLIMIT_DATA), state->brk,
+				 state->mm->start_brk, state->mm->end_data,
+				 state->mm->start_data);
+}
+
+void
+rust_helper_brk_iterator_init(struct rust_brk_state *state, unsigned long addr)
+{
+	vma_iter_init(&state->vmi, state->mm, addr);
+}
+
+struct vm_area_struct *
+rust_helper_brk_find(struct rust_brk_state *state, unsigned long end)
+{
+	return vma_find(&state->vmi, end);
+}
+
+unsigned long
+rust_helper_brk_vma_start(struct vm_area_struct *vma)
+{
+	return vma->vm_start;
+}
+
+unsigned long
+rust_helper_brk_stack_guard_gap(void)
+{
+	return stack_guard_gap;
+}
+
+unsigned long
+rust_helper_brk_vma_start_gap(struct vm_area_struct *vma)
+{
+	return vm_start_gap(vma);
+}
+
+struct vm_area_struct *
+rust_helper_brk_vma_prev(struct rust_brk_state *state)
+{
+	return vma_prev_limit(&state->vmi, state->mm->start_brk);
+}
+
+int
+rust_helper_brk_check_limits(unsigned long addr, unsigned long len)
+{
+	return check_brk_limits(addr, len);
+}
+
+int
+rust_helper_brk_expand(struct rust_brk_state *state,
+		       struct vm_area_struct *vma,
+		       unsigned long start, unsigned long len)
+{
+	return do_brk_flags(&state->vmi, vma, start, len, EMPTY_VMA_FLAGS);
+}
+
+int
+rust_helper_brk_align_unmap(struct rust_brk_state *state,
+			    struct vm_area_struct *vma,
+			    unsigned long start, unsigned long end)
+{
+	return do_vmi_align_munmap(&state->vmi, vma, state->mm, start, end,
+				   &state->uf, /* unlock = */ true);
+}
+
+bool
+rust_helper_brk_should_populate(struct rust_brk_state *state)
+{
+	return vma_flags_test(&state->mm->def_vma_flags, VMA_LOCKED_BIT);
+}
+
+void
+rust_helper_brk_set_address(struct rust_brk_state *state, unsigned long value)
+{
+	state->mm->brk = value;
+}
+
+void
+rust_helper_brk_userfault_complete(struct rust_brk_state *state)
+{
+	userfaultfd_unmap_complete(state->mm, &state->uf);
+}
+
+void
+rust_helper_brk_populate(unsigned long start, unsigned long len)
+{
+	mm_populate(start, len);
+}
+#endif /* CONFIG_RUST_BRK */
 
 /*
  * If a hint addr is less than mmap_min_addr change hint to be as

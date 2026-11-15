@@ -45,6 +45,7 @@
 #include <linux/blk-mq.h>
 #include <linux/blk_types.h>
 #include <linux/blkdev.h>
+#include <linux/brk-rust.h>
 #include <linux/clk.h>
 #include <linux/completion.h>
 #include <linux/completion-rust.h>

@@ -52,6 +52,8 @@ pub mod bitmap;
 pub mod bits;
 #[cfg(CONFIG_BLOCK)]
 pub mod block;
+#[cfg(CONFIG_RUST_BRK)]
+mod brk;
 pub mod bug;
 pub mod build_assert;
 pub mod clk;

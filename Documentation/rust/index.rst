@@ -57,6 +57,7 @@ more details.
     pid-lifecycle
     mm-lifetime
     mm-teardown
+    brk
     mmap-entry
     mmap-region
     mmap-region-complete

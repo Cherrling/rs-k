@@ -17473,6 +17473,7 @@ L:	rust-for-linux@vger.kernel.org
 S:	Maintained
 W:	http://www.linux-mm.org
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/akpm/mm
+F:	Documentation/rust/brk.rst
 F:	Documentation/rust/copy-mm.rst
 F:	Documentation/rust/dup-mmap.rst
 F:	Documentation/rust/exit-mmap.rst
@@ -17508,6 +17509,7 @@ F:	Documentation/rust/vma-region-teardown.rst
 F:	Documentation/rust/vma-shrink.rst
 F:	Documentation/rust/vma-split.rst
 F:	Documentation/rust/vma-unmap.rst
+F:	include/linux/brk-rust.h
 F:	include/linux/copy-mm-rust.h
 F:	include/linux/dup-mmap-rust.h
 F:	include/linux/exit-mmap-rust.h
@@ -17546,6 +17548,7 @@ F:	lib/tests/test_dup_mmap.c
 F:	lib/tests/test_exit_mmap.c
 F:	lib/tests/test_mm_lifetime.c
 F:	lib/tests/test_vma_unmap.c
+F:	rust/kernel/brk.rs
 F:	rust/kernel/copy_mm.rs
 F:	rust/kernel/dup_mmap.rs
 F:	rust/kernel/exit_mmap.rs
@@ -17583,6 +17586,7 @@ F:	rust/kernel/vma_region_teardown.rs
 F:	rust/kernel/vma_shrink.rs
 F:	rust/kernel/vma_split.rs
 F:	rust/kernel/vma_unmap.rs
+F:	tools/testing/selftests/brk/
 F:	tools/testing/selftests/copy_vma/
 F:	tools/testing/selftests/mmap_entry/
 F:	tools/testing/selftests/vma_merge/

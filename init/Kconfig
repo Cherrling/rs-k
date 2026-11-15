@@ -1617,6 +1617,22 @@ config RUST_MREMAP_ENTRY
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_BRK
+	bool "Rust orchestration for the brk syscall"
+	depends on RUST && MMU
+	default y
+	help
+	  Use Rust for the production brk() path. Rust owns minimum break
+	  selection, data-limit validation, page-aligned transition selection,
+	  shrink and expansion decisions, stack-gap rejection, lock release,
+	  userfaultfd completion, and population.
+
+	  Existing mmap locking, VMA lookup, range checking, VMA expansion and
+	  unmapping, field updates, and population operations remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_MMAP_ENTRY
 	bool "Rust orchestration for creating user mappings"
 	depends on RUST && MMU
