@@ -23,6 +23,7 @@
 #include <linux/syscalls.h>
 #include <linux/mmu_notifier.h>
 #include <linux/mremap-copy-rust.h>
+#include <linux/mremap-move-rust.h>
 #include <linux/uaccess.h>
 #include <linux/userfaultfd_k.h>
 #include <linux/mempolicy.h>
@@ -1561,6 +1562,24 @@ static void dontunmap_complete(struct vma_remap_struct *vrm,
 	}
 }
 
+#ifdef CONFIG_RUST_MREMAP_MOVE
+
+struct rust_mremap_move_state {
+	struct vma_remap_struct *vrm;
+	struct vm_area_struct *new_vma;
+};
+
+static unsigned long move_vma(struct vma_remap_struct *vrm)
+{
+	struct rust_mremap_move_state state = {
+		.vrm = vrm,
+	};
+
+	return rust_mremap_move(&state);
+}
+
+#else
+
 static unsigned long move_vma(struct vma_remap_struct *vrm)
 {
 	const bool is_dontunmap = vrm->flags & MREMAP_DONTUNMAP;
@@ -1614,6 +1633,75 @@ static unsigned long move_vma(struct vma_remap_struct *vrm)
 
 	return err ? (unsigned long)err : vrm->new_addr;
 }
+
+#endif /* CONFIG_RUST_MREMAP_MOVE */
+
+#ifdef CONFIG_RUST_MREMAP_MOVE
+
+unsigned long
+rust_helper_mremap_move_prepare(struct rust_mremap_move_state *state)
+{
+	return prep_move_vma(state->vrm);
+}
+
+bool rust_helper_mremap_move_charge(struct rust_mremap_move_state *state)
+{
+	return vrm_calc_charge(state->vrm);
+}
+
+void rust_helper_mremap_move_start_write(struct rust_mremap_move_state *state)
+{
+	vma_start_write(state->vrm->vma);
+}
+
+int rust_helper_mremap_move_copy(struct rust_mremap_move_state *state)
+{
+	state->new_vma = NULL;
+	return copy_vma_and_data(state->vrm, &state->new_vma);
+}
+
+bool rust_helper_mremap_move_has_new_vma(struct rust_mremap_move_state *state)
+{
+	return state->new_vma;
+}
+
+bool rust_helper_mremap_move_is_dontunmap(struct rust_mremap_move_state *state)
+{
+	return state->vrm->flags & MREMAP_DONTUNMAP;
+}
+
+unsigned long rust_helper_mremap_move_get_hiwater(void)
+{
+	return current->mm->hiwater_vm;
+}
+
+void rust_helper_mremap_move_set_hiwater(unsigned long hiwater_vm)
+{
+	current->mm->hiwater_vm = hiwater_vm;
+}
+
+void rust_helper_mremap_move_dontunmap_complete(struct rust_mremap_move_state *state)
+{
+	dontunmap_complete(state->vrm, state->new_vma);
+}
+
+void rust_helper_mremap_move_account(struct rust_mremap_move_state *state)
+{
+	vrm_stat_account(state->vrm, state->vrm->new_len);
+}
+
+void rust_helper_mremap_move_unmap_source(struct rust_mremap_move_state *state)
+{
+	unmap_source_vma(state->vrm);
+}
+
+unsigned long
+rust_helper_mremap_move_new_addr(struct rust_mremap_move_state *state)
+{
+	return state->vrm->new_addr;
+}
+
+#endif /* CONFIG_RUST_MREMAP_MOVE */
 
 /*
  * The user has requested that the VMA be shrunk (i.e., old_len > new_len), so

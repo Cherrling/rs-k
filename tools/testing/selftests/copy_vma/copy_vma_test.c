@@ -172,6 +172,41 @@ static int read_ulong_file(const char *path, unsigned long *value)
 	return result;
 }
 
+static int read_total_vm_pages(unsigned long *pages)
+{
+	return read_ulong_file("/proc/self/statm", pages);
+}
+
+static int read_locked_bytes(unsigned long address, unsigned long *bytes)
+{
+	char line[512];
+	FILE *file;
+	int in_vma = 0;
+	int result = -1;
+
+	file = fopen("/proc/self/smaps", "r");
+	if (!file)
+		return -1;
+
+	while (fgets(line, sizeof(line), file)) {
+		unsigned long start;
+		unsigned long end;
+
+		if (sscanf(line, "%lx-%lx", &start, &end) == 2) {
+			in_vma = address >= start && address < end;
+			continue;
+		}
+		if (in_vma &&
+		    sscanf(line, "Locked: %lu kB", bytes) == 1) {
+			result = 0;
+			break;
+		}
+	}
+
+	fclose(file);
+	return result;
+}
+
 static int setup_debugfs(void)
 {
 	if (mkdir("/sys", 0755) && errno != EEXIST)
@@ -275,12 +310,20 @@ static int test_anonymous_move(unsigned char *carveout)
 	const size_t length = 4 * page_size;
 	unsigned char *source = carveout + 8 * page_size;
 	unsigned char *target = carveout + 24 * page_size;
+	unsigned long before_vm;
+	unsigned long after_vm;
+	unsigned long source_start;
+	unsigned long source_end;
 	unsigned char *moved;
 
 	if (map_fixed(source, length) != source)
 		goto fail;
 	if (fill_and_check(source, length, 0x31, "anonymous setup"))
 		return 1;
+	if (munmap(target, length))
+		goto fail;
+	if (read_total_vm_pages(&before_vm))
+		goto fail;
 
 	moved = mremap(source, length, length,
 		       MREMAP_MAYMOVE | MREMAP_FIXED, target);
@@ -291,11 +334,25 @@ static int test_anonymous_move(unsigned char *carveout)
 			moved, target);
 		return 1;
 	}
+	if (read_total_vm_pages(&after_vm))
+		goto fail;
+	if (after_vm != before_vm) {
+		fprintf(stderr,
+			"COPY_VMA anonymous move changed virtual size from %lu to %lu pages\n",
+			before_vm, after_vm);
+		return 1;
+	}
 	if (fill_and_check(target, length, 0x31, "anonymous move"))
 		return 1;
 	if (expect_vma((unsigned long)target, (unsigned long)target,
 		       (unsigned long)(target + length), "anonymous move"))
 		return 1;
+	if (!find_vma_bounds((unsigned long)source, &source_start,
+			     &source_end)) {
+		fprintf(stderr,
+			"COPY_VMA anonymous move left source VMA mapped\n");
+		return 1;
+	}
 
 	munmap(target, length);
 	return 0;
@@ -310,12 +367,25 @@ static int test_dontunmap(unsigned char *carveout)
 	const size_t length = 3 * page_size;
 	unsigned char *source = carveout + 40 * page_size;
 	unsigned char *target = carveout + 56 * page_size;
+	unsigned long before_vm;
+	unsigned long after_vm;
+	unsigned long locked;
 	unsigned char *moved;
 
 	if (map_fixed(source, length) != source)
 		goto fail;
 	if (fill_and_check(source, length, 0x42, "DONTUNMAP setup"))
 		return 1;
+	if (mlock(source, length))
+		goto fail;
+	if (read_locked_bytes((unsigned long)source, &locked) || !locked) {
+		fprintf(stderr, "COPY_VMA DONTUNMAP source is not locked\n");
+		return 1;
+	}
+	if (munmap(target, length))
+		goto fail;
+	if (read_total_vm_pages(&before_vm))
+		goto fail;
 
 	moved = mremap(source, length, length,
 		       MREMAP_MAYMOVE | MREMAP_FIXED | MREMAP_DONTUNMAP,
@@ -327,11 +397,32 @@ static int test_dontunmap(unsigned char *carveout)
 			moved, target);
 		return 1;
 	}
+	if (read_total_vm_pages(&after_vm))
+		goto fail;
+	if (after_vm != before_vm + length / page_size) {
+		fprintf(stderr,
+			"COPY_VMA DONTUNMAP virtual size was %lu, expected %lu pages\n",
+			after_vm, before_vm + length / page_size);
+		return 1;
+	}
 	if (fill_and_check(target, length, 0x42, "DONTUNMAP target"))
 		return 1;
 	if (expect_vma((unsigned long)source, (unsigned long)source,
 		       (unsigned long)(source + length), "DONTUNMAP source"))
 		return 1;
+	if (expect_vma((unsigned long)target, (unsigned long)target,
+		       (unsigned long)(target + length), "DONTUNMAP target"))
+		return 1;
+	if (read_locked_bytes((unsigned long)source, &locked) || locked) {
+		fprintf(stderr,
+			"COPY_VMA DONTUNMAP source VMA remains locked\n");
+		return 1;
+	}
+	if (read_locked_bytes((unsigned long)target, &locked) || !locked) {
+		fprintf(stderr,
+			"COPY_VMA DONTUNMAP target VMA is not locked\n");
+		return 1;
+	}
 
 	munmap(source, length);
 	munmap(target, length);
