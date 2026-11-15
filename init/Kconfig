@@ -1617,6 +1617,25 @@ config RUST_MREMAP_ENTRY
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_MMAP_ENTRY
+	bool "Rust orchestration for creating user mappings"
+	depends on RUST && MMU
+	default y
+	help
+	  Use Rust for the production do_mmap() path. Rust owns request
+	  validation, execute implication, address selection, fixed address
+	  checks, locked-memory checks, file and anonymous mapping policy,
+	  VMA flag policy, reservation handling, region creation, and
+	  population decisions.
+
+	  The mmap write-lock check, request field projections, personality and
+	  file facts, VMA flag operations, existing policy predicates,
+	  unmapped-area selection, seal checks, and VMA region insertion remain
+	  in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_MREMAP_BATCH
 	bool "Rust orchestration for batched mremap moves"
 	depends on RUST && MMU

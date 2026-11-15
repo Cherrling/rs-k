@@ -83,6 +83,7 @@
 #include <linux/mdio.h>
 #include <linux/mm.h>
 #include <linux/mm-rust.h>
+#include <linux/mmap-entry-rust.h>
 #include <linux/move-page-tables-rust.h>
 #include <linux/move-pgt-entry-rust.h>
 #include <linux/mremap-batch-rust.h>

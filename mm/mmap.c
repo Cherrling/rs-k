@@ -14,6 +14,7 @@
 #include <linux/backing-dev.h>
 #include <linux/mm.h>
 #include <linux/mm_inline.h>
+#include <linux/mmap-entry-rust.h>
 #include <linux/dup-mmap-rust.h>
 #include <linux/shm.h>
 #include <linux/mman.h>
@@ -337,6 +338,7 @@ static inline bool file_mmap_ok(struct file *file, struct inode *inode,
  * Returns: Either an error, or the address at which the requested mapping has
  * been performed.
  */
+#ifndef CONFIG_RUST_MMAP_ENTRY
 unsigned long do_mmap(struct file *file, unsigned long addr,
 			unsigned long len, unsigned long prot,
 			unsigned long flags, vma_flags_t vma_flags,
@@ -579,6 +581,308 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 		*populate = len;
 	return addr;
 }
+#else
+
+struct rust_mmap_entry_state {
+	struct mm_struct *mm;
+	struct file *file;
+	unsigned long addr;
+	unsigned long len;
+	unsigned long prot;
+	unsigned long flags;
+	vma_flags_t vma_flags;
+	unsigned long pgoff;
+	unsigned long *populate;
+	struct list_head *uf;
+	unsigned long flags_mask;
+};
+
+unsigned long do_mmap(struct file *file, unsigned long addr,
+		      unsigned long len, unsigned long prot,
+		      unsigned long flags, vma_flags_t vma_flags,
+		      unsigned long pgoff, unsigned long *populate,
+		      struct list_head *uf)
+{
+	struct rust_mmap_entry_state state = {
+		.mm = current->mm,
+		.file = file,
+		.addr = addr,
+		.len = len,
+		.prot = prot,
+		.flags = flags,
+		.vma_flags = vma_flags,
+		.pgoff = pgoff,
+		.populate = populate,
+		.uf = uf,
+	};
+
+	return rust_mmap_entry(&state);
+}
+
+void rust_helper_mmap_entry_clear_populate(struct rust_mmap_entry_state *state)
+{
+	*state->populate = 0;
+}
+
+void rust_helper_mmap_entry_assert_write_locked(struct rust_mmap_entry_state *state)
+{
+	mmap_assert_write_locked(state->mm);
+}
+
+unsigned long rust_helper_mmap_entry_len(struct rust_mmap_entry_state *state)
+{
+	return state->len;
+}
+
+unsigned long rust_helper_mmap_entry_prot(struct rust_mmap_entry_state *state)
+{
+	return state->prot;
+}
+
+unsigned long rust_helper_mmap_entry_flags(struct rust_mmap_entry_state *state)
+{
+	return state->flags;
+}
+
+bool rust_helper_mmap_entry_read_implies_exec(void)
+{
+	return current->personality & READ_IMPLIES_EXEC;
+}
+
+bool rust_helper_mmap_entry_has_file(struct rust_mmap_entry_state *state)
+{
+	return state->file;
+}
+
+unsigned int rust_helper_mmap_entry_file_facts(struct rust_mmap_entry_state *state)
+{
+	struct file *file = state->file;
+	unsigned int facts = 0;
+
+	if (file->f_mode & FMODE_READ)
+		facts |= RUST_MMAP_ENTRY_FILE_READ;
+	if (file->f_mode & FMODE_WRITE)
+		facts |= RUST_MMAP_ENTRY_FILE_WRITE;
+	if (IS_SWAPFILE(file->f_mapping->host))
+		facts |= RUST_MMAP_ENTRY_FILE_SWAPFILE;
+	if (IS_APPEND(file_inode(file)))
+		facts |= RUST_MMAP_ENTRY_FILE_APPEND;
+	if (path_noexec(&file->f_path))
+		facts |= RUST_MMAP_ENTRY_FILE_NOEXEC;
+	if (is_file_hugepages(file))
+		facts |= RUST_MMAP_ENTRY_FILE_HUGEPAGES;
+	if (file->f_op->fop_flags & FOP_MMAP_SYNC)
+		facts |= RUST_MMAP_ENTRY_FILE_MMAP_SYNC;
+
+	return facts;
+}
+
+void rust_helper_mmap_entry_add_prot_exec(struct rust_mmap_entry_state *state)
+{
+	state->prot |= PROT_EXEC;
+}
+
+void rust_helper_mmap_entry_add_map_fixed(struct rust_mmap_entry_state *state)
+{
+	state->flags |= MAP_FIXED;
+}
+
+void rust_helper_mmap_entry_round_hint(struct rust_mmap_entry_state *state)
+{
+	state->addr = round_hint_to_min(state->addr);
+}
+
+void rust_helper_mmap_entry_align_len(struct rust_mmap_entry_state *state)
+{
+	state->len = PAGE_ALIGN(state->len);
+}
+
+bool rust_helper_mmap_entry_pgoff_overflows(struct rust_mmap_entry_state *state)
+{
+	return (state->pgoff + (state->len >> PAGE_SHIFT)) < state->pgoff;
+}
+
+bool rust_helper_mmap_entry_map_count_exceeded(struct rust_mmap_entry_state *state)
+{
+	return state->mm->map_count > get_sysctl_max_map_count();
+}
+
+long rust_helper_mmap_entry_execute_only_pkey(struct rust_mmap_entry_state *state)
+{
+	return execute_only_pkey(state->mm);
+}
+
+void rust_helper_mmap_entry_prepare_vma_flags(struct rust_mmap_entry_state *state,
+					      int pkey)
+{
+	vm_flags_t flags;
+
+	flags = calc_vm_prot_bits(state->prot, pkey);
+	vma_flags_set_mask(&state->vma_flags,
+			   legacy_to_vma_flags(flags));
+	flags = calc_vm_flag_bits(state->file, state->flags);
+	vma_flags_set_mask(&state->vma_flags,
+			   legacy_to_vma_flags(flags));
+	vma_flags_set_mask(&state->vma_flags, state->mm->def_vma_flags);
+	vma_flags_set(&state->vma_flags, VMA_MAYREAD_BIT, VMA_MAYWRITE_BIT,
+		      VMA_MAYEXEC_BIT);
+}
+
+void rust_helper_mmap_entry_get_unmapped_area(struct rust_mmap_entry_state *state)
+{
+	state->addr = __get_unmapped_area(state->file, state->addr,
+					  state->len, state->pgoff,
+					  state->flags, state->vma_flags);
+}
+
+unsigned long rust_helper_mmap_entry_addr(struct rust_mmap_entry_state *state)
+{
+	return state->addr;
+}
+
+bool rust_helper_mmap_entry_addr_is_error(struct rust_mmap_entry_state *state)
+{
+	return IS_ERR_VALUE(state->addr);
+}
+
+bool
+rust_helper_mmap_entry_fixed_noreplace_intersects(struct rust_mmap_entry_state *state)
+{
+	return find_vma_intersection(state->mm, state->addr,
+				     state->addr + state->len);
+}
+
+bool rust_helper_mmap_entry_can_do_mlock(void)
+{
+	return can_do_mlock();
+}
+
+bool rust_helper_mmap_entry_mlock_future_ok(struct rust_mmap_entry_state *state)
+{
+	return mlock_future_ok(state->mm,
+			      vma_flags_test(&state->vma_flags, VMA_LOCKED_BIT),
+			      state->len);
+}
+
+bool rust_helper_mmap_entry_file_mmap_ok(struct rust_mmap_entry_state *state)
+{
+	return file_mmap_ok(state->file, file_inode(state->file), state->pgoff,
+			    state->len);
+}
+
+void rust_helper_mmap_entry_init_file_flags_mask(struct rust_mmap_entry_state *state)
+{
+	state->flags_mask = LEGACY_MAP_MASK;
+}
+
+void
+rust_helper_mmap_entry_add_mmap_sync_flags_mask(struct rust_mmap_entry_state *state)
+{
+	state->flags_mask |= MAP_SYNC;
+}
+
+void rust_helper_mmap_entry_strip_legacy_flags(struct rust_mmap_entry_state *state)
+{
+	state->flags &= LEGACY_MAP_MASK;
+}
+
+bool rust_helper_mmap_entry_file_flags_unsupported(struct rust_mmap_entry_state *state)
+{
+	return state->flags & ~state->flags_mask;
+}
+
+void rust_helper_mmap_entry_set_shared_vma_flags(struct rust_mmap_entry_state *state)
+{
+	vma_flags_set(&state->vma_flags, VMA_SHARED_BIT, VMA_MAYSHARE_BIT);
+}
+
+void
+rust_helper_mmap_entry_clear_shared_write_vma_flags(struct rust_mmap_entry_state *state)
+{
+	vma_flags_clear(&state->vma_flags, VMA_MAYWRITE_BIT, VMA_SHARED_BIT);
+}
+
+bool rust_helper_mmap_entry_vma_exec(struct rust_mmap_entry_state *state)
+{
+	return vma_flags_test(&state->vma_flags, VMA_EXEC_BIT);
+}
+
+void rust_helper_mmap_entry_clear_may_exec(struct rust_mmap_entry_state *state)
+{
+	vma_flags_clear(&state->vma_flags, VMA_MAYEXEC_BIT);
+}
+
+bool rust_helper_mmap_entry_can_mmap_file(struct rust_mmap_entry_state *state)
+{
+	return can_mmap_file(state->file);
+}
+
+bool rust_helper_mmap_entry_vma_can_grow(struct rust_mmap_entry_state *state)
+{
+	return vma_flags_can_grow(&state->vma_flags);
+}
+
+int rust_helper_mmap_entry_check_memfd_seals(struct rust_mmap_entry_state *state)
+{
+	return memfd_check_seals_mmap(state->file, &state->vma_flags);
+}
+
+bool rust_helper_mmap_entry_vma_droppable_supported(void)
+{
+	vma_flags_t droppable = VMA_DROPPABLE;
+
+	return !vma_flags_empty(&droppable);
+}
+
+void rust_helper_mmap_entry_set_droppable_flag(struct rust_mmap_entry_state *state)
+{
+	vma_flags_set_mask(&state->vma_flags, VMA_DROPPABLE);
+}
+
+void
+rust_helper_mmap_entry_set_droppable_lifetime_flags(struct rust_mmap_entry_state *state)
+{
+	vma_flags_set(&state->vma_flags, VMA_NORESERVE_BIT, VMA_WIPEONFORK_BIT,
+		      VMA_DONTDUMP_BIT);
+}
+
+void rust_helper_mmap_entry_set_anon_pgoff_zero(struct rust_mmap_entry_state *state)
+{
+	state->pgoff = 0;
+}
+
+void rust_helper_mmap_entry_set_anon_pgoff(struct rust_mmap_entry_state *state)
+{
+	state->pgoff = state->addr >> PAGE_SHIFT;
+}
+
+bool rust_helper_mmap_entry_overcommit_not_never(void)
+{
+	return sysctl_overcommit_memory != OVERCOMMIT_NEVER;
+}
+
+void rust_helper_mmap_entry_set_noreserve(struct rust_mmap_entry_state *state)
+{
+	vma_flags_set(&state->vma_flags, VMA_NORESERVE_BIT);
+}
+
+void rust_helper_mmap_entry_mmap_region(struct rust_mmap_entry_state *state)
+{
+	state->addr = mmap_region(state->file, state->addr, state->len,
+				  state->vma_flags, state->pgoff, state->uf);
+}
+
+bool rust_helper_mmap_entry_vma_locked(struct rust_mmap_entry_state *state)
+{
+	return vma_flags_test(&state->vma_flags, VMA_LOCKED_BIT);
+}
+
+void rust_helper_mmap_entry_set_populate(struct rust_mmap_entry_state *state)
+{
+	*state->populate = state->len;
+}
+
+#endif /* CONFIG_RUST_MMAP_ENTRY */
 
 unsigned long ksys_mmap_pgoff(unsigned long addr, unsigned long len,
 			      unsigned long prot, unsigned long flags,

@@ -57,6 +57,7 @@ more details.
     pid-lifecycle
     mm-lifetime
     mm-teardown
+    mmap-entry
     exit-mmap
     vma-unmap
     vma-munmap-complete
