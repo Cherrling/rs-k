@@ -42,7 +42,8 @@ The retained boundary contains:
 
 The helper for the existing creation operation includes VMA setup, adjacent
 merge, new-VMA allocation, completion, accounting, and callback handling.
-Migrating that operation remains a separate core unit.
+When ``CONFIG_RUST_MMAP_REGION_CREATE`` is enabled, that operation is provided
+by the Rust entry described in :doc:`mmap-region-create`.
 
 Ordering and invariants
 -----------------------

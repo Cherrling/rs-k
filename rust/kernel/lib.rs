@@ -128,6 +128,8 @@ mod mm_teardown;
 mod mmap_entry;
 #[cfg(CONFIG_RUST_MMAP_REGION)]
 mod mmap_region;
+#[cfg(CONFIG_RUST_MMAP_REGION_CREATE)]
+mod mmap_region_create;
 pub mod module;
 pub mod module_param;
 #[cfg(CONFIG_RUST_MOVE_PAGE_TABLES)]

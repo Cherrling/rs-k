@@ -84,6 +84,7 @@
 #include <linux/mm.h>
 #include <linux/mm-rust.h>
 #include <linux/mmap-entry-rust.h>
+#include <linux/mmap-region-create-rust.h>
 #include <linux/mmap-region-rust.h>
 #include <linux/move-page-tables-rust.h>
 #include <linux/move-pgt-entry-rust.h>

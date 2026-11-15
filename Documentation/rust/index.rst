@@ -59,6 +59,7 @@ more details.
     mm-teardown
     mmap-entry
     mmap-region
+    mmap-region-create
     exit-mmap
     vma-unmap
     vma-munmap-complete

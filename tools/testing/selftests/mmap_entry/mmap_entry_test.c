@@ -171,6 +171,45 @@ static int maps_permissions(unsigned long address, char *permissions,
 	return -1;
 }
 
+static int maps_bounds(unsigned long address, unsigned long *start,
+		       unsigned long *end)
+{
+	char line[512];
+	FILE *file;
+
+	file = fopen("/proc/self/maps", "r");
+	if (!file)
+		return -1;
+	while (fgets(line, sizeof(line), file)) {
+		if (sscanf(line, "%lx-%lx", start, end) != 2)
+			continue;
+		if (address < *start || address >= *end)
+			continue;
+		fclose(file);
+		return 0;
+	}
+	fclose(file);
+	return -1;
+}
+
+static int committed_as_kb(unsigned long *value)
+{
+	char line[256];
+	FILE *file;
+
+	file = fopen("/proc/meminfo", "r");
+	if (!file)
+		return -1;
+	while (fgets(line, sizeof(line), file)) {
+		if (sscanf(line, "Committed_AS: %lu kB", value) == 1) {
+			fclose(file);
+			return 0;
+		}
+	}
+	fclose(file);
+	return -1;
+}
+
 static int smaps_has_flag(unsigned long address, const char *wanted)
 {
 	char line[512];
@@ -331,6 +370,31 @@ static int test_basic_anonymous(void)
 		return 1;
 
 	return munmap(hinted, page_size);
+}
+
+static int test_adjacent_merge(void)
+{
+	const unsigned long base = FIXED_BASE + (16UL << 20);
+	const int flags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE;
+	unsigned long start;
+	unsigned long end;
+	void *first;
+	void *second;
+
+	first = raw_mmap((void *)base, page_size, PROT_READ | PROT_WRITE,
+			 flags, -1, 0);
+	if (first != (void *)base)
+		return 1;
+	second = raw_mmap((void *)(base + page_size), page_size,
+			  PROT_READ | PROT_WRITE, flags, -1, 0);
+	if (second != (void *)(base + page_size))
+		return 1;
+	if (maps_bounds(base, &start, &end) || start != base ||
+	    end != base + 2 * page_size) {
+		fprintf(stderr, "MMAP_ENTRY adjacent anonymous merge failed\n");
+		return 1;
+	}
+	return munmap((void *)base, 2 * page_size);
 }
 
 static int test_exec_policy(void)
@@ -562,6 +626,58 @@ static int test_file_mapping(void)
 	return 0;
 }
 
+static int test_secretmem_prepare(void)
+{
+#ifdef SYS_memfd_secret
+	const unsigned long charge_len = 32UL << 20;
+	unsigned long before;
+	unsigned long after;
+	void *mapping;
+	int fd;
+
+	fd = syscall(SYS_memfd_secret, 0);
+	if (fd < 0) {
+		fprintf(stderr, "MMAP_ENTRY secretmem setup failed: %s\n",
+			strerror(errno));
+		return 1;
+	}
+	if (committed_as_kb(&before)) {
+		fprintf(stderr, "MMAP_ENTRY cannot read Committed_AS\n");
+		close(fd);
+		return 1;
+	}
+	if (expect_mmap_error(NULL, charge_len, PROT_READ | PROT_WRITE,
+			      MAP_PRIVATE, fd, 0, EINVAL, "secretmem private")) {
+		close(fd);
+		return 1;
+	}
+	if (committed_as_kb(&after)) {
+		fprintf(stderr, "MMAP_ENTRY cannot reread Committed_AS\n");
+		close(fd);
+		return 1;
+	}
+	if (after > before + (1UL << 10)) {
+		fprintf(stderr,
+			"MMAP_ENTRY committed accounting leaked %lu kB\n",
+			after - before);
+		close(fd);
+		return 1;
+	}
+	mapping = raw_mmap(NULL, page_size, PROT_READ | PROT_WRITE,
+			   MAP_SHARED, fd, 0);
+	if (mapping == MAP_FAILED) {
+		fprintf(stderr, "MMAP_ENTRY secretmem shared failed: %s\n",
+			strerror(errno));
+		close(fd);
+		return 1;
+	}
+	if (munmap(mapping, page_size))
+		return 1;
+	close(fd);
+#endif
+	return 0;
+}
+
 static int test_mapping_policy(void)
 {
 	unsigned long old_overcommit;
@@ -751,6 +867,10 @@ int main(void)
 		fprintf(stderr, "MMAP_ENTRY basic anonymous test failed\n");
 		goto out;
 	}
+	if (test_adjacent_merge()) {
+		fprintf(stderr, "MMAP_ENTRY adjacent merge test failed\n");
+		goto out;
+	}
 	if (test_exec_policy()) {
 		fprintf(stderr, "MMAP_ENTRY exec policy test failed\n");
 		goto out;
@@ -761,6 +881,10 @@ int main(void)
 	}
 	if (test_file_mapping()) {
 		fprintf(stderr, "MMAP_ENTRY file mapping test failed\n");
+		goto out;
+	}
+	if (test_secretmem_prepare()) {
+		fprintf(stderr, "MMAP_ENTRY secretmem prepare test failed\n");
 		goto out;
 	}
 	if (test_mapping_policy()) {

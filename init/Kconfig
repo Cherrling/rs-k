@@ -1653,6 +1653,22 @@ config RUST_MMAP_REGION
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_MMAP_REGION_CREATE
+	bool "Rust orchestration for completed VMA region creation"
+	depends on RUST && MMU
+	default y
+	help
+	  Use Rust for the production __mmap_region() high-level path. Rust
+	  owns setup dispatch, preparation callbacks, adjacent merging, new-VMA
+	  allocation, completion, deferred actions, and failure cleanup order.
+
+	  The existing VMA setup, callback, merge, allocation, completion,
+	  accounting, and abort operations remain in C. Each helper exposes one
+	  operation or predicate.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_MREMAP_BATCH
 	bool "Rust orchestration for batched mremap moves"
 	depends on RUST && MMU

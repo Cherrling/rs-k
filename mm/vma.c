@@ -10,6 +10,7 @@
  */
 #include "vma_internal.h"
 #include "vma.h"
+#include <linux/mmap-region-create-rust.h>
 #include <linux/mmap-region-rust.h>
 #include <linux/vma-copy-rust.h>
 #include <linux/vma-merge-compat-rust.h>
@@ -5117,9 +5118,10 @@ static bool can_set_ksm_flags_early(struct mmap_state *map)
 	return false;
 }
 
+#ifndef CONFIG_RUST_MMAP_REGION_CREATE
 static unsigned long __mmap_region(struct file *file, unsigned long addr,
-		unsigned long len, vma_flags_t vma_flags,
-		unsigned long pgoff, struct list_head *uf)
+				   unsigned long len, vma_flags_t vma_flags,
+				   unsigned long pgoff, struct list_head *uf)
 {
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma = NULL;
@@ -5195,6 +5197,166 @@ abort_munmap:
 	vms_abort_munmap_vmas(&map.vms, &map.mas_detach);
 	return error;
 }
+#else
+
+struct rust_mmap_create_state {
+	struct vma_iterator vmi;
+	struct mmap_state map;
+	struct vm_area_desc desc;
+	struct vm_area_struct *vma;
+	struct list_head *uf;
+	bool have_mmap_prepare;
+};
+
+static unsigned long __mmap_region(struct file *file, unsigned long addr,
+				   unsigned long len, vma_flags_t vma_flags,
+				   unsigned long pgoff, struct list_head *uf)
+{
+	struct mm_struct *mm = current->mm;
+	struct rust_mmap_create_state state = {
+		.vma = NULL,
+		.uf = uf,
+		.have_mmap_prepare = file && file->f_op->mmap_prepare,
+	};
+
+	vma_iter_init(&state.vmi, mm, addr);
+	state.map = (struct mmap_state) {
+		.mm = mm,
+		.vmi = &state.vmi,
+		.addr = addr,
+		.end = addr + len,
+		.pgoff = pgoff,
+		.anon_pgoff = addr >> PAGE_SHIFT,
+		.pglen = PHYS_PFN(len),
+		.vma_flags = vma_flags,
+		.file = file,
+		.page_prot = vma_flags_to_page_prot(vma_flags),
+	};
+	state.desc = (struct vm_area_desc) {
+		.mm = mm,
+		.file = file,
+		.action = {
+			.type = MMAP_NOTHING,
+		},
+		.vm_ops = &vma_dummy_vm_ops,
+	};
+	state.map.check_ksm_early = can_set_ksm_flags_early(&state.map);
+
+	return rust_mmap_region_create(&state);
+}
+
+int
+rust_helper_mmap_create_setup(struct rust_mmap_create_state *state)
+{
+	return __mmap_setup(&state->map, &state->desc, state->uf);
+}
+
+bool
+rust_helper_mmap_create_have_prepare(struct rust_mmap_create_state *state)
+{
+	return state->have_mmap_prepare;
+}
+
+int
+rust_helper_mmap_create_prepare(struct rust_mmap_create_state *state)
+{
+	return call_mmap_prepare(&state->map, &state->desc);
+}
+
+bool
+rust_helper_mmap_create_check_ksm_early(struct rust_mmap_create_state *state)
+{
+	return state->map.check_ksm_early;
+}
+
+void
+rust_helper_mmap_create_update_ksm_flags(struct rust_mmap_create_state *state)
+{
+	update_ksm_flags(&state->map);
+}
+
+bool
+rust_helper_mmap_create_has_adjacent(struct rust_mmap_create_state *state)
+{
+	return state->map.prev || state->map.next;
+}
+
+void
+rust_helper_mmap_create_try_merge(struct rust_mmap_create_state *state)
+{
+	VMG_MMAP_STATE(vmg, &state->map, NULL);
+
+	state->vma = vma_merge_new_range(&vmg);
+}
+
+bool
+rust_helper_mmap_create_has_vma(struct rust_mmap_create_state *state)
+{
+	return state->vma;
+}
+
+int
+rust_helper_mmap_create_new_vma(struct rust_mmap_create_state *state)
+{
+	return __mmap_new_vma(&state->map, &state->vma, &state->desc.action);
+}
+
+void
+rust_helper_mmap_create_set_user_fields(struct rust_mmap_create_state *state)
+{
+	set_vma_user_defined_fields(state->vma, &state->map);
+}
+
+void
+rust_helper_mmap_create_complete(struct rust_mmap_create_state *state)
+{
+	__mmap_complete(&state->map, state->vma);
+}
+
+int
+rust_helper_mmap_create_action_complete(struct rust_mmap_create_state *state)
+{
+	return mmap_action_complete(state->vma, &state->desc.action,
+				    /*is_compat=*/false);
+}
+
+bool
+rust_helper_mmap_create_charged(struct rust_mmap_create_state *state)
+{
+	return state->map.charged != 0;
+}
+
+void
+rust_helper_mmap_create_unaccount(struct rust_mmap_create_state *state)
+{
+	vm_unacct_memory(state->map.charged);
+}
+
+bool
+rust_helper_mmap_create_file_changed(struct rust_mmap_create_state *state)
+{
+	return state->map.file_doesnt_need_get;
+}
+
+void
+rust_helper_mmap_create_put_changed_file(struct rust_mmap_create_state *state)
+{
+	fput(state->map.file);
+}
+
+void
+rust_helper_mmap_create_abort_munmap(struct rust_mmap_create_state *state)
+{
+	vms_abort_munmap_vmas(&state->map.vms, &state->map.mas_detach);
+}
+
+unsigned long
+rust_helper_mmap_create_addr(struct rust_mmap_create_state *state)
+{
+	return state->map.addr;
+}
+
+#endif /* CONFIG_RUST_MMAP_REGION_CREATE */
 
 /**
  * mmap_region() - Actually perform the userland mapping of a VMA into
