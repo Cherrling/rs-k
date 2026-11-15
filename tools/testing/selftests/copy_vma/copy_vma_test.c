@@ -666,6 +666,318 @@ fail:
 	return 1;
 }
 
+static int test_in_place_expand(unsigned char *carveout)
+{
+	const size_t old_length = 2 * page_size;
+	const size_t new_length = 4 * page_size;
+	const size_t span_length = 8 * page_size;
+	unsigned char *source = carveout + 320 * page_size;
+	unsigned char *moved;
+	size_t offset;
+
+	if (munmap(source, span_length))
+		goto fail;
+	if (map_fixed(source, old_length) != source)
+		goto fail;
+	if (fill_and_check(source, old_length, 0x63, "in-place expand setup"))
+		return 1;
+
+	moved = mremap(source, old_length, new_length, 0);
+	if (moved == MAP_FAILED)
+		goto fail;
+	if (moved != source) {
+		fprintf(stderr,
+			"COPY_VMA in-place expand: returned %p, expected %p\n",
+			moved, source);
+		return 1;
+	}
+	if (fill_and_check(source, old_length, 0x63, "in-place expand"))
+		return 1;
+	for (offset = old_length; offset < new_length; offset += page_size) {
+		if (source[offset]) {
+			fprintf(stderr,
+				"COPY_VMA in-place expand: new page at %#zx is nonzero\n",
+				offset);
+			return 1;
+		}
+	}
+	if (expect_vma((unsigned long)source, (unsigned long)source,
+		       (unsigned long)(source + new_length),
+		       "in-place expand"))
+		return 1;
+
+	munmap(source, span_length);
+	return 0;
+
+fail:
+	fprintf(stderr, "COPY_VMA in-place expand failed: %s\n", strerror(errno));
+	return 1;
+}
+
+static int test_in_place_expand_rejection(unsigned char *carveout)
+{
+	const size_t old_length = 2 * page_size;
+	const size_t blocker_length = page_size;
+	const size_t span_length = 8 * page_size;
+	unsigned char *source = carveout + 336 * page_size;
+	unsigned char *blocker = source + old_length;
+	unsigned char *moved;
+	int saved_errno;
+
+	if (munmap(source, span_length))
+		goto fail;
+	if (map_fixed(source, old_length) != source)
+		goto fail;
+	if (mmap(blocker, blocker_length, PROT_READ,
+		 MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_NORESERVE,
+		 -1, 0) != blocker)
+		goto fail;
+	if (fill_and_check(source, old_length, 0x64,
+			   "in-place expand rejection setup"))
+		return 1;
+
+	moved = mremap(source, old_length, 3 * page_size, 0);
+	saved_errno = errno;
+	if (moved != MAP_FAILED) {
+		fprintf(stderr,
+			"COPY_VMA in-place expand rejection unexpectedly moved to %p\n",
+			moved);
+		return 1;
+	}
+	if (saved_errno != ENOMEM) {
+		fprintf(stderr,
+			"COPY_VMA in-place expand rejection failed with %s, expected ENOMEM\n",
+			strerror(saved_errno));
+		return 1;
+	}
+	if (expect_vma((unsigned long)source, (unsigned long)source,
+		       (unsigned long)(source + old_length),
+		       "in-place expand rejection source"))
+		return 1;
+	if (expect_vma((unsigned long)blocker, (unsigned long)blocker,
+		       (unsigned long)(blocker + blocker_length),
+		       "in-place expand rejection blocker"))
+		return 1;
+
+	munmap(source, span_length);
+	return 0;
+
+fail:
+	fprintf(stderr, "COPY_VMA in-place expand rejection failed: %s\n",
+		strerror(errno));
+	return 1;
+}
+
+static int test_nonfixed_expand_move(unsigned char *carveout)
+{
+	const size_t old_length = 2 * page_size;
+	const size_t new_length = 4 * page_size;
+	const size_t blocker_length = page_size;
+	const size_t span_length = 32 * page_size;
+	unsigned char *source = carveout + 352 * page_size;
+	unsigned char *blocker = source + old_length;
+	unsigned long source_start;
+	unsigned long source_end;
+	unsigned char *moved;
+	size_t offset;
+
+	if (munmap(source, span_length))
+		goto fail;
+	if (map_fixed(source, old_length) != source)
+		goto fail;
+	if (mmap(blocker, blocker_length, PROT_READ,
+		 MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_NORESERVE,
+		 -1, 0) != blocker)
+		goto fail;
+	if (fill_and_check(source, old_length, 0x65,
+			   "nonfixed expand move setup"))
+		return 1;
+
+	moved = mremap(source, old_length, new_length, MREMAP_MAYMOVE);
+	if (moved == MAP_FAILED)
+		goto fail;
+	if (moved == source) {
+		fprintf(stderr,
+			"COPY_VMA nonfixed expand move did not move the mapping\n");
+		return 1;
+	}
+	if (!find_vma_bounds((unsigned long)source, &source_start,
+			     &source_end)) {
+		fprintf(stderr,
+			"COPY_VMA nonfixed expand move left source VMA mapped\n");
+		return 1;
+	}
+	if (fill_and_check(moved, old_length, 0x65,
+			   "nonfixed expand move"))
+		return 1;
+	for (offset = old_length; offset < new_length; offset += page_size) {
+		if (moved[offset]) {
+			fprintf(stderr,
+				"COPY_VMA nonfixed expand move: new page at %#zx is nonzero\n",
+				offset);
+			return 1;
+		}
+	}
+	if (expect_vma((unsigned long)moved, (unsigned long)moved,
+		       (unsigned long)(moved + new_length),
+		       "nonfixed expand move"))
+		return 1;
+
+	munmap(moved, new_length);
+	munmap(source, span_length);
+	return 0;
+
+fail:
+	fprintf(stderr, "COPY_VMA nonfixed expand move failed: %s\n",
+		strerror(errno));
+	return 1;
+}
+
+static int test_in_place_expand_adjacent(unsigned char *carveout)
+{
+	const size_t left_length = 2 * page_size;
+	const size_t right_length = 2 * page_size;
+	const size_t gap_length = 2 * page_size;
+	const size_t span_length = 16 * page_size;
+	const size_t split_length = left_length + gap_length + right_length;
+	unsigned char *left = carveout + 384 * page_size;
+	unsigned char *right = left + left_length + gap_length;
+	unsigned char *moved;
+
+	if (munmap(left, span_length))
+		goto fail;
+	if (map_fixed(left, split_length) != left)
+		goto fail;
+	if (munmap(left + left_length, gap_length))
+		goto fail;
+	if (fill_and_check(left, left_length, 0x66,
+			   "in-place expand adjacent left setup"))
+		return 1;
+	if (fill_and_check(right, right_length, 0x67,
+			   "in-place expand adjacent right setup"))
+		return 1;
+
+	moved = mremap(left, left_length, left_length + gap_length, 0);
+	if (moved == MAP_FAILED)
+		goto fail;
+	if (moved != left) {
+		fprintf(stderr,
+			"COPY_VMA in-place expand adjacent: returned %p, expected %p\n",
+			moved, left);
+		return 1;
+	}
+	if (expect_vma((unsigned long)left, (unsigned long)left,
+		       (unsigned long)right, "in-place expand adjacent left"))
+		return 1;
+	if (expect_vma((unsigned long)right, (unsigned long)right,
+		       (unsigned long)(right + right_length),
+		       "in-place expand adjacent right"))
+		return 1;
+	if (fill_and_check(left, left_length, 0x66,
+			   "in-place expand adjacent left"))
+		return 1;
+	if (fill_and_check(right, right_length, 0x67,
+			   "in-place expand adjacent right"))
+		return 1;
+
+	munmap(left, left_length + gap_length + right_length);
+	return 0;
+
+fail:
+	fprintf(stderr, "COPY_VMA in-place expand adjacent failed: %s\n",
+		strerror(errno));
+	return 1;
+}
+
+static int test_in_place_shrink(unsigned char *carveout)
+{
+	const size_t old_length = 4 * page_size;
+	const size_t new_length = 2 * page_size;
+	const size_t span_length = 8 * page_size;
+	unsigned char *source = carveout + 400 * page_size;
+	unsigned long tail_start;
+	unsigned long tail_end;
+	unsigned char *moved;
+
+	if (munmap(source, span_length))
+		goto fail;
+	if (map_fixed(source, old_length) != source)
+		goto fail;
+	if (fill_and_check(source, old_length, 0x68,
+			   "in-place shrink setup"))
+		return 1;
+
+	moved = mremap(source, old_length, new_length, 0);
+	if (moved == MAP_FAILED)
+		goto fail;
+	if (moved != source) {
+		fprintf(stderr,
+			"COPY_VMA in-place shrink: returned %p, expected %p\n",
+			moved, source);
+		return 1;
+	}
+	if (fill_and_check(source, new_length, 0x68, "in-place shrink"))
+		return 1;
+	if (expect_vma((unsigned long)source, (unsigned long)source,
+		       (unsigned long)(source + new_length),
+		       "in-place shrink"))
+		return 1;
+	if (!find_vma_bounds((unsigned long)(source + new_length),
+			     &tail_start, &tail_end)) {
+		fprintf(stderr,
+			"COPY_VMA in-place shrink left tail VMA mapped\n");
+		return 1;
+	}
+
+	munmap(source, span_length);
+	return 0;
+
+fail:
+	fprintf(stderr, "COPY_VMA in-place shrink failed: %s\n",
+		strerror(errno));
+	return 1;
+}
+
+static int test_same_size_resize(unsigned char *carveout)
+{
+	const size_t length = 2 * page_size;
+	const size_t span_length = 4 * page_size;
+	unsigned char *source = carveout + 416 * page_size;
+	unsigned char *moved;
+
+	if (munmap(source, span_length))
+		goto fail;
+	if (map_fixed(source, length) != source)
+		goto fail;
+	if (fill_and_check(source, length, 0x69,
+			   "same-size resize setup"))
+		return 1;
+
+	moved = mremap(source, length, length, 0);
+	if (moved == MAP_FAILED)
+		goto fail;
+	if (moved != source) {
+		fprintf(stderr,
+			"COPY_VMA same-size resize: returned %p, expected %p\n",
+			moved, source);
+		return 1;
+	}
+	if (fill_and_check(source, length, 0x69, "same-size resize"))
+		return 1;
+	if (expect_vma((unsigned long)source, (unsigned long)source,
+		       (unsigned long)(source + length),
+		       "same-size resize"))
+		return 1;
+
+	munmap(source, span_length);
+	return 0;
+
+fail:
+	fprintf(stderr, "COPY_VMA same-size resize failed: %s\n",
+		strerror(errno));
+	return 1;
+}
+
 static int test_vdso_move(unsigned char *carveout)
 {
 	unsigned long source_start;
@@ -1043,6 +1355,12 @@ int main(void)
 	    test_merge_move(carveout) ||
 	    test_expand_move(carveout) ||
 	    test_shrink_move(carveout) ||
+	    test_in_place_expand(carveout) ||
+	    test_in_place_expand_rejection(carveout) ||
+	    test_nonfixed_expand_move(carveout) ||
+	    test_in_place_expand_adjacent(carveout) ||
+	    test_in_place_shrink(carveout) ||
+	    test_same_size_resize(carveout) ||
 	    test_vdso_move(carveout) ||
 	    test_aio_callback_failure(carveout) ||
 	    test_fixed_sealed_destination(carveout) ||

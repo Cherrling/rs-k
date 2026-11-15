@@ -1584,6 +1584,22 @@ config RUST_MREMAP_TO
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_MREMAP_RESIZE
+	bool "Rust orchestration for resizing mremap mappings"
+	depends on RUST && MMU
+	depends on RUST_MREMAP_TO
+	default y
+	help
+	  Use Rust for the production mremap_at() path. Rust owns the
+	  no-resize, shrink, in-place expansion, expansion rejection,
+	  destination selection, and expansion move decisions.
+
+	  Existing shrinking, VMA extension, accounting, unmapped-area
+	  selection, and VMA movement operations remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_COPY_MM
 	bool "Rust implementation of address-space copying"
 	depends on RUST && MMU

@@ -71,6 +71,7 @@ more details.
     mremap-copy
     mremap-move
     mremap-to
+    mremap-resize
     vma-expand
     vma-shrink
     vma-modify

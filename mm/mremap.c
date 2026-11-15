@@ -24,6 +24,7 @@
 #include <linux/mmu_notifier.h>
 #include <linux/mremap-copy-rust.h>
 #include <linux/mremap-move-rust.h>
+#include <linux/mremap-resize-rust.h>
 #include <linux/mremap-to-rust.h>
 #include <linux/uaccess.h>
 #include <linux/userfaultfd_k.h>
@@ -1907,17 +1908,60 @@ static int vma_expandable(struct vm_area_struct *vma, unsigned long delta)
 	return 1;
 }
 
-/* Determine whether we are actually able to execute an in-place expansion. */
-static bool vrm_can_expand_in_place(struct vma_remap_struct *vrm)
+static bool vrm_ends_at_vma_end(struct vma_remap_struct *vrm)
 {
 	/* Number of bytes from vrm->addr to end of VMA. */
 	unsigned long suffix_bytes = vrm->vma->vm_end - vrm->addr;
 
-	/* If end of range aligns to end of VMA, we can just expand in-place. */
-	if (suffix_bytes != vrm->old_len)
+	return suffix_bytes == vrm->old_len;
+}
+
+static bool vrm_charge_expand(struct vma_remap_struct *vrm)
+{
+	return vrm_calc_charge(vrm);
+}
+
+static bool vrm_merge_expand(struct vma_remap_struct *vrm)
+{
+	struct mm_struct *mm = current->mm;
+	struct vm_area_struct *vma = vrm->vma;
+	VMA_ITERATOR(vmi, mm, vma->vm_end);
+
+	/*
+	 * Function vma_merge_extend() is called on the
+	 * extension we are adding to the already existing vma,
+	 * vma_merge_extend() will merge this extension with the
+	 * already existing vma (expand operation itself) and
+	 * possibly also with the next vma if it becomes
+	 * adjacent to the expanded vma and otherwise
+	 * compatible.
+	 */
+	vma = vma_merge_extend(&vmi, vma, vrm->delta);
+	if (!vma)
 		return false;
 
-	/* Check whether this is feasible. */
+	vrm->vma = vma;
+	return true;
+}
+
+static void vrm_uncharge_expand(struct vma_remap_struct *vrm)
+{
+	vrm_uncharge(vrm);
+}
+
+static void vrm_account_expand(struct vma_remap_struct *vrm)
+{
+	vrm_stat_account(vrm, vrm->delta);
+}
+
+#ifndef CONFIG_RUST_MREMAP_RESIZE
+
+/* Determine whether we are actually able to execute an in-place expansion. */
+static bool vrm_can_expand_in_place(struct vma_remap_struct *vrm)
+{
+	if (!vrm_ends_at_vma_end(vrm))
+		return false;
+
 	if (!vma_expandable(vrm->vma, vrm->delta))
 		return false;
 
@@ -1932,33 +1976,20 @@ static bool vrm_can_expand_in_place(struct vma_remap_struct *vrm)
  */
 static unsigned long expand_vma_in_place(struct vma_remap_struct *vrm)
 {
-	struct mm_struct *mm = current->mm;
-	struct vm_area_struct *vma = vrm->vma;
-	VMA_ITERATOR(vmi, mm, vma->vm_end);
-
-	if (!vrm_calc_charge(vrm))
+	if (!vrm_charge_expand(vrm))
 		return -ENOMEM;
 
-	/*
-	 * Function vma_merge_extend() is called on the
-	 * extension we are adding to the already existing vma,
-	 * vma_merge_extend() will merge this extension with the
-	 * already existing vma (expand operation itself) and
-	 * possibly also with the next vma if it becomes
-	 * adjacent to the expanded vma and otherwise
-	 * compatible.
-	 */
-	vma = vma_merge_extend(&vmi, vma, vrm->delta);
-	if (!vma) {
-		vrm_uncharge(vrm);
+	if (!vrm_merge_expand(vrm)) {
+		vrm_uncharge_expand(vrm);
 		return -ENOMEM;
 	}
-	vrm->vma = vma;
 
-	vrm_stat_account(vrm, vrm->delta);
+	vrm_account_expand(vrm);
 
 	return 0;
 }
+
+#endif /* !CONFIG_RUST_MREMAP_RESIZE */
 
 static bool align_hugetlb(struct vma_remap_struct *vrm)
 {
@@ -1982,6 +2013,8 @@ static bool align_hugetlb(struct vma_remap_struct *vrm)
 
 	return true;
 }
+
+#ifndef CONFIG_RUST_MREMAP_RESIZE
 
 /*
  * We are mremap()'ing without specifying a fixed address to move to, but are
@@ -2059,6 +2092,107 @@ static unsigned long mremap_at(struct vma_remap_struct *vrm)
 	WARN_ON_ONCE(1);
 	return -EINVAL;
 }
+
+#else
+
+struct rust_mremap_resize_state {
+	struct vma_remap_struct *vrm;
+};
+
+/*
+ * mremap_at() - resize an existing mapping, potentially moving it.
+ * Returns: The mapping address or an error.
+ */
+static unsigned long mremap_at(struct vma_remap_struct *vrm)
+{
+	struct rust_mremap_resize_state state = {
+		.vrm = vrm,
+	};
+
+	return rust_mremap_resize(&state);
+}
+
+unsigned int rust_helper_mremap_resize_type(struct rust_mremap_resize_state *state)
+{
+	switch (state->vrm->remap_type) {
+	case MREMAP_INVALID:
+		return RUST_MREMAP_RESIZE_INVALID;
+	case MREMAP_NO_RESIZE:
+		return RUST_MREMAP_RESIZE_NO_RESIZE;
+	case MREMAP_SHRINK:
+		return RUST_MREMAP_RESIZE_SHRINK;
+	case MREMAP_EXPAND:
+		return RUST_MREMAP_RESIZE_EXPAND;
+	}
+
+	return RUST_MREMAP_RESIZE_INVALID;
+}
+
+unsigned long
+rust_helper_mremap_resize_addr(struct rust_mremap_resize_state *state)
+{
+	return state->vrm->addr;
+}
+
+unsigned long
+rust_helper_mremap_resize_shrink(struct rust_mremap_resize_state *state)
+{
+	return shrink_vma(state->vrm, /* drop_lock= */true);
+}
+
+bool rust_helper_mremap_resize_ends_at_vma_end(struct rust_mremap_resize_state *state)
+{
+	return vrm_ends_at_vma_end(state->vrm);
+}
+
+bool rust_helper_mremap_resize_is_expandable(struct rust_mremap_resize_state *state)
+{
+	return vma_expandable(state->vrm->vma, state->vrm->delta);
+}
+
+bool rust_helper_mremap_resize_charge(struct rust_mremap_resize_state *state)
+{
+	return vrm_charge_expand(state->vrm);
+}
+
+bool rust_helper_mremap_resize_merge(struct rust_mremap_resize_state *state)
+{
+	return vrm_merge_expand(state->vrm);
+}
+
+void rust_helper_mremap_resize_uncharge(struct rust_mremap_resize_state *state)
+{
+	vrm_uncharge_expand(state->vrm);
+}
+
+void rust_helper_mremap_resize_account(struct rust_mremap_resize_state *state)
+{
+	vrm_account_expand(state->vrm);
+}
+
+bool rust_helper_mremap_resize_is_movable(struct rust_mremap_resize_state *state)
+{
+	return state->vrm->flags & MREMAP_MAYMOVE;
+}
+
+unsigned long
+rust_helper_mremap_resize_set_new_addr(struct rust_mremap_resize_state *state)
+{
+	return vrm_set_new_addr(state->vrm);
+}
+
+unsigned long
+rust_helper_mremap_resize_move(struct rust_mremap_resize_state *state)
+{
+	return move_vma(state->vrm);
+}
+
+void rust_helper_mremap_resize_warn_invalid(void)
+{
+	WARN_ON_ONCE(1);
+}
+
+#endif /* CONFIG_RUST_MREMAP_RESIZE */
 
 /*
  * Will this operation result in the VMA being expanded or moved and thus need
