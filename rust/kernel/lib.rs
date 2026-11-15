@@ -130,6 +130,8 @@ mod mmap_entry;
 mod mmap_region;
 #[cfg(CONFIG_RUST_MMAP_REGION_CREATE)]
 mod mmap_region_create;
+#[cfg(CONFIG_RUST_MMAP_REGION_SETUP)]
+mod mmap_region_setup;
 pub mod module;
 pub mod module_param;
 #[cfg(CONFIG_RUST_MOVE_PAGE_TABLES)]

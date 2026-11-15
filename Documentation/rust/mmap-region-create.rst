@@ -29,7 +29,7 @@ existing operation or exposes one narrow state predicate.
 The retained boundary contains:
 
 * VMA iterator, mapping state, and descriptor initialization.
-* The existing overlapping-VMA setup operation.
+* The existing overlapping-VMA setup operation when Rust setup is disabled.
 * The existing ``mmap_prepare`` callback operation.
 * The existing KSM flag operation.
 * The existing adjacent merge operation.
@@ -41,6 +41,9 @@ The retained boundary contains:
 
 These helpers do not select a success, error, merge, allocation, completion, or
 cleanup branch. Rust performs each selection and orders the helper calls.
+
+When ``CONFIG_RUST_MMAP_REGION_SETUP`` is enabled, setup control flow is
+provided by the Rust entry described in :doc:`mmap-region-setup`.
 
 Ordering and invariants
 -----------------------

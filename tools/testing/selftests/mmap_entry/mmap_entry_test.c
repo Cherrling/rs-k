@@ -397,6 +397,111 @@ static int test_adjacent_merge(void)
 	return munmap((void *)base, 2 * page_size);
 }
 
+static int test_setup_accounting(void)
+{
+	const unsigned long base = FIXED_BASE + (32UL << 20);
+	const unsigned long length = 16UL << 20;
+	const int flags = MAP_PRIVATE | MAP_ANONYMOUS;
+	unsigned long before;
+	unsigned long after_map;
+	unsigned long after_replace;
+	unsigned long after_unmap;
+	void *mapping;
+
+	if (committed_as_kb(&before)) {
+		fprintf(stderr, "MMAP_ENTRY cannot read initial Committed_AS\n");
+		return 1;
+	}
+	mapping = raw_mmap((void *)base, length, PROT_READ | PROT_WRITE,
+			   flags | MAP_FIXED_NOREPLACE, -1, 0);
+	if (mapping != (void *)base) {
+		fprintf(stderr, "MMAP_ENTRY setup accounting map failed\n");
+		return 1;
+	}
+	if (committed_as_kb(&after_map)) {
+		fprintf(stderr, "MMAP_ENTRY cannot read mapped Committed_AS\n");
+		return 1;
+	}
+	if (after_map < before + (8UL << 10)) {
+		fprintf(stderr,
+			"MMAP_ENTRY setup did not charge committed memory\n");
+		return 1;
+	}
+
+	mapping = raw_mmap((void *)base, length, PROT_READ | PROT_WRITE,
+			   flags | MAP_FIXED, -1, 0);
+	if (mapping != (void *)base) {
+		fprintf(stderr, "MMAP_ENTRY setup replacement failed\n");
+		return 1;
+	}
+	if (committed_as_kb(&after_replace)) {
+		fprintf(stderr,
+			"MMAP_ENTRY cannot read replacement Committed_AS\n");
+		return 1;
+	}
+	if (after_replace > after_map + (1UL << 10)) {
+		fprintf(stderr,
+			"MMAP_ENTRY replacement double charged memory\n");
+		return 1;
+	}
+
+	if (munmap((void *)base, length))
+		return 1;
+	if (committed_as_kb(&after_unmap)) {
+		fprintf(stderr, "MMAP_ENTRY cannot read unmapped Committed_AS\n");
+		return 1;
+	}
+	if (after_unmap + (8UL << 10) > after_replace) {
+		fprintf(stderr, "MMAP_ENTRY unmap did not drop accounting\n");
+		return 1;
+	}
+	return 0;
+}
+
+static int test_setup_rollback(void)
+{
+	const unsigned long base = FIXED_BASE + (48UL << 20);
+	pid_t child;
+	int status;
+
+	child = fork();
+	if (child < 0)
+		return 1;
+	if (!child) {
+		struct rlimit limit = {
+			.rlim_cur = 1,
+			.rlim_max = 1,
+		};
+		unsigned char *mapping;
+
+		mapping = raw_mmap((void *)base, page_size,
+				   PROT_READ | PROT_WRITE,
+				   MAP_PRIVATE | MAP_ANONYMOUS |
+				   MAP_FIXED_NOREPLACE, -1, 0);
+		if (mapping != (void *)base)
+			_exit(1);
+		mapping[0] = 0x6d;
+
+		if (setrlimit(RLIMIT_AS, &limit))
+			_exit(1);
+		if (expect_mmap_error((void *)base, 2 * page_size,
+				      PROT_READ | PROT_WRITE,
+				      MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED,
+				      -1, 0, ENOMEM,
+				      "address space limit")) {
+			_exit(1);
+		}
+		if (mapping[0] != 0x6d)
+			_exit(1);
+		_exit(0);
+	}
+
+	if (waitpid(child, &status, 0) != child ||
+	    !WIFEXITED(status) || WEXITSTATUS(status))
+		return 1;
+	return 0;
+}
+
 static int test_exec_policy(void)
 {
 	const char *path = "/mnt/noexec-file";
@@ -869,6 +974,14 @@ int main(void)
 	}
 	if (test_adjacent_merge()) {
 		fprintf(stderr, "MMAP_ENTRY adjacent merge test failed\n");
+		goto out;
+	}
+	if (test_setup_accounting()) {
+		fprintf(stderr, "MMAP_ENTRY setup accounting test failed\n");
+		goto out;
+	}
+	if (test_setup_rollback()) {
+		fprintf(stderr, "MMAP_ENTRY setup rollback test failed\n");
 		goto out;
 	}
 	if (test_exec_policy()) {

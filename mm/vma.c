@@ -12,6 +12,7 @@
 #include "vma.h"
 #include <linux/mmap-region-create-rust.h>
 #include <linux/mmap-region-rust.h>
+#include <linux/mmap-region-setup-rust.h>
 #include <linux/vma-copy-rust.h>
 #include <linux/vma-merge-compat-rust.h>
 #include <linux/vma-merge-existing-rust.h>
@@ -4783,6 +4784,7 @@ static void set_desc_from_map(struct vm_area_desc *desc,
 	desc->page_prot = map->page_prot;
 }
 
+#ifndef CONFIG_RUST_MMAP_REGION_SETUP
 /*
  * __mmap_setup() - Prepare to gather any overlapping VMAs that need to be
  * unmapped once the map operation is completed, check limits, account mapping
@@ -4860,6 +4862,7 @@ static int __mmap_setup(struct mmap_state *map, struct vm_area_desc *desc,
 	set_desc_from_map(desc, map);
 	return 0;
 }
+#endif /* CONFIG_RUST_MMAP_REGION_SETUP */
 
 
 static int __mmap_new_file_vma(struct mmap_state *map,
@@ -5208,6 +5211,107 @@ struct rust_mmap_create_state {
 	bool have_mmap_prepare;
 };
 
+#ifdef CONFIG_RUST_MMAP_REGION_SETUP
+
+bool
+rust_helper_mmap_setup_find_overlap(struct rust_mmap_create_state *state)
+{
+	state->map.vms.vma = vma_find(state->map.vmi, state->map.end);
+	return state->map.vms.vma;
+}
+
+void
+rust_helper_mmap_setup_init_unmap(struct rust_mmap_create_state *state)
+{
+	init_vma_munmap(&state->map.vms, state->map.vmi, state->map.vms.vma,
+			state->map.addr, state->map.end, state->uf,
+			/* unlock = */ false);
+}
+
+void
+rust_helper_mmap_setup_init_detach(struct rust_mmap_create_state *state)
+{
+	mt_init_flags(&state->map.mt_detach,
+		      state->map.vmi->mas.tree->ma_flags & MT_FLAGS_LOCK_MASK);
+	mt_on_stack(state->map.mt_detach);
+	mas_init(&state->map.mas_detach, &state->map.mt_detach, /* addr = */ 0);
+}
+
+int
+rust_helper_mmap_setup_gather(struct rust_mmap_create_state *state)
+{
+	return vms_gather_munmap_vmas(&state->map.vms,
+				      &state->map.mas_detach);
+}
+
+void
+rust_helper_mmap_setup_clear_unmap_pages(struct rust_mmap_create_state *state)
+{
+	state->map.vms.nr_pages = 0;
+}
+
+void
+rust_helper_mmap_setup_adopt_unmap_neighbors(struct rust_mmap_create_state *s)
+{
+	s->map.next = s->map.vms.next;
+	s->map.prev = s->map.vms.prev;
+}
+
+void
+rust_helper_mmap_setup_select_adjacent(struct rust_mmap_create_state *state)
+{
+	state->map.next = vma_iter_next_rewind(state->map.vmi,
+					       &state->map.prev);
+}
+
+bool
+rust_helper_mmap_setup_may_expand(struct rust_mmap_create_state *state)
+{
+	return may_expand_vm(state->map.mm, &state->map.vma_flags,
+			     state->map.pglen - state->map.vms.nr_pages);
+}
+
+bool
+rust_helper_mmap_setup_accountable(struct rust_mmap_create_state *state)
+{
+	return accountable_mapping(&state->map);
+}
+
+unsigned long
+rust_helper_mmap_setup_uncharged(struct rust_mmap_create_state *state)
+{
+	return state->map.pglen - state->map.vms.nr_accounted;
+}
+
+int
+rust_helper_mmap_setup_charge(struct rust_mmap_create_state *state,
+			      unsigned long pages)
+{
+	return security_vm_enough_memory_mm(state->map.mm, pages);
+}
+
+void
+rust_helper_mmap_setup_commit_accounting(struct rust_mmap_create_state *state)
+{
+	state->map.charged = state->map.pglen;
+	state->map.vms.nr_accounted = 0;
+	vma_flags_set(&state->map.vma_flags, VMA_ACCOUNT_BIT);
+}
+
+void
+rust_helper_mmap_setup_clean_area(struct rust_mmap_create_state *state)
+{
+	vms_clean_up_area(&state->map.vms, &state->map.mas_detach);
+}
+
+void
+rust_helper_mmap_setup_sync_desc(struct rust_mmap_create_state *state)
+{
+	set_desc_from_map(&state->desc, &state->map);
+}
+
+#endif /* CONFIG_RUST_MMAP_REGION_SETUP */
+
 static unsigned long __mmap_region(struct file *file, unsigned long addr,
 				   unsigned long len, vma_flags_t vma_flags,
 				   unsigned long pgoff, struct list_head *uf)
@@ -5248,7 +5352,11 @@ static unsigned long __mmap_region(struct file *file, unsigned long addr,
 int
 rust_helper_mmap_create_setup(struct rust_mmap_create_state *state)
 {
+#ifdef CONFIG_RUST_MMAP_REGION_SETUP
+	return rust_mmap_region_setup(state);
+#else
 	return __mmap_setup(&state->map, &state->desc, state->uf);
+#endif
 }
 
 bool
