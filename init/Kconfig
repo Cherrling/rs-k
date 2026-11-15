@@ -1600,6 +1600,23 @@ config RUST_MREMAP_RESIZE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_MREMAP_ENTRY
+	bool "Rust orchestration for the mremap syscall entry"
+	depends on RUST && MMU
+	depends on RUST_MREMAP_RESIZE
+	default y
+	help
+	  Use Rust for the production do_mremap() path. Rust owns parameter
+	  validation, mmap locking, early map-count rejection, move-only
+	  dispatch, VMA lookup and preparation, target and resize dispatch,
+	  unlock, populated expansion, and userfaultfd notification.
+
+	  Existing field projections, predicates, locking primitives,
+	  VMA operations, and notifications remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_COPY_MM
 	bool "Rust implementation of address-space copying"
 	depends on RUST && MMU

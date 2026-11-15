@@ -128,6 +128,8 @@ pub mod module;
 pub mod module_param;
 #[cfg(CONFIG_RUST_MREMAP_COPY)]
 mod mremap_copy;
+#[cfg(CONFIG_RUST_MREMAP_ENTRY)]
+mod mremap_entry;
 #[cfg(CONFIG_RUST_MREMAP_MOVE)]
 mod mremap_move;
 #[cfg(CONFIG_RUST_MREMAP_RESIZE)]

@@ -23,6 +23,7 @@
 #include <linux/syscalls.h>
 #include <linux/mmu_notifier.h>
 #include <linux/mremap-copy-rust.h>
+#include <linux/mremap-entry-rust.h>
 #include <linux/mremap-move-rust.h>
 #include <linux/mremap-resize-rust.h>
 #include <linux/mremap-to-rust.h>
@@ -2358,6 +2359,8 @@ static int check_prep_vma(struct vma_remap_struct *vrm)
 	return 0;
 }
 
+#ifndef CONFIG_RUST_MREMAP_ENTRY
+
 /*
  * Are the parameters passed to mremap() valid? If so return 0, otherwise return
  * error.
@@ -2414,6 +2417,8 @@ static unsigned long check_mremap_params(struct vma_remap_struct *vrm)
 
 	return 0;
 }
+
+#endif /* CONFIG_RUST_MREMAP_ENTRY */
 
 static unsigned long remap_move(struct vma_remap_struct *vrm)
 {
@@ -2504,6 +2509,8 @@ static unsigned long remap_move(struct vma_remap_struct *vrm)
 	return res;
 }
 
+#ifndef CONFIG_RUST_MREMAP_ENTRY
+
 static unsigned long do_mremap(struct vma_remap_struct *vrm)
 {
 	struct mm_struct *mm = current->mm;
@@ -2551,6 +2558,163 @@ out:
 	notify_uffd(vrm, failed);
 	return res;
 }
+
+#else
+
+struct rust_mremap_entry_state {
+	struct vma_remap_struct *vrm;
+};
+
+/*
+ * do_mremap() - validate and execute a mremap operation.
+ * Returns: The mapping address or an error.
+ */
+static unsigned long do_mremap(struct vma_remap_struct *vrm)
+{
+	struct rust_mremap_entry_state state = {
+		.vrm = vrm,
+	};
+
+	return rust_mremap_entry(&state);
+}
+
+void rust_helper_mremap_entry_align_lengths(struct rust_mremap_entry_state *state)
+{
+	state->vrm->old_len = PAGE_ALIGN(state->vrm->old_len);
+	state->vrm->new_len = PAGE_ALIGN(state->vrm->new_len);
+}
+
+bool rust_helper_mremap_entry_unsupported_flags(struct rust_mremap_entry_state *state)
+{
+	unsigned long supported = MREMAP_FIXED | MREMAP_MAYMOVE | MREMAP_DONTUNMAP;
+
+	return state->vrm->flags & ~supported;
+}
+
+bool rust_helper_mremap_entry_addr_aligned(struct rust_mremap_entry_state *state)
+{
+	return !offset_in_page(state->vrm->addr);
+}
+
+bool rust_helper_mremap_entry_new_len_invalid(struct rust_mremap_entry_state *state)
+{
+	return !state->vrm->new_len || state->vrm->new_len > TASK_SIZE;
+}
+
+bool rust_helper_mremap_entry_implies_new_addr(struct rust_mremap_entry_state *state)
+{
+	return vrm_implies_new_addr(state->vrm);
+}
+
+bool rust_helper_mremap_entry_new_addr_invalid(struct rust_mremap_entry_state *state)
+{
+	if (state->vrm->new_addr > TASK_SIZE - state->vrm->new_len)
+		return true;
+
+	return offset_in_page(state->vrm->new_addr);
+}
+
+bool rust_helper_mremap_entry_has_maymove(struct rust_mremap_entry_state *state)
+{
+	return state->vrm->flags & MREMAP_MAYMOVE;
+}
+
+bool
+rust_helper_mremap_entry_dontunmap_resize_invalid(struct rust_mremap_entry_state *state)
+{
+	return (state->vrm->flags & MREMAP_DONTUNMAP) &&
+	       state->vrm->old_len != state->vrm->new_len;
+}
+
+bool rust_helper_mremap_entry_overlaps(struct rust_mremap_entry_state *state)
+{
+	return vrm_overlaps(state->vrm);
+}
+
+int
+rust_helper_mremap_entry_acquire_mmap_write_lock(struct rust_mremap_entry_state *state)
+{
+	int err = mmap_write_lock_killable(current->mm);
+
+	if (!err)
+		state->vrm->mmap_locked = true;
+
+	return err;
+}
+
+bool
+rust_helper_mremap_entry_map_count_allows_split(struct rust_mremap_entry_state *state)
+{
+	return check_map_count_against_split_early(state->vrm);
+}
+
+bool rust_helper_mremap_entry_move_only(struct rust_mremap_entry_state *state)
+{
+	return vrm_move_only(state->vrm);
+}
+
+unsigned long
+rust_helper_mremap_entry_remap_move(struct rust_mremap_entry_state *state)
+{
+	return remap_move(state->vrm);
+}
+
+void rust_helper_mremap_entry_lookup_source(struct rust_mremap_entry_state *state)
+{
+	state->vrm->vma = vma_lookup(current->mm, state->vrm->addr);
+}
+
+unsigned long
+rust_helper_mremap_entry_check_prepare(struct rust_mremap_entry_state *state)
+{
+	return check_prep_vma(state->vrm);
+}
+
+unsigned long
+rust_helper_mremap_entry_mremap_to(struct rust_mremap_entry_state *state)
+{
+	return mremap_to(state->vrm);
+}
+
+unsigned long
+rust_helper_mremap_entry_mremap_at(struct rust_mremap_entry_state *state)
+{
+	return mremap_at(state->vrm);
+}
+
+bool rust_helper_mremap_entry_is_error_value(unsigned long value)
+{
+	return IS_ERR_VALUE(value);
+}
+
+bool rust_helper_mremap_entry_mmap_locked(struct rust_mremap_entry_state *state)
+{
+	return state->vrm->mmap_locked;
+}
+
+void rust_helper_mremap_entry_unlock(struct rust_mremap_entry_state *state)
+{
+	mmap_write_unlock(current->mm);
+}
+
+bool rust_helper_mremap_entry_needs_populate(struct rust_mremap_entry_state *state)
+{
+	return state->vrm->populate_expand;
+}
+
+void rust_helper_mremap_entry_populate(struct rust_mremap_entry_state *state)
+{
+	mm_populate(state->vrm->new_addr + state->vrm->old_len,
+		    state->vrm->delta);
+}
+
+void rust_helper_mremap_entry_notify_uffd(struct rust_mremap_entry_state *state,
+					  bool failed)
+{
+	notify_uffd(state->vrm, failed);
+}
+
+#endif /* CONFIG_RUST_MREMAP_ENTRY */
 
 /*
  * Expand (or shrink) an existing mapping, potentially moving it at the

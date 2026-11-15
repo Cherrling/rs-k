@@ -280,6 +280,32 @@ static int expect_vma(unsigned long address, unsigned long expected_start,
 	return 0;
 }
 
+static int expect_mremap_failure(void *address, size_t old_length,
+				 size_t new_length, unsigned long flags,
+				 void *new_address, int expected_errno,
+				 const char *name)
+{
+	void *moved;
+	int saved_errno;
+
+	moved = mremap(address, old_length, new_length, flags, new_address);
+	saved_errno = errno;
+	if (moved != MAP_FAILED) {
+		fprintf(stderr,
+			"COPY_VMA %s: unexpectedly moved to %p\n",
+			name, moved);
+		return 1;
+	}
+	if (saved_errno != expected_errno) {
+		fprintf(stderr,
+			"COPY_VMA %s: failed with %s, expected %s\n",
+			name, strerror(saved_errno), strerror(expected_errno));
+		return 1;
+	}
+
+	return 0;
+}
+
 static void *map_fixed(void *address, size_t length)
 {
 	return mmap(address, length, PROT_READ | PROT_WRITE,
@@ -978,6 +1004,61 @@ fail:
 	return 1;
 }
 
+static int test_parameter_validation(unsigned char *carveout)
+{
+	const size_t length = 2 * page_size;
+	const size_t span_length = 16 * page_size;
+	unsigned char *source = carveout + 432 * page_size;
+	unsigned char *target = source + 8 * page_size;
+	unsigned long high_address = ~(unsigned long)(page_size - 1);
+
+	if (munmap(source, span_length))
+		goto fail;
+	if (map_fixed(source, length) != source)
+		goto fail;
+
+	if (expect_mremap_failure(source, length, length, 1UL << 20, NULL,
+				  EINVAL, "unsupported flags") ||
+	    expect_mremap_failure(source + 1, length, length, 0, NULL,
+				  EINVAL, "misaligned source") ||
+	    expect_mremap_failure(source, length, 0, 0, NULL,
+				  EINVAL, "zero new length") ||
+	    expect_mremap_failure(source, length, 1UL << 63, 0, NULL,
+				  EINVAL, "oversized new length") ||
+	    expect_mremap_failure(source, length, length,
+				  MREMAP_MAYMOVE | MREMAP_FIXED,
+				  (void *)high_address, EINVAL,
+				  "new address range") ||
+	    expect_mremap_failure(source, length, length,
+				  MREMAP_MAYMOVE | MREMAP_FIXED,
+				  target + 1, EINVAL,
+				  "misaligned new address") ||
+	    expect_mremap_failure(source, length, length, MREMAP_FIXED,
+				  target, EINVAL,
+				  "fixed without MAYMOVE") ||
+	    expect_mremap_failure(source, length, 2 * length,
+				  MREMAP_MAYMOVE | MREMAP_DONTUNMAP,
+				  target, EINVAL,
+				  "DONTUNMAP resize") ||
+	    expect_mremap_failure(source, length, length,
+				  MREMAP_MAYMOVE | MREMAP_FIXED,
+				  source + page_size, EINVAL,
+				  "overlapping target"))
+		return 1;
+	if (expect_vma((unsigned long)source, (unsigned long)source,
+		       (unsigned long)(source + length),
+		       "parameter validation source"))
+		return 1;
+
+	munmap(source, span_length);
+	return 0;
+
+fail:
+	fprintf(stderr, "COPY_VMA parameter validation failed: %s\n",
+		strerror(errno));
+	return 1;
+}
+
 static int test_vdso_move(unsigned char *carveout)
 {
 	unsigned long source_start;
@@ -1361,6 +1442,7 @@ int main(void)
 	    test_in_place_expand_adjacent(carveout) ||
 	    test_in_place_shrink(carveout) ||
 	    test_same_size_resize(carveout) ||
+	    test_parameter_validation(carveout) ||
 	    test_vdso_move(carveout) ||
 	    test_aio_callback_failure(carveout) ||
 	    test_fixed_sealed_destination(carveout) ||

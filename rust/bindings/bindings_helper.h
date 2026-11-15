@@ -84,6 +84,7 @@
 #include <linux/mm.h>
 #include <linux/mm-rust.h>
 #include <linux/mremap-copy-rust.h>
+#include <linux/mremap-entry-rust.h>
 #include <linux/mremap-move-rust.h>
 #include <linux/mremap-resize-rust.h>
 #include <linux/mremap-to-rust.h>
