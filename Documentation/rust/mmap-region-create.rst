@@ -33,7 +33,8 @@ The retained boundary contains:
 * The existing ``mmap_prepare`` callback operation.
 * The existing KSM flag operation.
 * The existing adjacent merge operation.
-* The existing new-VMA allocation operation.
+* The existing new-VMA allocation operation when Rust new-VMA allocation is
+  disabled.
 * The existing user-field and completion operations.
 * The existing deferred mmap action operation.
 * Memory-account and file-reference rollback.
@@ -44,6 +45,10 @@ cleanup branch. Rust performs each selection and orders the helper calls.
 
 When ``CONFIG_RUST_MMAP_REGION_SETUP`` is enabled, setup control flow is
 provided by the Rust entry described in :doc:`mmap-region-setup`.
+
+When ``CONFIG_RUST_MMAP_REGION_NEW_VMA`` is enabled, new-VMA allocation
+control flow is provided by the Rust entry described in
+:doc:`mmap-region-new-vma`.
 
 Ordering and invariants
 -----------------------

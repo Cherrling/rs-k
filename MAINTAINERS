@@ -17480,6 +17480,7 @@ F:	Documentation/rust/mm-lifetime.rst
 F:	Documentation/rust/mm-teardown.rst
 F:	Documentation/rust/mmap-entry.rst
 F:	Documentation/rust/mmap-region-create.rst
+F:	Documentation/rust/mmap-region-new-vma.rst
 F:	Documentation/rust/mmap-region-setup.rst
 F:	Documentation/rust/mmap-region.rst
 F:	Documentation/rust/move-page-tables.rst
@@ -17510,6 +17511,7 @@ F:	include/linux/exit-mmap-rust.h
 F:	include/linux/mm-rust.h
 F:	include/linux/mmap-entry-rust.h
 F:	include/linux/mmap-region-create-rust.h
+F:	include/linux/mmap-region-new-vma-rust.h
 F:	include/linux/mmap-region-rust.h
 F:	include/linux/mmap-region-setup-rust.h
 F:	include/linux/move-page-tables-rust.h
@@ -17548,6 +17550,7 @@ F:	rust/kernel/mm_teardown.rs
 F:	rust/kernel/mm.rs
 F:	rust/kernel/mmap_entry.rs
 F:	rust/kernel/mmap_region_create.rs
+F:	rust/kernel/mmap_region_new_vma.rs
 F:	rust/kernel/mmap_region.rs
 F:	rust/kernel/mmap_region_setup.rs
 F:	rust/kernel/mm/

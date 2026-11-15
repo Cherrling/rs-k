@@ -372,6 +372,47 @@ static int test_basic_anonymous(void)
 	return munmap(hinted, page_size);
 }
 
+static int test_new_vma_install(void)
+{
+	const unsigned long base = FIXED_BASE + (80UL << 20);
+	void *mappings[3] = { MAP_FAILED, MAP_FAILED, MAP_FAILED };
+	unsigned long start;
+	unsigned long end;
+	int i;
+	int result = 1;
+
+	for (i = 0; i < 3; i++) {
+		const unsigned long address = base + i * 2 * page_size;
+		unsigned char *mapping;
+
+		mapping = raw_mmap((void *)address, page_size,
+				   PROT_READ | PROT_WRITE,
+				   MAP_PRIVATE | MAP_ANONYMOUS |
+				   MAP_FIXED_NOREPLACE, -1, 0);
+		if (mapping != (void *)address)
+			goto out;
+		mappings[i] = mapping;
+		mapping[0] = 0x30 + i;
+		if (maps_bounds(address, &start, &end) ||
+		    start != address || end != address + page_size)
+			goto out;
+	}
+
+	for (i = 0; i < 3; i++) {
+		const unsigned char *mapping = mappings[i];
+
+		if (mapping[0] != 0x30 + i)
+			goto out;
+	}
+	result = 0;
+out:
+	for (i = 0; i < 3; i++) {
+		if (mappings[i] != MAP_FAILED)
+			munmap(mappings[i], page_size);
+	}
+	return result;
+}
+
 static int test_adjacent_merge(void)
 {
 	const unsigned long base = FIXED_BASE + (16UL << 20);
@@ -970,6 +1011,10 @@ int main(void)
 
 	if (test_basic_anonymous()) {
 		fprintf(stderr, "MMAP_ENTRY basic anonymous test failed\n");
+		goto out;
+	}
+	if (test_new_vma_install()) {
+		fprintf(stderr, "MMAP_ENTRY new VMA install test failed\n");
 		goto out;
 	}
 	if (test_adjacent_merge()) {

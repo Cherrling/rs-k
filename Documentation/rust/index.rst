@@ -60,6 +60,7 @@ more details.
     mmap-entry
     mmap-region
     mmap-region-create
+    mmap-region-new-vma
     mmap-region-setup
     exit-mmap
     vma-unmap

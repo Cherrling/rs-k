@@ -11,6 +11,7 @@
 #include "vma_internal.h"
 #include "vma.h"
 #include <linux/mmap-region-create-rust.h>
+#include <linux/mmap-region-new-vma-rust.h>
 #include <linux/mmap-region-rust.h>
 #include <linux/mmap-region-setup-rust.h>
 #include <linux/vma-copy-rust.h>
@@ -4907,6 +4908,7 @@ static int __mmap_new_file_vma(struct mmap_state *map,
 	return 0;
 }
 
+#ifndef CONFIG_RUST_MMAP_REGION_NEW_VMA
 /*
  * __mmap_new_vma() - Allocate a new VMA for the region, as merging was not
  * possible.
@@ -4989,6 +4991,7 @@ free_vma:
 	vm_area_free(vma);
 	return error;
 }
+#endif /* CONFIG_RUST_MMAP_REGION_NEW_VMA */
 
 /*
  * __mmap_complete() - Unmap any VMAs we overlap, account memory mapping
@@ -5312,6 +5315,115 @@ rust_helper_mmap_setup_sync_desc(struct rust_mmap_create_state *state)
 
 #endif /* CONFIG_RUST_MMAP_REGION_SETUP */
 
+#ifdef CONFIG_RUST_MMAP_REGION_NEW_VMA
+
+bool
+rust_helper_mmap_new_vma_is_anon(struct rust_mmap_create_state *state)
+{
+	return !state->map.file &&
+		!vma_flags_test(&state->map.vma_flags, VMA_SHARED_BIT);
+}
+
+struct vm_area_struct *
+rust_helper_mmap_new_vma_alloc(struct rust_mmap_create_state *state)
+{
+	state->vma = vm_area_alloc(state->map.mm);
+	return state->vma;
+}
+
+void
+rust_helper_mmap_new_vma_init(struct rust_mmap_create_state *state,
+			      bool is_anon)
+{
+	struct vm_area_struct *vma = state->vma;
+
+	vma_iter_config(state->map.vmi, state->map.addr, state->map.end);
+	if (is_anon)
+		vma_set_anonymous(vma);
+	vma_set_range(vma, state->map.addr, state->map.end, state->map.pgoff,
+		      state->map.anon_pgoff);
+	vma->flags = state->map.vma_flags;
+	vma->vm_page_prot = state->map.page_prot;
+}
+
+int
+rust_helper_mmap_new_vma_prealloc(struct rust_mmap_create_state *state)
+{
+	return vma_iter_prealloc(state->map.vmi, state->vma);
+}
+
+bool
+rust_helper_mmap_new_vma_has_file(struct rust_mmap_create_state *state)
+{
+	return state->map.file;
+}
+
+int
+rust_helper_mmap_new_vma_map_file(struct rust_mmap_create_state *state)
+{
+	return __mmap_new_file_vma(&state->map, state->vma);
+}
+
+int
+rust_helper_mmap_new_vma_setup_shmem(struct rust_mmap_create_state *state)
+{
+	return shmem_zero_setup(state->vma);
+}
+
+void
+rust_helper_mmap_new_vma_update_ksm(struct rust_mmap_create_state *state)
+{
+	update_ksm_flags(&state->map);
+	state->vma->flags = state->map.vma_flags;
+}
+
+void
+rust_helper_mmap_new_vma_arch_validate(struct rust_mmap_create_state *s)
+{
+#ifdef CONFIG_SPARC64
+	/* TODO: Fix SPARC ADI! */
+	WARN_ON_ONCE(!arch_validate_flags(s->map.vm_flags));
+#endif
+}
+
+void
+rust_helper_mmap_new_vma_install(struct rust_mmap_create_state *state)
+{
+	struct vm_area_struct *vma = state->vma;
+
+	vma_start_write(vma);
+	vma_iter_store_new(state->map.vmi, vma);
+	state->map.mm->map_count++;
+	vma_link_file(vma, state->desc.action.hide_from_rmap_until_complete);
+}
+
+bool
+rust_helper_mmap_new_vma_is_anonymous(struct rust_mmap_create_state *state)
+{
+	return vma_is_anonymous(state->vma);
+}
+
+void
+rust_helper_mmap_new_vma_enter_khugepaged(struct rust_mmap_create_state *s)
+{
+	khugepaged_enter_vma(s->vma, s->map.vm_flags);
+}
+
+void
+rust_helper_mmap_new_vma_free_iter(struct rust_mmap_create_state *state)
+{
+	vma_iter_free(state->map.vmi);
+}
+
+void
+rust_helper_mmap_new_vma_free(struct rust_mmap_create_state *state)
+{
+	vm_area_free(state->vma);
+	state->vma = NULL;
+}
+
+#endif /* CONFIG_RUST_MMAP_REGION_NEW_VMA */
+
 static unsigned long __mmap_region(struct file *file, unsigned long addr,
 				   unsigned long len, vma_flags_t vma_flags,
 				   unsigned long pgoff, struct list_head *uf)
@@ -5406,7 +5518,11 @@ rust_helper_mmap_create_has_vma(struct rust_mmap_create_state *state)
 int
 rust_helper_mmap_create_new_vma(struct rust_mmap_create_state *state)
 {
+#ifdef CONFIG_RUST_MMAP_REGION_NEW_VMA
+	return rust_mmap_region_new_vma(state);
+#else
 	return __mmap_new_vma(&state->map, &state->vma, &state->desc.action);
+#endif
 }
 
 void
