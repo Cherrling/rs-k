@@ -3058,76 +3058,90 @@ dead_node:
 	return NULL;
 }
 
-#ifdef CONFIG_RUST_MAPLE_TREE_LOAD
-void rust_maple_tree_load_init_lock_check(struct ma_state *mas)
+#if IS_ENABLED(CONFIG_RUST_MAPLE_TREE_LOAD) || \
+	IS_ENABLED(CONFIG_RUST_MAPLE_TREE_WALK)
+void rust_maple_tree_init_lock_check(struct ma_state *mas)
 {
 	mas_init_lock_check(mas);
 }
 
-void *rust_maple_tree_load_root(struct ma_state *mas)
+void rust_maple_tree_may_init_lock_check(struct ma_state *mas)
+{
+	mas_may_init_lock_check(mas);
+}
+
+void *rust_maple_tree_root(struct ma_state *mas)
 {
 	return mas_root(mas);
 }
 
-void *rust_maple_tree_load_safe_root(const void *enode)
+void *rust_maple_tree_safe_root(const void *enode)
 {
 	return mte_safe_root(enode);
 }
 
-bool rust_maple_tree_load_is_node(const void *entry)
+bool rust_maple_tree_is_node(const void *entry)
 {
 	return xa_is_node(entry);
 }
 
-bool rust_maple_tree_load_enode_is_dead(const void *enode)
+bool rust_maple_tree_enode_is_dead(const void *enode)
 {
 	return mte_dead_node(enode);
 }
 
-void *rust_maple_tree_load_to_node(const void *enode)
+void *rust_maple_tree_to_node(const void *enode)
 {
 	return mte_to_node(enode);
 }
 
-enum maple_type rust_maple_tree_load_node_type(const void *enode)
+enum maple_type rust_maple_tree_node_type(const void *enode)
 {
 	return mte_node_type(enode);
 }
 
-unsigned long *rust_maple_tree_load_pivots(struct maple_node *node,
-					   enum maple_type type)
+unsigned long *rust_maple_tree_pivots(struct maple_node *node,
+				      enum maple_type type)
 {
 	return ma_pivots(node, type);
 }
 
-void __rcu **rust_maple_tree_load_slots(struct maple_node *node,
-					enum maple_type type)
+void __rcu **rust_maple_tree_slots(struct maple_node *node,
+				   enum maple_type type)
 {
 	return ma_slots(node, type);
 }
 
-unsigned char rust_maple_tree_load_pivot_count(enum maple_type type)
+unsigned char rust_maple_tree_pivot_count(enum maple_type type)
 {
 	return mt_pivots[type];
 }
 
-void *rust_maple_tree_load_slot(struct ma_state *mas,
-				void __rcu **slots, unsigned char offset)
+unsigned char rust_maple_tree_data_end(struct maple_node *node,
+				       enum maple_type type,
+				       unsigned long *pivots,
+				       unsigned long max)
+{
+	return ma_data_end(node, type, pivots, max);
+}
+
+void *rust_maple_tree_slot(struct ma_state *mas, void __rcu **slots,
+			   unsigned char offset)
 {
 	return mt_slot(mas->tree, slots, offset);
 }
 
-bool rust_maple_tree_load_node_is_dead(const struct maple_node *node)
+bool rust_maple_tree_node_is_dead(const struct maple_node *node)
 {
 	return ma_dead_node(node);
 }
 
-bool rust_maple_tree_load_is_leaf(enum maple_type type)
+bool rust_maple_tree_is_leaf(enum maple_type type)
 {
 	return ma_is_leaf(type);
 }
 
-unsigned char rust_maple_tree_load_node_slots(void)
+unsigned char rust_maple_tree_node_slots(void)
 {
 	return MAPLE_NODE_SLOTS;
 }
@@ -3137,11 +3151,11 @@ void rust_maple_tree_load_trace(struct ma_state *mas)
 	trace_ma_read(tracepoint_string("mtree_load"), mas);
 }
 
-bool rust_maple_tree_load_is_zero(const void *entry)
+bool rust_maple_tree_is_zero(const void *entry)
 {
 	return xa_is_zero(entry);
 }
-#endif /* CONFIG_RUST_MAPLE_TREE_LOAD */
+#endif /* CONFIG_RUST_MAPLE_TREE_LOAD || CONFIG_RUST_MAPLE_TREE_WALK */
 
 static void mte_destroy_walk(struct maple_enode *, struct maple_tree *);
 /*
@@ -4536,6 +4550,9 @@ next_slot:
  */
 void *mas_walk(struct ma_state *mas)
 {
+#ifdef CONFIG_RUST_MAPLE_TREE_WALK
+	return rust_mas_walk(mas);
+#else
 	void *entry;
 
 	mas_may_init_lock_check(mas);
@@ -4560,6 +4577,7 @@ retry:
 	}
 
 	return entry;
+#endif /* CONFIG_RUST_MAPLE_TREE_WALK */
 }
 EXPORT_SYMBOL_GPL(mas_walk);
 

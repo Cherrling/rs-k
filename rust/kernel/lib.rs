@@ -128,8 +128,12 @@ pub mod list;
 #[cfg(CONFIG_RUST_LIST_SORT)]
 mod list_sort;
 pub mod maple_tree;
+#[cfg(any(CONFIG_RUST_MAPLE_TREE_LOAD, CONFIG_RUST_MAPLE_TREE_WALK))]
+mod maple_tree_core;
 #[cfg(CONFIG_RUST_MAPLE_TREE_LOAD)]
 mod maple_tree_load;
+#[cfg(CONFIG_RUST_MAPLE_TREE_WALK)]
+mod maple_tree_walk;
 pub mod miscdevice;
 pub mod mm;
 #[cfg(CONFIG_RUST_MM_LIFETIME)]

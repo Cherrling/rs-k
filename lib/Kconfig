@@ -352,6 +352,22 @@ config RUST_MAPLE_TREE_LOAD
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_MAPLE_TREE_WALK
+	bool "Rust implementation of Maple Tree stateful walks"
+	depends on RUST_MAPLE_TREE_LOAD
+	default y
+	help
+	  Use Rust for the production state transitions and range traversal
+	  behind mas_walk().
+
+	  Maple node encoding, node layout, protected slot access, lockdep
+	  checks, and traversal metadata remain in C. The exported C entry
+	  point remains as an ABI adapter. The C fallback retains the complete
+	  stateful walk.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_PERCPU_REFCOUNT
 	bool "Rust implementation of percpu_ref() lifecycle"
 	depends on RUST

@@ -109,6 +109,7 @@ more details.
     native-kfifo
     native-genradix
     native-maple-tree-load
+    native-maple-tree-walk
     native-xarray-alloc
     native-xarray-create
     native-xarray-create-range
