@@ -140,6 +140,8 @@ mod maple_tree_next;
 mod maple_tree_prealloc;
 #[cfg(CONFIG_RUST_MAPLE_TREE_PREV)]
 mod maple_tree_prev;
+#[cfg(CONFIG_RUST_MAPLE_TREE_STORE_ENTRY)]
+mod maple_tree_store;
 #[cfg(CONFIG_RUST_MAPLE_TREE_WALK)]
 mod maple_tree_walk;
 pub mod miscdevice;

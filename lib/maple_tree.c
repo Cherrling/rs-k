@@ -3739,6 +3739,9 @@ static void mas_wr_rebalance(struct ma_wr_state *wr_mas)
  */
 static inline void mas_wr_store_entry(struct ma_wr_state *wr_mas)
 {
+#ifdef CONFIG_RUST_MAPLE_TREE_STORE_ENTRY
+	rust_mas_wr_store_entry(wr_mas);
+#else
 	struct ma_state *mas = wr_mas->mas;
 
 	switch (mas->store_type) {
@@ -3774,7 +3777,73 @@ static inline void mas_wr_store_entry(struct ma_wr_state *wr_mas)
 	case wr_invalid:
 		MT_BUG_ON(mas->tree, 1);
 	}
+#endif
 }
+
+#ifdef CONFIG_RUST_MAPLE_TREE_STORE_ENTRY
+void rust_maple_tree_store_slot(void __rcu **slot, void *entry)
+{
+	rcu_assign_pointer(*slot, entry);
+}
+
+void *rust_maple_tree_store_slot_locked(struct ma_state *mas,
+					void __rcu **slots,
+					unsigned char offset)
+{
+	return mt_slot_locked(mas->tree, slots, offset);
+}
+
+void rust_maple_tree_store_set_meta(struct maple_node *node,
+				    enum maple_type type,
+				    unsigned char offset,
+				    unsigned char end)
+{
+	ma_set_meta(node, type, offset, end);
+}
+
+void rust_maple_tree_store_update_gap(struct ma_state *mas)
+{
+	mas_update_gap(mas);
+}
+
+void rust_maple_tree_store_trace(struct ma_state *mas,
+				 unsigned char offset, void *entry)
+{
+	trace_ma_write(TP_FCT, mas, offset, entry);
+}
+
+void rust_maple_tree_store_complex(struct ma_wr_state *wr_mas)
+{
+	struct ma_state *mas = wr_mas->mas;
+
+	switch (mas->store_type) {
+	case wr_node_store:
+		mas_wr_node_store(wr_mas);
+		break;
+	case wr_spanning_store:
+		mas_wr_spanning_store(wr_mas);
+		break;
+	case wr_split_store:
+		mas_wr_split(wr_mas);
+		break;
+	case wr_rebalance:
+		mas_wr_rebalance(wr_mas);
+		break;
+	case wr_new_root:
+		mas_new_root(mas, wr_mas->entry);
+		break;
+	case wr_store_root:
+		mas_store_root(mas, wr_mas->entry);
+		break;
+	case wr_invalid:
+	case wr_exact_fit:
+	case wr_append:
+	case wr_slot_store:
+	default:
+		MT_BUG_ON(mas->tree, 1);
+	}
+}
+#endif /* CONFIG_RUST_MAPLE_TREE_STORE_ENTRY */
 
 static inline void mas_wr_prealloc_setup(struct ma_wr_state *wr_mas)
 {

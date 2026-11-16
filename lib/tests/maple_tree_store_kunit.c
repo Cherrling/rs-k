@@ -1,0 +1,380 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * KUnit tests for the active Maple Tree write dispatcher.
+ */
+
+#include <kunit/test.h>
+
+#include <linux/atomic.h>
+#include <linux/completion.h>
+#include <linux/jiffies.h>
+#include <linux/kthread.h>
+#include <linux/maple_tree.h>
+#include <linux/sched.h>
+#include <linux/xarray.h>
+
+#define MAPLE_STORE_RANGES 101
+#define MAPLE_STORE_SPACING 10
+#define MAPLE_STORE_LENGTH 5
+#define MAPLE_STORE_CONCURRENT_WORKERS 4
+#define MAPLE_STORE_CONCURRENT_ITERATIONS 1000
+#define MAPLE_STORE_TIMEOUT_MS 10000
+
+static void maple_store_test_destroy(void *data)
+{
+	mtree_destroy(data);
+}
+
+static struct maple_tree *maple_store_test_init_flags(struct kunit *test,
+						      unsigned int flags)
+{
+	struct maple_tree *tree;
+
+	tree = kunit_kzalloc(test, sizeof(*tree), GFP_KERNEL);
+	if (!tree) {
+		KUNIT_FAIL(test, "failed to allocate Maple tree");
+		return NULL;
+	}
+
+	mt_init_flags(tree, flags);
+	if (kunit_add_action_or_reset(test, maple_store_test_destroy, tree)) {
+		KUNIT_FAIL(test, "failed to register Maple tree cleanup");
+		return NULL;
+	}
+
+	return tree;
+}
+
+static struct maple_tree *maple_store_test_init(struct kunit *test)
+{
+	return maple_store_test_init_flags(test, 0);
+}
+
+static int maple_store_test_store_many(struct maple_tree *tree)
+{
+	unsigned long i;
+
+	for (i = 0; i < MAPLE_STORE_RANGES; i++) {
+		int ret;
+
+		ret = mtree_store_range(tree, i * MAPLE_STORE_SPACING,
+					i * MAPLE_STORE_SPACING +
+					MAPLE_STORE_LENGTH,
+					xa_mk_value(i + 1), GFP_KERNEL);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
+static int maple_store_test_prepare_locked(struct maple_tree *tree,
+					   struct ma_state *mas,
+					   void *entry)
+{
+	int ret;
+
+	mtree_lock(tree);
+	ret = mas_preallocate(mas, entry, GFP_KERNEL);
+	if (ret)
+		mtree_unlock(tree);
+
+	return ret;
+}
+
+static void maple_store_test_exact_fit_null(struct kunit *test)
+{
+	void *value = xa_mk_value(0x1001);
+	void *other = xa_mk_value(0x1002);
+	struct maple_tree *tree = maple_store_test_init(test);
+
+	MA_STATE(to_null, tree, 10, 20);
+	MA_STATE(to_value, tree, 10, 20);
+
+	KUNIT_ASSERT_NOT_NULL(test, tree);
+	KUNIT_ASSERT_EQ(test,
+			mtree_store_range(tree, 0, 9,
+					  xa_mk_value(0x1000), GFP_KERNEL), 0);
+	KUNIT_ASSERT_EQ(test,
+			mtree_store_range(tree, 10, 20, value, GFP_KERNEL), 0);
+	KUNIT_ASSERT_EQ(test,
+			mtree_store_range(tree, 21, 30,
+					  xa_mk_value(0x1003), GFP_KERNEL), 0);
+
+	KUNIT_ASSERT_EQ(test,
+			maple_store_test_prepare_locked(tree, &to_null, NULL), 0);
+	KUNIT_EXPECT_EQ(test, to_null.store_type, wr_exact_fit);
+	KUNIT_EXPECT_EQ(test, to_null.node_request, 0);
+	mas_store_prealloc(&to_null, NULL);
+	mtree_unlock(tree);
+	KUNIT_EXPECT_NULL(test, mtree_load(tree, 10));
+	KUNIT_EXPECT_NULL(test, mtree_load(tree, 20));
+
+	KUNIT_ASSERT_EQ(test,
+			maple_store_test_prepare_locked(tree, &to_value, other), 0);
+	KUNIT_EXPECT_EQ(test, to_value.store_type, wr_exact_fit);
+	KUNIT_EXPECT_EQ(test, to_value.node_request, 0);
+	mas_store_prealloc(&to_value, other);
+	mtree_unlock(tree);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 10), other);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 20), other);
+}
+
+static void maple_store_test_append(struct kunit *test)
+{
+	unsigned long first_append = ULONG_MAX;
+	struct maple_tree *tree = maple_store_test_init(test);
+	unsigned long i;
+
+	KUNIT_ASSERT_NOT_NULL(test, tree);
+
+	for (i = 0; i < MAPLE_STORE_RANGES; i++) {
+		void *entry = xa_mk_value(i + 1);
+
+		MA_STATE(mas, tree, i * MAPLE_STORE_SPACING,
+			 i * MAPLE_STORE_SPACING + MAPLE_STORE_LENGTH);
+		int ret;
+
+		ret = maple_store_test_prepare_locked(tree, &mas, entry);
+		KUNIT_ASSERT_EQ(test, ret, 0);
+		if (mas.store_type == wr_append && first_append == ULONG_MAX)
+			first_append = i;
+		mas_store_prealloc(&mas, entry);
+		mtree_unlock(tree);
+	}
+
+	KUNIT_ASSERT_NE(test, first_append, ULONG_MAX);
+	for (i = 0; i < MAPLE_STORE_RANGES; i++) {
+		void *entry = xa_mk_value(i + 1);
+		unsigned long first = i * MAPLE_STORE_SPACING;
+		unsigned long last = first + MAPLE_STORE_LENGTH;
+
+		KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, first), entry);
+		KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, last), entry);
+	}
+}
+
+static void maple_store_test_slot_boundary(struct kunit *test)
+{
+	void *value = xa_mk_value(0x3001);
+	struct maple_tree *tree = maple_store_test_init(test);
+
+	MA_STATE(mas, tree, 6, 10);
+
+	KUNIT_ASSERT_NOT_NULL(test, tree);
+	KUNIT_ASSERT_EQ(test, maple_store_test_store_many(tree), 0);
+	KUNIT_ASSERT_EQ(test,
+			maple_store_test_prepare_locked(tree, &mas, value), 0);
+	KUNIT_EXPECT_EQ(test, mas.store_type, wr_slot_store);
+	KUNIT_EXPECT_EQ(test, mas.node_request, 0);
+	mas_store_prealloc(&mas, value);
+	mtree_unlock(tree);
+
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 6), value);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 10), value);
+}
+
+static void maple_store_test_slot_three_touches(struct kunit *test)
+{
+	void *value = xa_mk_value(0x3101);
+	struct maple_tree *tree = maple_store_test_init(test);
+
+	MA_STATE(mas, tree, 11, 22);
+
+	KUNIT_ASSERT_NOT_NULL(test, tree);
+	KUNIT_ASSERT_EQ(test, maple_store_test_store_many(tree), 0);
+	KUNIT_ASSERT_EQ(test,
+			maple_store_test_prepare_locked(tree, &mas, value), 0);
+	KUNIT_EXPECT_EQ(test, mas.store_type, wr_slot_store);
+	KUNIT_EXPECT_EQ(test, mas.node_request, 0);
+	mas_store_prealloc(&mas, value);
+	mtree_unlock(tree);
+
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 11), value);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 13), value);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 18), value);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 22), value);
+	KUNIT_EXPECT_EQ(test, xa_to_value(mtree_load(tree, 10)), 2);
+	KUNIT_EXPECT_EQ(test, xa_to_value(mtree_load(tree, 23)), 3);
+}
+
+static void maple_store_test_gap_reuse(struct kunit *test)
+{
+	void *value = xa_mk_value(0x4001);
+	unsigned long start = 0;
+	struct maple_tree *tree =
+		maple_store_test_init_flags(test, MT_FLAGS_ALLOC_RANGE);
+
+	KUNIT_ASSERT_NOT_NULL(test, tree);
+	KUNIT_ASSERT_EQ(test,
+			mtree_store_range(tree, 0, 9,
+					  xa_mk_value(0x4002), GFP_KERNEL), 0);
+	KUNIT_ASSERT_EQ(test,
+			mtree_store_range(tree, 20, 29,
+					  xa_mk_value(0x4003), GFP_KERNEL), 0);
+	KUNIT_ASSERT_EQ(test,
+			mtree_store_range(tree, 40, 49,
+					  xa_mk_value(0x4004), GFP_KERNEL), 0);
+	KUNIT_ASSERT_EQ(test,
+			mtree_store_range(tree, 20, 29, NULL, GFP_KERNEL), 0);
+
+	KUNIT_EXPECT_EQ(test,
+			mtree_alloc_range(tree, &start, value, 20, 10, 39,
+					  GFP_KERNEL), 0);
+	KUNIT_EXPECT_EQ(test, start, 10);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 10), value);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 29), value);
+}
+
+struct maple_store_worker {
+	struct maple_tree *tree;
+	atomic_t *done;
+	atomic_t *failed;
+	atomic_t *ready;
+	atomic_t *start;
+	struct completion *complete;
+	bool writer;
+};
+
+static int maple_store_worker_fn(void *data)
+{
+	const unsigned long stable = 4096;
+	const unsigned long moving_first = 8192;
+	const unsigned long moving_last = 8447;
+	struct maple_store_worker *worker = data;
+	void *stable_value = xa_mk_value(0x5001);
+	void *moving_value = xa_mk_value(0x5002);
+	unsigned int i;
+
+	atomic_inc(worker->ready);
+	while (!atomic_read(worker->start))
+		cond_resched();
+
+	for (i = 0; i < MAPLE_STORE_CONCURRENT_ITERATIONS; i++) {
+		if (worker->writer) {
+			MA_STATE(mas, worker->tree, moving_first, moving_last);
+			void *entry = (i & 1) ? NULL : moving_value;
+			int ret;
+			bool exact;
+
+			mtree_lock(worker->tree);
+			ret = mas_preallocate(&mas, entry, GFP_KERNEL);
+			exact = !ret && mas.store_type == wr_exact_fit;
+			if (exact)
+				mas_store_prealloc(&mas, entry);
+			else
+				mas_destroy(&mas);
+			mtree_unlock(worker->tree);
+			if (!exact)
+				atomic_inc(worker->failed);
+		} else {
+			void *entry;
+
+			rcu_read_lock();
+			entry = mtree_load(worker->tree, stable);
+			if (entry != stable_value)
+				atomic_inc(worker->failed);
+			entry = mtree_load(worker->tree, moving_first);
+			if (entry && entry != moving_value)
+				atomic_inc(worker->failed);
+			rcu_read_unlock();
+		}
+		if (!(i & 31))
+			cond_resched();
+	}
+
+	atomic_inc(worker->done);
+	complete(worker->complete);
+	while (!kthread_should_stop())
+		cond_resched();
+
+	return 0;
+}
+
+static void maple_store_test_concurrent_rcu(struct kunit *test)
+{
+	struct maple_store_worker workers[MAPLE_STORE_CONCURRENT_WORKERS];
+	struct task_struct *tasks[MAPLE_STORE_CONCURRENT_WORKERS] = {};
+	struct completion complete;
+	atomic_t done = ATOMIC_INIT(0);
+	atomic_t failed = ATOMIC_INIT(0);
+	atomic_t ready = ATOMIC_INIT(0);
+	atomic_t start = ATOMIC_INIT(0);
+	struct maple_tree *tree = maple_store_test_init(test);
+	unsigned long deadline;
+	unsigned int started = 0;
+	unsigned int i;
+
+	KUNIT_ASSERT_NOT_NULL(test, tree);
+	KUNIT_ASSERT_EQ(test,
+			mtree_store_range(tree, 4096, 4351,
+					  xa_mk_value(0x5001), GFP_KERNEL), 0);
+	KUNIT_ASSERT_EQ(test,
+			mtree_store_range(tree, 8000, 8191,
+					  xa_mk_value(0x5003), GFP_KERNEL), 0);
+	KUNIT_ASSERT_EQ(test,
+			mtree_store_range(tree, 8192, 8447,
+					  xa_mk_value(0x5002), GFP_KERNEL), 0);
+	KUNIT_ASSERT_EQ(test,
+			mtree_store_range(tree, 8448, 8600,
+					  xa_mk_value(0x5004), GFP_KERNEL), 0);
+	mt_set_in_rcu(tree);
+	init_completion(&complete);
+
+	for (i = 0; i < MAPLE_STORE_CONCURRENT_WORKERS; i++) {
+		workers[i].tree = tree;
+		workers[i].done = &done;
+		workers[i].failed = &failed;
+		workers[i].ready = &ready;
+		workers[i].start = &start;
+		workers[i].complete = &complete;
+		workers[i].writer = i == 0;
+		tasks[i] = kthread_run(maple_store_worker_fn, &workers[i],
+				       "maple-store-%u", i);
+		if (IS_ERR_OR_NULL(tasks[i])) {
+			tasks[i] = NULL;
+			break;
+		}
+		started++;
+	}
+
+	deadline = jiffies + msecs_to_jiffies(MAPLE_STORE_TIMEOUT_MS);
+	while (atomic_read(&ready) < started && time_before(jiffies, deadline))
+		cond_resched();
+	if (atomic_read(&ready) == started)
+		atomic_set(&start, 1);
+
+	for (i = 0; i < started; i++) {
+		unsigned long timeout =
+			msecs_to_jiffies(MAPLE_STORE_TIMEOUT_MS);
+
+		if (!wait_for_completion_timeout(&complete, timeout)) {
+			KUNIT_FAIL(test, "Maple store worker timed out");
+			break;
+		}
+	}
+	for (i = 0; i < started; i++)
+		KUNIT_EXPECT_EQ(test, kthread_stop(tasks[i]), 0);
+
+	KUNIT_ASSERT_EQ(test, started, MAPLE_STORE_CONCURRENT_WORKERS);
+	KUNIT_EXPECT_EQ(test, atomic_read(&done),
+			MAPLE_STORE_CONCURRENT_WORKERS);
+	KUNIT_EXPECT_EQ(test, atomic_read(&failed), 0);
+}
+
+static struct kunit_case maple_store_test_cases[] = {
+	KUNIT_CASE(maple_store_test_exact_fit_null),
+	KUNIT_CASE(maple_store_test_append),
+	KUNIT_CASE(maple_store_test_slot_boundary),
+	KUNIT_CASE(maple_store_test_slot_three_touches),
+	KUNIT_CASE(maple_store_test_gap_reuse),
+	KUNIT_CASE(maple_store_test_concurrent_rcu),
+	{}
+};
+
+static struct kunit_suite maple_store_test_suite = {
+	.name = "maple_tree_store",
+	.test_cases = maple_store_test_cases,
+};
+
+kunit_test_suite(maple_store_test_suite);

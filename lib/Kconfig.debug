@@ -3175,6 +3175,20 @@ config MAPLE_TREE_PREALLOC_KUNIT_TEST
 
 	  If unsure, say N.
 
+config MAPLE_TREE_STORE_KUNIT_TEST
+	tristate "KUnit Test for Maple Tree write dispatch" if !KUNIT_ALL_TESTS
+	depends on KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This builds the KUnit test suite for the active Maple Tree write
+	  dispatcher. It tests exact-fit and NULL transitions, appends,
+	  metadata, slot writes, pivot updates, and gap reuse.
+
+	  The suite runs against both the Rust production path and the C
+	  fallback.
+
+	  If unsure, say N.
+
 config TEST_RHASHTABLE
 	tristate "Perform selftest on resizable hash table"
 	help

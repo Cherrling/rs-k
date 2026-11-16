@@ -99,4 +99,23 @@ int rust_maple_tree_error(struct ma_state *mas);
 
 #endif /* CONFIG_RUST_MAPLE_TREE_PREALLOC */
 
+#ifdef CONFIG_RUST_MAPLE_TREE_STORE_ENTRY
+
+void rust_mas_wr_store_entry(struct ma_wr_state *wr_mas);
+
+void rust_maple_tree_store_slot(void __rcu **slot, void *entry);
+void *rust_maple_tree_store_slot_locked(struct ma_state *mas,
+					void __rcu **slots,
+					unsigned char offset);
+void rust_maple_tree_store_set_meta(struct maple_node *node,
+				    enum maple_type type,
+				    unsigned char offset,
+				    unsigned char end);
+void rust_maple_tree_store_update_gap(struct ma_state *mas);
+void rust_maple_tree_store_trace(struct ma_state *mas,
+				 unsigned char offset, void *entry);
+void rust_maple_tree_store_complex(struct ma_wr_state *wr_mas);
+
+#endif /* CONFIG_RUST_MAPLE_TREE_STORE_ENTRY */
+
 #endif /* _LINUX_MAPLE_TREE_RUST_H */

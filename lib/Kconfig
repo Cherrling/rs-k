@@ -438,6 +438,23 @@ config RUST_MAPLE_TREE_PREALLOC
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_MAPLE_TREE_STORE_ENTRY
+	bool "Rust implementation of Maple Tree write dispatch"
+	depends on RUST_MAPLE_TREE_PREALLOC
+	default y
+	help
+	  Use Rust for the production write dispatcher and the exact-fit,
+	  append, and slot-store strategies.
+
+	  Rust owns the complete store-type dispatch. The three in-place
+	  strategies update slots, pivots, metadata, gaps, and trace data
+	  directly. The node, spanning, split, rebalance, and root strategies
+	  remain C helpers selected by Rust. The C fallback retains the complete
+	  dispatcher and all strategies.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_PERCPU_REFCOUNT
 	bool "Rust implementation of percpu_ref() lifecycle"
 	depends on RUST
