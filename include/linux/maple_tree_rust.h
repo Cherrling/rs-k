@@ -180,16 +180,17 @@ void rust_maple_tree_spanning_publish(struct ma_state *mas,
 
 #endif /* CONFIG_RUST_MAPLE_TREE_SPANNING_STORE */
 
-#ifdef CONFIG_RUST_MAPLE_TREE_SPLIT_STORE
+#if defined(CONFIG_RUST_MAPLE_TREE_SPLIT_STORE) || \
+	defined(CONFIG_RUST_MAPLE_TREE_REBALANCE_STORE)
 
-bool rust_maple_tree_split_is_root(struct maple_enode *enode);
-void rust_maple_tree_split_parent_ascend(struct ma_state *parent);
-void rust_maple_tree_split_descend(struct ma_state *mas);
-unsigned char rust_maple_tree_split_data_end(struct ma_state *mas);
-void rust_maple_tree_split_write_ascend(const struct ma_state *parent,
-					struct ma_wr_state *wr_mas);
+bool rust_maple_tree_copy_is_root(struct maple_enode *enode);
+void rust_maple_tree_copy_parent_ascend(struct ma_state *parent);
+void rust_maple_tree_copy_descend(struct ma_state *mas);
+unsigned char rust_maple_tree_copy_data_end(struct ma_state *mas);
+void rust_maple_tree_copy_write_ascend(const struct ma_state *parent,
+				       struct ma_wr_state *wr_mas);
 
-#endif /* CONFIG_RUST_MAPLE_TREE_SPLIT_STORE */
+#endif /* CONFIG_RUST_MAPLE_TREE_SPLIT_STORE || REBALANCE_STORE */
 
 #ifdef CONFIG_RUST_MAPLE_TREE_ROOT_STORE
 

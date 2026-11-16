@@ -118,6 +118,7 @@ more details.
     native-maple-tree-node-store
     native-maple-tree-spanning-store
     native-maple-tree-split-store
+    native-maple-tree-rebalance-store
     native-maple-tree-root-store
     native-xarray-alloc
     native-xarray-create

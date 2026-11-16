@@ -448,11 +448,9 @@ config RUST_MAPLE_TREE_STORE_ENTRY
 
 	  Rust owns the complete store-type dispatch. The three in-place
 	  strategies update slots, pivots, metadata, gaps, and trace data
-	  directly. Node, spanning, and root stores have separate migration
-	  options. Split stores have a separate migration option. The rebalance
-	  strategy remains a C helper selected by Rust. The C fallback retains
-	  the complete dispatcher and all
-	  strategies.
+	  directly. Node, spanning, split, rebalance, and root stores have
+	  separate migration options. The C fallback retains the complete
+	  dispatcher and all strategies.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -474,7 +472,8 @@ config RUST_MAPLE_TREE_NODE_STORE
 	  copying, encoded-node installation, RCU publication, and tracepoint
 	  delivery. When the spanning-store option is disabled, the C spanning
 	  strategy remains available. Root stores have a separate migration
-	  option. Split and rebalance stores are separate migration units.
+	  option. Split stores and rebalance stores are separate migration
+	  units.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -496,7 +495,8 @@ config RUST_MAPLE_TREE_SPANNING_STORE
 	  raw node array copying and finalisation, sibling and write-state
 	  traversal primitives, node-pool allocation, and RCU publication. When
 	  the root-store option is disabled, the C new-root strategy remains
-	  available. Split and rebalance stores are separate migration units.
+	  available. Split stores and rebalance stores are separate migration
+	  units.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -522,6 +522,27 @@ config RUST_MAPLE_TREE_SPLIT_STORE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_MAPLE_TREE_REBALANCE_STORE
+	bool "Rust implementation of Maple Tree rebalance stores"
+	depends on RUST_MAPLE_TREE_SPANNING_STORE
+	default y
+	help
+	  Use Rust for the production Maple Tree rebalance-store strategy.
+
+	  Rust computes whether a sparse node has too little data, selects a
+	  sibling to donate data or merge, preserves the source order, builds
+	  one to three destination nodes, and ascends until the replacement
+	  converges or becomes a new root. Rust reuses the native copy engine
+	  written for spanning and split stores.
+
+	  The C boundary contains parent and sibling traversal, node data-end
+	  discovery, encoded-node layout, raw node array copying and
+	  finalisation, node-pool allocation, gap metadata, and RCU publication.
+	  The C fallback retains the complete rebalance-store strategy.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_MAPLE_TREE_ROOT_STORE
 	bool "Rust implementation of Maple Tree root stores"
 	depends on RUST_MAPLE_TREE_SPANNING_STORE
@@ -535,9 +556,10 @@ config RUST_MAPLE_TREE_ROOT_STORE
 	  requests final RCU publication.
 
 	  The C boundary contains root pointer access and publication, encoded
-	  root marking, parent fields, tree height, node-pool allocation, metadata
-	  layout, protected slot access, and old-tree destruction. Split and
-	  rebalance stores remain separate migration units.
+	  root marking, parent fields, tree height, node-pool allocation,
+	  metadata layout, protected slot access, and old-tree destruction.
+	  Split stores, rebalance stores, and root stores are separate migration
+	  units.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

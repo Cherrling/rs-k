@@ -3373,35 +3373,36 @@ void rust_maple_tree_spanning_publish(struct ma_state *mas,
 	mas_wmb_replace(mas, copy);
 }
 
-#ifdef CONFIG_RUST_MAPLE_TREE_SPLIT_STORE
-bool rust_maple_tree_split_is_root(struct maple_enode *enode)
+#if defined(CONFIG_RUST_MAPLE_TREE_SPLIT_STORE) || \
+	defined(CONFIG_RUST_MAPLE_TREE_REBALANCE_STORE)
+bool rust_maple_tree_copy_is_root(struct maple_enode *enode)
 {
 	return mte_is_root(enode);
 }
 
-void rust_maple_tree_split_parent_ascend(struct ma_state *parent)
+void rust_maple_tree_copy_parent_ascend(struct ma_state *parent)
 {
 	mas_ascend(parent);
 	parent->end = mas_data_end(parent);
 }
 
-void rust_maple_tree_split_descend(struct ma_state *mas)
+void rust_maple_tree_copy_descend(struct ma_state *mas)
 {
 	mas_descend(mas);
 }
 
-unsigned char rust_maple_tree_split_data_end(struct ma_state *mas)
+unsigned char rust_maple_tree_copy_data_end(struct ma_state *mas)
 {
 	return mas_data_end(mas);
 }
 
-void rust_maple_tree_split_write_ascend(const struct ma_state *parent,
-					struct ma_wr_state *wr_mas)
+void rust_maple_tree_copy_write_ascend(const struct ma_state *parent,
+				       struct ma_wr_state *wr_mas)
 {
 	copy_tree_location(parent, wr_mas->mas);
 	wr_mas_setup(wr_mas, wr_mas->mas);
 }
-#endif /* CONFIG_RUST_MAPLE_TREE_SPLIT_STORE */
+#endif /* CONFIG_RUST_MAPLE_TREE_SPLIT_STORE || REBALANCE_STORE */
 #endif /* CONFIG_RUST_MAPLE_TREE_SPANNING_STORE */
 
 #ifdef CONFIG_RUST_MAPLE_TREE_ROOT_STORE
@@ -3881,6 +3882,7 @@ static void mas_wr_split(struct ma_wr_state *wr_mas)
 }
 #endif /* CONFIG_RUST_MAPLE_TREE_SPLIT_STORE */
 
+#ifndef CONFIG_RUST_MAPLE_TREE_REBALANCE_STORE
 /*
  * mas_wr_rebalance() - Insufficient data in one node needs to either get data
  * from a sibling or absorb a sibling all together.
@@ -3923,6 +3925,7 @@ static void mas_wr_rebalance(struct ma_wr_state *wr_mas)
 
 	mas_wmb_replace(mas, &cp);
 }
+#endif /* CONFIG_RUST_MAPLE_TREE_REBALANCE_STORE */
 
 /*
  * mas_wr_store_entry() - Internal call to store a value
@@ -3956,9 +3959,11 @@ static inline void mas_wr_store_entry(struct ma_wr_state *wr_mas)
 	case wr_split_store:
 		mas_wr_split(wr_mas);
 		break;
+#ifndef CONFIG_RUST_MAPLE_TREE_REBALANCE_STORE
 	case wr_rebalance:
 		mas_wr_rebalance(wr_mas);
 		break;
+#endif
 #ifndef CONFIG_RUST_MAPLE_TREE_ROOT_STORE
 	case wr_new_root:
 		mas_new_root(mas, wr_mas->entry);
@@ -4060,9 +4065,11 @@ void rust_maple_tree_store_complex(struct ma_wr_state *wr_mas)
 		mas_wr_split(wr_mas);
 		break;
 #endif
+#ifndef CONFIG_RUST_MAPLE_TREE_REBALANCE_STORE
 	case wr_rebalance:
 		mas_wr_rebalance(wr_mas);
 		break;
+#endif
 #ifndef CONFIG_RUST_MAPLE_TREE_ROOT_STORE
 	case wr_new_root:
 		mas_new_root(mas, wr_mas->entry);
@@ -4083,6 +4090,9 @@ void rust_maple_tree_store_complex(struct ma_wr_state *wr_mas)
 #endif
 #ifdef CONFIG_RUST_MAPLE_TREE_SPLIT_STORE
 	case wr_split_store:
+#endif
+#ifdef CONFIG_RUST_MAPLE_TREE_REBALANCE_STORE
+	case wr_rebalance:
 #endif
 #ifdef CONFIG_RUST_MAPLE_TREE_ROOT_STORE
 	case wr_new_root:

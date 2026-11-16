@@ -50,11 +50,11 @@ static struct maple_tree *maple_store_test_init(struct kunit *test)
 	return maple_store_test_init_flags(test, 0);
 }
 
-static int maple_store_test_store_many(struct maple_tree *tree)
+static int maple_store_test_store_n(struct maple_tree *tree, unsigned long count)
 {
 	unsigned long i;
 
-	for (i = 0; i < MAPLE_STORE_RANGES; i++) {
+	for (i = 0; i < count; i++) {
 		int ret;
 
 		ret = mtree_store_range(tree, i * MAPLE_STORE_SPACING,
@@ -66,6 +66,11 @@ static int maple_store_test_store_many(struct maple_tree *tree)
 	}
 
 	return 0;
+}
+
+static int maple_store_test_store_many(struct maple_tree *tree)
+{
+	return maple_store_test_store_n(tree, MAPLE_STORE_RANGES);
 }
 
 static int maple_store_test_prepare_locked(struct maple_tree *tree,
@@ -560,6 +565,60 @@ static void maple_store_test_split_store_rcu(struct kunit *test)
 	maple_store_test_split_store_common(test, true);
 }
 
+static void maple_store_test_rebalance_tree(struct kunit *test,
+					    unsigned int flags, bool in_rcu,
+					    unsigned long first,
+					    unsigned long last,
+					    unsigned long left_value,
+					    unsigned long right_value)
+{
+	const unsigned long ranges = 20;
+	struct maple_tree *tree = maple_store_test_init_flags(test, flags);
+
+	MA_STATE(mas, tree, first, last);
+
+	KUNIT_ASSERT_NOT_NULL(test, tree);
+	KUNIT_ASSERT_EQ(test, maple_store_test_store_n(tree, ranges), 0);
+	if (in_rcu)
+		mt_set_in_rcu(tree);
+
+	KUNIT_ASSERT_EQ(test,
+			maple_store_test_prepare_locked(tree, &mas, NULL), 0);
+	KUNIT_EXPECT_EQ(test, mas.store_type, wr_rebalance);
+	KUNIT_ASSERT_TRUE(test, mas.alloc || mas.sheaf);
+	mas_store_prealloc(&mas, NULL);
+	mtree_unlock(tree);
+
+	KUNIT_EXPECT_EQ(test, xa_to_value(mtree_load(tree, 0)), 1);
+	KUNIT_EXPECT_EQ(test, xa_to_value(mtree_load(tree, first - 1)),
+			left_value);
+	KUNIT_EXPECT_NULL(test, mtree_load(tree, first));
+	KUNIT_EXPECT_NULL(test, mtree_load(tree, last));
+	KUNIT_EXPECT_EQ(test, xa_to_value(mtree_load(tree, last + 1)),
+			right_value);
+	KUNIT_EXPECT_EQ(test, xa_to_value(mtree_load(tree, 190)), ranges);
+}
+
+static void maple_store_test_rebalance_common(struct kunit *test, bool in_rcu)
+{
+	maple_store_test_rebalance_tree(test, 0, in_rcu, 11, 69, 2, 8);
+	maple_store_test_rebalance_tree(test, MT_FLAGS_ALLOC_RANGE, in_rcu,
+					11, 69, 2, 8);
+	maple_store_test_rebalance_tree(test, 0, in_rcu, 141, 189, 15, 20);
+	maple_store_test_rebalance_tree(test, MT_FLAGS_ALLOC_RANGE, in_rcu,
+					141, 189, 15, 20);
+}
+
+static void maple_store_test_rebalance_store(struct kunit *test)
+{
+	maple_store_test_rebalance_common(test, false);
+}
+
+static void maple_store_test_rebalance_store_rcu(struct kunit *test)
+{
+	maple_store_test_rebalance_common(test, true);
+}
+
 struct maple_store_worker {
 	struct maple_tree *tree;
 	atomic_t *done;
@@ -713,6 +772,8 @@ static struct kunit_case maple_store_test_cases[] = {
 	KUNIT_CASE(maple_store_test_spanning_null),
 	KUNIT_CASE(maple_store_test_split_store),
 	KUNIT_CASE(maple_store_test_split_store_rcu),
+	KUNIT_CASE(maple_store_test_rebalance_store),
+	KUNIT_CASE(maple_store_test_rebalance_store_rcu),
 	KUNIT_CASE(maple_store_test_concurrent_rcu),
 	{}
 };

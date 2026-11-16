@@ -2,10 +2,9 @@
 
 //! Native Maple Tree write dispatcher and store strategies.
 //!
-//! Rust owns store-type dispatch, the in-place store strategies, node
-//! replacement, spanning stores, split stores, and root stores. C retains node
-//! layout, RCU publication, protected slot access, metadata layout, gap
-//! propagation, tracepoint delivery, and the rebalance strategy.
+//! Rust owns store-type dispatch and every production store strategy. C retains
+//! node layout, RCU publication, protected slot access, metadata layout, gap
+//! propagation, and tracepoint delivery.
 
 #[cfg(CONFIG_RUST_MAPLE_TREE_NODE_STORE)]
 use super::maple_tree_core::MapleNode;
@@ -858,60 +857,75 @@ unsafe fn spanning_publish(mas: *mut MaState, copy: *mut bindings::maple_copy) {
     unsafe { bindings::rust_maple_tree_spanning_publish(mas, copy) };
 }
 
-#[cfg(CONFIG_RUST_MAPLE_TREE_SPLIT_STORE)]
+#[cfg(any(
+    CONFIG_RUST_MAPLE_TREE_SPLIT_STORE,
+    CONFIG_RUST_MAPLE_TREE_REBALANCE_STORE
+))]
 /// Returns whether an encoded node is the tree root.
 ///
 /// # Safety
 ///
 /// `enode` must encode a valid live node.
-unsafe fn split_is_root(enode: *mut bindings::maple_enode) -> bool {
+unsafe fn copy_is_root(enode: *mut bindings::maple_enode) -> bool {
     // SAFETY: The caller supplies a valid encoded node.
-    unsafe { bindings::rust_maple_tree_split_is_root(enode) }
+    unsafe { bindings::rust_maple_tree_copy_is_root(enode) }
 }
 
-#[cfg(CONFIG_RUST_MAPLE_TREE_SPLIT_STORE)]
+#[cfg(any(
+    CONFIG_RUST_MAPLE_TREE_SPLIT_STORE,
+    CONFIG_RUST_MAPLE_TREE_REBALANCE_STORE
+))]
 /// Moves a parent traversal state to its parent and records its data end.
 ///
 /// # Safety
 ///
 /// `parent` must identify a valid non-root node under the tree write lock.
-unsafe fn split_parent_ascend(parent: *mut MaState) {
+unsafe fn copy_parent_ascend(parent: *mut MaState) {
     // SAFETY: The caller supplies a valid non-root traversal state.
-    unsafe { bindings::rust_maple_tree_split_parent_ascend(parent) };
+    unsafe { bindings::rust_maple_tree_copy_parent_ascend(parent) };
 }
 
-#[cfg(CONFIG_RUST_MAPLE_TREE_SPLIT_STORE)]
+#[cfg(any(
+    CONFIG_RUST_MAPLE_TREE_SPLIT_STORE,
+    CONFIG_RUST_MAPLE_TREE_REBALANCE_STORE
+))]
 /// Descends a traversal state into its selected slot.
 ///
 /// # Safety
 ///
 /// `mas` must identify a valid active node and a valid child slot.
-unsafe fn split_descend(mas: *mut MaState) {
+unsafe fn copy_descend(mas: *mut MaState) {
     // SAFETY: The caller supplies a valid child slot.
-    unsafe { bindings::rust_maple_tree_split_descend(mas) };
+    unsafe { bindings::rust_maple_tree_copy_descend(mas) };
 }
 
-#[cfg(CONFIG_RUST_MAPLE_TREE_SPLIT_STORE)]
+#[cfg(any(
+    CONFIG_RUST_MAPLE_TREE_SPLIT_STORE,
+    CONFIG_RUST_MAPLE_TREE_REBALANCE_STORE
+))]
 /// Returns the final data slot of a traversal state.
 ///
 /// # Safety
 ///
 /// `mas` must identify a valid active node.
-unsafe fn split_data_end(mas: *mut MaState) -> u8 {
+unsafe fn copy_data_end(mas: *mut MaState) -> u8 {
     // SAFETY: The caller supplies a valid active node.
-    unsafe { bindings::rust_maple_tree_split_data_end(mas) }
+    unsafe { bindings::rust_maple_tree_copy_data_end(mas) }
 }
 
-#[cfg(CONFIG_RUST_MAPLE_TREE_SPLIT_STORE)]
+#[cfg(any(
+    CONFIG_RUST_MAPLE_TREE_SPLIT_STORE,
+    CONFIG_RUST_MAPLE_TREE_REBALANCE_STORE
+))]
 /// Moves the write state to a parent location and refreshes its layout.
 ///
 /// # Safety
 ///
 /// `parent` must identify one complete parent location and `wr_mas` must
 /// describe the writer that will process the next level.
-unsafe fn split_write_ascend(parent: *const MaState, wr_mas: *mut MaWrState) {
+unsafe fn copy_write_ascend(parent: *const MaState, wr_mas: *mut MaWrState) {
     // SAFETY: The caller supplies one parent level for the active writer.
-    unsafe { bindings::rust_maple_tree_split_write_ascend(parent, wr_mas) };
+    unsafe { bindings::rust_maple_tree_copy_write_ascend(parent, wr_mas) };
 }
 
 #[cfg(CONFIG_RUST_MAPLE_TREE_SPANNING_STORE)]
@@ -1863,13 +1877,16 @@ unsafe fn spanning_store(wr_mas: *mut MaWrState) {
     unsafe { spanning_publish(mas, &raw mut copy) };
 }
 
-/// Returns whether a sibling can absorb the split data without filling up.
+/// Returns whether a sibling can absorb copy data without filling up.
 ///
 /// # Safety
 ///
 /// `sibling` and `wr_mas` must describe adjacent nodes in one locked tree.
-#[cfg(CONFIG_RUST_MAPLE_TREE_SPLIT_STORE)]
-unsafe fn split_data_fits(
+#[cfg(any(
+    CONFIG_RUST_MAPLE_TREE_SPLIT_STORE,
+    CONFIG_RUST_MAPLE_TREE_REBALANCE_STORE
+))]
+unsafe fn copy_data_fits(
     sibling: *mut MaState,
     wr_mas: *mut MaWrState,
     copy: *mut bindings::maple_copy,
@@ -1884,14 +1901,17 @@ unsafe fn split_data_fits(
     new_data < space
 }
 
-/// Finds an adjacent sibling that can absorb part of the split data.
+/// Finds an adjacent sibling that can absorb part of the copy data.
 ///
 /// # Safety
 ///
-/// All states must describe one locked split write. `parent` must identify the
-/// parent of the node being split.
-#[cfg(CONFIG_RUST_MAPLE_TREE_SPLIT_STORE)]
-unsafe fn split_push_sibling(
+/// All states must describe one locked copy operation. `parent` must identify
+/// the parent of the node being replaced.
+#[cfg(any(
+    CONFIG_RUST_MAPLE_TREE_SPLIT_STORE,
+    CONFIG_RUST_MAPLE_TREE_REBALANCE_STORE
+))]
+unsafe fn copy_push_sibling(
     copy: *mut bindings::maple_copy,
     wr_mas: *mut MaWrState,
     sibling: *mut MaState,
@@ -1900,7 +1920,7 @@ unsafe fn split_push_sibling(
     // SAFETY: The caller supplies a valid write state.
     let mas = unsafe { (*wr_mas).mas };
     // SAFETY: A root has no sibling.
-    if unsafe { split_is_root((*mas).node) } {
+    if unsafe { copy_is_root((*mas).node) } {
         // SAFETY: The sibling is private to this writer.
         unsafe { (*sibling).end = 0 };
         return;
@@ -1914,11 +1934,11 @@ unsafe fn split_push_sibling(
         // SAFETY: Move to the complete left sibling.
         unsafe { (*sibling).offset = (*sibling).offset.wrapping_sub(1) };
         // SAFETY: The selected left slot is a child of the parent.
-        unsafe { split_descend(sibling) };
+        unsafe { copy_descend(sibling) };
         // SAFETY: The descended sibling is valid.
-        unsafe { (*sibling).end = split_data_end(sibling) };
+        unsafe { (*sibling).end = copy_data_end(sibling) };
         // SAFETY: The left sibling can absorb the data.
-        if unsafe { split_data_fits(sibling, wr_mas, copy) } {
+        if unsafe { copy_data_fits(sibling, wr_mas, copy) } {
             return;
         }
 
@@ -1937,11 +1957,11 @@ unsafe fn split_push_sibling(
     // SAFETY: Move to the complete right sibling.
     unsafe { (*sibling).offset = (*sibling).offset.wrapping_add(1) };
     // SAFETY: The selected right slot is a child of the parent.
-    unsafe { split_descend(sibling) };
+    unsafe { copy_descend(sibling) };
     // SAFETY: The descended sibling is valid.
-    unsafe { (*sibling).end = split_data_end(sibling) };
+    unsafe { (*sibling).end = copy_data_end(sibling) };
     // SAFETY: A right sibling that does not fit cannot participate.
-    if !unsafe { split_data_fits(sibling, wr_mas, copy) } {
+    if !unsafe { copy_data_fits(sibling, wr_mas, copy) } {
         // SAFETY: No sibling participates in this copy.
         unsafe { (*sibling).end = 0 };
     }
@@ -1972,7 +1992,7 @@ unsafe fn split_data(
     }
 
     // SAFETY: All states identify one locked split operation.
-    unsafe { split_push_sibling(copy, wr_mas, sibling, parent) };
+    unsafe { copy_push_sibling(copy, wr_mas, sibling, parent) };
     // SAFETY: The sibling state is valid.
     if unsafe { (*sibling).end } != 0 {
         // SAFETY: Include every sibling slot in the replacement data.
@@ -2034,7 +2054,7 @@ unsafe fn split_ascend(
     // SAFETY: Account for the parent level.
     unsafe { (*copy).height = (*copy).height.wrapping_add(1) };
     // SAFETY: Move the write state to the selected parent location.
-    unsafe { split_write_ascend(parent, wr_mas) };
+    unsafe { copy_write_ascend(parent, wr_mas) };
     true
 }
 
@@ -2059,9 +2079,9 @@ unsafe fn split_store(wr_mas: *mut MaWrState) {
 
     loop {
         // SAFETY: The parent starts at the leaf and remains a valid traversal.
-        if !unsafe { split_is_root(parent.node) } {
+        if !unsafe { copy_is_root(parent.node) } {
             // SAFETY: The parent traversal is below the root.
-            unsafe { split_parent_ascend(&raw mut parent) };
+            unsafe { copy_parent_ascend(&raw mut parent) };
         }
 
         // SAFETY: The copy and write states are valid.
@@ -2074,6 +2094,187 @@ unsafe fn split_store(wr_mas: *mut MaWrState) {
         unsafe { copy_data_write(&raw mut copy, mas) };
         // SAFETY: Continue at the parent only when required.
         if !unsafe { split_ascend(&raw mut copy, wr_mas, &raw mut sibling, &raw mut parent) } {
+            break;
+        }
+    }
+
+    // SAFETY: Publish the complete replacement subtree.
+    unsafe { spanning_publish(mas, &raw mut copy) };
+}
+
+/// Selects a sibling for a sparse node, preferring the sibling on the right.
+///
+/// # Safety
+///
+/// `parent` must identify the parent of one non-root node under the write lock.
+#[cfg(CONFIG_RUST_MAPLE_TREE_REBALANCE_STORE)]
+unsafe fn rebalance_sibling(parent: *mut MaState, sibling: *mut MaState) {
+    // SAFETY: Both traversal states are valid.
+    unsafe { *sibling = *parent };
+    // SAFETY: The selected sibling has a valid parent slot.
+    if unsafe { (*sibling).offset < (*sibling).end } {
+        // SAFETY: Prefer moving data from the right sibling.
+        unsafe { (*sibling).offset = (*sibling).offset.wrapping_add(1) };
+    } else {
+        // SAFETY: The left sibling is the only available neighbor.
+        unsafe { (*sibling).offset = (*sibling).offset.wrapping_sub(1) };
+    }
+
+    // SAFETY: The selected slot is a child of the parent.
+    unsafe { copy_descend(sibling) };
+    // SAFETY: The descended sibling is valid.
+    unsafe { (*sibling).end = copy_data_end(sibling) };
+}
+
+/// Computes rebalance data and selects a sibling when the node is too sparse.
+///
+/// # Safety
+///
+/// The copy, write state, sibling, and parent must belong to one locked
+/// rebalance operation.
+#[cfg(CONFIG_RUST_MAPLE_TREE_REBALANCE_STORE)]
+unsafe fn rebalance_data(
+    copy: *mut bindings::maple_copy,
+    wr_mas: *mut MaWrState,
+    sibling: *mut MaState,
+    parent: *mut MaState,
+) {
+    // SAFETY: The rebalance uses one write state on both sides of the copy.
+    unsafe { copy_data_calc(copy, wr_mas, wr_mas) };
+    // SAFETY: No sibling participates until this operation selects one.
+    unsafe { (*sibling).end = 0 };
+
+    // SAFETY: The write state selects the active node layout.
+    let node_type = unsafe { (*wr_mas).type_ };
+    // SAFETY: The copy data size is valid.
+    let data = unsafe { (*copy).data };
+    let node_slots = slot_count(node_type);
+
+    if data > node_slots {
+        // SAFETY: A large replacement can use any adjacent sibling with room.
+        unsafe { copy_push_sibling(copy, wr_mas, sibling, parent) };
+        // SAFETY: The sibling state is valid.
+        if unsafe { (*sibling).end } != 0 {
+            // SAFETY: The sibling state is valid.
+            unsafe {
+                (*copy).data = (*copy).data.wrapping_add((*sibling).end).wrapping_add(1);
+            }
+        }
+        return;
+    }
+
+    // SAFETY: The write state selected a valid node layout.
+    let min_slots = unsafe { bindings::rust_maple_tree_min_slots(node_type) };
+    if data > min_slots {
+        return;
+    }
+
+    // SAFETY: The write state is valid.
+    let mas = unsafe { (*wr_mas).mas };
+    // SAFETY: A non-global sparse node can absorb one adjacent sibling.
+    if unsafe { (*mas).min != 0 || (*mas).max != !0 } {
+        // SAFETY: Select the preferred adjacent sibling.
+        unsafe { rebalance_sibling(parent, sibling) };
+        // SAFETY: Include the selected sibling in the replacement data.
+        unsafe {
+            (*copy).data = (*copy).data.wrapping_add((*sibling).end).wrapping_add(1);
+        }
+    }
+}
+
+/// Advances a rebalance operation to its parent when another level is needed.
+///
+/// # Safety
+///
+/// The copy, write state, sibling, and parent must describe one locked
+/// rebalance operation.
+#[cfg(CONFIG_RUST_MAPLE_TREE_REBALANCE_STORE)]
+unsafe fn rebalance_ascend(
+    copy: *mut bindings::maple_copy,
+    wr_mas: *mut MaWrState,
+    sibling: *mut MaState,
+    parent: *mut MaState,
+) -> bool {
+    // SAFETY: The caller supplies a valid write state.
+    let mas = unsafe { (*wr_mas).mas };
+    // SAFETY: The write state range is valid.
+    let mut min = unsafe { (*mas).min };
+    // SAFETY: The write state range is valid.
+    let mut max = unsafe { (*mas).max };
+
+    // SAFETY: The sibling state is valid.
+    if unsafe { (*sibling).end } != 0 {
+        // SAFETY: The sibling and write state ranges are valid.
+        if unsafe { (*sibling).min > (*mas).max } {
+            // SAFETY: The right sibling extends the replacement range.
+            max = unsafe { (*sibling).max };
+            // SAFETY: Include the right sibling in the parent source.
+            unsafe { (*wr_mas).offset_end = (*parent).offset.wrapping_add(1) };
+        } else {
+            // SAFETY: The left sibling extends the replacement range.
+            min = unsafe { (*sibling).min };
+            // SAFETY: The parent source starts at the current child.
+            unsafe { (*wr_mas).offset_end = (*parent).offset };
+            // SAFETY: The selected parent slot moves to the left sibling.
+            unsafe { (*parent).offset = (*parent).offset.wrapping_sub(1) };
+        }
+    }
+
+    // SAFETY: Convert completed destinations for the parent level.
+    unsafe { copy_destinations_to_slots(copy, min, max, mas) };
+    // SAFETY: A one-destination full-range copy becomes a new root.
+    if unsafe { copy_is_new_root(copy, mas) } {
+        return false;
+    }
+
+    // SAFETY: A one-destination copy without a sibling has converged.
+    if unsafe { copy_converged(copy, mas, sibling) } {
+        return false;
+    }
+
+    // SAFETY: Account for the parent level.
+    unsafe { (*copy).height = (*copy).height.wrapping_add(1) };
+    // SAFETY: Move the write state to the selected parent location.
+    unsafe { copy_write_ascend(parent, wr_mas) };
+    true
+}
+
+/// Executes a native Rust rebalance store across one or more tree levels.
+///
+/// # Safety
+///
+/// `wr_mas` must describe a selected rebalance write under the tree lock.
+#[cfg(CONFIG_RUST_MAPLE_TREE_REBALANCE_STORE)]
+unsafe fn rebalance_store(wr_mas: *mut MaWrState) {
+    // SAFETY: The caller supplies a valid write state.
+    let mas = unsafe { (*wr_mas).mas };
+    // SAFETY: Emit the operation tracepoint from the selected state.
+    unsafe { trace_op(mas) };
+
+    // SAFETY: The caller supplies a valid state.
+    let mut parent = unsafe { *mas };
+    let mut copy = bindings::maple_copy::default();
+    let mut sibling = MaState::default();
+    // SAFETY: The rebalance uses one write state on both sides of the copy.
+    unsafe { copy_leaf_init(&raw mut copy, mas, wr_mas, wr_mas) };
+
+    loop {
+        // SAFETY: The parent starts at the leaf and remains a valid traversal.
+        if !unsafe { copy_is_root(parent.node) } {
+            // SAFETY: The parent traversal is below the root.
+            unsafe { copy_parent_ascend(&raw mut parent) };
+        }
+
+        // SAFETY: The copy and write states are valid.
+        unsafe { rebalance_data(&raw mut copy, wr_mas, &raw mut sibling, &raw mut parent) };
+        // SAFETY: Configure every source for the copy engine.
+        unsafe { multi_source_setup(&raw mut copy, wr_mas, wr_mas, &raw mut sibling) };
+        // SAFETY: Select and allocate the bounded destination set.
+        unsafe { destination_setup(&raw mut copy, mas, (*wr_mas).type_) };
+        // SAFETY: Write every source into the replacement nodes.
+        unsafe { copy_data_write(&raw mut copy, mas) };
+        // SAFETY: Continue at the parent only when required.
+        if !unsafe { rebalance_ascend(&raw mut copy, wr_mas, &raw mut sibling, &raw mut parent) } {
             break;
         }
     }
@@ -2217,6 +2418,16 @@ unsafe fn store_entry(wr_mas: *mut MaWrState) {
             // SAFETY: The selected complex strategy remains a retained boundary.
             unsafe { store_complex(wr_mas) };
         }
+        #[cfg(CONFIG_RUST_MAPLE_TREE_REBALANCE_STORE)]
+        bindings::store_type_wr_rebalance => {
+            // SAFETY: The selected strategy and state are valid.
+            unsafe { rebalance_store(wr_mas) };
+        }
+        #[cfg(not(CONFIG_RUST_MAPLE_TREE_REBALANCE_STORE))]
+        bindings::store_type_wr_rebalance => {
+            // SAFETY: The selected complex strategy remains a retained boundary.
+            unsafe { store_complex(wr_mas) };
+        }
         #[cfg(CONFIG_RUST_MAPLE_TREE_ROOT_STORE)]
         bindings::store_type_wr_new_root => {
             // SAFETY: The selected strategy and state are valid.
@@ -2232,7 +2443,7 @@ unsafe fn store_entry(wr_mas: *mut MaWrState) {
             // SAFETY: The selected complex strategies remain retained boundaries.
             unsafe { store_complex(wr_mas) };
         }
-        bindings::store_type_wr_rebalance | bindings::store_type_wr_invalid => {
+        bindings::store_type_wr_invalid => {
             // SAFETY: The selected complex strategy remains a retained boundary.
             unsafe { store_complex(wr_mas) };
         }
