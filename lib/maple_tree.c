@@ -3957,6 +3957,63 @@ static inline void mas_wr_preallocate(struct ma_wr_state *wr_mas, void *entry)
 	mas_alloc_nodes(mas, GFP_NOWAIT);
 }
 
+#ifdef CONFIG_RUST_MAPLE_TREE_PREALLOC
+bool rust_maple_tree_wr_walk(struct ma_wr_state *wr_mas)
+{
+	return mas_wr_walk(wr_mas);
+}
+
+void rust_maple_tree_wr_end_piv(struct ma_wr_state *wr_mas)
+{
+	mas_wr_end_piv(wr_mas);
+}
+
+void rust_maple_tree_wr_extend_null(struct ma_wr_state *wr_mas)
+{
+	mas_wr_extend_null(wr_mas);
+}
+
+unsigned char rust_maple_tree_wr_new_end(struct ma_wr_state *wr_mas)
+{
+	return mas_wr_new_end(wr_mas);
+}
+
+bool rust_maple_tree_in_rcu(struct maple_tree *mt)
+{
+	return mt_in_rcu(mt);
+}
+
+unsigned char rust_maple_tree_min_slots(enum maple_type type)
+{
+	return mt_min_slots[type];
+}
+
+unsigned char rust_maple_tree_slot_count(enum maple_type type)
+{
+	return mt_slots[type];
+}
+
+unsigned int rust_maple_tree_height(struct ma_state *mas)
+{
+	return mas_mt_height(mas);
+}
+
+void rust_maple_tree_alloc_nodes(struct ma_state *mas, gfp_t gfp)
+{
+	mas_alloc_nodes(mas, gfp);
+}
+
+void rust_maple_tree_destroy(struct ma_state *mas)
+{
+	mas_destroy(mas);
+}
+
+int rust_maple_tree_error(struct ma_state *mas)
+{
+	return xa_err(mas->node);
+}
+#endif /* CONFIG_RUST_MAPLE_TREE_PREALLOC */
+
 /**
  * mas_insert() - Internal call to insert a value
  * @mas: The maple state
@@ -5230,6 +5287,9 @@ EXPORT_SYMBOL_GPL(mas_store_prealloc);
  */
 int mas_preallocate(struct ma_state *mas, void *entry, gfp_t gfp)
 {
+#ifdef CONFIG_RUST_MAPLE_TREE_PREALLOC
+	return rust_mas_preallocate(mas, entry, gfp);
+#else
 	MA_WR_STATE(wr_mas, mas, entry);
 
 	mas_may_init_lock_check(mas);
@@ -5253,6 +5313,7 @@ int mas_preallocate(struct ma_state *mas, void *entry, gfp_t gfp)
 set_flag:
 	mas->mas_flags |= MA_STATE_PREALLOC;
 	return 0;
+#endif /* CONFIG_RUST_MAPLE_TREE_PREALLOC */
 }
 EXPORT_SYMBOL_GPL(mas_preallocate);
 

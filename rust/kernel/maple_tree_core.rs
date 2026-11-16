@@ -13,6 +13,8 @@ pub(crate) type MapleNode = bindings::maple_node;
 pub(crate) type MapleTree = bindings::maple_tree;
 pub(crate) type MapleEnode = bindings::maple_enode;
 pub(crate) type MaState = bindings::ma_state;
+#[cfg(CONFIG_RUST_MAPLE_TREE_PREALLOC)]
+pub(crate) type MaWrState = bindings::ma_wr_state;
 
 #[inline(always)]
 pub(crate) fn is_start(mas: *const MaState) -> bool {

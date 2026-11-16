@@ -113,6 +113,7 @@ more details.
     native-maple-tree-next
     native-maple-tree-prev
     native-maple-tree-find
+    native-maple-tree-prealloc
     native-xarray-alloc
     native-xarray-create
     native-xarray-create-range

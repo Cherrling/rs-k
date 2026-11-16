@@ -420,6 +420,24 @@ config RUST_MAPLE_TREE_FIND
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_MAPLE_TREE_PREALLOC
+	bool "Rust implementation of Maple Tree preallocation"
+	depends on RUST_MAPLE_TREE_FIND
+	default y
+	help
+	  Use Rust for the production write preparation and node
+	  preallocation policy behind mas_preallocate().
+
+	  Rust owns write state normalization, write type selection, node
+	  request calculation, allocation lifecycle, and error reset. Maple
+	  node layout, protected slot access, node-pool allocation, RCU
+	  publication, and lockdep checks remain in C. The exported C entry
+	  point remains as an ABI adapter. The C fallback retains the complete
+	  preallocation operation.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_PERCPU_REFCOUNT
 	bool "Rust implementation of percpu_ref() lifecycle"
 	depends on RUST

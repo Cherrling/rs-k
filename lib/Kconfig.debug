@@ -3160,6 +3160,21 @@ config MAPLE_TREE_FIND_KUNIT_TEST
 
 	  If unsure, say N.
 
+config MAPLE_TREE_PREALLOC_KUNIT_TEST
+	tristate "KUnit Test for Maple Tree preallocation" if !KUNIT_ALL_TESTS
+	depends on KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This builds the KUnit test suite for the active Maple Tree
+	  preallocation implementation. It tests root expansion, range stores,
+	  spanning writes, splits, slot stores, RCU node replacement,
+	  preallocation chaining, and concurrent allocation and RCU reads.
+
+	  The suite runs against both the Rust production path and the C
+	  fallback.
+
+	  If unsure, say N.
+
 config TEST_RHASHTABLE
 	tristate "Perform selftest on resizable hash table"
 	help

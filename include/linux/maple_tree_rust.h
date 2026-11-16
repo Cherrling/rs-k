@@ -81,4 +81,22 @@ void *rust_mas_find_range(struct ma_state *mas, unsigned long max);
 
 #endif /* CONFIG_RUST_MAPLE_TREE_FIND */
 
+#ifdef CONFIG_RUST_MAPLE_TREE_PREALLOC
+
+int rust_mas_preallocate(struct ma_state *mas, void *entry, gfp_t gfp);
+
+bool rust_maple_tree_wr_walk(struct ma_wr_state *wr_mas);
+void rust_maple_tree_wr_end_piv(struct ma_wr_state *wr_mas);
+void rust_maple_tree_wr_extend_null(struct ma_wr_state *wr_mas);
+unsigned char rust_maple_tree_wr_new_end(struct ma_wr_state *wr_mas);
+bool rust_maple_tree_in_rcu(struct maple_tree *mt);
+unsigned char rust_maple_tree_min_slots(enum maple_type type);
+unsigned char rust_maple_tree_slot_count(enum maple_type type);
+unsigned int rust_maple_tree_height(struct ma_state *mas);
+void rust_maple_tree_alloc_nodes(struct ma_state *mas, gfp_t gfp);
+void rust_maple_tree_destroy(struct ma_state *mas);
+int rust_maple_tree_error(struct ma_state *mas);
+
+#endif /* CONFIG_RUST_MAPLE_TREE_PREALLOC */
+
 #endif /* _LINUX_MAPLE_TREE_RUST_H */

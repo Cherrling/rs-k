@@ -136,6 +136,8 @@ mod maple_tree_find;
 mod maple_tree_load;
 #[cfg(CONFIG_RUST_MAPLE_TREE_NEXT)]
 mod maple_tree_next;
+#[cfg(CONFIG_RUST_MAPLE_TREE_PREALLOC)]
+mod maple_tree_prealloc;
 #[cfg(CONFIG_RUST_MAPLE_TREE_PREV)]
 mod maple_tree_prev;
 #[cfg(CONFIG_RUST_MAPLE_TREE_WALK)]

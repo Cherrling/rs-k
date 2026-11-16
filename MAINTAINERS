@@ -15733,6 +15733,7 @@ F:	Documentation/core-api/maple_tree.rst
 F:	Documentation/rust/native-maple-tree-find.rst
 F:	Documentation/rust/native-maple-tree-load.rst
 F:	Documentation/rust/native-maple-tree-next.rst
+F:	Documentation/rust/native-maple-tree-prealloc.rst
 F:	Documentation/rust/native-maple-tree-prev.rst
 F:	Documentation/rust/native-maple-tree-walk.rst
 F:	include/linux/maple_tree.h
@@ -15742,6 +15743,7 @@ F:	lib/maple_tree.c
 F:	lib/tests/maple_tree_find_kunit.c
 F:	lib/tests/maple_tree_load_kunit.c
 F:	lib/tests/maple_tree_next_kunit.c
+F:	lib/tests/maple_tree_prealloc_kunit.c
 F:	lib/tests/maple_tree_prev_kunit.c
 F:	lib/tests/maple_tree_walk_kunit.c
 F:	lib/region_alloc_benchmark.c
@@ -15751,6 +15753,7 @@ F:	rust/kernel/maple_tree_core.rs
 F:	rust/kernel/maple_tree_find.rs
 F:	rust/kernel/maple_tree_load.rs
 F:	rust/kernel/maple_tree_next.rs
+F:	rust/kernel/maple_tree_prealloc.rs
 F:	rust/kernel/maple_tree_prev.rs
 F:	rust/kernel/maple_tree.rs
 F:	rust/kernel/maple_tree_walk.rs
