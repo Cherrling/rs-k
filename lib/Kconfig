@@ -483,6 +483,23 @@ config RUST_XARRAY_FIND
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_XARRAY_NEXT_PREV
+	bool "Rust implementation of XArray adjacent cursor movement"
+	depends on RUST_XARRAY_LOAD && X86_64
+	default y
+	help
+	  Use Rust for the production algorithms behind xas_prev() and
+	  xas_next(). Rust owns index wrapping, offset adjustment, parent
+	  retreat, child descent, and restart and error dispatch.
+
+	  Cursor and tagged-entry layouts, RCU slot and parent access, frozen
+	  and node classification, and cursor loads remain in C. The exported
+	  __xas_prev() and __xas_next() entry points remain as ABI adapters.
+	  The C fallback retains its existing adjacent-index policy.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_XARRAY_FIND_MARKED
 	bool "Rust implementation of XArray marked forward search"
 	depends on RUST_XARRAY_FIND && RUST_XARRAY_MARKS && X86_64

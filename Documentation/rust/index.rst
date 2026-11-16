@@ -117,6 +117,7 @@ more details.
     native-xarray-free-nodes
     native-xarray-load
     native-xarray-marks
+    native-xarray-next-prev
     native-xarray-squash
     native-xarray-store
     native-percpu-refcount

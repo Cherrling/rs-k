@@ -29906,6 +29906,7 @@ F:	lib/tests/xarray_expand_kunit.c
 F:	lib/tests/xarray_find_kunit.c
 F:	lib/tests/xarray_find_marked_kunit.c
 F:	lib/tests/xarray_free_nodes_kunit.c
+F:	lib/tests/xarray_next_prev_kunit.c
 F:	lib/tests/xarray_marks_kunit.c
 F:	lib/tests/xarray_rust_kunit.c
 F:	lib/tests/xarray_squash_kunit.c
@@ -29931,6 +29932,7 @@ F:	rust/kernel/xarray_find.rs
 F:	rust/kernel/xarray_find_marked.rs
 F:	rust/kernel/xarray_free_nodes.rs
 F:	rust/kernel/xarray_load.rs
+F:	rust/kernel/xarray_next_prev.rs
 F:	rust/kernel/xarray_marks.rs
 F:	rust/kernel/xarray_squash.rs
 F:	rust/kernel/xarray_store.rs

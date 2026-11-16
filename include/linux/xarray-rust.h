@@ -57,6 +57,13 @@ void *rust_xarray_find_marked(struct xa_state *xas, unsigned long max, xa_mark_t
 
 #endif /* CONFIG_RUST_XARRAY_FIND_MARKED */
 
+#ifdef CONFIG_RUST_XARRAY_NEXT_PREV
+
+void *rust_xarray_prev(struct xa_state *xas);
+void *rust_xarray_next(struct xa_state *xas);
+
+#endif /* CONFIG_RUST_XARRAY_NEXT_PREV */
+
 #if defined(CONFIG_RUST_XARRAY_FREE_NODES) || \
 	defined(CONFIG_RUST_XARRAY_EXPAND)
 

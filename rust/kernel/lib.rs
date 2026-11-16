@@ -329,6 +329,8 @@ mod xarray_free_nodes;
 mod xarray_load;
 #[cfg(CONFIG_RUST_XARRAY_MARKS)]
 mod xarray_marks;
+#[cfg(CONFIG_RUST_XARRAY_NEXT_PREV)]
+mod xarray_next_prev;
 #[cfg(CONFIG_RUST_XARRAY_SQUASH_MARKS)]
 mod xarray_squash;
 #[cfg(CONFIG_RUST_XARRAY_STORE)]

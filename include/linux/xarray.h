@@ -1872,6 +1872,9 @@ void *__xas_prev(struct xa_state *);
  */
 static inline void *xas_prev(struct xa_state *xas)
 {
+#if defined(CONFIG_RUST_XARRAY_NEXT_PREV)
+	return __xas_prev(xas);
+#else
 	struct xa_node *node = xas->xa_node;
 
 	if (unlikely(xas_not_node(node) || node->shift ||
@@ -1881,6 +1884,7 @@ static inline void *xas_prev(struct xa_state *xas)
 	xas->xa_index--;
 	xas->xa_offset--;
 	return xa_entry(xas->xa, node, xas->xa_offset);
+#endif
 }
 
 /**
@@ -1901,6 +1905,9 @@ static inline void *xas_prev(struct xa_state *xas)
  */
 static inline void *xas_next(struct xa_state *xas)
 {
+#if defined(CONFIG_RUST_XARRAY_NEXT_PREV)
+	return __xas_next(xas);
+#else
 	struct xa_node *node = xas->xa_node;
 
 	if (unlikely(xas_not_node(node) || node->shift ||
@@ -1910,6 +1917,7 @@ static inline void *xas_next(struct xa_state *xas)
 	xas->xa_index++;
 	xas->xa_offset++;
 	return xa_entry(xas->xa, node, xas->xa_offset);
+#endif
 }
 
 #endif /* _LINUX_XARRAY_H */

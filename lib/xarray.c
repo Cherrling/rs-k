@@ -151,10 +151,14 @@ static unsigned int get_offset(unsigned long index, struct xa_node *node)
 	return (index >> node->shift) & XA_CHUNK_MASK;
 }
 
+#if !defined(CONFIG_RUST_XARRAY_CREATE_RANGE) || \
+	!defined(CONFIG_RUST_XARRAY_FIND_MARKED) || \
+	!defined(CONFIG_RUST_XARRAY_NEXT_PREV)
 static void xas_set_offset(struct xa_state *xas)
 {
 	xas->xa_offset = get_offset(xas->xa_index, xas->xa_node);
 }
+#endif
 
 /* move the index either forwards (find) or backwards (sibling slot) */
 #if !defined(CONFIG_RUST_XARRAY_FIND) || \
@@ -1441,6 +1445,7 @@ EXPORT_SYMBOL_GPL(xas_pause);
  * Helper function for xas_prev() which handles all the complex cases
  * out of line.
  */
+#ifndef CONFIG_RUST_XARRAY_NEXT_PREV
 void *__xas_prev(struct xa_state *xas)
 {
 	void *entry;
@@ -1471,6 +1476,12 @@ void *__xas_prev(struct xa_state *xas)
 		xas_set_offset(xas);
 	}
 }
+#else
+void *__xas_prev(struct xa_state *xas)
+{
+	return rust_xarray_prev(xas);
+}
+#endif
 EXPORT_SYMBOL_GPL(__xas_prev);
 
 /*
@@ -1480,6 +1491,7 @@ EXPORT_SYMBOL_GPL(__xas_prev);
  * Helper function for xas_next() which handles all the complex cases
  * out of line.
  */
+#ifndef CONFIG_RUST_XARRAY_NEXT_PREV
 void *__xas_next(struct xa_state *xas)
 {
 	void *entry;
@@ -1510,6 +1522,12 @@ void *__xas_next(struct xa_state *xas)
 		xas_set_offset(xas);
 	}
 }
+#else
+void *__xas_next(struct xa_state *xas)
+{
+	return rust_xarray_next(xas);
+}
+#endif
 EXPORT_SYMBOL_GPL(__xas_next);
 
 /**
