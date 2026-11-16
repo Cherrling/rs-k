@@ -1726,6 +1726,7 @@ EXPORT_SYMBOL_GPL(xas_find_marked);
  * Context: Any context.  Expects xa_lock to be held.
  * Return: The next entry in the range covered by @xas or %NULL.
  */
+#ifndef CONFIG_RUST_XARRAY_FIND_CONFLICT
 void *xas_find_conflict(struct xa_state *xas)
 {
 	void *curr;
@@ -1776,6 +1777,12 @@ void *xas_find_conflict(struct xa_state *xas)
 	xas->xa_offset -= xas->xa_sibs;
 	return NULL;
 }
+#else
+void *xas_find_conflict(struct xa_state *xas)
+{
+	return rust_xarray_find_conflict(xas);
+}
+#endif
 EXPORT_SYMBOL_GPL(xas_find_conflict);
 
 /**

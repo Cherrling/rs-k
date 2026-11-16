@@ -108,7 +108,7 @@ unsafe fn reload(xas: *mut XaState) -> *mut c_void {
 /// # Safety
 ///
 /// `xas` must point to a valid XArray state under RCU or lock protection.
-unsafe fn start(xas: *mut XaState) -> *mut c_void {
+pub(crate) unsafe fn start(xas: *mut XaState) -> *mut c_void {
     // SAFETY: Guaranteed by this function's contract.
     let state = unsafe { &mut *xas };
 
@@ -149,7 +149,7 @@ unsafe fn start(xas: *mut XaState) -> *mut c_void {
 /// # Safety
 ///
 /// `xas` must be valid and `node` must be the node selected for its index.
-unsafe fn descend(xas: *mut XaState, node: *mut XaNode) -> *mut c_void {
+pub(crate) unsafe fn descend(xas: *mut XaState, node: *mut XaNode) -> *mut c_void {
     // SAFETY: Guaranteed by this function's contract.
     let state = unsafe { &mut *xas };
     // SAFETY: `node` is valid by this function's contract.

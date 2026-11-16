@@ -233,7 +233,8 @@ __rust_helper bool rust_helper_xarray_expand_check(struct xa_state *xas,
 #if defined(CONFIG_RUST_XARRAY_MARKS) || \
 	defined(CONFIG_RUST_XARRAY_FREE_NODES) || \
 	defined(CONFIG_RUST_XARRAY_DELETE_NODE) || \
-	defined(CONFIG_RUST_XARRAY_CREATE_RANGE)
+	defined(CONFIG_RUST_XARRAY_CREATE_RANGE) || \
+	defined(CONFIG_RUST_XARRAY_FIND_CONFLICT)
 
 __rust_helper struct xa_node *
 rust_helper_xarray_parent_locked(const struct xarray *xa,
@@ -265,7 +266,8 @@ __rust_helper bool rust_helper_xarray_not_node(struct xa_node *node)
 }
 #endif
 
-#ifdef CONFIG_RUST_XARRAY_FIND_MARKED
+#if defined(CONFIG_RUST_XARRAY_FIND_MARKED) || \
+	defined(CONFIG_RUST_XARRAY_FIND_CONFLICT)
 __rust_helper bool rust_helper_xarray_top(struct xa_node *node)
 {
 	return xas_top(node);
@@ -294,6 +296,16 @@ rust_helper_xarray_node_find_mark(const struct xa_node *node,
 {
 	return find_next_bit(node->marks[(__force unsigned int)mark],
 			     XA_CHUNK_SIZE, offset);
+}
+#endif
+
+#ifdef CONFIG_RUST_XARRAY_FIND_CONFLICT
+__rust_helper void *
+rust_helper_xarray_entry_locked(const struct xarray *xa,
+				const struct xa_node *node,
+				unsigned int offset)
+{
+	return xa_entry_locked(xa, node, offset);
 }
 #endif
 

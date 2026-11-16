@@ -321,6 +321,8 @@ mod xarray_delete_node;
 mod xarray_expand;
 #[cfg(CONFIG_RUST_XARRAY_FIND)]
 mod xarray_find;
+#[cfg(CONFIG_RUST_XARRAY_FIND_CONFLICT)]
+mod xarray_find_conflict;
 #[cfg(CONFIG_RUST_XARRAY_FIND_MARKED)]
 mod xarray_find_marked;
 #[cfg(CONFIG_RUST_XARRAY_FREE_NODES)]

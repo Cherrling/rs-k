@@ -51,6 +51,12 @@ void *rust_xarray_find(struct xa_state *xas, unsigned long max);
 
 #endif /* CONFIG_RUST_XARRAY_FIND */
 
+#ifdef CONFIG_RUST_XARRAY_FIND_CONFLICT
+
+void *rust_xarray_find_conflict(struct xa_state *xas);
+
+#endif /* CONFIG_RUST_XARRAY_FIND_CONFLICT */
+
 #ifdef CONFIG_RUST_XARRAY_FIND_MARKED
 
 void *rust_xarray_find_marked(struct xa_state *xas, unsigned long max, xa_mark_t mark);

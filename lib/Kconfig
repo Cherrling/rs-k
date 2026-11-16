@@ -483,6 +483,22 @@ config RUST_XARRAY_FIND
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_XARRAY_FIND_CONFLICT
+	bool "Rust implementation of XArray range conflict search"
+	depends on RUST_XARRAY_LOAD && X86_64
+	default y
+	help
+	  Use Rust for the production algorithm behind xas_find_conflict().
+	  Rust owns root start, child descent, range-boundary checks, sibling
+	  skipping, locked slot access, and parent retreat.
+
+	  XArray node and state layouts and tagged pointer primitives remain
+	  in C. The exported xas_find_conflict() entry point remains as an ABI
+	  adapter. The C fallback retains its existing conflict-search policy.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_XARRAY_NEXT_PREV
 	bool "Rust implementation of XArray adjacent cursor movement"
 	depends on RUST_XARRAY_LOAD && X86_64

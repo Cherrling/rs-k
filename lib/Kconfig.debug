@@ -3428,6 +3428,17 @@ config XARRAY_FIND_KUNIT_TEST
 
 	  If unsure, say N.
 
+config XARRAY_FIND_CONFLICT_KUNIT_TEST
+	tristate "KUnit Test for XArray range conflict search" if !KUNIT_ALL_TESTS
+	depends on XARRAY_MULTI && KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This builds the KUnit test suite for XArray conflict search. It tests
+	  errors, empty cursors, direct roots, sibling resolution, absent
+	  ranges, and repeated conflict traversal in the active implementation.
+
+	  If unsure, say N.
+
 config XARRAY_FIND_MARKED_KUNIT_TEST
 	tristate "KUnit Test for XArray marked forward search" if !KUNIT_ALL_TESTS
 	depends on XARRAY_MULTI && KUNIT
