@@ -188,7 +188,7 @@ unsafe fn mark_set(xas: *const XaState, mark: Mark) {
 ///
 /// `xas` must point to a valid XArray state and the caller must hold the
 /// XArray lock.
-unsafe fn mark_clear(xas: *const XaState, mark: Mark) {
+pub(crate) unsafe fn mark_clear(xas: *const XaState, mark: Mark) {
     // SAFETY: Guaranteed by this function's contract.
     let state = unsafe { &*xas };
     let mut node = state.xa_node;

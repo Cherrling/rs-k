@@ -3565,6 +3565,18 @@ config XARRAY_DESTROY_KUNIT_TEST
 
 	  If unsure, say N.
 
+config XARRAY_ALLOC_KUNIT_TEST
+	tristate "KUnit Test for XArray ID allocation" if !KUNIT_ALL_TESTS
+	depends on XARRAY_MULTI && KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This builds the KUnit test suite for XArray first-fit and cyclic ID
+	  allocation. It tests holes, reserved entries, range exhaustion,
+	  cyclic wrap reporting, the maximum ID, and concurrent allocation in
+	  the active implementation.
+
+	  If unsure, say N.
+
 config XARRAY_MARKS_KUNIT_TEST
 	tristate "KUnit Test for XArray mark lifecycle" if !KUNIT_ALL_TESTS
 	depends on KUNIT

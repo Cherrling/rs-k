@@ -201,7 +201,7 @@ unsafe fn store_slot(xas: *mut XaState, node: *mut XaNode, offset: u32, entry: *
 /// # Safety
 ///
 /// `xas` must be a valid XArray state and the caller must hold the XArray lock.
-unsafe fn store(xas: *mut XaState, mut entry: *mut c_void) -> *mut c_void {
+pub(crate) unsafe fn store(xas: *mut XaState, mut entry: *mut c_void) -> *mut c_void {
     // SAFETY: Guaranteed by this function's contract.
     let state = unsafe { &mut *xas };
     let value = is_value(entry);

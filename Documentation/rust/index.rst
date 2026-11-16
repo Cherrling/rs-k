@@ -108,6 +108,7 @@ more details.
     native-bitmap-ops
     native-kfifo
     native-genradix
+    native-xarray-alloc
     native-xarray-create
     native-xarray-create-range
     native-xarray-delete-node

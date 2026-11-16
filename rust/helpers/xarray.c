@@ -288,12 +288,14 @@ __rust_helper bool rust_helper_xarray_top(struct xa_node *node)
 }
 #endif
 
-#ifdef CONFIG_RUST_XARRAY_SPLIT
+#if defined(CONFIG_RUST_XARRAY_ALLOC) || defined(CONFIG_RUST_XARRAY_SPLIT)
 __rust_helper void rust_helper_xarray_set_err(struct xa_state *xas, long error)
 {
 	xas_set_err(xas, error);
 }
+#endif
 
+#ifdef CONFIG_RUST_XARRAY_SPLIT
 __rust_helper void rust_helper_xarray_set_slot_relaxed(struct xa_node *node,
 						       unsigned int offset,
 						       void *entry)
@@ -376,6 +378,45 @@ __rust_helper void rust_helper_xarray_clear_parent(struct xa_node *node)
 __rust_helper void *rust_helper_xarray_zero_entry(void)
 {
 	return XA_ZERO_ENTRY;
+}
+#endif
+
+#ifdef CONFIG_RUST_XARRAY_ALLOC
+__rust_helper bool rust_helper_xarray_is_advanced(const void *entry)
+{
+	return xa_is_advanced(entry);
+}
+
+__rust_helper void
+rust_helper_xarray_alloc_warn_advanced(const void *entry)
+{
+	WARN_ON_ONCE(xa_is_advanced(entry));
+}
+
+__rust_helper void
+rust_helper_xarray_alloc_warn_track_free(const struct xarray *xa)
+{
+	WARN_ON_ONCE(!(xa->xa_flags & XA_FLAGS_TRACK_FREE));
+}
+
+__rust_helper bool rust_helper_xarray_is_restart(const struct xa_state *xas)
+{
+	return xas->xa_node == XAS_RESTART;
+}
+
+__rust_helper bool rust_helper_xarray_alloc_wrapped(const struct xarray *xa)
+{
+	return xa->xa_flags & XA_FLAGS_ALLOC_WRAPPED;
+}
+
+__rust_helper void rust_helper_xarray_alloc_clear_wrapped(struct xarray *xa)
+{
+	xa->xa_flags &= ~XA_FLAGS_ALLOC_WRAPPED;
+}
+
+__rust_helper void rust_helper_xarray_alloc_set_wrapped(struct xarray *xa)
+{
+	xa->xa_flags |= XA_FLAGS_ALLOC_WRAPPED;
 }
 #endif
 

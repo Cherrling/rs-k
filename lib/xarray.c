@@ -426,6 +426,25 @@ static bool __xas_nomem(struct xa_state *xas, gfp_t gfp)
 	return true;
 }
 
+#ifdef CONFIG_RUST_XARRAY_ALLOC
+bool rust_xarray_alloc_nomem(struct xa_state *xas, gfp_t gfp)
+	__must_hold(xas->xa->xa_lock)
+{
+	unsigned int lock_type = xa_lock_type(xas->xa);
+	bool ret;
+
+	if (gfpflags_allow_blocking(gfp)) {
+		xas_unlock_type(xas, lock_type);
+		ret = rust_xarray_nomem(xas, gfp);
+		xas_lock_type(xas, lock_type);
+	} else {
+		ret = rust_xarray_nomem(xas, gfp);
+	}
+
+	return ret;
+}
+#endif
+
 static void xas_update(struct xa_state *xas, struct xa_node *node)
 {
 	if (xas->xa_update)
@@ -2268,6 +2287,9 @@ EXPORT_SYMBOL(xa_get_order);
 int __xa_alloc(struct xarray *xa, u32 *id, void *entry,
 		struct xa_limit limit, gfp_t gfp)
 {
+#ifdef CONFIG_RUST_XARRAY_ALLOC
+	return rust_xarray_alloc(xa, id, entry, limit, gfp);
+#else
 	XA_STATE(xas, xa, 0);
 
 	if (WARN_ON_ONCE(xa_is_advanced(entry)))
@@ -2290,6 +2312,7 @@ int __xa_alloc(struct xarray *xa, u32 *id, void *entry,
 	} while (__xas_nomem(&xas, gfp));
 
 	return xas_error(&xas);
+#endif
 }
 EXPORT_SYMBOL(__xa_alloc);
 
@@ -2320,6 +2343,9 @@ EXPORT_SYMBOL(__xa_alloc);
 int __xa_alloc_cyclic(struct xarray *xa, u32 *id, void *entry,
 		struct xa_limit limit, u32 *next, gfp_t gfp)
 {
+#ifdef CONFIG_RUST_XARRAY_ALLOC
+	return rust_xarray_alloc_cyclic(xa, id, entry, limit, next, gfp);
+#else
 	u32 min = limit.min;
 	int ret;
 
@@ -2343,6 +2369,7 @@ int __xa_alloc_cyclic(struct xarray *xa, u32 *id, void *entry,
 			xa->xa_flags |= XA_FLAGS_ALLOC_WRAPPED;
 	}
 	return ret;
+#endif
 }
 EXPORT_SYMBOL(__xa_alloc_cyclic);
 

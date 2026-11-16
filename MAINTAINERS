@@ -29899,6 +29899,7 @@ F:	include/linux/xarray.h
 F:	lib/idr.c
 F:	lib/region_alloc_benchmark.c
 F:	lib/test_xarray.c
+F:	lib/tests/xarray_alloc_kunit.c
 F:	lib/tests/xarray_create_kunit.c
 F:	lib/tests/xarray_create_range_kunit.c
 F:	lib/tests/xarray_delete_node_kunit.c
@@ -29930,6 +29931,7 @@ B:	https://github.com/Rust-for-Linux/linux/issues
 C:	https://rust-for-linux.zulipchat.com
 T:	git https://github.com/Rust-for-Linux/linux.git xarray-next
 F:	rust/kernel/xarray.rs
+F:	rust/kernel/xarray_alloc.rs
 F:	rust/kernel/xarray_create.rs
 F:	rust/kernel/xarray_create_range.rs
 F:	rust/kernel/xarray_delete_node.rs

@@ -697,6 +697,26 @@ config RUST_XARRAY_DESTROY
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_XARRAY_ALLOC
+	bool "Rust implementation of XArray ID allocation"
+	depends on RUST_XARRAY_CREATE && RUST_XARRAY_FIND_MARKED && \
+		RUST_XARRAY_MARKS && RUST_XARRAY_NOMEM && \
+		RUST_XARRAY_STORE && X86_64
+	default y
+	help
+	  Use Rust for the production implementation behind __xa_alloc() and
+	  __xa_alloc_cyclic(). Rust owns free-mark search, first-fit selection,
+	  range exhaustion, allocation retries, next-ID updates, and cyclic
+	  wrap reporting.
+
+	  XArray locking, operation preallocation, free-mark storage, node
+	  layout, and tagged-entry encoding remain in C. The exported entry
+	  points remain as ABI adapters. The C fallback retains the complete
+	  allocation policy.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_XARRAY_SQUASH_MARKS
 	bool "Rust implementation of XArray multi-index mark squashing"
 	depends on RUST_XARRAY_MARKS && X86_64
