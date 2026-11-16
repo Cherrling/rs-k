@@ -117,6 +117,7 @@ more details.
     native-maple-tree-store
     native-maple-tree-node-store
     native-maple-tree-spanning-store
+    native-maple-tree-root-store
     native-xarray-alloc
     native-xarray-create
     native-xarray-create-range

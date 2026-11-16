@@ -3,9 +3,9 @@
 //! Native Maple Tree write dispatcher and store strategies.
 //!
 //! Rust owns store-type dispatch, the in-place store strategies, node
-//! replacement, and spanning stores. C retains node layout, RCU publication,
-//! protected slot access, metadata layout, gap propagation, tracepoint
-//! delivery, and the split, rebalance, and root strategies.
+//! replacement, spanning stores, and root stores. C retains node layout, RCU
+//! publication, protected slot access, metadata layout, gap propagation,
+//! tracepoint delivery, and the split and rebalance strategies.
 
 #[cfg(CONFIG_RUST_MAPLE_TREE_NODE_STORE)]
 use super::maple_tree_core::MapleNode;
@@ -409,6 +409,215 @@ unsafe fn node_store(wr_mas: *mut MaWrState) {
     unsafe { (*mas).end = new_end };
 }
 
+#[cfg(CONFIG_RUST_MAPLE_TREE_ROOT_STORE)]
+/// Copies the tree parent into a replacement root node.
+///
+/// # Safety
+///
+/// `mas` must hold the tree lock and `node` must be the new root node.
+unsafe fn set_root_parent(node: *mut MapleNode, mas: *mut MaState) {
+    // SAFETY: The caller supplies a valid locked state and root node.
+    unsafe { bindings::rust_maple_tree_store_root_parent(node, mas) };
+}
+
+#[cfg(CONFIG_RUST_MAPLE_TREE_ROOT_STORE)]
+/// Publishes the encoded `mas->node` as the tree root.
+///
+/// # Safety
+///
+/// `mas` must hold the tree lock and `mas->node` must encode a complete node.
+unsafe fn publish_root_node(mas: *mut MaState) {
+    // SAFETY: The caller supplies a complete encoded root node.
+    unsafe { bindings::rust_maple_tree_store_root_node(mas) };
+}
+
+#[cfg(CONFIG_RUST_MAPLE_TREE_ROOT_STORE)]
+/// Publishes a direct root entry.
+///
+/// # Safety
+///
+/// `mas` must hold the tree lock and `entry` must be a valid root entry.
+unsafe fn publish_root_entry(mas: *mut MaState, entry: *mut c_void) {
+    // SAFETY: The caller supplies a valid direct root entry.
+    unsafe { bindings::rust_maple_tree_store_root_entry(mas, entry) };
+}
+
+#[cfg(CONFIG_RUST_MAPLE_TREE_ROOT_STORE)]
+/// Destroys the old root subtree after root replacement.
+///
+/// # Safety
+///
+/// `mas` must hold the tree lock and `root` must be the previous root.
+unsafe fn destroy_root(mas: *mut MaState, root: *mut c_void) {
+    // SAFETY: The caller supplies the detached previous root.
+    unsafe { bindings::rust_maple_tree_store_destroy_root(mas, root) };
+}
+
+#[cfg(CONFIG_RUST_MAPLE_TREE_ROOT_STORE)]
+/// Sets the height recorded by the Maple tree.
+///
+/// # Safety
+///
+/// `mas` must hold the tree lock and `height` must match the new root layout.
+unsafe fn set_tree_height(mas: *mut MaState, height: u32) {
+    // SAFETY: The caller supplies a valid locked tree state.
+    unsafe { bindings::rust_maple_tree_store_set_height(mas, height) };
+}
+
+/// Expands a direct or empty root into a leaf node.
+///
+/// # Safety
+///
+/// `mas` must select a direct root store and hold the tree lock.
+#[cfg(CONFIG_RUST_MAPLE_TREE_ROOT_STORE)]
+unsafe fn root_store_expand(mas: *mut MaState, entry: *mut c_void) {
+    const NODE_TYPE: bindings::maple_type = bindings::maple_type_maple_leaf_64;
+
+    // SAFETY: The caller holds the tree lock and selected a root store.
+    let contents = unsafe { super::maple_tree_core::root(mas) };
+    // SAFETY: A direct root expansion has one preallocated node.
+    let node = unsafe { pop_node(mas) };
+    // SAFETY: The replacement node has the selected leaf layout.
+    let pivots = unsafe { super::maple_tree_core::pivots(node, NODE_TYPE) };
+    // SAFETY: The replacement node has the selected leaf layout.
+    let slots = unsafe { super::maple_tree_core::slots(node, NODE_TYPE) };
+    // SAFETY: The new node is the next tree root.
+    unsafe { set_root_parent(node, mas) };
+    // SAFETY: The replacement node is complete enough to encode.
+    let enode = unsafe { super::maple_tree_core::make_node(node, NODE_TYPE) };
+    // SAFETY: The caller supplies a valid locked state.
+    unsafe {
+        (*mas).node = enode;
+        (*mas).status = bindings::maple_status_ma_active;
+    }
+
+    let mut slot = 0u8;
+    // SAFETY: The caller supplies a valid locked state.
+    let index = unsafe { (*mas).index };
+    if index != 0 {
+        if !contents.is_null() {
+            // SAFETY: This is the first writable slot.
+            unsafe { store_slot(slots, contents) };
+            if index > 1 {
+                slot = slot.wrapping_add(1);
+            }
+        }
+        // SAFETY: The current pivot is writable.
+        unsafe { *pivots.add(usize::from(slot)) = index.wrapping_sub(1) };
+        slot = slot.wrapping_add(1);
+    }
+
+    // SAFETY: The selected slot is writable.
+    unsafe { store_slot(slots.add(usize::from(slot)), entry) };
+    // SAFETY: The caller supplies a valid locked state.
+    let last = unsafe { (*mas).last };
+    // SAFETY: The new entry pivot is writable.
+    unsafe { *pivots.add(usize::from(slot)) = last };
+    // SAFETY: The caller supplies a valid locked state.
+    unsafe { (*mas).offset = slot };
+    if last != !0 {
+        slot = slot.wrapping_add(1);
+        // SAFETY: The full-range pivot is writable.
+        unsafe { *pivots.add(usize::from(slot)) = !0 };
+    }
+
+    // SAFETY: The expanded tree has one leaf level.
+    unsafe { set_tree_height(mas, 1) };
+    // SAFETY: The completed leaf metadata records the final slot.
+    unsafe { set_meta(node, NODE_TYPE, slot) };
+    // SAFETY: The completed encoded node becomes the new root.
+    unsafe { publish_root_node(mas) };
+}
+
+/// Stores into an empty root or replaces a direct root entry.
+///
+/// # Safety
+///
+/// `mas` must select a root store and hold the tree lock.
+#[cfg(CONFIG_RUST_MAPLE_TREE_ROOT_STORE)]
+unsafe fn root_store_entry(mas: *mut MaState, entry: *mut c_void) {
+    if entry.is_null() {
+        // SAFETY: The caller supplies a valid locked state.
+        if unsafe { (*mas).index } == 0 {
+            // SAFETY: Clearing an empty or direct root publishes NULL.
+            unsafe { publish_root_entry(mas, entry) };
+        }
+        return;
+    }
+
+    // SAFETY: The caller supplies a valid locked state.
+    if unsafe { (*mas).last } != 0 || unsafe { (*mas).index } != 0 {
+        // SAFETY: A multi-index root requires a leaf node.
+        unsafe { root_store_expand(mas, entry) };
+        return;
+    }
+
+    if entry as usize & 3 == 2 {
+        // SAFETY: An encoded internal entry requires a leaf root.
+        unsafe { root_store_expand(mas, entry) };
+        return;
+    }
+
+    // SAFETY: A direct entry can occupy the root pointer.
+    unsafe { publish_root_entry(mas, entry) };
+    // SAFETY: A direct root entry starts a new walk.
+    unsafe { (*mas).status = bindings::maple_status_ma_start };
+}
+
+/// Replaces the complete tree with a new leaf root.
+///
+/// # Safety
+///
+/// `mas` must select the complete range and hold the tree lock.
+#[cfg(CONFIG_RUST_MAPLE_TREE_ROOT_STORE)]
+unsafe fn root_store_new_root(mas: *mut MaState, entry: *mut c_void) {
+    const NODE_TYPE: bindings::maple_type = bindings::maple_type_maple_leaf_64;
+
+    // SAFETY: The caller holds the tree lock.
+    let old_root = unsafe { super::maple_tree_core::root(mas) };
+    // SAFETY: The caller supplies a valid locked state.
+    let valid_range = unsafe { (*mas).index == 0 && (*mas).last == !0 };
+    super::maple_tree_core::warn_on_once(!valid_range);
+
+    if entry.is_null() {
+        // SAFETY: The empty tree has no node levels.
+        unsafe { set_tree_height(mas, 0) };
+        // SAFETY: Publish the empty root.
+        unsafe { publish_root_entry(mas, entry) };
+        // SAFETY: The empty tree starts a new walk.
+        unsafe { (*mas).status = bindings::maple_status_ma_start };
+    } else {
+        // SAFETY: A new non-NULL root has one preallocated node.
+        let node = unsafe { pop_node(mas) };
+        // SAFETY: The new root node has the selected leaf layout.
+        let pivots = unsafe { super::maple_tree_core::pivots(node, NODE_TYPE) };
+        // SAFETY: The new root node has the selected leaf layout.
+        let slots = unsafe { super::maple_tree_core::slots(node, NODE_TYPE) };
+        // SAFETY: The replacement node is the next tree root.
+        unsafe { set_root_parent(node, mas) };
+        // SAFETY: The replacement node is ready to encode.
+        let enode = unsafe { super::maple_tree_core::make_node(node, NODE_TYPE) };
+        // SAFETY: The caller supplies a valid locked state.
+        unsafe {
+            (*mas).node = enode;
+            (*mas).status = bindings::maple_status_ma_active;
+        }
+        // SAFETY: The first slot is writable.
+        unsafe { store_slot(slots, entry) };
+        // SAFETY: The caller supplies a valid locked state.
+        let last = unsafe { (*mas).last };
+        // SAFETY: The full-range pivot is writable.
+        unsafe { *pivots = last };
+        // SAFETY: The new tree has one leaf level.
+        unsafe { set_tree_height(mas, 1) };
+        // SAFETY: Publish the completed encoded root.
+        unsafe { publish_root_node(mas) };
+    }
+
+    // SAFETY: The previous root is now detached.
+    unsafe { destroy_root(mas, old_root) };
+}
+
 #[cfg(CONFIG_RUST_MAPLE_TREE_SPANNING_STORE)]
 /// Walks a write state to the leaf containing its index.
 ///
@@ -431,7 +640,24 @@ unsafe fn spanning_set_full_range(mas: *mut MaState) {
     unsafe { bindings::rust_maple_tree_spanning_set_full_range(mas) };
 }
 
-#[cfg(CONFIG_RUST_MAPLE_TREE_SPANNING_STORE)]
+#[cfg(all(
+    CONFIG_RUST_MAPLE_TREE_SPANNING_STORE,
+    CONFIG_RUST_MAPLE_TREE_ROOT_STORE
+))]
+/// Replaces the complete tree with the native root-store implementation.
+///
+/// # Safety
+///
+/// `mas` must select the complete range and hold the tree lock.
+unsafe fn spanning_new_root(mas: *mut MaState, entry: *mut c_void) {
+    // SAFETY: The root-store unit owns complete-range replacement.
+    unsafe { root_store_new_root(mas, entry) };
+}
+
+#[cfg(all(
+    CONFIG_RUST_MAPLE_TREE_SPANNING_STORE,
+    not(CONFIG_RUST_MAPLE_TREE_ROOT_STORE)
+))]
 /// Replaces the complete tree with one root entry.
 ///
 /// # Safety
@@ -1682,10 +1908,23 @@ unsafe fn store_entry(wr_mas: *mut MaWrState) {
             // SAFETY: The selected complex strategy remains a retained boundary.
             unsafe { store_complex(wr_mas) };
         }
+        #[cfg(CONFIG_RUST_MAPLE_TREE_ROOT_STORE)]
+        bindings::store_type_wr_new_root => {
+            // SAFETY: The selected strategy and state are valid.
+            unsafe { root_store_new_root(mas, (*wr_mas).entry) };
+        }
+        #[cfg(CONFIG_RUST_MAPLE_TREE_ROOT_STORE)]
+        bindings::store_type_wr_store_root => {
+            // SAFETY: The selected strategy and state are valid.
+            unsafe { root_store_entry(mas, (*wr_mas).entry) };
+        }
+        #[cfg(not(CONFIG_RUST_MAPLE_TREE_ROOT_STORE))]
+        bindings::store_type_wr_new_root | bindings::store_type_wr_store_root => {
+            // SAFETY: The selected complex strategies remain retained boundaries.
+            unsafe { store_complex(wr_mas) };
+        }
         bindings::store_type_wr_split_store
         | bindings::store_type_wr_rebalance
-        | bindings::store_type_wr_new_root
-        | bindings::store_type_wr_store_root
         | bindings::store_type_wr_invalid => {
             // SAFETY: The selected complex strategy remains a retained boundary.
             unsafe { store_complex(wr_mas) };

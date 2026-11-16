@@ -15736,6 +15736,7 @@ F:	Documentation/rust/native-maple-tree-next.rst
 F:	Documentation/rust/native-maple-tree-node-store.rst
 F:	Documentation/rust/native-maple-tree-prealloc.rst
 F:	Documentation/rust/native-maple-tree-prev.rst
+F:	Documentation/rust/native-maple-tree-root-store.rst
 F:	Documentation/rust/native-maple-tree-spanning-store.rst
 F:	Documentation/rust/native-maple-tree-store.rst
 F:	Documentation/rust/native-maple-tree-walk.rst

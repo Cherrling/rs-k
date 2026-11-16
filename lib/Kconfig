@@ -448,9 +448,9 @@ config RUST_MAPLE_TREE_STORE_ENTRY
 
 	  Rust owns the complete store-type dispatch. The three in-place
 	  strategies update slots, pivots, metadata, gaps, and trace data
-	  directly. Node and spanning stores have separate migration options.
-	  The split, rebalance, and root strategies remain C helpers selected by
-	  Rust. The C fallback retains the complete dispatcher and all
+	  directly. Node, spanning, and root stores have separate migration
+	  options. The split and rebalance strategies remain C helpers selected
+	  by Rust. The C fallback retains the complete dispatcher and all
 	  strategies.
 
 	  This is part of the experimental native Rust kernel migration.
@@ -472,8 +472,8 @@ config RUST_MAPLE_TREE_NODE_STORE
 	  The C boundary contains node allocation, parent-field access, raw node
 	  copying, encoded-node installation, RCU publication, and tracepoint
 	  delivery. When the spanning-store option is disabled, the C spanning
-	  strategy remains available. The split, rebalance, and root strategies
-	  are separate migration units.
+	  strategy remains available. Root stores have a separate migration
+	  option. The split and rebalance strategies are separate migration units.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -493,9 +493,30 @@ config RUST_MAPLE_TREE_SPANNING_STORE
 
 	  The C boundary contains encoded-node layout, protected slot access,
 	  raw node array copying and finalisation, sibling and write-state
-	  traversal primitives, node-pool allocation, and RCU publication. The
-	  whole-range new-root case uses the retained C new-root strategy. The
-	  split, rebalance, and root strategies remain separate migration units.
+	  traversal primitives, node-pool allocation, and RCU publication. When
+	  the root-store option is disabled, the C new-root strategy remains
+	  available. The split and rebalance strategies are separate migration
+	  units.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
+config RUST_MAPLE_TREE_ROOT_STORE
+	bool "Rust implementation of Maple Tree root stores"
+	depends on RUST_MAPLE_TREE_SPANNING_STORE
+	default y
+	help
+	  Use Rust for the production Maple Tree root-store strategies.
+
+	  Rust owns direct root assignment, root expansion, clearing a root
+	  pointer, and whole-tree root replacement. Rust selects the leaf layout,
+	  initializes slots and pivots, sets metadata, updates the state, and
+	  requests final RCU publication.
+
+	  The C boundary contains root pointer access and publication, encoded
+	  root marking, parent fields, tree height, node-pool allocation, metadata
+	  layout, protected slot access, and old-tree destruction. The split and
+	  rebalance strategies remain separate migration units.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

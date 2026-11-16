@@ -137,7 +137,9 @@ void rust_maple_tree_store_replace_node(struct ma_state *mas,
 
 void rust_maple_tree_spanning_walk_index(struct ma_wr_state *wr_mas);
 void rust_maple_tree_spanning_set_full_range(struct ma_state *mas);
+#ifndef CONFIG_RUST_MAPLE_TREE_ROOT_STORE
 void rust_maple_tree_spanning_new_root(struct ma_state *mas, void *entry);
+#endif
 void rust_maple_tree_spanning_sibling(struct ma_wr_state *l_wr_mas,
 				      struct ma_wr_state *r_wr_mas,
 				      struct ma_state *sibling);
@@ -177,5 +179,16 @@ void rust_maple_tree_spanning_publish(struct ma_state *mas,
 				      struct maple_copy *copy);
 
 #endif /* CONFIG_RUST_MAPLE_TREE_SPANNING_STORE */
+
+#ifdef CONFIG_RUST_MAPLE_TREE_ROOT_STORE
+
+void rust_maple_tree_store_root_parent(struct maple_node *node,
+				       struct ma_state *mas);
+void rust_maple_tree_store_root_node(struct ma_state *mas);
+void rust_maple_tree_store_root_entry(struct ma_state *mas, void *entry);
+void rust_maple_tree_store_destroy_root(struct ma_state *mas, void *root);
+void rust_maple_tree_store_set_height(struct ma_state *mas, unsigned int height);
+
+#endif /* CONFIG_RUST_MAPLE_TREE_ROOT_STORE */
 
 #endif /* _LINUX_MAPLE_TREE_RUST_H */

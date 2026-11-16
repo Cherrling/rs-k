@@ -2805,6 +2805,7 @@ static inline bool rebalance_ascend(struct maple_copy *cp,
 	return true;
 }
 
+#ifndef CONFIG_RUST_MAPLE_TREE_ROOT_STORE
 /*
  * mas_root_expand() - Expand a root to a node
  * @mas: The maple state
@@ -2869,6 +2870,7 @@ static inline void mas_store_root(struct ma_state *mas, void *entry)
 		mas->status = ma_start;
 	}
 }
+#endif /* CONFIG_RUST_MAPLE_TREE_ROOT_STORE */
 
 /*
  * mas_is_span_wr() - Check if the write needs to be treated as a write that
@@ -3215,6 +3217,7 @@ bool rust_maple_tree_warn_on_once(bool condition)
 #endif /* CONFIG_RUST_MAPLE_TREE_NEXT */
 
 static void mte_destroy_walk(struct maple_enode *, struct maple_tree *);
+#ifndef CONFIG_RUST_MAPLE_TREE_ROOT_STORE
 /*
  * mas_new_root() - Create a new root node that only contains the entry passed
  * in.
@@ -3255,6 +3258,7 @@ done:
 	if (xa_is_node(root))
 		mte_destroy_walk(root, mas->tree);
 }
+#endif /* CONFIG_RUST_MAPLE_TREE_ROOT_STORE */
 
 #ifdef CONFIG_RUST_MAPLE_TREE_SPANNING_STORE
 void rust_maple_tree_spanning_walk_index(struct ma_wr_state *wr_mas)
@@ -3267,10 +3271,12 @@ void rust_maple_tree_spanning_set_full_range(struct ma_state *mas)
 	mas_set_range(mas, 0, ULONG_MAX);
 }
 
+#ifndef CONFIG_RUST_MAPLE_TREE_ROOT_STORE
 void rust_maple_tree_spanning_new_root(struct ma_state *mas, void *entry)
 {
 	mas_new_root(mas, entry);
 }
+#endif
 
 void rust_maple_tree_spanning_sibling(struct ma_wr_state *l_wr_mas,
 				      struct ma_wr_state *r_wr_mas,
@@ -3367,6 +3373,36 @@ void rust_maple_tree_spanning_publish(struct ma_state *mas,
 	mas_wmb_replace(mas, copy);
 }
 #endif /* CONFIG_RUST_MAPLE_TREE_SPANNING_STORE */
+
+#ifdef CONFIG_RUST_MAPLE_TREE_ROOT_STORE
+void rust_maple_tree_store_root_parent(struct maple_node *node,
+				       struct ma_state *mas)
+{
+	node->parent = ma_parent_ptr(mas_tree_parent(mas));
+}
+
+void rust_maple_tree_store_root_node(struct ma_state *mas)
+{
+	rcu_assign_pointer(mas->tree->ma_root, mte_mk_root(mas->node));
+}
+
+void rust_maple_tree_store_root_entry(struct ma_state *mas, void *entry)
+{
+	rcu_assign_pointer(mas->tree->ma_root, entry);
+}
+
+void rust_maple_tree_store_destroy_root(struct ma_state *mas, void *root)
+{
+	if (xa_is_node(root))
+		mte_destroy_walk(root, mas->tree);
+}
+
+void rust_maple_tree_store_set_height(struct ma_state *mas,
+				      unsigned int height)
+{
+	mt_set_height(mas->tree, height);
+}
+#endif /* CONFIG_RUST_MAPLE_TREE_ROOT_STORE */
 
 #ifndef CONFIG_RUST_MAPLE_TREE_SPANNING_STORE
 /*
@@ -3891,12 +3927,14 @@ static inline void mas_wr_store_entry(struct ma_wr_state *wr_mas)
 	case wr_rebalance:
 		mas_wr_rebalance(wr_mas);
 		break;
+#ifndef CONFIG_RUST_MAPLE_TREE_ROOT_STORE
 	case wr_new_root:
 		mas_new_root(mas, wr_mas->entry);
 		break;
 	case wr_store_root:
 		mas_store_root(mas, wr_mas->entry);
 		break;
+#endif
 	case wr_invalid:
 		MT_BUG_ON(mas->tree, 1);
 	}
@@ -3991,12 +4029,14 @@ void rust_maple_tree_store_complex(struct ma_wr_state *wr_mas)
 	case wr_rebalance:
 		mas_wr_rebalance(wr_mas);
 		break;
+#ifndef CONFIG_RUST_MAPLE_TREE_ROOT_STORE
 	case wr_new_root:
 		mas_new_root(mas, wr_mas->entry);
 		break;
 	case wr_store_root:
 		mas_store_root(mas, wr_mas->entry);
 		break;
+#endif
 	case wr_invalid:
 	case wr_exact_fit:
 	case wr_append:
@@ -4006,6 +4046,10 @@ void rust_maple_tree_store_complex(struct ma_wr_state *wr_mas)
 #endif
 #ifdef CONFIG_RUST_MAPLE_TREE_SPANNING_STORE
 	case wr_spanning_store:
+#endif
+#ifdef CONFIG_RUST_MAPLE_TREE_ROOT_STORE
+	case wr_new_root:
+	case wr_store_root:
 #endif
 	default:
 		MT_BUG_ON(mas->tree, 1);

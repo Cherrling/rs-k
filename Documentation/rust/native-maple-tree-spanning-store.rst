@@ -42,9 +42,11 @@ The C boundary contains these operations:
 * Install parent and root state.
 * Publish the complete subtree and release replaced nodes.
 
-The whole-range result uses the retained C ``mas_new_root()`` strategy. The
-spanning unit does not copy, duplicate, or delegate to the C spanning-store
-algorithm. Split, rebalance, and root stores remain separate migration units.
+When the root-store option is disabled, the whole-range result uses the
+retained C ``mas_new_root()`` strategy. When it is enabled, the spanning unit
+calls the native Rust root store. The spanning unit does not copy, duplicate,
+or delegate to the C spanning-store algorithm. Split and rebalance stores
+remain separate migration units.
 
 Source order
 ------------
