@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 
+#include <linux/panic.h>
 #include <linux/xarray.h>
 
 __rust_helper int rust_helper_xa_err(void *entry)
@@ -130,7 +131,8 @@ __rust_helper void rust_helper_xarray_assign_slot(struct xa_state *xas,
 }
 #endif
 
-#ifdef CONFIG_RUST_XARRAY_MARKS
+#if defined(CONFIG_RUST_XARRAY_MARKS) || \
+	defined(CONFIG_RUST_XARRAY_DELETE_NODE)
 __rust_helper bool rust_helper_xarray_node_mark_get(const struct xa_node *node,
 						    unsigned int offset,
 						    xa_mark_t mark)
@@ -188,13 +190,38 @@ __rust_helper bool rust_helper_xarray_track_free(const struct xarray *xa)
 #endif
 
 #if defined(CONFIG_RUST_XARRAY_MARKS) || \
-	defined(CONFIG_RUST_XARRAY_FREE_NODES)
+	defined(CONFIG_RUST_XARRAY_FREE_NODES) || \
+	defined(CONFIG_RUST_XARRAY_DELETE_NODE)
 
 __rust_helper struct xa_node *
 rust_helper_xarray_parent_locked(const struct xarray *xa,
 				 const struct xa_node *node)
 {
 	return xa_parent_locked(xa, node);
+}
+#endif
+
+#ifdef CONFIG_RUST_XARRAY_DELETE_NODE
+__rust_helper bool rust_helper_xarray_zero_busy(const struct xarray *xa)
+{
+	return xa->xa_flags & XA_FLAGS_ZERO_BUSY;
+}
+
+__rust_helper void rust_helper_xarray_node_check(const struct xa_node *node)
+{
+	(void)node;
+#ifdef XA_DEBUG
+	if (unlikely(node->count > XA_CHUNK_SIZE ||
+		     node->nr_values > XA_CHUNK_SIZE)) {
+		xa_dump_node(node);
+		panic("Corrupt XArray node accounting\n");
+	}
+#endif
+}
+
+__rust_helper void rust_helper_xarray_clear_parent(struct xa_node *node)
+{
+	node->parent = NULL;
 }
 #endif
 

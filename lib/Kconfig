@@ -495,6 +495,22 @@ config RUST_XARRAY_FREE_NODES
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_XARRAY_DELETE_NODE
+	bool "Rust implementation of XArray node deletion and root shrinking"
+	depends on RUST_XARRAY_FREE_NODES && X86_64
+	default y
+	help
+	  Use Rust for the production XArray algorithm that removes empty
+	  nodes, propagates parent accounting, clears an empty root, and
+	  shrinks a root node that has only one child.
+
+	  Node layout, parent lookup, root and slot publication, mark storage,
+	  update callbacks, and RCU reclamation remain in C. The C fallback
+	  retains its existing deletion and shrinking policy.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_XARRAY_MARKS
 	bool "Rust implementation of XArray mark lifecycle"
 	depends on RUST_XARRAY_STORE && X86_64

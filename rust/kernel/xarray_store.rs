@@ -2,9 +2,9 @@
 
 //! Native XArray store mutation.
 //!
-//! Rust owns slot replacement, multi-index sibling updates, and node
-//! accounting. C retains slot creation, node allocation and release, marks,
-//! RCU publication, and the XArray data layout.
+//! Rust owns slot replacement, multi-index sibling updates, node accounting,
+//! empty-node deletion, and root shrinking. C retains slot creation, node
+//! allocation and release, marks, RCU publication, and the XArray data layout.
 
 use crate::bindings;
 use core::ffi::c_void;
@@ -111,6 +111,45 @@ unsafe fn squash_marks(xas: *const XaState) {
 unsafe fn squash_marks(xas: *const XaState) {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { bindings::rust_xarray_squash_marks(xas) };
+}
+
+#[cfg(CONFIG_RUST_XARRAY_DELETE_NODE)]
+/// Applies a node accounting delta and enters the native deletion policy.
+///
+/// # Safety
+///
+/// `xas` must be valid, the XArray lock must be held, and `node` must be the
+/// live node whose slots produced the deltas.
+unsafe fn update_node(xas: *mut XaState, node: *mut XaNode, count: i32, values: i32) {
+    if node.is_null() || (count == 0 && values == 0) {
+        return;
+    }
+
+    // SAFETY: The caller guarantees that `node` is live and locked.
+    unsafe {
+        (*node).count = (*node).count.wrapping_add(count as u8);
+        (*node).nr_values = (*node).nr_values.wrapping_add(values as u8);
+    }
+    // SAFETY: The accounting fields now reflect the completed slot updates.
+    unsafe { bindings::xarray_node_check(node) };
+    // SAFETY: The caller guarantees the lock and live node.
+    unsafe { bindings::rust_xarray_notify_node(xas, node) };
+    if count < 0 {
+        // SAFETY: The caller guarantees a live cursor and the XArray lock.
+        unsafe { crate::xarray_delete_node::delete_node(xas) };
+    }
+}
+
+#[cfg(not(CONFIG_RUST_XARRAY_DELETE_NODE))]
+/// Applies a node accounting delta through the retained C deletion policy.
+///
+/// # Safety
+///
+/// `xas` must be valid, the XArray lock must be held, and `node` must be the
+/// live node whose slots produced the deltas.
+unsafe fn update_node(xas: *mut XaState, node: *mut XaNode, count: i32, values: i32) {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { bindings::rust_xarray_update_node(xas, node, count, values) };
 }
 
 /// Loads the next locked slot.
@@ -224,7 +263,7 @@ unsafe fn store(xas: *mut XaState, mut entry: *mut c_void) -> *mut c_void {
     }
 
     // SAFETY: `node`, `count`, and `values` describe the updated slots.
-    unsafe { bindings::rust_xarray_update_node(xas, node, count, values) };
+    unsafe { update_node(xas, node, count, values) };
     first
 }
 

@@ -108,6 +108,7 @@ more details.
     native-bitmap-ops
     native-kfifo
     native-genradix
+    native-xarray-delete-node
     native-xarray-free-nodes
     native-xarray-load
     native-xarray-marks

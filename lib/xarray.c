@@ -454,6 +454,8 @@ static inline void *xa_zero_to_null(void *entry)
 	return xa_is_zero(entry) ? NULL : entry;
 }
 
+#if !defined(CONFIG_RUST_XARRAY_STORE) || \
+	!defined(CONFIG_RUST_XARRAY_DELETE_NODE)
 static void xas_shrink(struct xa_state *xas)
 {
 	struct xarray *xa = xas->xa;
@@ -530,6 +532,7 @@ static void xas_delete_node(struct xa_state *xas)
 	if (!node->parent)
 		xas_shrink(xas);
 }
+#endif
 
 /**
  * xas_free_nodes() - Free this node and all nodes that it references
@@ -764,8 +767,10 @@ success:
 }
 EXPORT_SYMBOL_GPL(xas_create_range);
 
-static void update_node(struct xa_state *xas, struct xa_node *node,
-		int count, int values)
+#if !defined(CONFIG_RUST_XARRAY_STORE) || \
+	!defined(CONFIG_RUST_XARRAY_DELETE_NODE)
+static void update_node(struct xa_state *xas, struct xa_node *node, int count,
+			int values)
 {
 	if (!node || (!count && !values))
 		return;
@@ -778,6 +783,7 @@ static void update_node(struct xa_state *xas, struct xa_node *node,
 	if (count < 0)
 		xas_delete_node(xas);
 }
+#endif
 
 #ifdef CONFIG_RUST_XARRAY_STORE
 void *rust_xarray_create_for_store(struct xa_state *xas, bool allow_root)
@@ -792,12 +798,6 @@ void rust_xarray_free_nodes(struct xa_state *xas, struct xa_node *top)
 }
 #endif
 
-void rust_xarray_update_node(struct xa_state *xas, struct xa_node *node,
-			     int count, int values)
-{
-	update_node(xas, node, count, values);
-}
-
 #ifdef CONFIG_RUST_XARRAY_FREE_NODES
 void rust_xarray_notify_node(struct xa_state *xas, struct xa_node *node)
 {
@@ -807,6 +807,14 @@ void rust_xarray_notify_node(struct xa_state *xas, struct xa_node *node)
 void rust_xarray_retire_node(struct xa_node *node)
 {
 	xa_node_free(node);
+}
+#endif
+
+#ifndef CONFIG_RUST_XARRAY_DELETE_NODE
+void rust_xarray_update_node(struct xa_state *xas, struct xa_node *node,
+			     int count, int values)
+{
+	update_node(xas, node, count, values);
 }
 #endif
 
