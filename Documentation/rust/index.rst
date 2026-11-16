@@ -112,6 +112,7 @@ more details.
     native-xarray-create-range
     native-xarray-delete-node
     native-xarray-expand
+    native-xarray-find
     native-xarray-free-nodes
     native-xarray-load
     native-xarray-marks

@@ -243,6 +243,15 @@ rust_helper_xarray_parent_locked(const struct xarray *xa,
 }
 #endif
 
+#ifdef CONFIG_RUST_XARRAY_FIND
+__rust_helper struct xa_node *
+rust_helper_xarray_parent(const struct xarray *xa,
+			  const struct xa_node *node)
+{
+	return xa_parent(xa, node);
+}
+#endif
+
 #if defined(CONFIG_RUST_XARRAY_DELETE_NODE) || \
 	defined(CONFIG_RUST_XARRAY_CREATE)
 __rust_helper bool rust_helper_xarray_zero_busy(const struct xarray *xa)

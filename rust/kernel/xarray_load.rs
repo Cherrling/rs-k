@@ -178,7 +178,7 @@ unsafe fn descend(xas: *mut XaState, node: *mut XaNode) -> *mut c_void {
 /// # Safety
 ///
 /// `xas` must point to a valid XArray state under RCU or lock protection.
-unsafe fn load_advanced(xas: *mut XaState) -> *mut c_void {
+pub(crate) unsafe fn load_advanced(xas: *mut XaState) -> *mut c_void {
     // SAFETY: Guaranteed by this function's contract.
     let mut loaded = unsafe { start(xas) };
 

@@ -45,6 +45,12 @@ void rust_xarray_create_range(struct xa_state *xas);
 
 #endif /* CONFIG_RUST_XARRAY_CREATE_RANGE */
 
+#ifdef CONFIG_RUST_XARRAY_FIND
+
+void *rust_xarray_find(struct xa_state *xas, unsigned long max);
+
+#endif /* CONFIG_RUST_XARRAY_FIND */
+
 #if defined(CONFIG_RUST_XARRAY_FREE_NODES) || \
 	defined(CONFIG_RUST_XARRAY_EXPAND)
 

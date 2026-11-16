@@ -466,6 +466,23 @@ config RUST_XARRAY_LOAD
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_XARRAY_FIND
+	bool "Rust implementation of XArray forward search"
+	depends on RUST_XARRAY_LOAD && X86_64
+	default y
+	help
+	  Use Rust for the production XArray algorithm behind xas_find().
+	  Rust owns cursor advancement, empty-subtree jumps, parent traversal,
+	  index and offset updates, and maximum-index boundaries.
+
+	  RCU and slot access primitives, node and cursor layouts, parent lookup,
+	  and error classification remain in C. The exported xas_find() entry
+	  point remains as an ABI adapter. The C fallback retains its existing
+	  forward-search policy.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_XARRAY_STORE
 	bool "Rust implementation of XArray store mutation"
 	depends on RUST_XARRAY_LOAD && X86_64

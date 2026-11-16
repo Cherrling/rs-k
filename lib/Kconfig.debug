@@ -3416,6 +3416,18 @@ config XARRAY_LOAD_KUNIT_TEST
 
 	  If unsure, say N.
 
+config XARRAY_FIND_KUNIT_TEST
+	tristate "KUnit Test for XArray forward search" if !KUNIT_ALL_TESTS
+	depends on XARRAY_MULTI && KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This builds the KUnit test suite for XArray forward search. It tests
+	  sparse traversal, unaligned resumption, empty roots, maximum bounds,
+	  sibling skipping, maximum indices, and error cursors in the active
+	  implementation.
+
+	  If unsure, say N.
+
 config XARRAY_STORE_KUNIT_TEST
 	tristate "KUnit Test for XArray store mutation" if !KUNIT_ALL_TESTS
 	depends on KUNIT

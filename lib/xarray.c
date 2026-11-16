@@ -164,11 +164,13 @@ static void xas_move_index(struct xa_state *xas, unsigned long offset)
 	xas->xa_index += offset << shift;
 }
 
+#ifndef CONFIG_RUST_XARRAY_FIND
 static void xas_next_offset(struct xa_state *xas)
 {
 	xas->xa_offset++;
 	xas_move_index(xas, xas->xa_offset);
 }
+#endif
 
 static void *set_bounds(struct xa_state *xas)
 {
@@ -1520,6 +1522,7 @@ EXPORT_SYMBOL_GPL(__xas_next);
  *
  * Return: The entry, if found, otherwise %NULL.
  */
+#ifndef CONFIG_RUST_XARRAY_FIND
 void *xas_find(struct xa_state *xas, unsigned long max)
 {
 	void *entry;
@@ -1566,6 +1569,12 @@ void *xas_find(struct xa_state *xas, unsigned long max)
 		xas->xa_node = XAS_BOUNDS;
 	return NULL;
 }
+#else
+void *xas_find(struct xa_state *xas, unsigned long max)
+{
+	return rust_xarray_find(xas, max);
+}
+#endif
 EXPORT_SYMBOL_GPL(xas_find);
 
 /**
