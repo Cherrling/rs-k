@@ -106,6 +106,12 @@ void rust_xarray_try_split(struct xa_state *xas, void *entry, unsigned int order
 
 #endif /* CONFIG_RUST_XARRAY_TRY_SPLIT */
 
+#ifdef CONFIG_RUST_XARRAY_DESTROY
+
+void rust_xarray_destroy_tree(struct xa_state *xas);
+
+#endif /* CONFIG_RUST_XARRAY_DESTROY */
+
 #if defined(CONFIG_RUST_XARRAY_FREE_NODES) || \
 	defined(CONFIG_RUST_XARRAY_EXPAND) || \
 	defined(CONFIG_RUST_XARRAY_SPLIT)

@@ -133,6 +133,17 @@ __rust_helper void rust_helper_xarray_assign_slot(struct xa_state *xas,
 }
 #endif
 
+#ifdef CONFIG_RUST_XARRAY_DESTROY
+__rust_helper void *
+rust_helper_xarray_detach_root_locked(struct xarray *xa)
+{
+	void *entry = xa_head_locked(xa);
+
+	RCU_INIT_POINTER(xa->xa_head, NULL);
+	return entry;
+}
+#endif
+
 #if defined(CONFIG_RUST_XARRAY_MARKS) || \
 	defined(CONFIG_RUST_XARRAY_DELETE_NODE) || \
 	defined(CONFIG_RUST_XARRAY_EXPAND)
@@ -334,7 +345,8 @@ rust_helper_xarray_entry_locked(const struct xarray *xa,
 #endif
 
 #if defined(CONFIG_RUST_XARRAY_DELETE_NODE) || \
-	defined(CONFIG_RUST_XARRAY_CREATE)
+	defined(CONFIG_RUST_XARRAY_CREATE) || \
+	defined(CONFIG_RUST_XARRAY_DESTROY)
 __rust_helper bool rust_helper_xarray_zero_busy(const struct xarray *xa)
 {
 	return xa->xa_flags & XA_FLAGS_ZERO_BUSY;

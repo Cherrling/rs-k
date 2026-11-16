@@ -29902,6 +29902,7 @@ F:	lib/test_xarray.c
 F:	lib/tests/xarray_create_kunit.c
 F:	lib/tests/xarray_create_range_kunit.c
 F:	lib/tests/xarray_delete_node_kunit.c
+F:	lib/tests/xarray_destroy_kunit.c
 F:	lib/tests/xarray_expand_kunit.c
 F:	lib/tests/xarray_find_conflict_kunit.c
 F:	lib/tests/xarray_find_kunit.c

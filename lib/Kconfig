@@ -679,6 +679,24 @@ config RUST_XARRAY_MARKS
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_XARRAY_DESTROY
+	bool "Rust implementation of XArray teardown"
+	depends on RUST_XARRAY_FREE_NODES && RUST_XARRAY_MARKS && X86_64
+	default y
+	help
+	  Use Rust for the production XArray teardown policy behind xa_destroy().
+	  Rust owns root detachment ordering, mark reinitialization, the
+	  zero-busy empty-array case, subtree reclamation control, and reuse
+	  semantics.
+
+	  Interrupt-safe locking, root publication, flag storage, node layout,
+	  RCU reclamation, and locked state construction remain in C. The
+	  exported entry point remains as an ABI adapter. The C fallback retains
+	  the complete teardown policy.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_XARRAY_SQUASH_MARKS
 	bool "Rust implementation of XArray multi-index mark squashing"
 	depends on RUST_XARRAY_MARKS && X86_64

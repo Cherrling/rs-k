@@ -317,6 +317,8 @@ mod xarray_create;
 mod xarray_create_range;
 #[cfg(CONFIG_RUST_XARRAY_DELETE_NODE)]
 mod xarray_delete_node;
+#[cfg(CONFIG_RUST_XARRAY_DESTROY)]
+mod xarray_destroy;
 #[cfg(CONFIG_RUST_XARRAY_EXPAND)]
 mod xarray_expand;
 #[cfg(CONFIG_RUST_XARRAY_FIND)]

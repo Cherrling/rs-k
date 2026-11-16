@@ -111,6 +111,7 @@ more details.
     native-xarray-create
     native-xarray-create-range
     native-xarray-delete-node
+    native-xarray-destroy
     native-xarray-expand
     native-xarray-find
     native-xarray-find-conflict

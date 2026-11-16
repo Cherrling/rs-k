@@ -3554,6 +3554,17 @@ config XARRAY_DELETE_NODE_KUNIT_TEST
 
 	  If unsure, say N.
 
+config XARRAY_DESTROY_KUNIT_TEST
+	tristate "KUnit Test for XArray teardown" if !KUNIT_ALL_TESTS
+	depends on XARRAY_MULTI && KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This builds the KUnit test suite for XArray teardown. It tests empty,
+	  direct-root, deep-tree, zero-busy allocation, reuse, and concurrent RCU
+	  reader cases in the active implementation.
+
+	  If unsure, say N.
+
 config XARRAY_MARKS_KUNIT_TEST
 	tristate "KUnit Test for XArray mark lifecycle" if !KUNIT_ALL_TESTS
 	depends on KUNIT

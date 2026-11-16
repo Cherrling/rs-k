@@ -609,6 +609,9 @@ static void xas_delete_node(struct xa_state *xas)
 }
 #endif
 
+#if !defined(CONFIG_RUST_XARRAY_STORE) || \
+	!defined(CONFIG_RUST_XARRAY_FREE_NODES) || \
+	!defined(CONFIG_RUST_XARRAY_DESTROY)
 /**
  * xas_free_nodes() - Free this node and all nodes that it references
  * @xas: Array operation state.
@@ -649,6 +652,7 @@ static void xas_free_nodes(struct xa_state *xas, struct xa_node *top)
 		}
 	}
 }
+#endif /* Native subtree reclamation users */
 
 /*
  * xas_expand adds nodes to the head of the tree until it has reached
@@ -2659,6 +2663,7 @@ EXPORT_SYMBOL_GPL(xa_delete_node);	/* For the benefit of the test suite */
  *
  * Context: Any context.  Takes and releases the xa_lock, interrupt-safe.
  */
+#ifndef CONFIG_RUST_XARRAY_DESTROY
 void xa_destroy(struct xarray *xa)
 {
 	XA_STATE(xas, xa, 0);
@@ -2677,6 +2682,18 @@ void xa_destroy(struct xarray *xa)
 		xas_free_nodes(&xas, xa_to_node(entry));
 	xas_unlock_irqrestore(&xas, flags);
 }
+#else
+void xa_destroy(struct xarray *xa)
+{
+	XA_STATE(xas, xa, 0);
+	unsigned long flags;
+
+	xas.xa_node = NULL;
+	xas_lock_irqsave(&xas, flags);
+	rust_xarray_destroy_tree(&xas);
+	xas_unlock_irqrestore(&xas, flags);
+}
+#endif
 EXPORT_SYMBOL(xa_destroy);
 
 #ifdef XA_DEBUG

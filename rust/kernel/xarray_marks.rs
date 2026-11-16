@@ -97,7 +97,7 @@ unsafe fn root_mark_set(xa: *mut XArray, mark: Mark) {
 /// # Safety
 ///
 /// `xa` must point to a valid XArray and the XArray lock must be held.
-unsafe fn root_mark_clear(xa: *mut XArray, mark: Mark) {
+pub(crate) unsafe fn root_mark_clear(xa: *mut XArray, mark: Mark) {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { bindings::xarray_root_mark_clear(xa, mark) }
 }
@@ -226,7 +226,7 @@ unsafe fn mark_clear(xas: *const XaState, mark: Mark) {
 ///
 /// `xas` must point to a valid XArray state and the caller must hold the
 /// XArray lock.
-unsafe fn marks_init(xas: *const XaState) {
+pub(crate) unsafe fn marks_init(xas: *const XaState) {
     // SAFETY: Guaranteed by this function's contract.
     let state = unsafe { &*xas };
     let mut mark = 0;
