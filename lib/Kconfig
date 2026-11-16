@@ -497,6 +497,20 @@ config RUST_XARRAY_MARKS
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_XARRAY_SQUASH_MARKS
+	bool "Rust implementation of XArray multi-index mark squashing"
+	depends on RUST_XARRAY_MARKS && X86_64
+	default y
+	help
+	  Use Rust for the production XArray algorithm that combines marks
+	  from a multi-index sibling range onto its first slot.
+
+	  Mark bitmap access remains in C. The C adapter remains available when
+	  the Rust squash implementation is disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RBTREE_RUST_KUNIT_TEST
 	bool "KUnit tests for the Rust rbtree implementation"
 	depends on RUST_RBTREE && KUNIT

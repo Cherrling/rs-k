@@ -193,3 +193,29 @@ rust_helper_xarray_parent_locked(const struct xarray *xa,
 	return xa_parent_locked(xa, node);
 }
 #endif
+
+#ifdef CONFIG_RUST_XARRAY_SQUASH_MARKS
+__rust_helper unsigned int
+rust_helper_xarray_node_mark_find_next(const struct xa_node *node,
+				       xa_mark_t mark, unsigned int limit,
+				       unsigned int start)
+{
+	return find_next_bit(node->marks[(__force unsigned int)mark],
+			     limit, start);
+}
+
+__rust_helper void rust_helper_xarray_node_mark_set(struct xa_node *node,
+						    xa_mark_t mark,
+						    unsigned int offset)
+{
+	__set_bit(offset, node->marks[(__force unsigned int)mark]);
+}
+
+__rust_helper void rust_helper_xarray_node_mark_clear(struct xa_node *node,
+						      xa_mark_t mark,
+						      unsigned int start,
+						      unsigned int nbits)
+{
+	bitmap_clear(node->marks[(__force unsigned int)mark], start, nbits);
+}
+#endif

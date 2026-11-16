@@ -65,6 +65,30 @@ fn as_i32(value: bool) -> i32 {
     }
 }
 
+#[cfg(CONFIG_RUST_XARRAY_SQUASH_MARKS)]
+/// Combines marks across the current multi-index range.
+///
+/// # Safety
+///
+/// `xas` must identify a non-empty sibling range and the caller must hold the
+/// XArray lock.
+unsafe fn squash_marks(xas: *const XaState) {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { crate::xarray_squash::squash_marks(xas) };
+}
+
+#[cfg(not(CONFIG_RUST_XARRAY_SQUASH_MARKS))]
+/// Combines marks through the retained C store adapter.
+///
+/// # Safety
+///
+/// `xas` must identify a non-empty sibling range and the caller must hold the
+/// XArray lock.
+unsafe fn squash_marks(xas: *const XaState) {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { bindings::rust_xarray_squash_marks(xas) };
+}
+
 /// Loads the next locked slot.
 ///
 /// # Safety
@@ -129,7 +153,7 @@ unsafe fn store(xas: *mut XaState, mut entry: *mut c_void) -> *mut c_void {
     if !node.is_null() {
         if state.xa_sibs != 0 {
             // SAFETY: The cursor identifies a multi-index range in `node`.
-            unsafe { bindings::rust_xarray_squash_marks(xas) };
+            unsafe { squash_marks(xas) };
         }
     }
     if entry.is_null() {

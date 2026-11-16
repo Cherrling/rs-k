@@ -110,6 +110,7 @@ more details.
     native-genradix
     native-xarray-load
     native-xarray-marks
+    native-xarray-squash
     native-xarray-store
     native-percpu-refcount
     refcount

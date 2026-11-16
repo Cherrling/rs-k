@@ -315,6 +315,8 @@ pub mod xarray;
 mod xarray_load;
 #[cfg(CONFIG_RUST_XARRAY_MARKS)]
 mod xarray_marks;
+#[cfg(CONFIG_RUST_XARRAY_SQUASH_MARKS)]
+mod xarray_squash;
 #[cfg(CONFIG_RUST_XARRAY_STORE)]
 mod xarray_store;
 

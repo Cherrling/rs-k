@@ -124,6 +124,8 @@ static inline void node_mark_all(struct xa_node *node, xa_mark_t mark)
  * Set a mark on the first entry if any entry has it set.  Clear marks on
  * all sibling entries.
  */
+#if !defined(CONFIG_RUST_XARRAY_STORE) || \
+	!defined(CONFIG_RUST_XARRAY_SQUASH_MARKS)
 static void xas_squash_marks(const struct xa_state *xas)
 {
 	xa_mark_t mark = 0;
@@ -141,6 +143,7 @@ static void xas_squash_marks(const struct xa_state *xas)
 		mark_inc(mark);
 	}
 }
+#endif
 
 /* extracts the offset within this node from the index */
 static unsigned int get_offset(unsigned long index, struct xa_node *node)
@@ -793,10 +796,12 @@ void rust_xarray_update_node(struct xa_state *xas, struct xa_node *node,
 	update_node(xas, node, count, values);
 }
 
+#ifndef CONFIG_RUST_XARRAY_SQUASH_MARKS
 void rust_xarray_squash_marks(const struct xa_state *xas)
 {
 	xas_squash_marks(xas);
 }
+#endif
 #endif
 
 /**
