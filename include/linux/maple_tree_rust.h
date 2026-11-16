@@ -118,4 +118,19 @@ void rust_maple_tree_store_complex(struct ma_wr_state *wr_mas);
 
 #endif /* CONFIG_RUST_MAPLE_TREE_STORE_ENTRY */
 
+#ifdef CONFIG_RUST_MAPLE_TREE_NODE_STORE
+
+void rust_maple_tree_store_trace_op(struct ma_state *mas);
+struct maple_node *rust_maple_tree_store_pop_node(struct ma_state *mas);
+void rust_maple_tree_store_set_parent(struct maple_node *dst,
+				      const struct maple_node *src);
+void rust_maple_tree_store_copy_node(struct maple_node *dst,
+				     const struct maple_node *src);
+void rust_maple_tree_store_replace_node(struct ma_state *mas,
+					struct maple_node *node,
+					enum maple_type type,
+					unsigned int height);
+
+#endif /* CONFIG_RUST_MAPLE_TREE_NODE_STORE */
+
 #endif /* _LINUX_MAPLE_TREE_RUST_H */

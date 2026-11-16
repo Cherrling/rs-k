@@ -455,6 +455,27 @@ config RUST_MAPLE_TREE_STORE_ENTRY
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_MAPLE_TREE_NODE_STORE
+	bool "Rust implementation of Maple Tree node stores"
+	depends on RUST_MAPLE_TREE_STORE_ENTRY
+	default y
+	help
+	  Use Rust for the production Maple Tree node-store strategy.
+
+	  Rust computes the new node size, copies the retained ranges, inserts
+	  the replacement ranges, clears unused storage, updates metadata and
+	  gaps, and completes state changes. In RCU mode Rust allocates from the
+	  existing node pool and requests the C RCU publication primitive. In
+	  locked mode Rust builds a reuse node and copies it into the live node.
+
+	  The C boundary contains node allocation, parent-field access, raw node
+	  copying, encoded-node installation, RCU publication, and tracepoint
+	  delivery. The spanning, split, rebalance, and root strategies remain
+	  separate migration units.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_PERCPU_REFCOUNT
 	bool "Rust implementation of percpu_ref() lifecycle"
 	depends on RUST

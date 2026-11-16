@@ -7,9 +7,13 @@
 //! metadata layout, gap propagation, tracepoint delivery, and the complex
 //! strategy implementations.
 
-use super::maple_tree_core::{MaState, MaWrState, pivot_count};
+#[cfg(CONFIG_RUST_MAPLE_TREE_NODE_STORE)]
+use super::maple_tree_core::MapleNode;
+use super::maple_tree_core::{pivot_count, MaState, MaWrState};
 use crate::bindings;
 use core::ffi::c_void;
+#[cfg(CONFIG_RUST_MAPLE_TREE_NODE_STORE)]
+use core::{mem::MaybeUninit, ptr};
 use macros::export;
 
 /// Publishes an entry into one Maple Tree slot.
@@ -67,6 +71,79 @@ unsafe fn update_gap(mas: *mut MaState) {
 unsafe fn trace_write(mas: *mut MaState, offset: u8, entry: *mut c_void) {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { bindings::rust_maple_tree_store_trace(mas, offset, entry) };
+}
+
+#[cfg(CONFIG_RUST_MAPLE_TREE_NODE_STORE)]
+#[inline(always)]
+/// Emits the node-store operation tracepoint.
+///
+/// # Safety
+///
+/// `mas` must identify a valid locked Maple write state.
+unsafe fn trace_op(mas: *mut MaState) {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { bindings::rust_maple_tree_store_trace_op(mas) };
+}
+
+#[cfg(CONFIG_RUST_MAPLE_TREE_NODE_STORE)]
+#[inline(always)]
+/// Obtains one preallocated replacement node.
+///
+/// # Safety
+///
+/// `mas` must identify a valid locked Maple state with a replacement node.
+unsafe fn pop_node(mas: *mut MaState) -> *mut MapleNode {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { bindings::rust_maple_tree_store_pop_node(mas) }
+}
+
+#[cfg(CONFIG_RUST_MAPLE_TREE_NODE_STORE)]
+#[inline(always)]
+/// Copies the parent of one Maple node into another.
+///
+/// # Safety
+///
+/// `dst` and `src` must identify valid Maple nodes.
+unsafe fn set_parent(dst: *mut MapleNode, src: *const MapleNode) {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { bindings::rust_maple_tree_store_set_parent(dst, src) };
+}
+
+#[cfg(CONFIG_RUST_MAPLE_TREE_NODE_STORE)]
+#[inline(always)]
+/// Copies one complete Maple node.
+///
+/// # Safety
+///
+/// `dst` must be writable and `src` must identify an initialized Maple node.
+unsafe fn copy_node(dst: *mut MapleNode, src: *const MapleNode) {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { bindings::rust_maple_tree_store_copy_node(dst, src) };
+}
+
+#[cfg(CONFIG_RUST_MAPLE_TREE_NODE_STORE)]
+#[inline(always)]
+/// Publishes a complete RCU replacement node.
+///
+/// # Safety
+///
+/// `mas` must identify a valid locked Maple state. `node` must be initialized
+/// with `node_type`, and `height` must match the current tree height.
+unsafe fn replace_node(
+    mas: *mut MaState,
+    node: *mut MapleNode,
+    node_type: bindings::maple_type,
+    height: u32,
+) {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { bindings::rust_maple_tree_store_replace_node(mas, node, node_type, height) };
+}
+
+#[cfg(CONFIG_RUST_MAPLE_TREE_NODE_STORE)]
+#[inline(always)]
+fn slot_count(node_type: bindings::maple_type) -> u8 {
+    // SAFETY: The layout type is valid.
+    unsafe { bindings::rust_maple_tree_slot_count(node_type) }
 }
 
 /// Executes the complex strategy selected by the Rust dispatcher.
@@ -179,6 +256,159 @@ unsafe fn append(wr_mas: *mut MaWrState) {
     unsafe { trace_write(mas, new_end, (*wr_mas).entry) };
 }
 
+/// Builds a replacement node for an insertion that changes the range layout.
+///
+/// # Safety
+///
+/// `wr_mas` must describe a selected node-store write under the tree lock.
+#[cfg(CONFIG_RUST_MAPLE_TREE_NODE_STORE)]
+unsafe fn node_store(wr_mas: *mut MaWrState) {
+    // SAFETY: The caller supplies a valid write state.
+    let mas = unsafe { (*wr_mas).mas };
+    // SAFETY: The caller supplies a valid locked write state.
+    let node_type = unsafe { (*wr_mas).type_ };
+
+    // SAFETY: The caller supplies a valid locked write state.
+    unsafe { trace_op(mas) };
+    // SAFETY: The caller supplies a valid initialized tree.
+    let in_rcu = unsafe { bindings::rust_maple_tree_in_rcu((*mas).tree) };
+    // SAFETY: The caller supplies a valid locked write state.
+    let mut offset_end = unsafe { (*wr_mas).offset_end };
+    let node_pivots = pivot_count(node_type);
+    let node_slots = slot_count(node_type);
+    // Assume that writing to the node end adds one entry.
+    // SAFETY: The caller supplies valid locked write state fields.
+    let mut new_end = unsafe {
+        (*mas)
+            .end
+            .wrapping_add(1)
+            .wrapping_sub(offset_end)
+            .wrapping_add((*mas).offset)
+    };
+
+    // SAFETY: The caller supplies a valid locked write state.
+    if unsafe { (*mas).last == (*wr_mas).end_piv } {
+        offset_end = offset_end.wrapping_add(1);
+        new_end = new_end.wrapping_sub(1);
+    }
+
+    let mut reuse = MaybeUninit::<MapleNode>::uninit();
+    let new_node = if in_rcu {
+        // SAFETY: A selected node store has preallocated a replacement node.
+        unsafe { pop_node(mas) }
+    } else {
+        reuse.as_mut_ptr()
+    };
+    // SAFETY: The source and destination identify compatible Maple nodes.
+    unsafe { set_parent(new_node, (*wr_mas).node) };
+    // SAFETY: The replacement node has a valid concrete layout.
+    let new_pivots = unsafe { super::maple_tree_core::pivots(new_node, node_type) };
+    // SAFETY: The replacement node has a valid concrete layout.
+    let new_slots = unsafe { super::maple_tree_core::slots(new_node, node_type) };
+    // SAFETY: The caller supplies a valid locked write state.
+    let mut offset = unsafe { (*mas).offset };
+
+    if offset != 0 {
+        // SAFETY: The ranges before the insertion point are initialized.
+        unsafe {
+            ptr::copy_nonoverlapping((*wr_mas).pivots, new_pivots, usize::from(offset));
+            ptr::copy_nonoverlapping((*wr_mas).slots, new_slots, usize::from(offset));
+        }
+    }
+
+    // Retain the beginning of a range that starts after the old range minimum.
+    // SAFETY: The caller supplies valid locked write state fields.
+    if unsafe { (*wr_mas).r_min < (*mas).index } {
+        // SAFETY: The insertion offset is writable.
+        unsafe { store_slot(new_slots.add(usize::from(offset)), (*wr_mas).content) };
+        // SAFETY: The insertion offset is writable.
+        unsafe { *new_pivots.add(usize::from(offset)) = (*mas).index.wrapping_sub(1) };
+        offset = offset.wrapping_add(1);
+        new_end = new_end.wrapping_add(1);
+        // SAFETY: The caller supplies a valid writable state.
+        unsafe { (*mas).offset = offset };
+    }
+
+    if offset < node_pivots {
+        // SAFETY: The insertion offset is below the pivot count.
+        unsafe { *new_pivots.add(usize::from(offset)) = (*mas).last };
+    }
+    // SAFETY: The insertion offset identifies a writable slot.
+    unsafe { store_slot(new_slots.add(usize::from(offset)), (*wr_mas).entry) };
+
+    // Copy every range after the overwritten region.
+    // SAFETY: The caller supplies valid locked write state fields.
+    if offset_end <= unsafe { (*mas).end } {
+        let dst_offset = offset.wrapping_add(1);
+        // SAFETY: The traversal end is not beyond the node end.
+        let copy_size = unsafe { (*mas).end }
+            .wrapping_sub(offset_end)
+            .wrapping_add(1);
+        // SAFETY: The retained ranges are initialized.
+        unsafe {
+            ptr::copy_nonoverlapping(
+                (*wr_mas).slots.add(usize::from(offset_end)),
+                new_slots.add(usize::from(dst_offset)),
+                usize::from(copy_size),
+            );
+            ptr::copy_nonoverlapping(
+                (*wr_mas).pivots.add(usize::from(offset_end)),
+                new_pivots.add(usize::from(dst_offset)),
+                usize::from(copy_size.wrapping_sub(1)),
+            );
+        }
+        if new_end < node_pivots {
+            // SAFETY: The new end is below the pivot count.
+            unsafe { *new_pivots.add(usize::from(new_end)) = (*mas).max };
+        }
+    }
+
+    // A locked reuse node must not retain stale slots or pivots.
+    if !in_rcu && new_end.wrapping_add(2) < node_slots {
+        let clear_from = new_end.wrapping_add(1);
+        // SAFETY: The unused tail is within the node arrays.
+        unsafe {
+            ptr::write_bytes(
+                new_slots.add(usize::from(clear_from)),
+                0,
+                usize::from(node_slots.wrapping_sub(clear_from)),
+            );
+        }
+        if clear_from < node_pivots {
+            // SAFETY: The unused pivot tail is within the node array.
+            unsafe {
+                ptr::write_bytes(
+                    new_pivots.add(usize::from(clear_from)),
+                    0,
+                    usize::from(node_pivots.wrapping_sub(clear_from)),
+                );
+            }
+        }
+    }
+
+    if new_end < node_slots.wrapping_sub(1) {
+        // SAFETY: A leaf node can store its metadata at the new end.
+        unsafe { set_meta(new_node, node_type, new_end) };
+    }
+
+    if in_rcu {
+        // SAFETY: Node stores allocate one replacement in RCU mode.
+        let height = unsafe { bindings::rust_maple_tree_height(mas) };
+        // SAFETY: The replacement node is fully initialized.
+        unsafe { replace_node(mas, new_node, node_type, height) };
+    } else {
+        // SAFETY: The reuse node is fully initialized for all live ranges.
+        unsafe { copy_node((*wr_mas).node, new_node) };
+    }
+
+    // SAFETY: The tracepoint observes the completed node mutation.
+    unsafe { trace_write(mas, 0, (*wr_mas).entry) };
+    // SAFETY: The replacement changed one or more range entries.
+    unsafe { update_gap(mas) };
+    // SAFETY: The caller supplies a valid writable state.
+    unsafe { (*mas).end = new_end };
+}
+
 /// Replaces or expands adjacent ranges while retaining the node size.
 ///
 /// # Safety
@@ -284,8 +514,17 @@ unsafe fn store_entry(wr_mas: *mut MaWrState) {
             // SAFETY: The selected strategy and state are valid.
             unsafe { slot_store(wr_mas) };
         }
-        bindings::store_type_wr_node_store
-        | bindings::store_type_wr_spanning_store
+        #[cfg(CONFIG_RUST_MAPLE_TREE_NODE_STORE)]
+        bindings::store_type_wr_node_store => {
+            // SAFETY: The selected strategy and state are valid.
+            unsafe { node_store(wr_mas) };
+        }
+        #[cfg(not(CONFIG_RUST_MAPLE_TREE_NODE_STORE))]
+        bindings::store_type_wr_node_store => {
+            // SAFETY: The selected complex strategy remains a retained boundary.
+            unsafe { store_complex(wr_mas) };
+        }
+        bindings::store_type_wr_spanning_store
         | bindings::store_type_wr_split_store
         | bindings::store_type_wr_rebalance
         | bindings::store_type_wr_new_root

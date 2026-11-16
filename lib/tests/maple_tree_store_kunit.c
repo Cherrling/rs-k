@@ -226,6 +226,67 @@ static void maple_store_test_gap_reuse(struct kunit *test)
 	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 29), value);
 }
 
+static void maple_store_test_node_store(struct kunit *test)
+{
+	void *first = xa_mk_value(0x4101);
+	void *middle = xa_mk_value(0x4102);
+	void *last = xa_mk_value(0x4103);
+	struct maple_tree *tree = maple_store_test_init(test);
+
+	MA_STATE(mas, tree, 5, 24);
+
+	KUNIT_ASSERT_NOT_NULL(test, tree);
+	KUNIT_ASSERT_EQ(test,
+			mtree_store_range(tree, 0, 9, first, GFP_KERNEL), 0);
+	KUNIT_ASSERT_EQ(test,
+			mtree_store_range(tree, 20, 29, last, GFP_KERNEL), 0);
+	KUNIT_ASSERT_EQ(test,
+			maple_store_test_prepare_locked(tree, &mas, middle), 0);
+	KUNIT_EXPECT_EQ(test, mas.store_type, wr_node_store);
+	KUNIT_EXPECT_EQ(test, mas.node_request, 0);
+	mas_store_prealloc(&mas, middle);
+	mtree_unlock(tree);
+
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 0), first);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 4), first);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 5), middle);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 24), middle);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 25), last);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 29), last);
+}
+
+static void maple_store_test_node_store_rcu(struct kunit *test)
+{
+	void *first = xa_mk_value(0x4201);
+	void *middle = xa_mk_value(0x4202);
+	void *last = xa_mk_value(0x4203);
+	struct maple_tree *tree = maple_store_test_init(test);
+
+	MA_STATE(mas, tree, 5, 24);
+
+	KUNIT_ASSERT_NOT_NULL(test, tree);
+	KUNIT_ASSERT_EQ(test,
+			mtree_store_range(tree, 0, 9, first, GFP_KERNEL), 0);
+	KUNIT_ASSERT_EQ(test,
+			mtree_store_range(tree, 20, 29, last, GFP_KERNEL), 0);
+	mt_set_in_rcu(tree);
+	KUNIT_ASSERT_TRUE(test, mt_in_rcu(tree));
+	KUNIT_ASSERT_EQ(test,
+			maple_store_test_prepare_locked(tree, &mas, middle), 0);
+	KUNIT_EXPECT_EQ(test, mas.store_type, wr_node_store);
+	KUNIT_EXPECT_EQ(test, mas.node_request, 0);
+	KUNIT_ASSERT_NOT_NULL(test, mas.alloc);
+	mas_store_prealloc(&mas, middle);
+	mtree_unlock(tree);
+
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 0), first);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 4), first);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 5), middle);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 24), middle);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 25), last);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 29), last);
+}
+
 struct maple_store_worker {
 	struct maple_tree *tree;
 	atomic_t *done;
@@ -368,6 +429,8 @@ static struct kunit_case maple_store_test_cases[] = {
 	KUNIT_CASE(maple_store_test_slot_boundary),
 	KUNIT_CASE(maple_store_test_slot_three_touches),
 	KUNIT_CASE(maple_store_test_gap_reuse),
+	KUNIT_CASE(maple_store_test_node_store),
+	KUNIT_CASE(maple_store_test_node_store_rcu),
 	KUNIT_CASE(maple_store_test_concurrent_rcu),
 	{}
 };

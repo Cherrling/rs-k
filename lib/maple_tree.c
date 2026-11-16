@@ -3334,6 +3334,7 @@ static void mas_wr_spanning_store(struct ma_wr_state *wr_mas)
  *
  * Attempts to reuse the node, but may allocate.
  */
+#ifndef CONFIG_RUST_MAPLE_TREE_NODE_STORE
 static inline void mas_wr_node_store(struct ma_wr_state *wr_mas)
 {
 	unsigned char dst_offset, offset_end;
@@ -3432,6 +3433,7 @@ done:
 	mas_update_gap(mas);
 	mas->end = new_end;
 }
+#endif /* CONFIG_RUST_MAPLE_TREE_NODE_STORE */
 
 /*
  * mas_wr_slot_store: Attempt to store a value in a slot.
@@ -3812,14 +3814,51 @@ void rust_maple_tree_store_trace(struct ma_state *mas,
 	trace_ma_write(TP_FCT, mas, offset, entry);
 }
 
+#ifdef CONFIG_RUST_MAPLE_TREE_NODE_STORE
+void rust_maple_tree_store_trace_op(struct ma_state *mas)
+{
+	trace_ma_op(TP_FCT, mas);
+}
+
+struct maple_node *rust_maple_tree_store_pop_node(struct ma_state *mas)
+{
+	return mas_pop_node(mas);
+}
+
+void rust_maple_tree_store_set_parent(struct maple_node *dst,
+				      const struct maple_node *src)
+{
+	dst->parent = src->parent;
+}
+
+void rust_maple_tree_store_copy_node(struct maple_node *dst,
+				     const struct maple_node *src)
+{
+	memcpy(dst, src, sizeof(*dst));
+}
+
+void rust_maple_tree_store_replace_node(struct ma_state *mas,
+					struct maple_node *node,
+					enum maple_type type,
+					unsigned int height)
+{
+	struct maple_enode *old_enode = mas->node;
+
+	mas->node = mt_mk_node(node, type);
+	mas_replace_node(mas, old_enode, height);
+}
+#endif /* CONFIG_RUST_MAPLE_TREE_NODE_STORE */
+
 void rust_maple_tree_store_complex(struct ma_wr_state *wr_mas)
 {
 	struct ma_state *mas = wr_mas->mas;
 
 	switch (mas->store_type) {
+#ifndef CONFIG_RUST_MAPLE_TREE_NODE_STORE
 	case wr_node_store:
 		mas_wr_node_store(wr_mas);
 		break;
+#endif
 	case wr_spanning_store:
 		mas_wr_spanning_store(wr_mas);
 		break;
@@ -3839,6 +3878,9 @@ void rust_maple_tree_store_complex(struct ma_wr_state *wr_mas)
 	case wr_exact_fit:
 	case wr_append:
 	case wr_slot_store:
+#ifdef CONFIG_RUST_MAPLE_TREE_NODE_STORE
+	case wr_node_store:
+#endif
 	default:
 		MT_BUG_ON(mas->tree, 1);
 	}
