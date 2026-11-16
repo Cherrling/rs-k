@@ -5271,7 +5271,7 @@ void mas_destroy(struct ma_state *mas)
 }
 EXPORT_SYMBOL_GPL(mas_destroy);
 
-static void mas_may_activate(struct ma_state *mas)
+static __maybe_unused void mas_may_activate(struct ma_state *mas)
 {
 	if (!mas->node) {
 		mas->status = ma_start;
@@ -5595,6 +5595,7 @@ EXPORT_SYMBOL_GPL(mas_pause);
  *
  * Returns: True if entry is the answer, false otherwise.
  */
+#ifndef CONFIG_RUST_MAPLE_TREE_FIND
 static __always_inline bool mas_find_setup(struct ma_state *mas, unsigned long max, void **entry)
 {
 	switch (mas->status) {
@@ -5673,6 +5674,7 @@ ptr_out_of_range:
 	mas->last = ULONG_MAX;
 	return true;
 }
+#endif /* CONFIG_RUST_MAPLE_TREE_FIND */
 
 /**
  * mas_find() - On the first call, find the entry at or after mas->index up to
@@ -5688,6 +5690,9 @@ ptr_out_of_range:
  */
 void *mas_find(struct ma_state *mas, unsigned long max)
 {
+#ifdef CONFIG_RUST_MAPLE_TREE_FIND
+	return rust_mas_find(mas, max);
+#else
 	void *entry = NULL;
 
 	mas_may_init_lock_check(mas);
@@ -5699,6 +5704,7 @@ void *mas_find(struct ma_state *mas, unsigned long max)
 	/* Ignore overflow */
 	mas->status = ma_active;
 	return entry;
+#endif /* CONFIG_RUST_MAPLE_TREE_FIND */
 }
 EXPORT_SYMBOL_GPL(mas_find);
 
@@ -5716,6 +5722,9 @@ EXPORT_SYMBOL_GPL(mas_find);
  */
 void *mas_find_range(struct ma_state *mas, unsigned long max)
 {
+#ifdef CONFIG_RUST_MAPLE_TREE_FIND
+	return rust_mas_find_range(mas, max);
+#else
 	void *entry = NULL;
 
 	mas_may_init_lock_check(mas);
@@ -5724,6 +5733,7 @@ void *mas_find_range(struct ma_state *mas, unsigned long max)
 
 	/* Retries on dead nodes handled by mas_next_slot */
 	return mas_next_slot(mas, max, true);
+#endif /* CONFIG_RUST_MAPLE_TREE_FIND */
 }
 EXPORT_SYMBOL_GPL(mas_find_range);
 

@@ -231,7 +231,7 @@ unsafe fn next_node(mas: *mut MaState, node: *mut MapleNode, max: usize) -> bool
 /// # Safety
 ///
 /// `mas` must contain a valid active state protected by RCU or the tree lock.
-unsafe fn next_slot(mas: *mut MaState, max: usize, empty: bool) -> *mut c_void {
+pub(super) unsafe fn next_slot(mas: *mut MaState, max: usize, empty: bool) -> *mut c_void {
     // SAFETY: The caller supplies a valid active state.
     let save_point = unsafe { (*mas).last };
 

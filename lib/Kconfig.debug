@@ -3145,6 +3145,21 @@ config MAPLE_TREE_PREV_KUNIT_TEST
 
 	  If unsure, say N.
 
+config MAPLE_TREE_FIND_KUNIT_TEST
+	tristate "KUnit Test for Maple Tree forward finds" if !KUNIT_ALL_TESTS
+	depends on KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This builds the KUnit test suite for the active Maple Tree forward
+	  find implementation. It tests empty and root states, initial and
+	  repeated finds, range metadata, pause and boundary states, underflow
+	  and overflow recovery, and concurrent RCU reads.
+
+	  The suite runs against both the Rust production path and the C
+	  fallback.
+
+	  If unsure, say N.
+
 config TEST_RHASHTABLE
 	tristate "Perform selftest on resizable hash table"
 	help

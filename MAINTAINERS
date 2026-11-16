@@ -15730,6 +15730,7 @@ L:	maple-tree@lists.infradead.org
 L:	linux-mm@kvack.org
 S:	Supported
 F:	Documentation/core-api/maple_tree.rst
+F:	Documentation/rust/native-maple-tree-find.rst
 F:	Documentation/rust/native-maple-tree-load.rst
 F:	Documentation/rust/native-maple-tree-next.rst
 F:	Documentation/rust/native-maple-tree-prev.rst
@@ -15738,6 +15739,7 @@ F:	include/linux/maple_tree.h
 F:	include/linux/maple_tree_rust.h
 F:	include/trace/events/maple_tree.h
 F:	lib/maple_tree.c
+F:	lib/tests/maple_tree_find_kunit.c
 F:	lib/tests/maple_tree_load_kunit.c
 F:	lib/tests/maple_tree_next_kunit.c
 F:	lib/tests/maple_tree_prev_kunit.c
@@ -15746,6 +15748,7 @@ F:	lib/region_alloc_benchmark.c
 F:	lib/test_maple_tree.c
 F:	rust/helpers/maple_tree.c
 F:	rust/kernel/maple_tree_core.rs
+F:	rust/kernel/maple_tree_find.rs
 F:	rust/kernel/maple_tree_load.rs
 F:	rust/kernel/maple_tree_next.rs
 F:	rust/kernel/maple_tree_prev.rs

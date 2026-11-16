@@ -112,6 +112,7 @@ more details.
     native-maple-tree-walk
     native-maple-tree-next
     native-maple-tree-prev
+    native-maple-tree-find
     native-xarray-alloc
     native-xarray-create
     native-xarray-create-range

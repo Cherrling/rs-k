@@ -130,6 +130,8 @@ mod list_sort;
 pub mod maple_tree;
 #[cfg(any(CONFIG_RUST_MAPLE_TREE_LOAD, CONFIG_RUST_MAPLE_TREE_WALK))]
 mod maple_tree_core;
+#[cfg(CONFIG_RUST_MAPLE_TREE_FIND)]
+mod maple_tree_find;
 #[cfg(CONFIG_RUST_MAPLE_TREE_LOAD)]
 mod maple_tree_load;
 #[cfg(CONFIG_RUST_MAPLE_TREE_NEXT)]

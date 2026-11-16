@@ -402,6 +402,24 @@ config RUST_MAPLE_TREE_PREV
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_MAPLE_TREE_FIND
+	bool "Rust implementation of Maple Tree forward finds"
+	depends on RUST_MAPLE_TREE_NEXT
+	default y
+	help
+	  Use Rust for the production state normalization and find policy
+	  behind mas_find() and mas_find_range().
+
+	  Rust owns start, active, paused, empty, root, underflow, overflow, and
+	  out-of-range state transitions. It calls the native Rust forward slot
+	  selector for traversal. Encoded parent metadata, node layout,
+	  protected slot access, lockdep checks, and one-time diagnostics remain
+	  in C. The exported C entry points remain as ABI adapters. The C
+	  fallback retains the complete find setup and both public functions.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_PERCPU_REFCOUNT
 	bool "Rust implementation of percpu_ref() lifecycle"
 	depends on RUST

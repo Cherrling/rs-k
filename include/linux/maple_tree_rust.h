@@ -74,4 +74,11 @@ void *rust_mas_prev_slot(struct ma_state *mas, unsigned long min, bool empty);
 
 #endif /* CONFIG_RUST_MAPLE_TREE_PREV */
 
+#ifdef CONFIG_RUST_MAPLE_TREE_FIND
+
+void *rust_mas_find(struct ma_state *mas, unsigned long max);
+void *rust_mas_find_range(struct ma_state *mas, unsigned long max);
+
+#endif /* CONFIG_RUST_MAPLE_TREE_FIND */
+
 #endif /* _LINUX_MAPLE_TREE_RUST_H */
