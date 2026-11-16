@@ -82,6 +82,7 @@ obj-$(CONFIG_XARRAY_MARKS_KUNIT_TEST) += xarray_marks_kunit.o
 obj-$(CONFIG_XARRAY_SQUASH_KUNIT_TEST) += xarray_squash_kunit.o
 obj-$(CONFIG_XARRAY_SPLIT_KUNIT_TEST) += xarray_split_kunit.o
 obj-$(CONFIG_XARRAY_TRY_SPLIT_KUNIT_TEST) += xarray_try_split_kunit.o
+obj-$(CONFIG_MAPLE_TREE_LOAD_KUNIT_TEST) += maple_tree_load_kunit.o
 obj-$(CONFIG_TEST_IOV_ITER) += kunit_iov_iter.o
 obj-$(CONFIG_IS_SIGNED_TYPE_KUNIT_TEST) += is_signed_type_kunit.o
 obj-$(CONFIG_KPROBES_SANITY_TEST) += test_kprobes.o

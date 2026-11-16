@@ -336,6 +336,22 @@ config RUST_LIST_SORT
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_MAPLE_TREE_LOAD
+	bool "Rust implementation of Maple Tree loads"
+	depends on RUST && X86_64
+	default y
+	help
+	  Use Rust for the production index lookup, root handling, node
+	  descent, dead-node restart, and RCU lifecycle behind mtree_load().
+
+	  Maple node encoding, node layout, protected slot access, tracepoint
+	  emission, and lockdep checks remain in C. The exported C entry point
+	  remains as an ABI adapter. The C fallback retains the complete load
+	  traversal.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_PERCPU_REFCOUNT
 	bool "Rust implementation of percpu_ref() lifecycle"
 	depends on RUST

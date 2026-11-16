@@ -54,6 +54,7 @@
 
 
 #include <linux/maple_tree.h>
+#include <linux/maple_tree_rust.h>
 #include <linux/xarray.h>
 #include <linux/types.h>
 #include <linux/export.h>
@@ -3057,6 +3058,91 @@ dead_node:
 	return NULL;
 }
 
+#ifdef CONFIG_RUST_MAPLE_TREE_LOAD
+void rust_maple_tree_load_init_lock_check(struct ma_state *mas)
+{
+	mas_init_lock_check(mas);
+}
+
+void *rust_maple_tree_load_root(struct ma_state *mas)
+{
+	return mas_root(mas);
+}
+
+void *rust_maple_tree_load_safe_root(const void *enode)
+{
+	return mte_safe_root(enode);
+}
+
+bool rust_maple_tree_load_is_node(const void *entry)
+{
+	return xa_is_node(entry);
+}
+
+bool rust_maple_tree_load_enode_is_dead(const void *enode)
+{
+	return mte_dead_node(enode);
+}
+
+void *rust_maple_tree_load_to_node(const void *enode)
+{
+	return mte_to_node(enode);
+}
+
+enum maple_type rust_maple_tree_load_node_type(const void *enode)
+{
+	return mte_node_type(enode);
+}
+
+unsigned long *rust_maple_tree_load_pivots(struct maple_node *node,
+					   enum maple_type type)
+{
+	return ma_pivots(node, type);
+}
+
+void __rcu **rust_maple_tree_load_slots(struct maple_node *node,
+					enum maple_type type)
+{
+	return ma_slots(node, type);
+}
+
+unsigned char rust_maple_tree_load_pivot_count(enum maple_type type)
+{
+	return mt_pivots[type];
+}
+
+void *rust_maple_tree_load_slot(struct ma_state *mas,
+				void __rcu **slots, unsigned char offset)
+{
+	return mt_slot(mas->tree, slots, offset);
+}
+
+bool rust_maple_tree_load_node_is_dead(const struct maple_node *node)
+{
+	return ma_dead_node(node);
+}
+
+bool rust_maple_tree_load_is_leaf(enum maple_type type)
+{
+	return ma_is_leaf(type);
+}
+
+unsigned char rust_maple_tree_load_node_slots(void)
+{
+	return MAPLE_NODE_SLOTS;
+}
+
+void rust_maple_tree_load_trace(struct ma_state *mas)
+{
+	trace_ma_read(tracepoint_string("mtree_load"), mas);
+}
+
+bool rust_maple_tree_load_is_zero(const void *entry)
+{
+	return xa_is_zero(entry);
+}
+#endif /* CONFIG_RUST_MAPLE_TREE_LOAD */
+
 static void mte_destroy_walk(struct maple_enode *, struct maple_tree *);
 /*
  * mas_new_root() - Create a new root node that only contains the entry passed
@@ -5802,6 +5888,9 @@ void __init maple_tree_init(void)
  */
 void *mtree_load(struct maple_tree *mt, unsigned long index)
 {
+#ifdef CONFIG_RUST_MAPLE_TREE_LOAD
+	return rust_mtree_load(mt, index);
+#else
 	MA_STATE(mas, mt, index, index);
 	void *entry;
 
@@ -5828,6 +5917,7 @@ unlock:
 		return NULL;
 
 	return entry;
+#endif /* CONFIG_RUST_MAPLE_TREE_LOAD */
 }
 EXPORT_SYMBOL(mtree_load);
 

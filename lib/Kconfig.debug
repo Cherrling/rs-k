@@ -3086,6 +3086,20 @@ config TEST_MAPLE_TREE
 
 	  If unsure, say N.
 
+config MAPLE_TREE_LOAD_KUNIT_TEST
+	tristate "KUnit Test for Maple Tree loads" if !KUNIT_ALL_TESTS
+	depends on KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This builds the KUnit test suite for the active Maple Tree load
+	  implementation. It tests empty and single-entry trees, deep node
+	  descent, zero entries, the maximum index, and concurrent RCU readers.
+
+	  The suite runs against both the Rust production path and the C
+	  fallback.
+
+	  If unsure, say N.
+
 config TEST_RHASHTABLE
 	tristate "Perform selftest on resizable hash table"
 	help

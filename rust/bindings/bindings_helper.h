@@ -85,6 +85,7 @@
 #include <linux/kfifo.h>
 #include <linux/kfifo-rust.h>
 #include <linux/list_sort.h>
+#include <linux/maple_tree_rust.h>
 #include <linux/mdio.h>
 #include <linux/mm.h>
 #include <linux/mm-rust.h>
