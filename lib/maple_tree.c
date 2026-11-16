@@ -2343,6 +2343,7 @@ use_sib:
  * Note: @cp->data is a size and not indexed by 0. @sib->end may be set to 0 to
  * indicate it will not be used.
  */
+#ifndef CONFIG_RUST_MAPLE_TREE_SPANNING_STORE
 static inline void spanning_data(struct maple_copy *cp,
 		struct ma_wr_state *l_wr_mas, struct ma_wr_state *r_wr_mas,
 		struct ma_state *sib)
@@ -2356,6 +2357,7 @@ static inline void spanning_data(struct maple_copy *cp,
 		sib->end = 0;
 	}
 }
+#endif /* CONFIG_RUST_MAPLE_TREE_SPANNING_STORE */
 
 /*
  * dst_setup() - Set up one or more destinations for the new data.
@@ -2710,6 +2712,7 @@ static inline bool cp_converged(struct maple_copy *cp, struct ma_state *mas,
 	return true;
 }
 
+#ifndef CONFIG_RUST_MAPLE_TREE_SPANNING_STORE
 /*
  * spanning_ascend() - See if a spanning store operation has to keep walking up
  * the tree
@@ -2747,6 +2750,7 @@ static bool spanning_ascend(struct maple_copy *cp, struct ma_state *mas,
 	wr_mas_ascend(r_wr_mas);
 	return true;
 }
+#endif /* CONFIG_RUST_MAPLE_TREE_SPANNING_STORE */
 
 static inline
 void copy_tree_location(const struct ma_state *src, struct ma_state *dst)
@@ -2977,6 +2981,7 @@ static void mas_wr_walk_index(struct ma_wr_state *wr_mas)
  * @l_wr_mas: The left maple write state
  * @r_wr_mas: The right maple write state
  */
+#ifndef CONFIG_RUST_MAPLE_TREE_SPANNING_STORE
 static inline void mas_extend_spanning_null(struct ma_wr_state *l_wr_mas,
 					    struct ma_wr_state *r_wr_mas)
 {
@@ -3006,6 +3011,7 @@ static inline void mas_extend_spanning_null(struct ma_wr_state *l_wr_mas,
 		r_mas->offset++;
 	}
 }
+#endif /* CONFIG_RUST_MAPLE_TREE_SPANNING_STORE */
 
 static inline void *mas_state_walk(struct ma_state *mas)
 {
@@ -3249,6 +3255,120 @@ done:
 	if (xa_is_node(root))
 		mte_destroy_walk(root, mas->tree);
 }
+
+#ifdef CONFIG_RUST_MAPLE_TREE_SPANNING_STORE
+void rust_maple_tree_spanning_walk_index(struct ma_wr_state *wr_mas)
+{
+	mas_wr_walk_index(wr_mas);
+}
+
+void rust_maple_tree_spanning_set_full_range(struct ma_state *mas)
+{
+	mas_set_range(mas, 0, ULONG_MAX);
+}
+
+void rust_maple_tree_spanning_new_root(struct ma_state *mas, void *entry)
+{
+	mas_new_root(mas, entry);
+}
+
+void rust_maple_tree_spanning_sibling(struct ma_wr_state *l_wr_mas,
+				      struct ma_wr_state *r_wr_mas,
+				      struct ma_state *sibling)
+{
+	spanning_sib(l_wr_mas, r_wr_mas, sibling);
+}
+
+unsigned long rust_maple_tree_spanning_node_copy(struct ma_state *mas,
+						 struct maple_node *src,
+						 unsigned char start,
+						 unsigned char size,
+						 unsigned long src_max,
+						 enum maple_type src_type,
+						 struct maple_node *dst,
+						 unsigned char dst_start,
+						 enum maple_type dst_type)
+{
+	return node_copy(mas, src, start, size, src_max, src_type, dst,
+			 dst_start, dst_type);
+}
+
+void rust_maple_tree_spanning_node_finalise(struct maple_node *node,
+					    enum maple_type type,
+					    unsigned char end)
+{
+	node_finalise(node, type, end);
+}
+
+void rust_maple_tree_spanning_init_slot(void __rcu **slot,
+					struct maple_node *node,
+					enum maple_type type)
+{
+	ma_init_slot(slot, node, type);
+}
+
+bool rust_maple_tree_spanning_is_alloc(struct maple_tree *tree)
+{
+	return mt_is_alloc(tree);
+}
+
+unsigned long rust_maple_tree_spanning_leaf_gap(struct maple_node *node,
+						enum maple_type type,
+						unsigned long min,
+						unsigned long max,
+						unsigned long *pivots,
+						void __rcu **slots)
+{
+	return ma_leaf_max_gap(node, type, min, max, pivots, slots);
+}
+
+unsigned long *rust_maple_tree_spanning_gaps(struct maple_node *node,
+					     enum maple_type type)
+{
+	return ma_gaps(node, type);
+}
+
+unsigned char rust_maple_tree_spanning_meta_gap(struct maple_node *node)
+{
+	return ma_meta_gap(node);
+}
+
+bool rust_maple_tree_spanning_root_matches(struct ma_state *mas,
+					   struct maple_copy *copy)
+{
+	return copy->dst[0].node ==
+		mte_to_node(mt_slot_locked(mas->tree, copy->slot, 0));
+}
+
+void rust_maple_tree_spanning_reset_root(struct ma_state *mas,
+					 struct maple_node *node)
+{
+	node->parent = ma_parent_ptr(mas_tree_parent(mas));
+	mas->min = 0;
+	mas->max = ULONG_MAX;
+	mas->depth = 0;
+	mas->node = mas_root_locked(mas);
+}
+
+void rust_maple_tree_spanning_set_parent(struct maple_node *node,
+					 struct ma_state *mas)
+{
+	node->parent = ma_parent_ptr(mas_mn(mas)->parent);
+}
+
+void rust_maple_tree_spanning_wr_ascend(struct ma_wr_state *wr_mas)
+{
+	wr_mas_ascend(wr_mas);
+}
+
+void rust_maple_tree_spanning_publish(struct ma_state *mas,
+				      struct maple_copy *copy)
+{
+	mas_wmb_replace(mas, copy);
+}
+#endif /* CONFIG_RUST_MAPLE_TREE_SPANNING_STORE */
+
+#ifndef CONFIG_RUST_MAPLE_TREE_SPANNING_STORE
 /*
  * mas_wr_spanning_store() - Create a subtree with the store operation completed
  * and new nodes where necessary, then place the sub-tree in the actual tree.
@@ -3327,6 +3447,7 @@ static void mas_wr_spanning_store(struct ma_wr_state *wr_mas)
 
 	mas_wmb_replace(mas, &cp);
 }
+#endif /* CONFIG_RUST_MAPLE_TREE_SPANNING_STORE */
 
 /*
  * mas_wr_node_store() - Attempt to store the value in a node
@@ -3859,9 +3980,11 @@ void rust_maple_tree_store_complex(struct ma_wr_state *wr_mas)
 		mas_wr_node_store(wr_mas);
 		break;
 #endif
+#ifndef CONFIG_RUST_MAPLE_TREE_SPANNING_STORE
 	case wr_spanning_store:
 		mas_wr_spanning_store(wr_mas);
 		break;
+#endif
 	case wr_split_store:
 		mas_wr_split(wr_mas);
 		break;
@@ -3880,6 +4003,9 @@ void rust_maple_tree_store_complex(struct ma_wr_state *wr_mas)
 	case wr_slot_store:
 #ifdef CONFIG_RUST_MAPLE_TREE_NODE_STORE
 	case wr_node_store:
+#endif
+#ifdef CONFIG_RUST_MAPLE_TREE_SPANNING_STORE
+	case wr_spanning_store:
 #endif
 	default:
 		MT_BUG_ON(mas->tree, 1);

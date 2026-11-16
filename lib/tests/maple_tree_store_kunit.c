@@ -287,6 +287,108 @@ static void maple_store_test_node_store_rcu(struct kunit *test)
 	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 29), last);
 }
 
+static void maple_store_test_spanning_store_common(struct kunit *test,
+						   bool in_rcu)
+{
+	void *first = xa_mk_value(0x4301);
+	void *middle = xa_mk_value(0x4302);
+	void *last = xa_mk_value(0x4303);
+	struct maple_tree *tree = maple_store_test_init(test);
+	struct maple_tree *alloc_tree =
+		maple_store_test_init_flags(test, MT_FLAGS_ALLOC_RANGE);
+
+	MA_STATE(mas, tree, 15, 604);
+	MA_STATE(alloc_mas, alloc_tree, 15, 604);
+
+	KUNIT_ASSERT_NOT_NULL(test, tree);
+	KUNIT_ASSERT_NOT_NULL(test, alloc_tree);
+	KUNIT_ASSERT_EQ(test, maple_store_test_store_many(tree), 0);
+	KUNIT_ASSERT_EQ(test, maple_store_test_store_many(alloc_tree), 0);
+	KUNIT_ASSERT_EQ(test,
+			mtree_store_range(tree, 0, 14, first, GFP_KERNEL), 0);
+	KUNIT_ASSERT_EQ(test,
+			mtree_store_range(tree, 605, 609, last, GFP_KERNEL), 0);
+	KUNIT_ASSERT_EQ(test,
+			mtree_store_range(alloc_tree, 0, 14, first,
+					  GFP_KERNEL), 0);
+	KUNIT_ASSERT_EQ(test,
+			mtree_store_range(alloc_tree, 605, 609, last,
+					  GFP_KERNEL), 0);
+	if (in_rcu) {
+		mt_set_in_rcu(tree);
+		mt_set_in_rcu(alloc_tree);
+	}
+
+	KUNIT_ASSERT_EQ(test,
+			maple_store_test_prepare_locked(tree, &mas, middle), 0);
+	KUNIT_EXPECT_EQ(test, mas.store_type, wr_spanning_store);
+	KUNIT_EXPECT_EQ(test, mas.node_request, 0);
+	KUNIT_ASSERT_TRUE(test, mas.alloc || mas.sheaf);
+	mas_store_prealloc(&mas, middle);
+	mtree_unlock(tree);
+
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 0), first);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 14), first);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 15), middle);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 604), middle);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 605), last);
+	KUNIT_EXPECT_NULL(test, mtree_load(tree, 616));
+
+	KUNIT_ASSERT_EQ(test,
+			maple_store_test_prepare_locked(alloc_tree, &alloc_mas,
+							middle), 0);
+	KUNIT_EXPECT_EQ(test, alloc_mas.store_type, wr_spanning_store);
+	KUNIT_EXPECT_EQ(test, alloc_mas.node_request, 0);
+	KUNIT_ASSERT_TRUE(test, alloc_mas.alloc || alloc_mas.sheaf);
+	mas_store_prealloc(&alloc_mas, middle);
+	mtree_unlock(alloc_tree);
+
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(alloc_tree, 0), first);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(alloc_tree, 14), first);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(alloc_tree, 15), middle);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(alloc_tree, 604), middle);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(alloc_tree, 605), last);
+	KUNIT_EXPECT_NULL(test, mtree_load(alloc_tree, 616));
+}
+
+static void maple_store_test_spanning_store(struct kunit *test)
+{
+	maple_store_test_spanning_store_common(test, false);
+}
+
+static void maple_store_test_spanning_store_rcu(struct kunit *test)
+{
+	maple_store_test_spanning_store_common(test, true);
+}
+
+static void maple_store_test_spanning_null(struct kunit *test)
+{
+	void *first = xa_mk_value(0x4401);
+	void *last = xa_mk_value(0x4402);
+	struct maple_tree *tree = maple_store_test_init(test);
+
+	MA_STATE(mas, tree, 5, 604);
+
+	KUNIT_ASSERT_NOT_NULL(test, tree);
+	KUNIT_ASSERT_EQ(test, maple_store_test_store_many(tree), 0);
+	KUNIT_ASSERT_EQ(test,
+			mtree_store_range(tree, 0, 4, first, GFP_KERNEL), 0);
+	KUNIT_ASSERT_EQ(test,
+			mtree_store_range(tree, 605, 609, last, GFP_KERNEL), 0);
+	KUNIT_ASSERT_EQ(test,
+			maple_store_test_prepare_locked(tree, &mas, NULL), 0);
+	KUNIT_EXPECT_EQ(test, mas.store_type, wr_spanning_store);
+	KUNIT_EXPECT_EQ(test, mas.node_request, 0);
+	KUNIT_ASSERT_TRUE(test, mas.alloc || mas.sheaf);
+	mas_store_prealloc(&mas, NULL);
+	mtree_unlock(tree);
+
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 4), first);
+	KUNIT_EXPECT_NULL(test, mtree_load(tree, 5));
+	KUNIT_EXPECT_NULL(test, mtree_load(tree, 604));
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 605), last);
+}
+
 struct maple_store_worker {
 	struct maple_tree *tree;
 	atomic_t *done;
@@ -431,6 +533,9 @@ static struct kunit_case maple_store_test_cases[] = {
 	KUNIT_CASE(maple_store_test_gap_reuse),
 	KUNIT_CASE(maple_store_test_node_store),
 	KUNIT_CASE(maple_store_test_node_store_rcu),
+	KUNIT_CASE(maple_store_test_spanning_store),
+	KUNIT_CASE(maple_store_test_spanning_store_rcu),
+	KUNIT_CASE(maple_store_test_spanning_null),
 	KUNIT_CASE(maple_store_test_concurrent_rcu),
 	{}
 };

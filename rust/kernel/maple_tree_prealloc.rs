@@ -8,8 +8,8 @@
 //! access, write traversal primitives, node-pool allocation, and lockdep.
 
 use super::maple_tree_core::{
-    MaState, MaWrState, is_active, is_leaf, is_none, is_ptr, is_start, may_init_lock_check,
-    node_type, reset, start,
+    is_active, is_leaf, is_none, is_ptr, is_start, may_init_lock_check, node_type, reset, start,
+    MaState, MaWrState,
 };
 use crate::bindings;
 use core::ffi::c_void;

@@ -133,4 +133,49 @@ void rust_maple_tree_store_replace_node(struct ma_state *mas,
 
 #endif /* CONFIG_RUST_MAPLE_TREE_NODE_STORE */
 
+#ifdef CONFIG_RUST_MAPLE_TREE_SPANNING_STORE
+
+void rust_maple_tree_spanning_walk_index(struct ma_wr_state *wr_mas);
+void rust_maple_tree_spanning_set_full_range(struct ma_state *mas);
+void rust_maple_tree_spanning_new_root(struct ma_state *mas, void *entry);
+void rust_maple_tree_spanning_sibling(struct ma_wr_state *l_wr_mas,
+				      struct ma_wr_state *r_wr_mas,
+				      struct ma_state *sibling);
+unsigned long rust_maple_tree_spanning_node_copy(struct ma_state *mas,
+						 struct maple_node *src,
+						 unsigned char start,
+						 unsigned char size,
+						 unsigned long src_max,
+						 enum maple_type src_type,
+						 struct maple_node *dst,
+						 unsigned char dst_start,
+						 enum maple_type dst_type);
+void rust_maple_tree_spanning_node_finalise(struct maple_node *node,
+					    enum maple_type type,
+					    unsigned char end);
+void rust_maple_tree_spanning_init_slot(void __rcu **slot,
+					struct maple_node *node,
+					enum maple_type type);
+bool rust_maple_tree_spanning_is_alloc(struct maple_tree *tree);
+unsigned long rust_maple_tree_spanning_leaf_gap(struct maple_node *node,
+						enum maple_type type,
+						unsigned long min,
+						unsigned long max,
+						unsigned long *pivots,
+						void __rcu **slots);
+unsigned long *rust_maple_tree_spanning_gaps(struct maple_node *node,
+					     enum maple_type type);
+unsigned char rust_maple_tree_spanning_meta_gap(struct maple_node *node);
+bool rust_maple_tree_spanning_root_matches(struct ma_state *mas,
+					   struct maple_copy *copy);
+void rust_maple_tree_spanning_reset_root(struct ma_state *mas,
+					 struct maple_node *node);
+void rust_maple_tree_spanning_set_parent(struct maple_node *node,
+					 struct ma_state *mas);
+void rust_maple_tree_spanning_wr_ascend(struct ma_wr_state *wr_mas);
+void rust_maple_tree_spanning_publish(struct ma_state *mas,
+				      struct maple_copy *copy);
+
+#endif /* CONFIG_RUST_MAPLE_TREE_SPANNING_STORE */
+
 #endif /* _LINUX_MAPLE_TREE_RUST_H */

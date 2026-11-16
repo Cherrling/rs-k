@@ -60,10 +60,12 @@ Maple Tree node layout remains C. Rust calls helpers for protected slot reads,
 RCU slot publication, metadata layout, gap propagation, and the write
 tracepoint.
 
-The node-store, spanning-store, split-store, rebalance, new-root, store-root,
-and invalid strategies remain C. Rust selects these strategies and calls one
-narrow C helper for only the selected complex strategy. The C helper does not
-contain exact-fit, append, or slot-store policy.
+The node-store and spanning-store strategies have separate native Rust
+migration units. When those options are enabled, Rust owns the selected store
+strategy. The split-store, rebalance, new-root, store-root, and invalid
+strategies remain C. Rust selects these strategies and calls one C helper for
+only the selected complex strategy. The C helper does not contain exact-fit,
+append, or slot-store policy.
 
 The complex strategies remain retained because they cross nodes, replace
 subtrees, change tree height, or coordinate multiple allocation and
