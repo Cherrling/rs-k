@@ -3372,6 +3372,36 @@ void rust_maple_tree_spanning_publish(struct ma_state *mas,
 {
 	mas_wmb_replace(mas, copy);
 }
+
+#ifdef CONFIG_RUST_MAPLE_TREE_SPLIT_STORE
+bool rust_maple_tree_split_is_root(struct maple_enode *enode)
+{
+	return mte_is_root(enode);
+}
+
+void rust_maple_tree_split_parent_ascend(struct ma_state *parent)
+{
+	mas_ascend(parent);
+	parent->end = mas_data_end(parent);
+}
+
+void rust_maple_tree_split_descend(struct ma_state *mas)
+{
+	mas_descend(mas);
+}
+
+unsigned char rust_maple_tree_split_data_end(struct ma_state *mas)
+{
+	return mas_data_end(mas);
+}
+
+void rust_maple_tree_split_write_ascend(const struct ma_state *parent,
+					struct ma_wr_state *wr_mas)
+{
+	copy_tree_location(parent, wr_mas->mas);
+	wr_mas_setup(wr_mas, wr_mas->mas);
+}
+#endif /* CONFIG_RUST_MAPLE_TREE_SPLIT_STORE */
 #endif /* CONFIG_RUST_MAPLE_TREE_SPANNING_STORE */
 
 #ifdef CONFIG_RUST_MAPLE_TREE_ROOT_STORE
@@ -3751,6 +3781,7 @@ static inline void mas_wr_append(struct ma_wr_state *wr_mas)
 	trace_ma_write(TP_FCT, mas, new_end, wr_mas->entry);
 }
 
+#ifndef CONFIG_RUST_MAPLE_TREE_SPLIT_STORE
 /*
  * split_ascend() - See if a split operation has to keep walking up the tree
  * @cp: The maple_copy node
@@ -3848,6 +3879,7 @@ static void mas_wr_split(struct ma_wr_state *wr_mas)
 
 	mas_wmb_replace(mas, &cp);
 }
+#endif /* CONFIG_RUST_MAPLE_TREE_SPLIT_STORE */
 
 /*
  * mas_wr_rebalance() - Insufficient data in one node needs to either get data
@@ -4023,9 +4055,11 @@ void rust_maple_tree_store_complex(struct ma_wr_state *wr_mas)
 		mas_wr_spanning_store(wr_mas);
 		break;
 #endif
+#ifndef CONFIG_RUST_MAPLE_TREE_SPLIT_STORE
 	case wr_split_store:
 		mas_wr_split(wr_mas);
 		break;
+#endif
 	case wr_rebalance:
 		mas_wr_rebalance(wr_mas);
 		break;
@@ -4046,6 +4080,9 @@ void rust_maple_tree_store_complex(struct ma_wr_state *wr_mas)
 #endif
 #ifdef CONFIG_RUST_MAPLE_TREE_SPANNING_STORE
 	case wr_spanning_store:
+#endif
+#ifdef CONFIG_RUST_MAPLE_TREE_SPLIT_STORE
+	case wr_split_store:
 #endif
 #ifdef CONFIG_RUST_MAPLE_TREE_ROOT_STORE
 	case wr_new_root:

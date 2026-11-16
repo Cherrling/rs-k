@@ -15738,6 +15738,7 @@ F:	Documentation/rust/native-maple-tree-prealloc.rst
 F:	Documentation/rust/native-maple-tree-prev.rst
 F:	Documentation/rust/native-maple-tree-root-store.rst
 F:	Documentation/rust/native-maple-tree-spanning-store.rst
+F:	Documentation/rust/native-maple-tree-split-store.rst
 F:	Documentation/rust/native-maple-tree-store.rst
 F:	Documentation/rust/native-maple-tree-walk.rst
 F:	include/linux/maple_tree.h

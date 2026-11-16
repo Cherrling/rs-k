@@ -514,6 +514,52 @@ static void maple_store_test_spanning_null(struct kunit *test)
 	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 605), last);
 }
 
+static void maple_store_test_split_tree(struct kunit *test, unsigned int flags,
+					bool in_rcu)
+{
+	void *before = xa_mk_value(6);
+	void *after = xa_mk_value(7);
+	void *value = xa_mk_value(0x4501);
+	struct maple_tree *tree = maple_store_test_init_flags(test, flags);
+
+	MA_STATE(mas, tree, 54, 54);
+
+	KUNIT_ASSERT_NOT_NULL(test, tree);
+	KUNIT_ASSERT_EQ(test, maple_store_test_store_many(tree), 0);
+	if (in_rcu)
+		mt_set_in_rcu(tree);
+
+	KUNIT_ASSERT_EQ(test,
+			maple_store_test_prepare_locked(tree, &mas, value), 0);
+	KUNIT_EXPECT_EQ(test, mas.store_type, wr_split_store);
+	KUNIT_ASSERT_TRUE(test, mas.alloc || mas.sheaf);
+	mas_store_prealloc(&mas, value);
+	mtree_unlock(tree);
+
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 50), before);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 53), before);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 54), value);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 55), before);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 60), after);
+	KUNIT_EXPECT_PTR_EQ(test, mtree_load(tree, 65), after);
+}
+
+static void maple_store_test_split_store_common(struct kunit *test, bool in_rcu)
+{
+	maple_store_test_split_tree(test, 0, in_rcu);
+	maple_store_test_split_tree(test, MT_FLAGS_ALLOC_RANGE, in_rcu);
+}
+
+static void maple_store_test_split_store(struct kunit *test)
+{
+	maple_store_test_split_store_common(test, false);
+}
+
+static void maple_store_test_split_store_rcu(struct kunit *test)
+{
+	maple_store_test_split_store_common(test, true);
+}
+
 struct maple_store_worker {
 	struct maple_tree *tree;
 	atomic_t *done;
@@ -665,6 +711,8 @@ static struct kunit_case maple_store_test_cases[] = {
 	KUNIT_CASE(maple_store_test_spanning_store),
 	KUNIT_CASE(maple_store_test_spanning_store_rcu),
 	KUNIT_CASE(maple_store_test_spanning_null),
+	KUNIT_CASE(maple_store_test_split_store),
+	KUNIT_CASE(maple_store_test_split_store_rcu),
 	KUNIT_CASE(maple_store_test_concurrent_rcu),
 	{}
 };
