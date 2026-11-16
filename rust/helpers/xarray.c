@@ -185,12 +185,24 @@ __rust_helper bool rust_helper_xarray_track_free(const struct xarray *xa)
 {
 	return xa->xa_flags & XA_FLAGS_TRACK_FREE;
 }
+#endif
+
+#if defined(CONFIG_RUST_XARRAY_MARKS) || \
+	defined(CONFIG_RUST_XARRAY_FREE_NODES)
 
 __rust_helper struct xa_node *
 rust_helper_xarray_parent_locked(const struct xarray *xa,
 				 const struct xa_node *node)
 {
 	return xa_parent_locked(xa, node);
+}
+#endif
+
+#ifdef CONFIG_RUST_XARRAY_FREE_NODES
+__rust_helper void rust_helper_xarray_slot_set_retry(struct xa_node *node,
+						     unsigned int offset)
+{
+	RCU_INIT_POINTER(node->slots[offset], XA_RETRY_ENTRY);
 }
 #endif
 

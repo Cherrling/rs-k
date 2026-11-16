@@ -65,6 +65,30 @@ fn as_i32(value: bool) -> i32 {
     }
 }
 
+#[cfg(CONFIG_RUST_XARRAY_FREE_NODES)]
+/// Removes a detached subtree with the native Rust implementation.
+///
+/// # Safety
+///
+/// `top` must be detached from the XArray and the caller must hold the XArray
+/// lock.
+unsafe fn free_nodes(xas: *mut XaState, top: *mut XaNode) {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { crate::xarray_free_nodes::free_nodes(xas, top) };
+}
+
+#[cfg(not(CONFIG_RUST_XARRAY_FREE_NODES))]
+/// Removes a detached subtree through the retained C store adapter.
+///
+/// # Safety
+///
+/// `top` must be detached from the XArray and the caller must hold the XArray
+/// lock.
+unsafe fn free_nodes(xas: *mut XaState, top: *mut XaNode) {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { bindings::rust_xarray_free_nodes(xas, top) };
+}
+
 #[cfg(CONFIG_RUST_XARRAY_SQUASH_MARKS)]
 /// Combines marks across the current multi-index range.
 ///
@@ -169,7 +193,7 @@ unsafe fn store(xas: *mut XaState, mut entry: *mut c_void) -> *mut c_void {
         if is_node(next) && (node.is_null() || shift != 0) {
             let next_node = to_node(next);
             // SAFETY: `next` is a node entry removed from the selected slot.
-            unsafe { bindings::rust_xarray_free_nodes(xas, next_node) };
+            unsafe { free_nodes(xas, next_node) };
         }
         if node.is_null() {
             break;

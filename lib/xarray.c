@@ -785,16 +785,30 @@ void *rust_xarray_create_for_store(struct xa_state *xas, bool allow_root)
 	return xas_create(xas, allow_root);
 }
 
+#ifndef CONFIG_RUST_XARRAY_FREE_NODES
 void rust_xarray_free_nodes(struct xa_state *xas, struct xa_node *top)
 {
 	xas_free_nodes(xas, top);
 }
+#endif
 
 void rust_xarray_update_node(struct xa_state *xas, struct xa_node *node,
 			     int count, int values)
 {
 	update_node(xas, node, count, values);
 }
+
+#ifdef CONFIG_RUST_XARRAY_FREE_NODES
+void rust_xarray_notify_node(struct xa_state *xas, struct xa_node *node)
+{
+	xas_update(xas, node);
+}
+
+void rust_xarray_retire_node(struct xa_node *node)
+{
+	xa_node_free(node);
+}
+#endif
 
 #ifndef CONFIG_RUST_XARRAY_SQUASH_MARKS
 void rust_xarray_squash_marks(const struct xa_state *xas)

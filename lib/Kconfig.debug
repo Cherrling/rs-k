@@ -3427,6 +3427,17 @@ config XARRAY_STORE_KUNIT_TEST
 
 	  If unsure, say N.
 
+config XARRAY_FREE_NODES_KUNIT_TEST
+	tristate "KUnit Test for XArray node reclamation" if !KUNIT_ALL_TESTS
+	depends on XARRAY_MULTI && KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This builds the KUnit test suite for XArray subtree reclamation. It
+	  tests the active implementation, including the Rust production path
+	  and the C fallback.
+
+	  If unsure, say N.
+
 config XARRAY_MARKS_KUNIT_TEST
 	tristate "KUnit Test for XArray mark lifecycle" if !KUNIT_ALL_TESTS
 	depends on KUNIT

@@ -30,6 +30,13 @@ void rust_xarray_squash_marks(const struct xa_state *xas);
 
 #endif /* CONFIG_RUST_XARRAY_STORE */
 
+#ifdef CONFIG_RUST_XARRAY_FREE_NODES
+
+void rust_xarray_notify_node(struct xa_state *xas, struct xa_node *node);
+void rust_xarray_retire_node(struct xa_node *node);
+
+#endif /* CONFIG_RUST_XARRAY_FREE_NODES */
+
 #ifdef CONFIG_RUST_XARRAY_MARKS
 
 enum rust_xarray_mark_constant {

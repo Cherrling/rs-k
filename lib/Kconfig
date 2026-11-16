@@ -481,6 +481,20 @@ config RUST_XARRAY_STORE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_XARRAY_FREE_NODES
+	bool "Rust implementation of XArray node reclamation"
+	depends on RUST_XARRAY_STORE && X86_64
+	default y
+	help
+	  Use Rust for the production XArray algorithm that removes a subtree
+	  from the tree and publishes retry markers for concurrent readers.
+
+	  Node layout, parent lookup, update callbacks, and RCU reclamation
+	  remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_XARRAY_MARKS
 	bool "Rust implementation of XArray mark lifecycle"
 	depends on RUST_XARRAY_STORE && X86_64
