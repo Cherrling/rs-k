@@ -3,9 +3,10 @@
 //! Native Maple Tree write preparation and node preallocation.
 //!
 //! Rust owns write state normalization, write type selection, node request
-//! calculation, allocation lifecycle, and error reset for the public
-//! `mas_preallocate()` operation. C retains node layout, protected slot
-//! access, write traversal primitives, node-pool allocation, and lockdep.
+//! calculation and error reset for the public `mas_preallocate()` operation.
+//! The staged-node lifecycle has a separate native Rust migration option. C
+//! retains node layout, protected slot access, write traversal primitives,
+//! node-pool primitives, and lockdep.
 
 use super::maple_tree_core::{
     is_active, is_leaf, is_none, is_ptr, is_start, may_init_lock_check, node_type, reset, start,
@@ -16,6 +17,44 @@ use core::ffi::c_void;
 use macros::export;
 
 const MA_STATE_PREALLOC: u8 = 1;
+
+/// Stages the nodes requested by write preparation.
+///
+/// # Safety
+///
+/// `mas` must identify a valid writable Maple state.
+unsafe fn stage_alloc_nodes(mas: *mut MaState, gfp: bindings::gfp_t) {
+    #[cfg(CONFIG_RUST_MAPLE_TREE_NODE_ALLOC)]
+    {
+        // SAFETY: Guaranteed by this function's contract.
+        unsafe { super::maple_tree_node_alloc::alloc_nodes(mas, gfp) };
+    }
+
+    #[cfg(not(CONFIG_RUST_MAPLE_TREE_NODE_ALLOC))]
+    {
+        // SAFETY: Guaranteed by this function's contract.
+        unsafe { bindings::rust_maple_tree_alloc_nodes(mas, gfp) };
+    }
+}
+
+/// Releases nodes staged by a failed write preparation.
+///
+/// # Safety
+///
+/// `mas` must identify a valid writable Maple state.
+unsafe fn drop_staged_nodes(mas: *mut MaState) {
+    #[cfg(CONFIG_RUST_MAPLE_TREE_NODE_ALLOC)]
+    {
+        // SAFETY: Guaranteed by this function's contract.
+        unsafe { super::maple_tree_node_alloc::empty_nodes(mas) };
+    }
+
+    #[cfg(not(CONFIG_RUST_MAPLE_TREE_NODE_ALLOC))]
+    {
+        // SAFETY: Guaranteed by this function's contract.
+        unsafe { bindings::rust_maple_tree_destroy(mas) };
+    }
+}
 
 /// Resets a state and initializes the content of its write state.
 ///
@@ -276,7 +315,7 @@ unsafe fn preallocate(mas: *mut MaState, entry: *mut c_void, gfp: bindings::gfp_
         // SAFETY: The caller supplies a valid writable state.
         unsafe { (*mas).mas_flags &= !MA_STATE_PREALLOC };
         // SAFETY: The complete state and write request select a valid allocation.
-        unsafe { bindings::rust_maple_tree_alloc_nodes(mas, gfp) };
+        unsafe { stage_alloc_nodes(mas, gfp) };
         // SAFETY: The caller supplies a valid state after allocation.
         if unsafe { (*mas).status } == bindings::maple_status_ma_error {
             // SAFETY: Allocation failure installed an encoded errno.
@@ -284,7 +323,7 @@ unsafe fn preallocate(mas: *mut MaState, entry: *mut c_void, gfp: bindings::gfp_
             // SAFETY: The caller supplies a valid writable state.
             unsafe { (*mas).node_request = 0 };
             // SAFETY: The caller supplies a valid state with allocated nodes.
-            unsafe { bindings::rust_maple_tree_destroy(mas) };
+            unsafe { drop_staged_nodes(mas) };
             // SAFETY: The caller supplies a valid writable state.
             unsafe { reset(mas) };
             return ret;

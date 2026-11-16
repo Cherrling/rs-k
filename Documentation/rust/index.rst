@@ -114,6 +114,7 @@ more details.
     native-maple-tree-prev
     native-maple-tree-find
     native-maple-tree-prealloc
+    native-maple-tree-node-alloc
     native-maple-tree-store
     native-maple-tree-node-store
     native-maple-tree-spanning-store

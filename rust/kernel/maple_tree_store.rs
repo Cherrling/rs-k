@@ -94,8 +94,17 @@ unsafe fn trace_op(mas: *mut MaState) {
 ///
 /// `mas` must identify a valid locked Maple state with a replacement node.
 unsafe fn pop_node(mas: *mut MaState) -> *mut MapleNode {
-    // SAFETY: Guaranteed by this function's contract.
-    unsafe { bindings::rust_maple_tree_store_pop_node(mas) }
+    #[cfg(CONFIG_RUST_MAPLE_TREE_NODE_ALLOC)]
+    {
+        // SAFETY: Guaranteed by this function's contract.
+        unsafe { super::maple_tree_node_alloc::pop_node(mas) }
+    }
+
+    #[cfg(not(CONFIG_RUST_MAPLE_TREE_NODE_ALLOC))]
+    {
+        // SAFETY: Guaranteed by this function's contract.
+        unsafe { bindings::rust_maple_tree_store_pop_node(mas) }
+    }
 }
 
 #[cfg(CONFIG_RUST_MAPLE_TREE_NODE_STORE)]

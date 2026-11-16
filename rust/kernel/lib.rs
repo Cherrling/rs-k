@@ -138,6 +138,8 @@ mod maple_tree_leaf_gap;
 mod maple_tree_load;
 #[cfg(CONFIG_RUST_MAPLE_TREE_NEXT)]
 mod maple_tree_next;
+#[cfg(CONFIG_RUST_MAPLE_TREE_NODE_ALLOC)]
+mod maple_tree_node_alloc;
 #[cfg(CONFIG_RUST_MAPLE_TREE_PREALLOC)]
 mod maple_tree_prealloc;
 #[cfg(CONFIG_RUST_MAPLE_TREE_PREV)]

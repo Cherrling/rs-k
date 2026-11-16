@@ -161,6 +161,59 @@ static int mt_refill_sheaf(gfp_t gfp, struct slab_sheaf **sheaf,
 	return kmem_cache_refill_sheaf(maple_node_cache, gfp, sheaf, size);
 }
 
+#ifdef CONFIG_RUST_MAPLE_TREE_NODE_ALLOC
+struct maple_node *rust_maple_tree_pool_alloc_one(gfp_t gfp)
+{
+	return mt_alloc_one(gfp);
+}
+
+void rust_maple_tree_pool_free_one(struct maple_node *node)
+{
+	kfree(node);
+}
+
+unsigned int rust_maple_tree_pool_sheaf_size(struct slab_sheaf *sheaf)
+{
+	return kmem_cache_sheaf_size(sheaf);
+}
+
+int rust_maple_tree_pool_refill_sheaf(gfp_t gfp, struct slab_sheaf **sheaf,
+				      unsigned int size)
+{
+	return mt_refill_sheaf(gfp, sheaf, size);
+}
+
+struct slab_sheaf *rust_maple_tree_pool_get_sheaf(gfp_t gfp, int count)
+{
+	return mt_get_sheaf(gfp, count);
+}
+
+void rust_maple_tree_pool_return_sheaf(struct slab_sheaf *sheaf)
+{
+	mt_return_sheaf(sheaf);
+}
+
+struct maple_node *
+rust_maple_tree_pool_pop_from_sheaf(struct slab_sheaf *sheaf)
+{
+	if (WARN_ON_ONCE(!sheaf))
+		return NULL;
+
+	return kmem_cache_alloc_from_sheaf(maple_node_cache, GFP_NOWAIT,
+					   sheaf);
+}
+
+void rust_maple_tree_pool_clear_node(struct maple_node *node)
+{
+	memset(node, 0, sizeof(*node));
+}
+
+void rust_maple_tree_pool_set_nomem(struct ma_state *mas)
+{
+	mas->node = MA_ERROR(-ENOMEM);
+}
+#endif /* CONFIG_RUST_MAPLE_TREE_NODE_ALLOC */
+
 /*
  * ma_free_rcu() - Use rcu callback to free a maple node
  * @node: The node to free
@@ -1056,6 +1109,9 @@ static int mas_ascend(struct ma_state *mas)
  */
 static __always_inline struct maple_node *mas_pop_node(struct ma_state *mas)
 {
+#ifdef CONFIG_RUST_MAPLE_TREE_NODE_ALLOC
+	return rust_maple_tree_stage_pop_node(mas);
+#else
 	struct maple_node *ret;
 
 	if (mas->alloc) {
@@ -1072,6 +1128,7 @@ static __always_inline struct maple_node *mas_pop_node(struct ma_state *mas)
 out:
 	memset(ret, 0, sizeof(*ret));
 	return ret;
+#endif /* CONFIG_RUST_MAPLE_TREE_NODE_ALLOC */
 }
 
 /*
@@ -1081,6 +1138,9 @@ out:
  */
 static inline void mas_alloc_nodes(struct ma_state *mas, gfp_t gfp)
 {
+#ifdef CONFIG_RUST_MAPLE_TREE_NODE_ALLOC
+	rust_maple_tree_stage_alloc_nodes(mas, gfp);
+#else
 	if (!mas->node_request)
 		return;
 
@@ -1129,10 +1189,14 @@ use_sheaf:
 
 error:
 	mas_set_err(mas, -ENOMEM);
+#endif /* CONFIG_RUST_MAPLE_TREE_NODE_ALLOC */
 }
 
 static inline void mas_empty_nodes(struct ma_state *mas)
 {
+#ifdef CONFIG_RUST_MAPLE_TREE_NODE_ALLOC
+	rust_maple_tree_stage_empty_nodes(mas);
+#else
 	mas->node_request = 0;
 	if (mas->sheaf) {
 		mt_return_sheaf(mas->sheaf);
@@ -1143,6 +1207,7 @@ static inline void mas_empty_nodes(struct ma_state *mas)
 		kfree(mas->alloc);
 		mas->alloc = NULL;
 	}
+#endif /* CONFIG_RUST_MAPLE_TREE_NODE_ALLOC */
 }
 
 /*

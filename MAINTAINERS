@@ -15734,6 +15734,7 @@ F:	Documentation/rust/native-maple-tree-find.rst
 F:	Documentation/rust/native-maple-tree-leaf-gap.rst
 F:	Documentation/rust/native-maple-tree-load.rst
 F:	Documentation/rust/native-maple-tree-next.rst
+F:	Documentation/rust/native-maple-tree-node-alloc.rst
 F:	Documentation/rust/native-maple-tree-node-copy.rst
 F:	Documentation/rust/native-maple-tree-node-store.rst
 F:	Documentation/rust/native-maple-tree-prealloc.rst
@@ -15764,6 +15765,7 @@ F:	rust/kernel/maple_tree_find.rs
 F:	rust/kernel/maple_tree_leaf_gap.rs
 F:	rust/kernel/maple_tree_load.rs
 F:	rust/kernel/maple_tree_next.rs
+F:	rust/kernel/maple_tree_node_alloc.rs
 F:	rust/kernel/maple_tree_prealloc.rs
 F:	rust/kernel/maple_tree_prev.rs
 F:	rust/kernel/maple_tree.rs

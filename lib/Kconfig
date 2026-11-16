@@ -429,11 +429,35 @@ config RUST_MAPLE_TREE_PREALLOC
 	  preallocation policy behind mas_preallocate().
 
 	  Rust owns write state normalization, write type selection, node
-	  request calculation, allocation lifecycle, and error reset. Maple
-	  node layout, protected slot access, node-pool allocation, RCU
-	  publication, and lockdep checks remain in C. The exported C entry
-	  point remains as an ABI adapter. The C fallback retains the complete
-	  preallocation operation.
+	  request calculation, and error reset. Maple node layout, protected
+	  slot access, node-pool allocation, RCU publication, and lockdep
+	  checks remain as explicit boundaries. The node-staging lifecycle has
+	  a separate migration option. The exported C entry point remains as an
+	  ABI adapter. The C fallback retains the complete preallocation
+	  operation.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
+config RUST_MAPLE_TREE_NODE_ALLOC
+	bool "Rust implementation of Maple Tree node staging"
+	depends on RUST_MAPLE_TREE_PREALLOC
+	default y
+	help
+	  Use Rust for the production node-staging lifecycle in a Maple
+	  state.
+
+	  Rust owns the single-node fast path, sheaf refill and capacity
+	  decisions, staged-node selection, zeroed-node handoff, allocation
+	  failure transition, and cleanup of unused staged nodes. These
+	  operations serve ordinary stores, preallocated stores, split and
+	  rebalance stores, and root replacement.
+
+	  The C boundary contains slab allocation and free calls, sheaf
+	  allocation, refill, return, and pop primitives, node zeroing, node
+	  layout, and the lock or RCU rules that protect staged and live
+	  nodes. The C lifecycle remains available when this option is
+	  disabled.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

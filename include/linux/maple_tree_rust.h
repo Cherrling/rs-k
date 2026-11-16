@@ -8,6 +8,26 @@
 
 #include <linux/maple_tree.h>
 
+#ifdef CONFIG_RUST_MAPLE_TREE_NODE_ALLOC
+
+void rust_maple_tree_stage_alloc_nodes(struct ma_state *mas, gfp_t gfp);
+void rust_maple_tree_stage_empty_nodes(struct ma_state *mas);
+struct maple_node *rust_maple_tree_stage_pop_node(struct ma_state *mas);
+
+struct maple_node *rust_maple_tree_pool_alloc_one(gfp_t gfp);
+void rust_maple_tree_pool_free_one(struct maple_node *node);
+unsigned int rust_maple_tree_pool_sheaf_size(struct slab_sheaf *sheaf);
+int rust_maple_tree_pool_refill_sheaf(gfp_t gfp, struct slab_sheaf **sheaf,
+				      unsigned int size);
+struct slab_sheaf *rust_maple_tree_pool_get_sheaf(gfp_t gfp, int count);
+void rust_maple_tree_pool_return_sheaf(struct slab_sheaf *sheaf);
+struct maple_node *
+rust_maple_tree_pool_pop_from_sheaf(struct slab_sheaf *sheaf);
+void rust_maple_tree_pool_clear_node(struct maple_node *node);
+void rust_maple_tree_pool_set_nomem(struct ma_state *mas);
+
+#endif /* CONFIG_RUST_MAPLE_TREE_NODE_ALLOC */
+
 #if IS_ENABLED(CONFIG_RUST_MAPLE_TREE_LOAD) || \
 	IS_ENABLED(CONFIG_RUST_MAPLE_TREE_WALK)
 
