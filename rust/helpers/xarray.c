@@ -279,6 +279,34 @@ __rust_helper bool rust_helper_xarray_not_node(struct xa_node *node)
 }
 #endif
 
+#ifdef CONFIG_RUST_XARRAY_RANGE_STORE
+__rust_helper void
+rust_helper_xarray_range_store_warn_internal(const void *entry)
+{
+	WARN_ON_ONCE(xa_is_internal(entry));
+}
+
+__rust_helper void *rust_helper_xarray_range_store_error(long error)
+{
+	return XA_ERROR(error);
+}
+
+__rust_helper void *
+rust_helper_xarray_range_store_entry(const struct xa_state *xas,
+				     const struct xa_node *node,
+				     unsigned int offset)
+{
+	return xa_entry(xas->xa, node, offset);
+}
+
+__rust_helper void
+rust_helper_xarray_range_store_check_not_sibling(const struct xa_node *node,
+						 const void *entry)
+{
+	WARN_ON_ONCE(xa_is_sibling(entry));
+}
+#endif
+
 #if defined(CONFIG_RUST_XARRAY_FIND_MARKED) || \
 	defined(CONFIG_RUST_XARRAY_FIND_CONFLICT) || \
 	defined(CONFIG_RUST_XARRAY_SPLIT)

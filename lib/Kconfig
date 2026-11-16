@@ -633,6 +633,26 @@ config RUST_XARRAY_CREATE_RANGE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_XARRAY_RANGE_STORE
+	bool "Rust implementation of XArray range stores and order queries"
+	depends on XARRAY_MULTI && RUST_XARRAY_CREATE && \
+		RUST_XARRAY_NOMEM && RUST_XARRAY_STORE && X86_64
+	default y
+	help
+	  Use Rust for the production range decomposition, multi-index store
+	  retries, and order queries behind xa_store_range(), xas_get_order(),
+	  and xa_get_order().
+
+	  Rust owns natural range selection, order calculation, operation
+	  retries, sibling-run order discovery, and the complete store
+	  control flow. XArray locking, RCU protection, tagged-entry encoding,
+	  protected slot access, node layout, and node creation and publication
+	  remain in C. The exported entry points remain as ABI adapters. The C
+	  fallback retains the complete range-store and order-query policies.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_XARRAY_FREE_NODES
 	bool "Rust implementation of XArray node reclamation"
 	depends on RUST_XARRAY_STORE && X86_64

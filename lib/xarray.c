@@ -500,7 +500,9 @@ struct xa_node *rust_xarray_alloc_node(struct xa_state *xas, unsigned int shift)
 }
 #endif
 
-#ifdef CONFIG_XARRAY_MULTI
+#if defined(CONFIG_XARRAY_MULTI) && \
+	(!defined(CONFIG_RUST_XARRAY_EXPAND) || \
+	 !defined(CONFIG_RUST_XARRAY_RANGE_STORE))
 /* Returns the number of indices covered by a given xa_state */
 static unsigned long xas_size(const struct xa_state *xas)
 {
@@ -2122,6 +2124,60 @@ int __xa_insert(struct xarray *xa, unsigned long index, void *entry, gfp_t gfp)
 EXPORT_SYMBOL(__xa_insert);
 
 #ifdef CONFIG_XARRAY_MULTI
+#ifdef CONFIG_RUST_XARRAY_RANGE_STORE
+/**
+ * xa_store_range() - Store this entry at a range of indices in the XArray.
+ * @xa: XArray.
+ * @first: First index to affect.
+ * @last: Last index to affect.
+ * @entry: New entry.
+ * @gfp: Memory allocation flags.
+ *
+ * After this function returns, loads from any index between @first and @last,
+ * inclusive will return @entry.
+ * Storing into an existing multi-index entry updates the entry of every index.
+ * The marks associated with @index are unaffected unless @entry is %NULL.
+ *
+ * Context: Process context.  Takes and releases the xa_lock.  May sleep
+ * if the @gfp flags permit.
+ * Return: %NULL on success, xa_err(-EINVAL) if @entry cannot be stored in
+ * an XArray, or xa_err(-ENOMEM) if memory allocation failed.
+ */
+void *xa_store_range(struct xarray *xa, unsigned long first,
+		     unsigned long last, void *entry, gfp_t gfp)
+{
+	return rust_xarray_store_range(xa, first, last, entry, gfp);
+}
+EXPORT_SYMBOL(xa_store_range);
+
+/**
+ * xas_get_order() - Get the order of an entry.
+ * @xas: XArray operation state.
+ *
+ * Called after xas_load, the xas should not be in an error state.
+ * The xas should not be pointing to a sibling entry.
+ *
+ * Return: A number between 0 and 63 indicating the order of the entry.
+ */
+int xas_get_order(struct xa_state *xas)
+{
+	return rust_xarray_xas_get_order(xas);
+}
+EXPORT_SYMBOL_GPL(xas_get_order);
+
+/**
+ * xa_get_order() - Get the order of an entry.
+ * @xa: XArray.
+ * @index: Index of the entry.
+ *
+ * Return: A number between 0 and 63 indicating the order of the entry.
+ */
+int xa_get_order(struct xarray *xa, unsigned long index)
+{
+	return rust_xarray_get_order(xa, index);
+}
+EXPORT_SYMBOL(xa_get_order);
+#else
 static void xas_set_range(struct xa_state *xas, unsigned long first,
 		unsigned long last)
 {
@@ -2262,6 +2318,7 @@ int xa_get_order(struct xarray *xa, unsigned long index)
 	return order;
 }
 EXPORT_SYMBOL(xa_get_order);
+#endif /* CONFIG_RUST_XARRAY_RANGE_STORE */
 #endif /* CONFIG_XARRAY_MULTI */
 
 /**

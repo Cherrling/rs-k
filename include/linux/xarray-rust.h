@@ -61,6 +61,19 @@ void rust_xarray_create_range(struct xa_state *xas);
 
 #endif /* CONFIG_RUST_XARRAY_CREATE_RANGE */
 
+#ifdef CONFIG_RUST_XARRAY_RANGE_STORE
+
+enum rust_xarray_range_store_constant {
+	RUST_XARRAY_RANGE_STORE_EINVAL = -EINVAL,
+};
+
+void *rust_xarray_store_range(struct xarray *xa, unsigned long first,
+			      unsigned long last, void *entry, gfp_t gfp);
+int rust_xarray_xas_get_order(struct xa_state *xas);
+int rust_xarray_get_order(struct xarray *xa, unsigned long index);
+
+#endif /* CONFIG_RUST_XARRAY_RANGE_STORE */
+
 #ifdef CONFIG_RUST_XARRAY_FIND
 
 void *rust_xarray_find(struct xa_state *xas, unsigned long max);

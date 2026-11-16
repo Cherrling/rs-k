@@ -341,6 +341,8 @@ mod xarray_next_prev;
 mod xarray_nomem;
 #[cfg(CONFIG_RUST_XARRAY_PAUSE)]
 mod xarray_pause;
+#[cfg(CONFIG_RUST_XARRAY_RANGE_STORE)]
+mod xarray_range_store;
 #[cfg(CONFIG_RUST_XARRAY_SPLIT)]
 mod xarray_split;
 #[cfg(CONFIG_RUST_XARRAY_SQUASH_MARKS)]

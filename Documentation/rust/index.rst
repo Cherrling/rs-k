@@ -123,6 +123,7 @@ more details.
     native-xarray-next-prev
     native-xarray-nomem
     native-xarray-pause
+    native-xarray-range-store
     native-xarray-split
     native-xarray-squash
     native-xarray-store

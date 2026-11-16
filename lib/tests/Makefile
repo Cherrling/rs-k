@@ -73,6 +73,7 @@ obj-$(CONFIG_XARRAY_STORE_KUNIT_TEST) += xarray_store_kunit.o
 obj-$(CONFIG_XARRAY_EXPAND_KUNIT_TEST) += xarray_expand_kunit.o
 obj-$(CONFIG_XARRAY_CREATE_KUNIT_TEST) += xarray_create_kunit.o
 obj-$(CONFIG_XARRAY_CREATE_RANGE_KUNIT_TEST) += xarray_create_range_kunit.o
+obj-$(CONFIG_XARRAY_RANGE_STORE_KUNIT_TEST) += xarray_range_store_kunit.o
 obj-$(CONFIG_XARRAY_FREE_NODES_KUNIT_TEST) += xarray_free_nodes_kunit.o
 obj-$(CONFIG_XARRAY_DELETE_NODE_KUNIT_TEST) += xarray_delete_node_kunit.o
 obj-$(CONFIG_XARRAY_DESTROY_KUNIT_TEST) += xarray_destroy_kunit.o
