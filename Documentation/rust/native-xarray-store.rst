@@ -34,9 +34,10 @@ locking protocol, RCU publication rules, or mark storage.
 Retained C boundaries
 ---------------------
 
-Node creation and allocation remain C. ``xas_create()`` expands the tree,
-allocates nodes, records parent links, and leaves the cursor at the selected
-slot.
+Node allocation remains C. The selected node-chain creation unit expands the
+tree and positions the cursor at the selected slot. A native Rust creation
+unit calls the retained allocation primitive, records parent links, and
+publishes each child. The C fallback retains its existing creation policy.
 
 Node release remains C. ``xas_free_nodes()`` replaces reachable entries with
 retry markers and schedules RCU reclamation.

@@ -498,6 +498,22 @@ config RUST_XARRAY_EXPAND
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_XARRAY_CREATE
+	bool "Rust implementation of XArray node-chain creation"
+	depends on RUST_XARRAY_EXPAND && X86_64
+	default y
+	help
+	  Use Rust for the production XArray algorithm that expands the root,
+	  creates missing nodes, descends existing nodes, resolves sibling
+	  entries, and positions the cursor at the selected slot.
+
+	  Slab allocation, node initialization, RCU publication, mark storage,
+	  update callbacks, and the node layout remain in C. The C fallback
+	  retains its existing node-chain creation and cursor positioning policy.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_XARRAY_FREE_NODES
 	bool "Rust implementation of XArray node reclamation"
 	depends on RUST_XARRAY_STORE && X86_64

@@ -33,6 +33,12 @@ void rust_xarray_squash_marks(const struct xa_state *xas);
 
 #endif /* CONFIG_RUST_XARRAY_STORE */
 
+#ifdef CONFIG_RUST_XARRAY_CREATE
+
+void *rust_xarray_create(struct xa_state *xas, bool allow_root);
+
+#endif /* CONFIG_RUST_XARRAY_CREATE */
+
 #if defined(CONFIG_RUST_XARRAY_FREE_NODES) || \
 	defined(CONFIG_RUST_XARRAY_EXPAND)
 

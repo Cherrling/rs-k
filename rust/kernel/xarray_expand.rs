@@ -221,7 +221,7 @@ unsafe fn max_required(xas: *const XaState) -> usize {
 ///
 /// `xas` must point to a valid locked XArray state and `head` must contain the
 /// current root entry.
-unsafe fn expand(xas: *mut XaState, mut head: *mut c_void) -> i32 {
+pub(crate) unsafe fn expand(xas: *mut XaState, mut head: *mut c_void) -> i32 {
     // SAFETY: Guaranteed by this function's contract.
     let max = unsafe { max_required(xas) };
     let mut node = core::ptr::null_mut();

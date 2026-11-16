@@ -25,8 +25,10 @@ The C fallback retains its existing expansion policy.
 Entry points and ownership
 --------------------------
 
-With ``CONFIG_RUST_XARRAY_EXPAND`` enabled, the top-level branch of
-``xas_create()`` calls ``rust_xarray_expand()``. The C ``xas_expand()``
+With ``CONFIG_RUST_XARRAY_EXPAND`` enabled, ``rust_xarray_expand()`` is the
+expansion entry point used by the selected node-chain creation path. A native
+Rust creation path calls the Rust expansion function directly. A C creation
+fallback calls the exported Rust expansion function. The C ``xas_expand()``
 function is compiled only for builds that disable this unit.
 
 The production implementation is in ``rust/kernel/xarray_expand.rs``. It calls

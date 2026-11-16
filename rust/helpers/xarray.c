@@ -116,7 +116,9 @@ __rust_helper void *rust_helper_xarray_slot_locked(const struct xa_state *xas,
 						   const struct xa_node *node,
 						   unsigned int offset)
 {
-	return xa_entry_locked(xas->xa, node, offset);
+	if (node)
+		return xa_entry_locked(xas->xa, node, offset);
+	return xa_head_locked(xas->xa);
 }
 
 __rust_helper void rust_helper_xarray_assign_slot(struct xa_state *xas,
@@ -240,12 +242,15 @@ rust_helper_xarray_parent_locked(const struct xarray *xa,
 }
 #endif
 
-#ifdef CONFIG_RUST_XARRAY_DELETE_NODE
+#if defined(CONFIG_RUST_XARRAY_DELETE_NODE) || \
+	defined(CONFIG_RUST_XARRAY_CREATE)
 __rust_helper bool rust_helper_xarray_zero_busy(const struct xarray *xa)
 {
 	return xa->xa_flags & XA_FLAGS_ZERO_BUSY;
 }
+#endif
 
+#ifdef CONFIG_RUST_XARRAY_DELETE_NODE
 __rust_helper void rust_helper_xarray_node_check(const struct xa_node *node)
 {
 	(void)node;
@@ -261,6 +266,13 @@ __rust_helper void rust_helper_xarray_node_check(const struct xa_node *node)
 __rust_helper void rust_helper_xarray_clear_parent(struct xa_node *node)
 {
 	node->parent = NULL;
+}
+#endif
+
+#ifdef CONFIG_RUST_XARRAY_CREATE
+__rust_helper void *rust_helper_xarray_zero_entry(void)
+{
+	return XA_ZERO_ENTRY;
 }
 #endif
 

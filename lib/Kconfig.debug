@@ -3438,6 +3438,17 @@ config XARRAY_EXPAND_KUNIT_TEST
 
 	  If unsure, say N.
 
+config XARRAY_CREATE_KUNIT_TEST
+	tristate "KUnit Test for XArray node-chain creation" if !KUNIT_ALL_TESTS
+	depends on XARRAY_MULTI && RUST_XARRAY_STORE && KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This builds the KUnit test suite for XArray node-chain creation and
+	  cursor positioning. It tests the active implementation, including the
+	  Rust production path and the C fallback.
+
+	  If unsure, say N.
+
 config XARRAY_FREE_NODES_KUNIT_TEST
 	tristate "KUnit Test for XArray node reclamation" if !KUNIT_ALL_TESTS
 	depends on XARRAY_MULTI && KUNIT

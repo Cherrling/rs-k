@@ -670,6 +670,7 @@ static int xas_expand(struct xa_state *xas, void *head)
  * If the slot was newly created, returns %NULL.  If it failed to create the
  * slot, returns %NULL and indicates the error in @xas.
  */
+#ifndef CONFIG_RUST_XARRAY_CREATE
 static void *xas_create(struct xa_state *xas, bool allow_root)
 {
 	struct xarray *xa = xas->xa;
@@ -729,6 +730,12 @@ static void *xas_create(struct xa_state *xas, bool allow_root)
 
 	return entry;
 }
+#else
+static void *xas_create(struct xa_state *xas, bool allow_root)
+{
+	return rust_xarray_create(xas, allow_root);
+}
+#endif
 
 /**
  * xas_create_range() - Ensure that stores to this range will succeed

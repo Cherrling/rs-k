@@ -311,6 +311,8 @@ mod wait_bit_core;
 mod waitqueue_core;
 pub mod workqueue;
 pub mod xarray;
+#[cfg(CONFIG_RUST_XARRAY_CREATE)]
+mod xarray_create;
 #[cfg(CONFIG_RUST_XARRAY_DELETE_NODE)]
 mod xarray_delete_node;
 #[cfg(CONFIG_RUST_XARRAY_EXPAND)]

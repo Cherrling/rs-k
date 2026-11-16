@@ -65,6 +65,7 @@ obj-$(CONFIG_HASH_KUNIT_TEST) += test_hash.o
 obj-$(CONFIG_XARRAY_LOAD_KUNIT_TEST) += xarray_rust_kunit.o
 obj-$(CONFIG_XARRAY_STORE_KUNIT_TEST) += xarray_store_kunit.o
 obj-$(CONFIG_XARRAY_EXPAND_KUNIT_TEST) += xarray_expand_kunit.o
+obj-$(CONFIG_XARRAY_CREATE_KUNIT_TEST) += xarray_create_kunit.o
 obj-$(CONFIG_XARRAY_FREE_NODES_KUNIT_TEST) += xarray_free_nodes_kunit.o
 obj-$(CONFIG_XARRAY_DELETE_NODE_KUNIT_TEST) += xarray_delete_node_kunit.o
 obj-$(CONFIG_XARRAY_MARKS_KUNIT_TEST) += xarray_marks_kunit.o

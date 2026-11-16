@@ -65,6 +65,28 @@ fn as_i32(value: bool) -> i32 {
     }
 }
 
+#[cfg(CONFIG_RUST_XARRAY_CREATE)]
+/// Creates or selects the slot needed by a store.
+///
+/// # Safety
+///
+/// `xas` must be valid and the caller must hold the XArray lock.
+unsafe fn create_for_store(xas: *mut XaState, allow_root: bool) -> *mut c_void {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { crate::xarray_create::create(xas, allow_root) }
+}
+
+#[cfg(not(CONFIG_RUST_XARRAY_CREATE))]
+/// Creates or selects the slot through the retained C adapter.
+///
+/// # Safety
+///
+/// `xas` must be valid and the caller must hold the XArray lock.
+unsafe fn create_for_store(xas: *mut XaState, allow_root: bool) -> *mut c_void {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { bindings::rust_xarray_create_for_store(xas, allow_root) }
+}
+
 #[cfg(CONFIG_RUST_XARRAY_FREE_NODES)]
 /// Removes a detached subtree with the native Rust implementation.
 ///
@@ -189,7 +211,7 @@ unsafe fn store(xas: *mut XaState, mut entry: *mut c_void) -> *mut c_void {
     } else {
         let allow_root = !is_node(entry) && !is_zero(entry);
         // SAFETY: The state is valid and the XArray lock is held.
-        unsafe { bindings::rust_xarray_create_for_store(xas, allow_root) }
+        unsafe { create_for_store(xas, allow_root) }
     };
 
     if is_invalid(state.xa_node) {
