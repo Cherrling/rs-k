@@ -34,7 +34,7 @@ The C boundary contains these operations:
 
 * Decode encoded nodes and return concrete pivot and slot arrays.
 * Read protected slots and initialize encoded replacement slots.
-* Copy and finalize raw node arrays.
+* Copy and finalize raw node arrays when the node-copy option is disabled.
 * Walk a write state to its boundary leaf and ascend it after convergence.
 * Discover an adjacent sibling without changing tree contents.
 * Obtain a preallocated node from the existing node pool.

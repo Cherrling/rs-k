@@ -488,15 +488,36 @@ config RUST_MAPLE_TREE_SPANNING_STORE
 	  Rust walks both sides of the affected range, extends NULL stores,
 	  calculates the replacement data, selects one to three destination
 	  nodes, writes the simulated copy node, and converges the result while
-	  climbing the tree. Rust also computes gap metadata for completed
-	  destination nodes.
+	  climbing the tree. The node-copy option finalizes gap metadata for
+	  completed destination nodes.
 
 	  The C boundary contains encoded-node layout, protected slot access,
-	  raw node array copying and finalisation, sibling and write-state
-	  traversal primitives, node-pool allocation, and RCU publication. When
-	  the root-store option is disabled, the C new-root strategy remains
-	  available. Split stores and rebalance stores are separate migration
-	  units.
+	  sibling and write-state traversal primitives, node-pool allocation,
+	  and RCU publication. When the node-copy option is disabled, C also
+	  performs raw node array copying and finalisation. When the root-store
+	  option is disabled, the C new-root strategy remains available. Split
+	  stores and rebalance stores are separate migration units.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
+config RUST_MAPLE_TREE_NODE_COPY
+	bool "Rust implementation of Maple Tree node copying"
+	depends on RUST_MAPLE_TREE_SPANNING_STORE
+	default y
+	help
+	  Use Rust for the production Maple Tree partial-node copy and
+	  finalisation operations.
+
+	  Rust copies bounded slot, pivot, and gap ranges between node layouts.
+	  It assigns the destination maximum, clears unused node storage, and
+	  selects the largest gap for parent metadata. The destination leaf and
+	  allocation-range metadata are finalized in Rust.
+
+	  The C boundary contains encoded-node layout, protected slot access,
+	  gap-array addressing, encoded child parent initialization, and
+	  metadata layout. The C implementation remains available when this
+	  option is disabled.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -515,9 +536,9 @@ config RUST_MAPLE_TREE_SPLIT_STORE
 	  Rust reuses the native copy engine written for spanning stores.
 
 	  The C boundary contains parent and sibling traversal, node data-end
-	  discovery, encoded-node layout, raw node array copying and
-	  finalisation, node-pool allocation, gap metadata, and RCU publication.
-	  The C fallback retains the complete split-store strategy.
+	  discovery, encoded-node layout, node-pool allocation, gap metadata,
+	  and RCU publication. The C fallback retains the complete split-store
+	  strategy and is used when this option is disabled.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -536,9 +557,9 @@ config RUST_MAPLE_TREE_REBALANCE_STORE
 	  written for spanning and split stores.
 
 	  The C boundary contains parent and sibling traversal, node data-end
-	  discovery, encoded-node layout, raw node array copying and
-	  finalisation, node-pool allocation, gap metadata, and RCU publication.
-	  The C fallback retains the complete rebalance-store strategy.
+	  discovery, encoded-node layout, node-pool allocation, gap metadata,
+	  and RCU publication. The C fallback retains the complete
+	  rebalance-store strategy and is used when this option is disabled.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

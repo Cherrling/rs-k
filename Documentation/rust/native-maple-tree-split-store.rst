@@ -37,7 +37,7 @@ The C boundary contains these operations:
 * Copy the selected parent location into the write state.
 * Decode encoded nodes and return concrete pivot and slot arrays.
 * Read protected slots and initialize encoded replacement slots.
-* Copy and finalize raw node arrays.
+* Copy and finalize raw node arrays when the node-copy option is disabled.
 * Obtain a preallocated node from the existing node pool.
 * Store parent fields and tree height.
 * Publish the complete subtree and release replaced nodes.

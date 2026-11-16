@@ -117,6 +117,7 @@ more details.
     native-maple-tree-store
     native-maple-tree-node-store
     native-maple-tree-spanning-store
+    native-maple-tree-node-copy
     native-maple-tree-split-store
     native-maple-tree-rebalance-store
     native-maple-tree-root-store

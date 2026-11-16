@@ -3,9 +3,11 @@
 //! Native Maple Tree write dispatcher and store strategies.
 //!
 //! Rust owns store-type dispatch and every production store strategy. C retains
-//! node layout, RCU publication, protected slot access, metadata layout, gap
-//! propagation, and tracepoint delivery.
+//! node layout, protected array access, encoded child parent fields, metadata
+//! fields, RCU publication, and tracepoint delivery.
 
+#[cfg(CONFIG_RUST_MAPLE_TREE_NODE_COPY)]
+use super::maple_tree_core::is_leaf;
 #[cfg(CONFIG_RUST_MAPLE_TREE_NODE_STORE)]
 use super::maple_tree_core::MapleNode;
 use super::maple_tree_core::{pivot_count, MaState, MaWrState};
@@ -708,19 +710,28 @@ unsafe fn spanning_node_copy(
     src: NodeCopySource,
     dst: NodeCopyDestination,
 ) -> usize {
-    // SAFETY: The source and destination are valid for the requested copy.
-    unsafe {
-        bindings::rust_maple_tree_spanning_node_copy(
-            mas,
-            src.node,
-            src.start,
-            src.size,
-            src.max,
-            src.node_type,
-            dst.node,
-            dst.start,
-            dst.node_type,
-        )
+    #[cfg(CONFIG_RUST_MAPLE_TREE_NODE_COPY)]
+    {
+        // SAFETY: The source and destination are valid for the requested copy.
+        unsafe { copy_node_range(mas, src, dst) }
+    }
+
+    #[cfg(not(CONFIG_RUST_MAPLE_TREE_NODE_COPY))]
+    {
+        // SAFETY: The source and destination are valid for the requested copy.
+        unsafe {
+            bindings::rust_maple_tree_spanning_node_copy(
+                mas,
+                src.node,
+                src.start,
+                src.size,
+                src.max,
+                src.node_type,
+                dst.node,
+                dst.start,
+                dst.node_type,
+            )
+        }
     }
 }
 
@@ -731,8 +742,155 @@ unsafe fn spanning_node_copy(
 ///
 /// `node` must be a complete destination node of `node_type`.
 unsafe fn spanning_node_finalise(node: *mut MapleNode, node_type: bindings::maple_type, end: u8) {
-    // SAFETY: The caller supplies a complete destination node.
-    unsafe { bindings::rust_maple_tree_spanning_node_finalise(node, node_type, end) };
+    #[cfg(CONFIG_RUST_MAPLE_TREE_NODE_COPY)]
+    {
+        // SAFETY: The caller supplies a complete destination node.
+        unsafe { finalise_node(node, node_type, end) };
+    }
+
+    #[cfg(not(CONFIG_RUST_MAPLE_TREE_NODE_COPY))]
+    {
+        // SAFETY: The caller supplies a complete destination node.
+        unsafe { bindings::rust_maple_tree_spanning_node_finalise(node, node_type, end) };
+    }
+}
+
+#[cfg(CONFIG_RUST_MAPLE_TREE_NODE_COPY)]
+/// Copies a bounded range between concrete Maple node layouts.
+///
+/// # Safety
+///
+/// Both descriptors must identify compatible live Maple nodes and the requested
+/// offsets must be in bounds. The source range must not overlap the destination.
+unsafe fn copy_node_range(
+    mas: *mut MaState,
+    src: NodeCopySource,
+    dst: NodeCopyDestination,
+) -> usize {
+    let size = usize::from(src.size);
+    let src_start = usize::from(src.start);
+    let dst_start = usize::from(dst.start);
+    // SAFETY: The source node and requested copy range are valid.
+    let src_slots =
+        unsafe { super::maple_tree_core::slots(src.node, src.node_type).add(src_start) };
+    // SAFETY: The destination node and requested copy range are valid.
+    let dst_slots =
+        unsafe { super::maple_tree_core::slots(dst.node, dst.node_type).add(dst_start) };
+    // SAFETY: The source node and requested copy range are valid.
+    let src_pivots =
+        unsafe { super::maple_tree_core::pivots(src.node, src.node_type).add(src_start) };
+    // SAFETY: The destination node and requested copy range are valid.
+    let dst_pivots =
+        unsafe { super::maple_tree_core::pivots(dst.node, dst.node_type).add(dst_start) };
+
+    // SAFETY: The source and destination ranges contain `size` disjoint slots.
+    unsafe { ptr::copy_nonoverlapping(src_slots, dst_slots, size) };
+
+    if !is_leaf(dst.node_type) && src.node_type == bindings::maple_type_maple_copy {
+        // SAFETY: Every copied destination slot contains a child node.
+        unsafe {
+            bindings::rust_maple_tree_spanning_set_parent_slots(
+                mas,
+                dst.node,
+                dst.node_type,
+                dst_slots,
+                dst.start,
+                src.size,
+            )
+        };
+    }
+
+    // SAFETY: The destination layout determines whether it has a gap array.
+    let dst_gaps = unsafe { spanning_gaps(dst.node, dst.node_type) };
+    if !dst_gaps.is_null() {
+        // SAFETY: Both node layouts contain a gap array for the copied range.
+        unsafe {
+            let src_gaps = spanning_gaps(src.node, src.node_type).add(src_start);
+            ptr::copy_nonoverlapping(src_gaps, dst_gaps.add(dst_start), size);
+        }
+    }
+
+    let dst_max = if src_start + size - 1 < usize::from(pivot_count(src.node_type)) {
+        // SAFETY: The final copied source pivot is in bounds.
+        unsafe { *src_pivots.add(size - 1) }
+    } else {
+        src.max
+    };
+
+    if dst_start + size <= usize::from(pivot_count(dst.node_type)) {
+        // SAFETY: The final destination pivot is in bounds.
+        unsafe { *dst_pivots.add(size - 1) = dst_max };
+    }
+
+    let pivot_size = size - 1;
+    if pivot_size != 0 {
+        // SAFETY: The source and destination pivot ranges are disjoint.
+        unsafe { ptr::copy_nonoverlapping(src_pivots, dst_pivots, pivot_size) };
+    }
+
+    dst_max
+}
+
+#[cfg(CONFIG_RUST_MAPLE_TREE_NODE_COPY)]
+/// Clears unused storage and writes the final Maple node metadata.
+///
+/// # Safety
+///
+/// `node` must be a complete destination node of `node_type`, with all entries
+/// through `end` initialized.
+unsafe fn finalise_node(node: *mut MapleNode, node_type: bindings::maple_type, end: u8) {
+    let max_end = slot_count(node_type);
+    // SAFETY: The node layout determines whether it has a gap array.
+    let gaps = unsafe { spanning_gaps(node, node_type) };
+
+    if end < max_end.wrapping_sub(1) {
+        let mut size = max_end.wrapping_sub(end);
+        // SAFETY: The unused slot range is in bounds.
+        unsafe {
+            ptr::write_bytes(
+                super::maple_tree_core::slots(node, node_type).add(usize::from(end)),
+                0,
+                usize::from(size),
+            )
+        };
+
+        if !gaps.is_null() {
+            // SAFETY: The unused gap range is in bounds.
+            unsafe { ptr::write_bytes(gaps.add(usize::from(end)), 0, usize::from(size)) };
+        }
+
+        size = size.wrapping_sub(1);
+        if size != 0 {
+            // SAFETY: The unused pivot range is in bounds.
+            unsafe {
+                ptr::write_bytes(
+                    super::maple_tree_core::pivots(node, node_type).add(usize::from(end)),
+                    0,
+                    usize::from(size),
+                )
+            };
+        }
+    }
+
+    let mut gap_slot = 0;
+    if !gaps.is_null() && !is_leaf(node_type) {
+        let mut max_gap = 0;
+        for offset in 0..=end {
+            // SAFETY: The selected offsets contain finalized gap entries.
+            let gap = unsafe { *gaps.add(usize::from(offset)) };
+            if gap > max_gap {
+                gap_slot = offset;
+                max_gap = gap;
+            }
+        }
+    }
+
+    if node_type == bindings::maple_type_maple_arange_64 || end <= max_end.wrapping_sub(1) {
+        // SAFETY: The destination node has a valid metadata area.
+        unsafe {
+            bindings::rust_maple_tree_store_set_meta(node, node_type, gap_slot, end.wrapping_sub(1))
+        };
+    }
 }
 
 #[cfg(CONFIG_RUST_MAPLE_TREE_SPANNING_STORE)]

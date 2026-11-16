@@ -155,6 +155,14 @@ unsigned long rust_maple_tree_spanning_node_copy(struct ma_state *mas,
 void rust_maple_tree_spanning_node_finalise(struct maple_node *node,
 					    enum maple_type type,
 					    unsigned char end);
+#ifdef CONFIG_RUST_MAPLE_TREE_NODE_COPY
+void rust_maple_tree_spanning_set_parent_slots(struct ma_state *mas,
+					       struct maple_node *parent,
+					       enum maple_type type,
+					       void __rcu **slots,
+					       unsigned char start,
+					       unsigned char count);
+#endif
 void rust_maple_tree_spanning_init_slot(void __rcu **slot,
 					struct maple_node *node,
 					enum maple_type type);

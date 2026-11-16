@@ -15733,6 +15733,7 @@ F:	Documentation/core-api/maple_tree.rst
 F:	Documentation/rust/native-maple-tree-find.rst
 F:	Documentation/rust/native-maple-tree-load.rst
 F:	Documentation/rust/native-maple-tree-next.rst
+F:	Documentation/rust/native-maple-tree-node-copy.rst
 F:	Documentation/rust/native-maple-tree-node-store.rst
 F:	Documentation/rust/native-maple-tree-prealloc.rst
 F:	Documentation/rust/native-maple-tree-prev.rst
