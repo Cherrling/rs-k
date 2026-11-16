@@ -368,6 +368,23 @@ config RUST_MAPLE_TREE_WALK
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_MAPLE_TREE_NEXT
+	bool "Rust implementation of Maple Tree forward iteration"
+	depends on RUST_MAPLE_TREE_WALK
+	default y
+	help
+	  Use Rust for the production state transitions, parent ascent, node
+	  transition, slot selection, and overflow policy behind mas_next() and
+	  mas_next_range().
+
+	  Encoded parent metadata, node layout, protected slot access, lockdep
+	  checks, and one-time diagnostics remain in C. The exported C entry
+	  points remain as ABI adapters. The C fallback retains the complete
+	  forward iterator.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_PERCPU_REFCOUNT
 	bool "Rust implementation of percpu_ref() lifecycle"
 	depends on RUST

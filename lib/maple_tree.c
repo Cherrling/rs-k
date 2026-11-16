@@ -953,6 +953,12 @@ static inline void mas_descend(struct ma_state *mas)
  * May find a dead node which will cause a premature return.
  * Return: 1 on dead node, 0 otherwise
  */
+#ifdef CONFIG_RUST_MAPLE_TREE_NEXT
+static int mas_ascend(struct ma_state *mas)
+{
+	return rust_mas_ascend(mas);
+}
+#else
 static int mas_ascend(struct ma_state *mas)
 {
 	struct maple_enode *p_enode; /* parent enode. */
@@ -1040,6 +1046,7 @@ static int mas_ascend(struct ma_state *mas)
 	mas->min = min;
 	return 0;
 }
+#endif /* CONFIG_RUST_MAPLE_TREE_NEXT */
 
 /*
  * mas_pop_node() - Get a previously allocated maple node from the maple state.
@@ -3157,6 +3164,50 @@ bool rust_maple_tree_is_zero(const void *entry)
 }
 #endif /* CONFIG_RUST_MAPLE_TREE_LOAD || CONFIG_RUST_MAPLE_TREE_WALK */
 
+#ifdef CONFIG_RUST_MAPLE_TREE_NEXT
+bool rust_maple_tree_node_is_root(const struct maple_node *node)
+{
+	return ma_is_root((struct maple_node *)node);
+}
+
+bool rust_maple_tree_enode_is_root(const struct maple_enode *enode)
+{
+	return mte_is_root(enode);
+}
+
+struct maple_node *rust_maple_tree_parent(const struct maple_enode *enode)
+{
+	return mte_parent(enode);
+}
+
+enum maple_type rust_maple_tree_parent_type(struct ma_state *mas,
+					    struct maple_enode *enode)
+{
+	return mas_parent_type(mas, enode);
+}
+
+unsigned int rust_maple_tree_parent_slot(const struct maple_enode *enode)
+{
+	return mte_parent_slot(enode);
+}
+
+struct maple_enode *rust_maple_tree_make_node(const struct maple_node *node,
+					      enum maple_type type)
+{
+	return mt_mk_node(node, type);
+}
+
+void rust_maple_tree_lock_check(struct ma_state *mas)
+{
+	mas_lock_check(mas);
+}
+
+bool rust_maple_tree_warn_on_once(bool condition)
+{
+	return WARN_ON_ONCE(condition);
+}
+#endif /* CONFIG_RUST_MAPLE_TREE_NEXT */
+
 static void mte_destroy_walk(struct maple_enode *, struct maple_tree *);
 /*
  * mas_new_root() - Create a new root node that only contains the entry passed
@@ -4212,6 +4263,14 @@ underflow:
  * overflowed.
  * Return: 1 on dead node, 0 otherwise.
  */
+#ifdef CONFIG_RUST_MAPLE_TREE_NEXT
+static __maybe_unused int mas_next_node(struct ma_state *mas,
+					struct maple_node *node,
+					unsigned long max)
+{
+	return rust_mas_next_node(mas, node, max);
+}
+#else
 static int mas_next_node(struct ma_state *mas, struct maple_node *node,
 		unsigned long max)
 {
@@ -4289,6 +4348,7 @@ overflow:
 	mas->status = ma_overflow;
 	return 0;
 }
+#endif /* CONFIG_RUST_MAPLE_TREE_NEXT */
 
 /*
  * mas_next_slot() - Get the entry in the next slot
@@ -4299,6 +4359,12 @@ overflow:
  *
  * Return: The entry in the next slot which is possibly NULL
  */
+#ifdef CONFIG_RUST_MAPLE_TREE_NEXT
+static void *mas_next_slot(struct ma_state *mas, unsigned long max, bool empty)
+{
+	return rust_mas_next_slot(mas, max, empty);
+}
+#else
 static void *mas_next_slot(struct ma_state *mas, unsigned long max, bool empty)
 {
 	void __rcu **slots;
@@ -4382,6 +4448,7 @@ again:
 
 	return entry;
 }
+#endif /* CONFIG_RUST_MAPLE_TREE_NEXT */
 
 /*
  * mas_rev_awalk() - Internal function.  Reverse allocation walk.  Find the
@@ -5201,6 +5268,7 @@ static void mas_may_activate(struct ma_state *mas)
 	}
 }
 
+#ifndef CONFIG_RUST_MAPLE_TREE_NEXT
 static bool mas_next_setup(struct ma_state *mas, unsigned long max,
 		void **entry)
 {
@@ -5259,6 +5327,7 @@ static bool mas_next_setup(struct ma_state *mas, unsigned long max,
 
 	return false;
 }
+#endif /* CONFIG_RUST_MAPLE_TREE_NEXT */
 
 /**
  * mas_next() - Get the next entry.
@@ -5273,6 +5342,9 @@ static bool mas_next_setup(struct ma_state *mas, unsigned long max,
  */
 void *mas_next(struct ma_state *mas, unsigned long max)
 {
+#ifdef CONFIG_RUST_MAPLE_TREE_NEXT
+	return rust_mas_next(mas, max);
+#else
 	void *entry = NULL;
 
 	mas_may_init_lock_check(mas);
@@ -5281,6 +5353,7 @@ void *mas_next(struct ma_state *mas, unsigned long max)
 
 	/* Retries on dead nodes handled by mas_next_slot */
 	return mas_next_slot(mas, max, false);
+#endif /* CONFIG_RUST_MAPLE_TREE_NEXT */
 }
 EXPORT_SYMBOL_GPL(mas_next);
 
@@ -5297,6 +5370,9 @@ EXPORT_SYMBOL_GPL(mas_next);
  */
 void *mas_next_range(struct ma_state *mas, unsigned long max)
 {
+#ifdef CONFIG_RUST_MAPLE_TREE_NEXT
+	return rust_mas_next_range(mas, max);
+#else
 	void *entry = NULL;
 
 	mas_may_init_lock_check(mas);
@@ -5305,6 +5381,7 @@ void *mas_next_range(struct ma_state *mas, unsigned long max)
 
 	/* Retries on dead nodes handled by mas_next_slot */
 	return mas_next_slot(mas, max, true);
+#endif /* CONFIG_RUST_MAPLE_TREE_NEXT */
 }
 EXPORT_SYMBOL_GPL(mas_next_range);
 

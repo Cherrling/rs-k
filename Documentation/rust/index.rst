@@ -110,6 +110,7 @@ more details.
     native-genradix
     native-maple-tree-load
     native-maple-tree-walk
+    native-maple-tree-next
     native-xarray-alloc
     native-xarray-create
     native-xarray-create-range

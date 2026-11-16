@@ -41,4 +41,26 @@ bool rust_maple_tree_is_zero(const void *entry);
 
 #endif /* CONFIG_RUST_MAPLE_TREE_LOAD || CONFIG_RUST_MAPLE_TREE_WALK */
 
+#ifdef CONFIG_RUST_MAPLE_TREE_NEXT
+
+void *rust_mas_next(struct ma_state *mas, unsigned long max);
+void *rust_mas_next_range(struct ma_state *mas, unsigned long max);
+int rust_mas_ascend(struct ma_state *mas);
+int rust_mas_next_node(struct ma_state *mas, struct maple_node *node,
+		       unsigned long max);
+void *rust_mas_next_slot(struct ma_state *mas, unsigned long max, bool empty);
+
+bool rust_maple_tree_node_is_root(const struct maple_node *node);
+bool rust_maple_tree_enode_is_root(const struct maple_enode *enode);
+struct maple_node *rust_maple_tree_parent(const struct maple_enode *enode);
+enum maple_type rust_maple_tree_parent_type(struct ma_state *mas,
+					    struct maple_enode *enode);
+unsigned int rust_maple_tree_parent_slot(const struct maple_enode *enode);
+struct maple_enode *rust_maple_tree_make_node(const struct maple_node *node,
+					      enum maple_type type);
+void rust_maple_tree_lock_check(struct ma_state *mas);
+bool rust_maple_tree_warn_on_once(bool condition);
+
+#endif /* CONFIG_RUST_MAPLE_TREE_NEXT */
+
 #endif /* _LINUX_MAPLE_TREE_RUST_H */

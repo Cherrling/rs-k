@@ -132,6 +132,8 @@ pub mod maple_tree;
 mod maple_tree_core;
 #[cfg(CONFIG_RUST_MAPLE_TREE_LOAD)]
 mod maple_tree_load;
+#[cfg(CONFIG_RUST_MAPLE_TREE_NEXT)]
+mod maple_tree_next;
 #[cfg(CONFIG_RUST_MAPLE_TREE_WALK)]
 mod maple_tree_walk;
 pub mod miscdevice;

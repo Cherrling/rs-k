@@ -40,6 +40,13 @@ pub(crate) fn is_ptr(mas: *const MaState) -> bool {
 }
 
 #[inline(always)]
+#[cfg(CONFIG_RUST_MAPLE_TREE_NEXT)]
+pub(crate) fn is_overflow(mas: *const MaState) -> bool {
+    // SAFETY: The caller supplies a valid Maple state.
+    unsafe { (*mas).status == bindings::maple_status_ma_overflow }
+}
+
+#[inline(always)]
 /// Reads the current tree root with the required RCU or lock protection.
 ///
 /// # Safety
@@ -149,6 +156,84 @@ pub(crate) fn is_leaf(node_type: bindings::maple_type) -> bool {
 pub(crate) unsafe fn node_is_dead(node: *const MapleNode) -> bool {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { bindings::rust_maple_tree_node_is_dead(node) }
+}
+
+#[inline(always)]
+/// Returns whether a raw Maple node is the tree root.
+///
+/// # Safety
+///
+/// `node` must contain a valid Maple node.
+#[cfg(CONFIG_RUST_MAPLE_TREE_NEXT)]
+pub(crate) unsafe fn node_is_root(node: *const MapleNode) -> bool {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { bindings::rust_maple_tree_node_is_root(node) }
+}
+
+#[inline(always)]
+/// Returns whether an encoded Maple node is the tree root.
+///
+/// # Safety
+///
+/// `enode` must contain a valid encoded node.
+#[cfg(CONFIG_RUST_MAPLE_TREE_NEXT)]
+pub(crate) unsafe fn enode_is_root(enode: *const MapleEnode) -> bool {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { bindings::rust_maple_tree_enode_is_root(enode) }
+}
+
+#[inline(always)]
+/// Returns the parent of an encoded Maple node.
+///
+/// # Safety
+///
+/// `enode` must contain a valid non-root encoded node.
+#[cfg(CONFIG_RUST_MAPLE_TREE_NEXT)]
+pub(crate) unsafe fn parent(enode: *const MapleEnode) -> *mut MapleNode {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { bindings::rust_maple_tree_parent(enode) }
+}
+
+#[inline(always)]
+/// Returns the parent node type of an encoded Maple node.
+///
+/// # Safety
+///
+/// `mas` must identify a valid Maple tree and `enode` a valid child node.
+#[cfg(CONFIG_RUST_MAPLE_TREE_NEXT)]
+pub(crate) unsafe fn parent_type(
+    mas: *mut MaState,
+    enode: *mut MapleEnode,
+) -> bindings::maple_type {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { bindings::rust_maple_tree_parent_type(mas, enode) }
+}
+
+#[inline(always)]
+/// Returns the slot that contains an encoded Maple node.
+///
+/// # Safety
+///
+/// `enode` must contain a valid non-root encoded node.
+#[cfg(CONFIG_RUST_MAPLE_TREE_NEXT)]
+pub(crate) unsafe fn parent_slot(enode: *const MapleEnode) -> u32 {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { bindings::rust_maple_tree_parent_slot(enode) }
+}
+
+#[inline(always)]
+/// Encodes a raw Maple node with its concrete node type.
+///
+/// # Safety
+///
+/// `node` must contain a valid live Maple node.
+#[cfg(CONFIG_RUST_MAPLE_TREE_NEXT)]
+pub(crate) unsafe fn make_node(
+    node: *const MapleNode,
+    node_type: bindings::maple_type,
+) -> *mut MapleEnode {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { bindings::rust_maple_tree_make_node(node, node_type) }
 }
 
 /// Initializes a Maple state for a start-state walk.
@@ -334,6 +419,228 @@ pub(crate) unsafe fn state_walk(mas: *mut MaState) -> *mut c_void {
 
     // SAFETY: The state is active and protected by the caller.
     unsafe { range_walk(mas) }
+}
+
+#[inline(always)]
+/// Returns a pivot or the current node maximum when the offset is absent.
+///
+/// # Safety
+///
+/// `mas` must contain a valid active state. `pivots` must describe the
+/// current node.
+#[cfg(CONFIG_RUST_MAPLE_TREE_NEXT)]
+pub(crate) unsafe fn safe_pivot(
+    mas: *const MaState,
+    pivots: *mut usize,
+    offset: u8,
+    node_type: bindings::maple_type,
+) -> usize {
+    if offset >= pivot_count(node_type) {
+        // SAFETY: The caller supplies a valid active state.
+        return unsafe { (*mas).max };
+    }
+
+    // SAFETY: The caller guarantees that `offset` is in the pivot array.
+    unsafe { *pivots.add(usize::from(offset)) }
+}
+
+/// Resets a Maple state to start a new walk.
+///
+/// # Safety
+///
+/// `mas` must be a valid writable Maple state.
+#[cfg(CONFIG_RUST_MAPLE_TREE_NEXT)]
+pub(crate) unsafe fn reset(mas: *mut MaState) {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe {
+        (*mas).status = bindings::maple_status_ma_start;
+        (*mas).node = ptr::null_mut();
+    }
+}
+
+/// Restarts a walk at a requested index.
+///
+/// # Safety
+///
+/// `mas` must be valid and protected by RCU or the tree lock.
+#[cfg(CONFIG_RUST_MAPLE_TREE_NEXT)]
+pub(crate) unsafe fn rewalk(mas: *mut MaState, index: usize) {
+    loop {
+        // SAFETY: The caller supplies a valid writable state.
+        unsafe {
+            reset(mas);
+            (*mas).index = index;
+            (*mas).last = index;
+        }
+
+        // SAFETY: The state is start-state and protected by the caller.
+        unsafe { state_walk(mas) };
+        if !is_start(mas) {
+            break;
+        }
+    }
+}
+
+/// Restarts a walk if the current node was retired.
+///
+/// # Safety
+///
+/// `mas` must be valid and protected by RCU or the tree lock. `node` must
+/// belong to the current state.
+#[cfg(CONFIG_RUST_MAPLE_TREE_NEXT)]
+pub(crate) unsafe fn rewalk_if_dead(
+    mas: *mut MaState,
+    node: *const MapleNode,
+    index: usize,
+) -> bool {
+    // SAFETY: Guaranteed by this function's contract.
+    if unsafe { node_is_dead(node) } {
+        // SAFETY: The caller supplies a valid protected state.
+        unsafe { rewalk(mas, index) };
+        return true;
+    }
+
+    false
+}
+
+/// Runs the lockdep check for an already active Maple state.
+///
+/// # Safety
+///
+/// `mas` must identify a valid initialized Maple tree.
+#[cfg(CONFIG_RUST_MAPLE_TREE_NEXT)]
+pub(crate) unsafe fn lock_check(mas: *mut MaState) {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { bindings::rust_maple_tree_lock_check(mas) };
+}
+
+/// Emits a one-time warning for an impossible traversal state.
+#[cfg(CONFIG_RUST_MAPLE_TREE_NEXT)]
+pub(crate) fn warn_on_once(condition: bool) -> bool {
+    // SAFETY: This helper only emits the kernel diagnostic.
+    unsafe { bindings::rust_maple_tree_warn_on_once(condition) }
+}
+
+/// Moves a Maple state to its parent and updates the covered range.
+///
+/// # Safety
+///
+/// `mas` must contain a valid active state protected by RCU or the tree lock.
+#[cfg(CONFIG_RUST_MAPLE_TREE_NEXT)]
+pub(crate) unsafe fn ascend(mas: *mut MaState) -> bool {
+    // SAFETY: The caller supplies a valid active state.
+    let mut ancestor_node = unsafe { to_node((*mas).node) };
+    // SAFETY: The caller supplies a valid active state.
+    let mut mas_max = unsafe { (*mas).max };
+    // SAFETY: The caller supplies a valid active state.
+    let mut mas_min = unsafe { (*mas).min };
+    let mut ancestor_enode;
+    let mut ancestor_slot;
+    let mut ancestor_type;
+    let mut max;
+    let mut min;
+    let mut node_pivots: *mut usize;
+    let mut set_max;
+    let mut set_min;
+
+    // SAFETY: The current node came from the protected state.
+    if unsafe { node_is_root(ancestor_node) } {
+        // SAFETY: The caller supplies a valid writable state.
+        unsafe { (*mas).offset = 0 };
+        return false;
+    }
+
+    // SAFETY: The caller supplies a valid non-root active state.
+    let parent_node = unsafe { parent((*mas).node) };
+    if ancestor_node == parent_node {
+        return true;
+    }
+
+    // SAFETY: The caller supplies a valid active state and child node.
+    ancestor_type = unsafe { parent_type(mas, (*mas).node) };
+    // SAFETY: The caller supplies a valid non-root active state.
+    ancestor_slot = unsafe { parent_slot((*mas).node) } as u8;
+    // SAFETY: `parent_node` and `ancestor_type` describe the parent.
+    ancestor_enode = unsafe { make_node(parent_node, ancestor_type) };
+    // SAFETY: The caller supplies a valid active state.
+    if parent_node != unsafe { parent((*mas).node) } {
+        return true;
+    }
+
+    // SAFETY: The caller supplies a valid writable state.
+    unsafe {
+        (*mas).offset = ancestor_slot;
+        (*mas).node = ancestor_enode;
+    }
+
+    // SAFETY: The parent was just validated as a live encoded node.
+    if unsafe { enode_is_root(ancestor_enode) } {
+        // SAFETY: The caller supplies a valid writable state.
+        unsafe {
+            (*mas).max = usize::MAX;
+            (*mas).min = 0;
+        }
+        return false;
+    }
+
+    min = 0;
+    max = usize::MAX;
+    set_min = false;
+    set_max = false;
+    if ancestor_slot == 0 {
+        min = mas_min;
+        set_min = true;
+    }
+    if mas_max == usize::MAX {
+        set_max = true;
+    }
+
+    loop {
+        let parent_enode = ancestor_enode;
+        // SAFETY: `parent_enode` is a valid non-root encoded node.
+        ancestor_type = unsafe { parent_type(mas, parent_enode) };
+        // SAFETY: `parent_enode` contains a valid parent pointer.
+        ancestor_node = unsafe { parent(parent_enode) };
+        // SAFETY: `parent_enode` contains a valid parent slot.
+        ancestor_slot = unsafe { parent_slot(parent_enode) } as u8;
+        // SAFETY: The parent node and type identify the same node.
+        ancestor_enode = unsafe { make_node(ancestor_node, ancestor_type) };
+        // SAFETY: The ancestor type is valid.
+        node_pivots = unsafe { pivots(ancestor_node, ancestor_type) };
+
+        // SAFETY: The ancestor was reached under the caller's protection.
+        if unsafe { node_is_dead(ancestor_node) } {
+            return true;
+        }
+        if !set_min && ancestor_slot != 0 {
+            set_min = true;
+            // SAFETY: A nonzero parent slot has a preceding pivot.
+            min = unsafe { *node_pivots.add(usize::from(ancestor_slot - 1)) } + 1;
+        }
+        if !set_max && ancestor_slot < pivot_count(ancestor_type) {
+            set_max = true;
+            // SAFETY: The parent slot is within the pivot array.
+            max = unsafe { *node_pivots.add(usize::from(ancestor_slot)) };
+        }
+
+        // SAFETY: The ancestor was reached under the caller's protection.
+        if unsafe { node_is_dead(ancestor_node) } {
+            return true;
+        }
+        // SAFETY: The ancestor was reached under the caller's protection.
+        if unsafe { node_is_root(ancestor_node) } || (set_min && set_max) {
+            break;
+        }
+    }
+
+    mas_min = min;
+    mas_max = max;
+    // SAFETY: The caller supplies a valid writable state.
+    unsafe {
+        (*mas).min = mas_min;
+        (*mas).max = mas_max;
+    }
+    false
 }
 
 /// Resets the state to restart from the current tree root.

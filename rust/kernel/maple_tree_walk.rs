@@ -19,7 +19,7 @@ use macros::export;
 ///
 /// `mas` must point to a valid initialized Maple state. The caller must hold
 /// the RCU read lock or the Maple tree lock.
-unsafe fn walk(mas: *mut MaState) -> *mut c_void {
+pub(crate) unsafe fn walk(mas: *mut MaState) -> *mut c_void {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { may_init_lock_check(mas) };
     // SAFETY: The caller supplies a valid writable state.
