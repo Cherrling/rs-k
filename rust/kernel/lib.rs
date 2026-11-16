@@ -132,6 +132,8 @@ pub mod maple_tree;
 mod maple_tree_core;
 #[cfg(CONFIG_RUST_MAPLE_TREE_FIND)]
 mod maple_tree_find;
+#[cfg(CONFIG_RUST_MAPLE_TREE_LEAF_GAP)]
+mod maple_tree_leaf_gap;
 #[cfg(CONFIG_RUST_MAPLE_TREE_LOAD)]
 mod maple_tree_load;
 #[cfg(CONFIG_RUST_MAPLE_TREE_NEXT)]

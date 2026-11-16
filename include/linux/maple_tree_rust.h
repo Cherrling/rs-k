@@ -135,6 +135,14 @@ void rust_maple_tree_store_replace_node(struct ma_state *mas,
 
 #ifdef CONFIG_RUST_MAPLE_TREE_SPANNING_STORE
 
+#ifdef CONFIG_RUST_MAPLE_TREE_LEAF_GAP
+unsigned long rust_maple_tree_leaf_gap(struct maple_node *node,
+				       enum maple_type type,
+				       unsigned long min,
+				       unsigned long max,
+				       unsigned long *pivots,
+				       void __rcu **slots);
+#endif
 void rust_maple_tree_spanning_walk_index(struct ma_wr_state *wr_mas);
 void rust_maple_tree_spanning_set_full_range(struct ma_state *mas);
 #ifndef CONFIG_RUST_MAPLE_TREE_ROOT_STORE
@@ -167,12 +175,14 @@ void rust_maple_tree_spanning_init_slot(void __rcu **slot,
 					struct maple_node *node,
 					enum maple_type type);
 bool rust_maple_tree_spanning_is_alloc(struct maple_tree *tree);
+#ifndef CONFIG_RUST_MAPLE_TREE_LEAF_GAP
 unsigned long rust_maple_tree_spanning_leaf_gap(struct maple_node *node,
 						enum maple_type type,
 						unsigned long min,
 						unsigned long max,
 						unsigned long *pivots,
 						void __rcu **slots);
+#endif
 unsigned long *rust_maple_tree_spanning_gaps(struct maple_node *node,
 					     enum maple_type type);
 unsigned char rust_maple_tree_spanning_meta_gap(struct maple_node *node);

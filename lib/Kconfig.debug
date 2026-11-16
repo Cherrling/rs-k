@@ -3189,6 +3189,17 @@ config MAPLE_TREE_STORE_KUNIT_TEST
 
 	  If unsure, say N.
 
+config MAPLE_TREE_LEAF_GAP_KUNIT_TEST
+	bool "KUnit Test for native Maple Tree leaf-gap calculation" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y && RUST_MAPLE_TREE_LEAF_GAP
+	default KUNIT_ALL_TESTS
+	help
+	  This builds direct KUnit tests for the native Maple Tree largest-gap
+	  calculation. It tests dense NULL runs, left-edge and internal gaps,
+	  and the right-edge ULONG_MAX case.
+
+	  If unsure, say N.
+
 config TEST_RHASHTABLE
 	tristate "Perform selftest on resizable hash table"
 	help

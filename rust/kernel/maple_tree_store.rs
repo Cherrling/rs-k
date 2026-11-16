@@ -926,7 +926,7 @@ unsafe fn spanning_is_alloc(tree: *mut bindings::maple_tree) -> bool {
 /// # Safety
 ///
 /// The node and its layout arrays must be valid for the complete range.
-unsafe fn spanning_leaf_gap(
+unsafe fn replacement_leaf_gap(
     node: *mut MapleNode,
     node_type: bindings::maple_type,
     min: usize,
@@ -934,8 +934,19 @@ unsafe fn spanning_leaf_gap(
     pivots: *mut usize,
     slots: *mut *mut c_void,
 ) -> usize {
-    // SAFETY: The node layout and protected range are valid.
-    unsafe { bindings::rust_maple_tree_spanning_leaf_gap(node, node_type, min, max, pivots, slots) }
+    #[cfg(CONFIG_RUST_MAPLE_TREE_LEAF_GAP)]
+    {
+        // SAFETY: The node layout and protected range are valid.
+        unsafe { super::maple_tree_leaf_gap::max_gap(node, node_type, min, max, pivots, slots) }
+    }
+
+    #[cfg(not(CONFIG_RUST_MAPLE_TREE_LEAF_GAP))]
+    {
+        // SAFETY: The node layout and protected range are valid.
+        unsafe {
+            bindings::rust_maple_tree_spanning_leaf_gap(node, node_type, min, max, pivots, slots)
+        }
+    }
 }
 
 #[cfg(CONFIG_RUST_MAPLE_TREE_SPANNING_STORE)]
@@ -1763,7 +1774,7 @@ unsafe fn copy_destinations_to_slots(
             if super::maple_tree_core::is_leaf(node_type) {
                 // SAFETY: The completed leaf layout is valid.
                 let gap = unsafe {
-                    spanning_leaf_gap(
+                    replacement_leaf_gap(
                         node,
                         node_type,
                         slot_min,

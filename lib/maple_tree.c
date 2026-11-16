@@ -1382,9 +1382,13 @@ void wr_mas_ascend(struct ma_wr_state *wr_mas)
 	wr_mas->offset_end = mas->offset;
 }
 
-static inline unsigned long ma_leaf_max_gap(struct maple_node *mn,
-		enum maple_type mt, unsigned long min, unsigned long max,
-		unsigned long *pivots, void __rcu **slots)
+#ifndef CONFIG_RUST_MAPLE_TREE_LEAF_GAP
+static inline unsigned long ma_leaf_max_gap_c(struct maple_node *mn,
+					      enum maple_type mt,
+					      unsigned long min,
+					      unsigned long max,
+					      unsigned long *pivots,
+					      void __rcu **slots)
 {
 	unsigned long pstart, gap, max_gap;
 	unsigned char i;
@@ -1447,6 +1451,21 @@ static inline unsigned long ma_leaf_max_gap(struct maple_node *mn,
 		i++;
 	}
 	return max_gap;
+}
+#endif
+
+static inline unsigned long ma_leaf_max_gap(struct maple_node *mn,
+					    enum maple_type mt,
+					    unsigned long min,
+					    unsigned long max,
+					    unsigned long *pivots,
+					    void __rcu **slots)
+{
+#ifdef CONFIG_RUST_MAPLE_TREE_LEAF_GAP
+	return rust_maple_tree_leaf_gap(mn, mt, min, max, pivots, slots);
+#else
+	return ma_leaf_max_gap_c(mn, mt, min, max, pivots, slots);
+#endif
 }
 
 /*
@@ -3331,6 +3350,7 @@ bool rust_maple_tree_spanning_is_alloc(struct maple_tree *tree)
 	return mt_is_alloc(tree);
 }
 
+#ifndef CONFIG_RUST_MAPLE_TREE_LEAF_GAP
 unsigned long rust_maple_tree_spanning_leaf_gap(struct maple_node *node,
 						enum maple_type type,
 						unsigned long min,
@@ -3340,6 +3360,7 @@ unsigned long rust_maple_tree_spanning_leaf_gap(struct maple_node *node,
 {
 	return ma_leaf_max_gap(node, type, min, max, pivots, slots);
 }
+#endif
 
 unsigned long *rust_maple_tree_spanning_gaps(struct maple_node *node,
 					     enum maple_type type)

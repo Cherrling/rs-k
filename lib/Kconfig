@@ -488,8 +488,8 @@ config RUST_MAPLE_TREE_SPANNING_STORE
 	  Rust walks both sides of the affected range, extends NULL stores,
 	  calculates the replacement data, selects one to three destination
 	  nodes, writes the simulated copy node, and converges the result while
-	  climbing the tree. The node-copy option finalizes gap metadata for
-	  completed destination nodes.
+	  climbing the tree. The leaf-gap and node-copy options provide shared
+	  gap calculation and completed-destination finalization.
 
 	  The C boundary contains encoded-node layout, protected slot access,
 	  sibling and write-state traversal primitives, node-pool allocation,
@@ -497,6 +497,26 @@ config RUST_MAPLE_TREE_SPANNING_STORE
 	  performs raw node array copying and finalisation. When the root-store
 	  option is disabled, the C new-root strategy remains available. Split
 	  stores and rebalance stores are separate migration units.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
+config RUST_MAPLE_TREE_LEAF_GAP
+	bool "Rust implementation of Maple Tree leaf gap calculation"
+	depends on RUST_MAPLE_TREE_SPANNING_STORE
+	default y
+	help
+	  Use Rust for the production largest-gap calculation in Maple Tree
+	  leaves.
+
+	  Rust scans dense leaves for the longest NULL slot run. For
+	  pivot-bearing leaves, Rust measures left-edge, internal, and
+	  right-edge allocation gaps. Both the ordinary allocation-gap update
+	  path and replacement-node gap calculation use this implementation.
+
+	  The C boundary contains encoded node layout, slot and pivot
+	  addressing, node slot counts, and metadata end discovery. The C
+	  implementation remains available when this option is disabled.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

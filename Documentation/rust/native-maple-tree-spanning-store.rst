@@ -20,7 +20,8 @@ Rust owns these operations:
 * Select one, two, or three destination nodes.
 * Copy bounded source ranges into each destination.
 * Adjust destination boundaries that end in a NULL slot.
-* Compute leaf and allocation-range gap metadata.
+* Use the native leaf-gap and allocation-range metadata values for completed
+  destination nodes.
 * Ascend until the replacement converges or becomes a new root.
 * Publish the completed replacement subtree.
 
@@ -38,7 +39,8 @@ The C boundary contains these operations:
 * Walk a write state to its boundary leaf and ascend it after convergence.
 * Discover an adjacent sibling without changing tree contents.
 * Obtain a preallocated node from the existing node pool.
-* Compute leaf and allocation-range gap metadata.
+* Retain leaf-gap and allocation-range metadata helpers where native options
+  are disabled.
 * Install parent and root state.
 * Publish the complete subtree and release replaced nodes.
 

@@ -19,7 +19,8 @@ Rust owns these operations:
 * Preserve the left, right, and sibling source order.
 * Select one, two, or three destination nodes.
 * Adjust destinations that end in a NULL slot.
-* Compute leaf and allocation-range gap metadata.
+* Use the native leaf-gap calculation and allocation-range metadata for
+  completed destination nodes.
 * Ascend until the replacement converges or becomes a new root.
 * Publish the completed replacement subtree.
 
