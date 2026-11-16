@@ -92,12 +92,20 @@ void rust_xarray_pause(struct xa_state *xas);
 
 #endif /* CONFIG_RUST_XARRAY_PAUSE */
 
+#ifdef CONFIG_RUST_XARRAY_SPLIT
+
+void rust_xarray_split_alloc(struct xa_state *xas, void *entry, unsigned int order, gfp_t gfp);
+void rust_xarray_split(struct xa_state *xas, void *entry, unsigned int order);
+
+#endif /* CONFIG_RUST_XARRAY_SPLIT */
+
 #if defined(CONFIG_RUST_XARRAY_FREE_NODES) || \
-	defined(CONFIG_RUST_XARRAY_EXPAND)
+	defined(CONFIG_RUST_XARRAY_EXPAND) || \
+	defined(CONFIG_RUST_XARRAY_SPLIT)
 
 void rust_xarray_notify_node(struct xa_state *xas, struct xa_node *node);
 
-#endif /* CONFIG_RUST_XARRAY_FREE_NODES || CONFIG_RUST_XARRAY_EXPAND */
+#endif /* Rust XArray node update users */
 
 #ifdef CONFIG_RUST_XARRAY_FREE_NODES
 

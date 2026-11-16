@@ -192,12 +192,14 @@ __rust_helper bool rust_helper_xarray_track_free(const struct xarray *xa)
 }
 #endif
 
-#ifdef CONFIG_RUST_XARRAY_EXPAND
+#if defined(CONFIG_RUST_XARRAY_EXPAND) || defined(CONFIG_RUST_XARRAY_SPLIT)
 __rust_helper void *rust_helper_xarray_mk_node(const struct xa_node *node)
 {
 	return xa_mk_node(node);
 }
+#endif
 
+#ifdef CONFIG_RUST_XARRAY_EXPAND
 __rust_helper void
 rust_helper_xarray_node_slot_zero_init(struct xa_node *node, void *entry)
 {
@@ -267,10 +269,32 @@ __rust_helper bool rust_helper_xarray_not_node(struct xa_node *node)
 #endif
 
 #if defined(CONFIG_RUST_XARRAY_FIND_MARKED) || \
-	defined(CONFIG_RUST_XARRAY_FIND_CONFLICT)
+	defined(CONFIG_RUST_XARRAY_FIND_CONFLICT) || \
+	defined(CONFIG_RUST_XARRAY_SPLIT)
 __rust_helper bool rust_helper_xarray_top(struct xa_node *node)
 {
 	return xas_top(node);
+}
+#endif
+
+#ifdef CONFIG_RUST_XARRAY_SPLIT
+__rust_helper void rust_helper_xarray_set_err(struct xa_state *xas, long error)
+{
+	xas_set_err(xas, error);
+}
+
+__rust_helper void rust_helper_xarray_set_slot_relaxed(struct xa_node *node,
+						       unsigned int offset,
+						       void *entry)
+{
+	RCU_INIT_POINTER(node->slots[offset], entry);
+}
+
+__rust_helper void
+rust_helper_xarray_set_parent_relaxed(struct xa_node *node,
+				      struct xa_node *parent)
+{
+	RCU_INIT_POINTER(node->parent, parent);
 }
 #endif
 
@@ -351,7 +375,8 @@ __rust_helper void rust_helper_xarray_slot_set_retry(struct xa_node *node,
 }
 #endif
 
-#ifdef CONFIG_RUST_XARRAY_SQUASH_MARKS
+#if defined(CONFIG_RUST_XARRAY_SQUASH_MARKS) || \
+	defined(CONFIG_RUST_XARRAY_SPLIT)
 __rust_helper unsigned int
 rust_helper_xarray_node_mark_find_next(const struct xa_node *node,
 				       xa_mark_t mark, unsigned int limit,

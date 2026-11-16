@@ -693,6 +693,25 @@ config RUST_XARRAY_SQUASH_MARKS
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_XARRAY_SPLIT
+	bool "Rust implementation of XArray multi-index splitting"
+	depends on RUST_XARRAY_LOAD && RUST_XARRAY_NOMEM && \
+		RUST_XARRAY_STORE && RUST_XARRAY_MARKS && X86_64
+	default y
+	help
+	  Use Rust for the production XArray two-phase multi-index split
+	  lifecycle behind xas_split_alloc() and xas_split().
+
+	  Rust owns order validation, split-node preparation, pending-chain
+	  growth, child and sibling publication, mark propagation, and value
+	  accounting. Slab allocation, node and entry layout, RCU publication,
+	  mark bitmaps, update callbacks, and error encoding remain in C. The
+	  exported entry points remain as ABI adapters. The C fallback retains
+	  the complete split allocation and commit algorithms.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RBTREE_RUST_KUNIT_TEST
 	bool "KUnit tests for the Rust rbtree implementation"
 	depends on RUST_RBTREE && KUNIT

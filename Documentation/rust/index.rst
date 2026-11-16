@@ -121,6 +121,7 @@ more details.
     native-xarray-next-prev
     native-xarray-nomem
     native-xarray-pause
+    native-xarray-split
     native-xarray-squash
     native-xarray-store
     native-percpu-refcount

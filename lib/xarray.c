@@ -894,7 +894,8 @@ void rust_xarray_free_nodes(struct xa_state *xas, struct xa_node *top)
 #endif
 
 #if defined(CONFIG_RUST_XARRAY_FREE_NODES) || \
-	defined(CONFIG_RUST_XARRAY_EXPAND)
+	defined(CONFIG_RUST_XARRAY_EXPAND) || \
+	defined(CONFIG_RUST_XARRAY_SPLIT)
 void rust_xarray_notify_node(struct xa_state *xas, struct xa_node *node)
 {
 	xas_update(xas, node);
@@ -1235,6 +1236,7 @@ static void __xas_init_node_for_split(struct xa_state *xas,
  *
  * Context: May sleep if @gfp flags permit.
  */
+#ifndef CONFIG_RUST_XARRAY_SPLIT
 void xas_split_alloc(struct xa_state *xas, void *entry, unsigned int order,
 		gfp_t gfp)
 {
@@ -1266,6 +1268,13 @@ nomem:
 	xas_destroy(xas);
 	xas_set_err(xas, -ENOMEM);
 }
+#else
+void xas_split_alloc(struct xa_state *xas, void *entry, unsigned int order,
+		     gfp_t gfp)
+{
+	rust_xarray_split_alloc(xas, entry, order, gfp);
+}
+#endif
 EXPORT_SYMBOL_GPL(xas_split_alloc);
 
 /**
@@ -1279,6 +1288,7 @@ EXPORT_SYMBOL_GPL(xas_split_alloc);
  *
  * Context: Any context.  The caller should hold the xa_lock.
  */
+#ifndef CONFIG_RUST_XARRAY_SPLIT
 void xas_split(struct xa_state *xas, void *entry, unsigned int order)
 {
 	unsigned int sibs = (1 << (order % XA_CHUNK_SHIFT)) - 1;
@@ -1328,6 +1338,12 @@ void xas_split(struct xa_state *xas, void *entry, unsigned int order)
 	node->nr_values += values;
 	xas_update(xas, node);
 }
+#else
+void xas_split(struct xa_state *xas, void *entry, unsigned int order)
+{
+	rust_xarray_split(xas, entry, order);
+}
+#endif
 EXPORT_SYMBOL_GPL(xas_split);
 
 /**

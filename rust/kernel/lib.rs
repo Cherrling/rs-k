@@ -337,6 +337,8 @@ mod xarray_next_prev;
 mod xarray_nomem;
 #[cfg(CONFIG_RUST_XARRAY_PAUSE)]
 mod xarray_pause;
+#[cfg(CONFIG_RUST_XARRAY_SPLIT)]
+mod xarray_split;
 #[cfg(CONFIG_RUST_XARRAY_SQUASH_MARKS)]
 mod xarray_squash;
 #[cfg(CONFIG_RUST_XARRAY_STORE)]

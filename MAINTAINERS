@@ -29912,6 +29912,7 @@ F:	lib/tests/xarray_nomem_kunit.c
 F:	lib/tests/xarray_pause_kunit.c
 F:	lib/tests/xarray_marks_kunit.c
 F:	lib/tests/xarray_rust_kunit.c
+F:	lib/tests/xarray_split_kunit.c
 F:	lib/tests/xarray_squash_kunit.c
 F:	lib/tests/xarray_store_kunit.c
 F:	lib/xarray.c
