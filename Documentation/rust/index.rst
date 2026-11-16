@@ -109,6 +109,7 @@ more details.
     native-kfifo
     native-genradix
     native-xarray-create
+    native-xarray-create-range
     native-xarray-delete-node
     native-xarray-expand
     native-xarray-free-nodes

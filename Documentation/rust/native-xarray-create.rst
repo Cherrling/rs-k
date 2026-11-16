@@ -31,9 +31,9 @@ Entry points and ownership
 
 With ``CONFIG_RUST_XARRAY_CREATE`` enabled, ``xas_create()`` in
 ``lib/xarray.c`` forwards to ``rust_xarray_create()``. The Rust store path
-calls the native Rust creation function directly. External C callers,
-including ``xas_create_range()``, continue to enter the ``xas_create()`` ABI
-adapter.
+calls the native Rust creation function directly. The C ``xas_create()`` ABI
+adapter remains available to external C callers. When Rust range creation is
+enabled, its implementation calls the native Rust creation function directly.
 
 The production implementation is in ``rust/kernel/xarray_create.rs``. It
 calls the retained node allocation primitive for each missing level. Rust

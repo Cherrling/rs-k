@@ -3449,6 +3449,18 @@ config XARRAY_CREATE_KUNIT_TEST
 
 	  If unsure, say N.
 
+config XARRAY_CREATE_RANGE_KUNIT_TEST
+	tristate "KUnit Test for XArray range creation" if !KUNIT_ALL_TESTS
+	depends on XARRAY_MULTI && KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This builds the KUnit test suite for XArray range creation. It tests
+	  single-index preparation, multi-chunk ranges, deep traversal, existing
+	  multi-index entries, and error-state restoration in the active
+	  implementation.
+
+	  If unsure, say N.
+
 config XARRAY_FREE_NODES_KUNIT_TEST
 	tristate "KUnit Test for XArray node reclamation" if !KUNIT_ALL_TESTS
 	depends on XARRAY_MULTI && KUNIT

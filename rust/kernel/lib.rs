@@ -313,6 +313,8 @@ pub mod workqueue;
 pub mod xarray;
 #[cfg(CONFIG_RUST_XARRAY_CREATE)]
 mod xarray_create;
+#[cfg(CONFIG_RUST_XARRAY_CREATE_RANGE)]
+mod xarray_create_range;
 #[cfg(CONFIG_RUST_XARRAY_DELETE_NODE)]
 mod xarray_delete_node;
 #[cfg(CONFIG_RUST_XARRAY_EXPAND)]

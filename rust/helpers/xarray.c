@@ -232,7 +232,8 @@ __rust_helper bool rust_helper_xarray_expand_check(struct xa_state *xas,
 
 #if defined(CONFIG_RUST_XARRAY_MARKS) || \
 	defined(CONFIG_RUST_XARRAY_FREE_NODES) || \
-	defined(CONFIG_RUST_XARRAY_DELETE_NODE)
+	defined(CONFIG_RUST_XARRAY_DELETE_NODE) || \
+	defined(CONFIG_RUST_XARRAY_CREATE_RANGE)
 
 __rust_helper struct xa_node *
 rust_helper_xarray_parent_locked(const struct xarray *xa,

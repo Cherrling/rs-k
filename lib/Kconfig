@@ -514,6 +514,23 @@ config RUST_XARRAY_CREATE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_XARRAY_CREATE_RANGE
+	bool "Rust implementation of XArray range creation"
+	depends on RUST_XARRAY_CREATE && X86_64
+	default y
+	help
+	  Use Rust for the production XArray algorithm that prepares every
+	  single-index slot covered by a multi-index range. Rust owns range
+	  boundary calculation, backward chunk traversal, ancestor cursor
+	  repositioning, and error-state restoration.
+
+	  Node and state layouts, parent lookup, error classification, node
+	  creation, and the public ABI remain in C. The C fallback retains its
+	  existing range creation and cursor recovery policy.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_XARRAY_FREE_NODES
 	bool "Rust implementation of XArray node reclamation"
 	depends on RUST_XARRAY_STORE && X86_64

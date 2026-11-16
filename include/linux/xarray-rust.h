@@ -39,6 +39,12 @@ void *rust_xarray_create(struct xa_state *xas, bool allow_root);
 
 #endif /* CONFIG_RUST_XARRAY_CREATE */
 
+#ifdef CONFIG_RUST_XARRAY_CREATE_RANGE
+
+void rust_xarray_create_range(struct xa_state *xas);
+
+#endif /* CONFIG_RUST_XARRAY_CREATE_RANGE */
+
 #if defined(CONFIG_RUST_XARRAY_FREE_NODES) || \
 	defined(CONFIG_RUST_XARRAY_EXPAND)
 

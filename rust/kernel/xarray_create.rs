@@ -187,8 +187,8 @@ unsafe fn descend(xas: *mut XaState, node: *mut XaNode) -> *mut c_void {
 ///
 /// # Safety
 ///
-/// `xas` must point to a valid XArray state and the caller must hold the
-/// XArray lock.
+/// `xas` must point to a valid XArray state. The caller must hold the XArray
+/// lock when the state references an XArray.
 pub(crate) unsafe fn create(xas: *mut XaState, allow_root: bool) -> *mut c_void {
     // SAFETY: Guaranteed by this function's contract.
     let state = unsafe { &mut *xas };
@@ -271,8 +271,8 @@ pub(crate) unsafe fn create(xas: *mut XaState, allow_root: bool) -> *mut c_void 
 ///
 /// # Safety
 ///
-/// `xas` must point to a valid XArray state and the caller must hold the
-/// XArray lock.
+/// `xas` must point to a valid XArray state. The caller must hold the XArray
+/// lock when the state references an XArray.
 #[export]
 unsafe extern "C" fn rust_xarray_create(xas: *mut XaState, allow_root: bool) -> *mut c_void {
     // SAFETY: Guaranteed by this function's contract.

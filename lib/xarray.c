@@ -746,6 +746,7 @@ static void *xas_create(struct xa_state *xas, bool allow_root)
  * range.  This is for the benefit of users which have not yet been
  * converted to use multi-index entries.
  */
+#ifndef CONFIG_RUST_XARRAY_CREATE_RANGE
 void xas_create_range(struct xa_state *xas)
 {
 	unsigned long index = xas->xa_index;
@@ -787,6 +788,12 @@ success:
 	if (xas->xa_node)
 		xas_set_offset(xas);
 }
+#else
+void xas_create_range(struct xa_state *xas)
+{
+	rust_xarray_create_range(xas);
+}
+#endif
 EXPORT_SYMBOL_GPL(xas_create_range);
 
 #if !defined(CONFIG_RUST_XARRAY_STORE) || \
