@@ -64,6 +64,12 @@ void *rust_xarray_next(struct xa_state *xas);
 
 #endif /* CONFIG_RUST_XARRAY_NEXT_PREV */
 
+#ifdef CONFIG_RUST_XARRAY_PAUSE
+
+void rust_xarray_pause(struct xa_state *xas);
+
+#endif /* CONFIG_RUST_XARRAY_PAUSE */
+
 #if defined(CONFIG_RUST_XARRAY_FREE_NODES) || \
 	defined(CONFIG_RUST_XARRAY_EXPAND)
 

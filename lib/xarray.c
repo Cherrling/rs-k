@@ -1414,6 +1414,7 @@ EXPORT_SYMBOL_GPL(xas_try_split);
  * Note that xas_pause() only works for forward iteration.  If a user needs
  * to pause a reverse iteration, we will need a xas_pause_rev().
  */
+#ifndef CONFIG_RUST_XARRAY_PAUSE
 void xas_pause(struct xa_state *xas)
 {
 	struct xa_node *node = xas->xa_node;
@@ -1436,6 +1437,12 @@ void xas_pause(struct xa_state *xas)
 		xas->xa_index++;
 	}
 }
+#else
+void xas_pause(struct xa_state *xas)
+{
+	rust_xarray_pause(xas);
+}
+#endif
 EXPORT_SYMBOL_GPL(xas_pause);
 
 /*

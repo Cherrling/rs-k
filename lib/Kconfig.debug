@@ -3452,6 +3452,18 @@ config XARRAY_NEXT_PREV_KUNIT_TEST
 
 	  If unsure, say N.
 
+config XARRAY_PAUSE_KUNIT_TEST
+	tristate "KUnit Test for XArray pause and cursor recovery" if !KUNIT_ALL_TESTS
+	depends on XARRAY_MULTI && KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This builds the KUnit test suite for XArray pause and cursor
+	  recovery. It tests invalid and null cursors, ordinary advancement,
+	  sibling runs, index wrapping, bounds selection, and resumed iteration
+	  in the active implementation.
+
+	  If unsure, say N.
+
 config XARRAY_STORE_KUNIT_TEST
 	tristate "KUnit Test for XArray store mutation" if !KUNIT_ALL_TESTS
 	depends on KUNIT

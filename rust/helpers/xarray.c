@@ -270,12 +270,24 @@ __rust_helper bool rust_helper_xarray_top(struct xa_node *node)
 {
 	return xas_top(node);
 }
+#endif
 
+#if defined(CONFIG_RUST_XARRAY_FIND_MARKED) || \
+	defined(CONFIG_RUST_XARRAY_PAUSE)
 __rust_helper void rust_helper_xarray_set_restart(struct xa_state *xas)
 {
 	xas->xa_node = XAS_RESTART;
 }
+#endif
 
+#ifdef CONFIG_RUST_XARRAY_PAUSE
+__rust_helper bool rust_helper_xarray_invalid(const struct xa_state *xas)
+{
+	return xas_invalid(xas);
+}
+#endif
+
+#ifdef CONFIG_RUST_XARRAY_FIND_MARKED
 __rust_helper unsigned int
 rust_helper_xarray_node_find_mark(const struct xa_node *node,
 				  unsigned int offset, xa_mark_t mark)

@@ -500,6 +500,22 @@ config RUST_XARRAY_NEXT_PREV
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_XARRAY_PAUSE
+	bool "Rust implementation of XArray pause and cursor recovery"
+	depends on RUST_XARRAY_LOAD && X86_64
+	default y
+	help
+	  Use Rust for the production algorithm behind xas_pause(). Rust owns
+	  cursor restart, sibling-run scanning, index advancement, and bounds
+	  selection.
+
+	  XArray node, state, sibling, and tagged-entry layouts and RCU slot
+	  access remain in C. The exported xas_pause() entry point remains as
+	  an ABI adapter. The C fallback retains its existing pause policy.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_XARRAY_FIND_MARKED
 	bool "Rust implementation of XArray marked forward search"
 	depends on RUST_XARRAY_FIND && RUST_XARRAY_MARKS && X86_64

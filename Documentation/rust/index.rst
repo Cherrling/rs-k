@@ -118,6 +118,7 @@ more details.
     native-xarray-load
     native-xarray-marks
     native-xarray-next-prev
+    native-xarray-pause
     native-xarray-squash
     native-xarray-store
     native-percpu-refcount
