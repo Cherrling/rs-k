@@ -113,6 +113,7 @@ more details.
     native-xarray-delete-node
     native-xarray-expand
     native-xarray-find
+    native-xarray-find-marked
     native-xarray-free-nodes
     native-xarray-load
     native-xarray-marks

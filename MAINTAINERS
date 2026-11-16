@@ -29904,6 +29904,7 @@ F:	lib/tests/xarray_create_range_kunit.c
 F:	lib/tests/xarray_delete_node_kunit.c
 F:	lib/tests/xarray_expand_kunit.c
 F:	lib/tests/xarray_find_kunit.c
+F:	lib/tests/xarray_find_marked_kunit.c
 F:	lib/tests/xarray_free_nodes_kunit.c
 F:	lib/tests/xarray_marks_kunit.c
 F:	lib/tests/xarray_rust_kunit.c
@@ -29927,6 +29928,7 @@ F:	rust/kernel/xarray_create_range.rs
 F:	rust/kernel/xarray_delete_node.rs
 F:	rust/kernel/xarray_expand.rs
 F:	rust/kernel/xarray_find.rs
+F:	rust/kernel/xarray_find_marked.rs
 F:	rust/kernel/xarray_free_nodes.rs
 F:	rust/kernel/xarray_load.rs
 F:	rust/kernel/xarray_marks.rs

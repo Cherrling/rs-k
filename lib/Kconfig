@@ -483,6 +483,24 @@ config RUST_XARRAY_FIND
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_XARRAY_FIND_MARKED
+	bool "Rust implementation of XArray marked forward search"
+	depends on RUST_XARRAY_FIND && RUST_XARRAY_MARKS && X86_64
+	default y
+	help
+	  Use Rust for the production XArray algorithm behind
+	  xas_find_marked(). Rust owns cursor traversal, mark-driven chunk
+	  jumps, sibling normalization, empty-subtree retreat, index updates,
+	  and terminal cursor states.
+
+	  Mark bitmaps, node and cursor layouts, root mark storage, slot and
+	  parent access, and tagged encodings remain in C. The exported
+	  xas_find_marked() entry point remains as an ABI adapter. The C
+	  fallback retains its existing marked-search policy.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_XARRAY_STORE
 	bool "Rust implementation of XArray store mutation"
 	depends on RUST_XARRAY_LOAD && X86_64

@@ -252,6 +252,26 @@ rust_helper_xarray_parent(const struct xarray *xa,
 }
 #endif
 
+#ifdef CONFIG_RUST_XARRAY_FIND_MARKED
+__rust_helper bool rust_helper_xarray_top(struct xa_node *node)
+{
+	return xas_top(node);
+}
+
+__rust_helper void rust_helper_xarray_set_restart(struct xa_state *xas)
+{
+	xas->xa_node = XAS_RESTART;
+}
+
+__rust_helper unsigned int
+rust_helper_xarray_node_find_mark(const struct xa_node *node,
+				  unsigned int offset, xa_mark_t mark)
+{
+	return find_next_bit(node->marks[(__force unsigned int)mark],
+			     XA_CHUNK_SIZE, offset);
+}
+#endif
+
 #if defined(CONFIG_RUST_XARRAY_DELETE_NODE) || \
 	defined(CONFIG_RUST_XARRAY_CREATE)
 __rust_helper bool rust_helper_xarray_zero_busy(const struct xarray *xa)

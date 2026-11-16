@@ -157,12 +157,15 @@ static void xas_set_offset(struct xa_state *xas)
 }
 
 /* move the index either forwards (find) or backwards (sibling slot) */
+#if !defined(CONFIG_RUST_XARRAY_FIND) || \
+	!defined(CONFIG_RUST_XARRAY_FIND_MARKED)
 static void xas_move_index(struct xa_state *xas, unsigned long offset)
 {
 	unsigned int shift = xas->xa_node->shift;
 	xas->xa_index &= ~XA_CHUNK_MASK << shift;
 	xas->xa_index += offset << shift;
 }
+#endif
 
 #ifndef CONFIG_RUST_XARRAY_FIND
 static void xas_next_offset(struct xa_state *xas)
@@ -453,12 +456,15 @@ static unsigned long xas_max(struct xa_state *xas)
 #endif
 
 /* The maximum index that can be contained in the array without expanding it */
+#if !defined(CONFIG_RUST_XARRAY_EXPAND) || \
+	!defined(CONFIG_RUST_XARRAY_FIND_MARKED)
 static unsigned long max_index(void *entry)
 {
 	if (!xa_is_node(entry))
 		return 0;
 	return (XA_CHUNK_SIZE << xa_to_node(entry)->shift) - 1;
 }
+#endif
 
 static inline void *xa_zero_to_null(void *entry)
 {
@@ -1598,6 +1604,7 @@ EXPORT_SYMBOL_GPL(xas_find);
  *
  * Return: The entry, if found, otherwise %NULL.
  */
+#ifndef CONFIG_RUST_XARRAY_FIND_MARKED
 void *xas_find_marked(struct xa_state *xas, unsigned long max, xa_mark_t mark)
 {
 	bool advance = true;
@@ -1677,6 +1684,12 @@ max:
 	xas->xa_node = XAS_RESTART;
 	return NULL;
 }
+#else
+void *xas_find_marked(struct xa_state *xas, unsigned long max, xa_mark_t mark)
+{
+	return rust_xarray_find_marked(xas, max, mark);
+}
+#endif
 EXPORT_SYMBOL_GPL(xas_find_marked);
 
 /**
