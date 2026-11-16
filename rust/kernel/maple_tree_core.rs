@@ -159,6 +159,18 @@ pub(crate) unsafe fn node_is_dead(node: *const MapleNode) -> bool {
 }
 
 #[inline(always)]
+/// Returns whether the dead-node read barrier found a dead encoded node.
+///
+/// # Safety
+///
+/// `enode` must identify a live Maple node.
+#[cfg(CONFIG_RUST_MAPLE_TREE_PREV)]
+pub(crate) unsafe fn enode_is_dead(enode: *const MapleEnode) -> bool {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { bindings::rust_maple_tree_enode_is_dead(enode.cast()) }
+}
+
+#[inline(always)]
 /// Returns whether a raw Maple node is the tree root.
 ///
 /// # Safety
@@ -444,6 +456,24 @@ pub(crate) unsafe fn safe_pivot(
     unsafe { *pivots.add(usize::from(offset)) }
 }
 
+#[inline(always)]
+/// Returns the first index covered by a slot.
+///
+/// # Safety
+///
+/// `mas` must contain a valid active state. `pivots` must describe the
+/// current node and `offset` must be a valid slot index.
+#[cfg(CONFIG_RUST_MAPLE_TREE_PREV)]
+pub(crate) unsafe fn safe_min(mas: *const MaState, pivots: *mut usize, offset: u8) -> usize {
+    if offset != 0 {
+        // SAFETY: A nonzero slot has a preceding pivot.
+        return unsafe { *pivots.add(usize::from(offset - 1)) } + 1;
+    }
+
+    // SAFETY: The caller supplies a valid active state.
+    unsafe { (*mas).min }
+}
+
 /// Resets a Maple state to start a new walk.
 ///
 /// # Safety
@@ -512,6 +542,38 @@ pub(crate) unsafe fn rewalk_if_dead(
 pub(crate) unsafe fn lock_check(mas: *mut MaState) {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { bindings::rust_maple_tree_lock_check(mas) };
+}
+
+/// Normalizes a non-active state before an iteration.
+///
+/// # Safety
+///
+/// `mas` must contain a valid state protected by RCU or the tree lock.
+#[cfg(CONFIG_RUST_MAPLE_TREE_NEXT)]
+pub(crate) unsafe fn may_activate(mas: *mut MaState) {
+    // SAFETY: The caller supplies a valid state.
+    if unsafe { (*mas).node.is_null() } {
+        // SAFETY: The caller supplies a valid writable state.
+        unsafe { (*mas).status = bindings::maple_status_ma_start };
+        return;
+    }
+
+    // SAFETY: The caller supplies a valid state.
+    let index = unsafe { (*mas).index };
+    // SAFETY: The caller supplies a valid state.
+    let max = unsafe { (*mas).max };
+    // SAFETY: The caller supplies a valid state.
+    let min = unsafe { (*mas).min };
+    if index > max || index < min {
+        // SAFETY: The caller supplies a valid writable state.
+        unsafe { (*mas).status = bindings::maple_status_ma_start };
+        return;
+    }
+
+    // SAFETY: The caller supplies a valid writable state.
+    unsafe { (*mas).status = bindings::maple_status_ma_active };
+    // SAFETY: The active state identifies an initialized tree.
+    unsafe { lock_check(mas) };
 }
 
 /// Emits a one-time warning for an impossible traversal state.

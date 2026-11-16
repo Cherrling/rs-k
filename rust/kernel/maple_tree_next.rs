@@ -7,7 +7,7 @@
 //! parent metadata, node layout, protected slot access, and lockdep checks.
 
 use super::maple_tree_core::{
-    ascend, data_end, is_active, is_none, is_overflow, is_ptr, lock_check, may_init_lock_check,
+    ascend, data_end, is_active, is_none, is_overflow, is_ptr, may_activate, may_init_lock_check,
     node_is_dead, node_is_root, node_type, pivots, rewalk, rewalk_if_dead, safe_pivot, slot, slots,
     to_node, warn_on_once, MaState, MapleEnode, MapleNode,
 };
@@ -19,37 +19,6 @@ use macros::export;
 enum SetupResult {
     Ready,
     Done(*mut c_void),
-}
-
-/// Normalizes a non-active state before a forward iteration.
-///
-/// # Safety
-///
-/// `mas` must contain a valid state protected by RCU or the tree lock.
-unsafe fn may_activate(mas: *mut MaState) {
-    // SAFETY: The caller supplies a valid state.
-    if unsafe { (*mas).node.is_null() } {
-        // SAFETY: The caller supplies a valid writable state.
-        unsafe { (*mas).status = bindings::maple_status_ma_start };
-        return;
-    }
-
-    // SAFETY: The caller supplies a valid state.
-    let index = unsafe { (*mas).index };
-    // SAFETY: The caller supplies a valid state.
-    let max = unsafe { (*mas).max };
-    // SAFETY: The caller supplies a valid state.
-    let min = unsafe { (*mas).min };
-    if index > max || index < min {
-        // SAFETY: The caller supplies a valid writable state.
-        unsafe { (*mas).status = bindings::maple_status_ma_start };
-        return;
-    }
-
-    // SAFETY: The caller supplies a valid writable state.
-    unsafe { (*mas).status = bindings::maple_status_ma_active };
-    // SAFETY: The active state identifies an initialized tree.
-    unsafe { lock_check(mas) };
 }
 
 /// Prepares a forward walk and returns an early result when possible.

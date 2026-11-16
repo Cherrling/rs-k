@@ -385,6 +385,23 @@ config RUST_MAPLE_TREE_NEXT
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_MAPLE_TREE_PREV
+	bool "Rust implementation of Maple Tree reverse iteration"
+	depends on RUST_MAPLE_TREE_NEXT
+	default y
+	help
+	  Use Rust for the production state transitions, parent ascent, node
+	  transition, slot selection, and underflow policy behind mas_prev(),
+	  mas_prev_range(), mas_find_rev(), and mas_find_range_rev().
+
+	  Encoded parent metadata, node layout, protected slot access, lockdep
+	  checks, and one-time diagnostics remain in C. The exported C entry
+	  points remain as ABI adapters. The C fallback retains the complete
+	  reverse iterator.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_PERCPU_REFCOUNT
 	bool "Rust implementation of percpu_ref() lifecycle"
 	depends on RUST

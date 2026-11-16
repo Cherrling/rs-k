@@ -63,4 +63,15 @@ bool rust_maple_tree_warn_on_once(bool condition);
 
 #endif /* CONFIG_RUST_MAPLE_TREE_NEXT */
 
+#ifdef CONFIG_RUST_MAPLE_TREE_PREV
+
+void *rust_mas_prev(struct ma_state *mas, unsigned long min);
+void *rust_mas_prev_range(struct ma_state *mas, unsigned long min);
+void *rust_mas_find_rev(struct ma_state *mas, unsigned long min);
+void *rust_mas_find_range_rev(struct ma_state *mas, unsigned long min);
+int rust_mas_prev_node(struct ma_state *mas, unsigned long min);
+void *rust_mas_prev_slot(struct ma_state *mas, unsigned long min, bool empty);
+
+#endif /* CONFIG_RUST_MAPLE_TREE_PREV */
+
 #endif /* _LINUX_MAPLE_TREE_RUST_H */

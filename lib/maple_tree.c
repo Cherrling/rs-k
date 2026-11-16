@@ -4100,6 +4100,12 @@ static __always_inline bool mas_rewalk_if_dead(struct ma_state *mas,
  * ma_none.
  * Return: 1 if the node is dead, 0 otherwise.
  */
+#ifdef CONFIG_RUST_MAPLE_TREE_PREV
+static __maybe_unused int mas_prev_node(struct ma_state *mas, unsigned long min)
+{
+	return rust_mas_prev_node(mas, min);
+}
+#else
 static int mas_prev_node(struct ma_state *mas, unsigned long min)
 {
 	enum maple_type mt;
@@ -4170,6 +4176,7 @@ no_entry:
 	mas->status = ma_underflow;
 	return 0;
 }
+#endif /* CONFIG_RUST_MAPLE_TREE_PREV */
 
 /*
  * mas_prev_slot() - Get the entry in the previous slot
@@ -4180,6 +4187,13 @@ no_entry:
  *
  * Return: The entry in the previous slot which is possibly NULL
  */
+#ifdef CONFIG_RUST_MAPLE_TREE_PREV
+static __maybe_unused void *mas_prev_slot(struct ma_state *mas,
+					  unsigned long min, bool empty)
+{
+	return rust_mas_prev_slot(mas, min, empty);
+}
+#else
 static void *mas_prev_slot(struct ma_state *mas, unsigned long min, bool empty)
 {
 	void *entry;
@@ -4252,6 +4266,7 @@ underflow:
 	mas->status = ma_underflow;
 	return NULL;
 }
+#endif /* CONFIG_RUST_MAPLE_TREE_PREV */
 
 /*
  * mas_next_node() - Get the next node at the same level in the tree.
@@ -5409,6 +5424,7 @@ void *mt_next(struct maple_tree *mt, unsigned long index, unsigned long max)
 }
 EXPORT_SYMBOL_GPL(mt_next);
 
+#ifndef CONFIG_RUST_MAPLE_TREE_PREV
 static bool mas_prev_setup(struct ma_state *mas, unsigned long min, void **entry)
 {
 	if (unlikely(mas->index <= min)) {
@@ -5469,6 +5485,7 @@ static bool mas_prev_setup(struct ma_state *mas, unsigned long min, void **entry
 
 	return false;
 }
+#endif /* CONFIG_RUST_MAPLE_TREE_PREV */
 
 /**
  * mas_prev() - Get the previous entry
@@ -5483,6 +5500,9 @@ static bool mas_prev_setup(struct ma_state *mas, unsigned long min, void **entry
  */
 void *mas_prev(struct ma_state *mas, unsigned long min)
 {
+#ifdef CONFIG_RUST_MAPLE_TREE_PREV
+	return rust_mas_prev(mas, min);
+#else
 	void *entry = NULL;
 
 	mas_may_init_lock_check(mas);
@@ -5490,6 +5510,7 @@ void *mas_prev(struct ma_state *mas, unsigned long min)
 		return entry;
 
 	return mas_prev_slot(mas, min, false);
+#endif /* CONFIG_RUST_MAPLE_TREE_PREV */
 }
 EXPORT_SYMBOL_GPL(mas_prev);
 
@@ -5507,6 +5528,9 @@ EXPORT_SYMBOL_GPL(mas_prev);
  */
 void *mas_prev_range(struct ma_state *mas, unsigned long min)
 {
+#ifdef CONFIG_RUST_MAPLE_TREE_PREV
+	return rust_mas_prev_range(mas, min);
+#else
 	void *entry = NULL;
 
 	mas_may_init_lock_check(mas);
@@ -5514,6 +5538,7 @@ void *mas_prev_range(struct ma_state *mas, unsigned long min)
 		return entry;
 
 	return mas_prev_slot(mas, min, true);
+#endif /* CONFIG_RUST_MAPLE_TREE_PREV */
 }
 EXPORT_SYMBOL_GPL(mas_prev_range);
 
@@ -5710,6 +5735,7 @@ EXPORT_SYMBOL_GPL(mas_find_range);
  *
  * Returns: True if entry is the answer, false otherwise.
  */
+#ifndef CONFIG_RUST_MAPLE_TREE_PREV
 static bool mas_find_rev_setup(struct ma_state *mas, unsigned long min,
 		void **entry)
 {
@@ -5787,6 +5813,7 @@ none:
 	mas->status = ma_none;
 	return true;
 }
+#endif /* CONFIG_RUST_MAPLE_TREE_PREV */
 
 /**
  * mas_find_rev: On the first call, find the first non-null entry at or below
@@ -5803,6 +5830,9 @@ none:
  */
 void *mas_find_rev(struct ma_state *mas, unsigned long min)
 {
+#ifdef CONFIG_RUST_MAPLE_TREE_PREV
+	return rust_mas_find_rev(mas, min);
+#else
 	void *entry = NULL;
 
 	mas_may_init_lock_check(mas);
@@ -5812,6 +5842,7 @@ void *mas_find_rev(struct ma_state *mas, unsigned long min)
 	/* Retries on dead nodes handled by mas_prev_slot */
 	return mas_prev_slot(mas, min, false);
 
+#endif /* CONFIG_RUST_MAPLE_TREE_PREV */
 }
 EXPORT_SYMBOL_GPL(mas_find_rev);
 
@@ -5830,6 +5861,9 @@ EXPORT_SYMBOL_GPL(mas_find_rev);
  */
 void *mas_find_range_rev(struct ma_state *mas, unsigned long min)
 {
+#ifdef CONFIG_RUST_MAPLE_TREE_PREV
+	return rust_mas_find_range_rev(mas, min);
+#else
 	void *entry = NULL;
 
 	mas_may_init_lock_check(mas);
@@ -5838,6 +5872,7 @@ void *mas_find_range_rev(struct ma_state *mas, unsigned long min)
 
 	/* Retries on dead nodes handled by mas_prev_slot */
 	return mas_prev_slot(mas, min, true);
+#endif /* CONFIG_RUST_MAPLE_TREE_PREV */
 }
 EXPORT_SYMBOL_GPL(mas_find_range_rev);
 
