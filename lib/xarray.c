@@ -1155,6 +1155,8 @@ void xas_init_marks(const struct xa_state *xas)
 EXPORT_SYMBOL_GPL(xas_init_marks);
 
 #ifdef CONFIG_XARRAY_MULTI
+#if !defined(CONFIG_RUST_XARRAY_SPLIT) || \
+	!defined(CONFIG_RUST_XARRAY_TRY_SPLIT)
 static unsigned int node_get_marks(struct xa_node *node, unsigned int offset)
 {
 	unsigned int marks = 0;
@@ -1221,6 +1223,7 @@ static void __xas_init_node_for_split(struct xa_state *xas,
 		}
 	}
 }
+#endif /* Native split helper users */
 
 /**
  * xas_split_alloc() - Allocate memory for splitting an entry.
@@ -1359,6 +1362,7 @@ EXPORT_SYMBOL_GPL(xas_split);
  * Context: Any context.
  *
  */
+#ifndef CONFIG_RUST_XARRAY_TRY_SPLIT
 unsigned int xas_try_split_min_order(unsigned int order)
 {
 	if (order % XA_CHUNK_SHIFT == 0)
@@ -1366,6 +1370,12 @@ unsigned int xas_try_split_min_order(unsigned int order)
 
 	return order - (order % XA_CHUNK_SHIFT);
 }
+#else
+unsigned int xas_try_split_min_order(unsigned int order)
+{
+	return rust_xarray_try_split_min_order(order);
+}
+#endif
 EXPORT_SYMBOL_GPL(xas_try_split_min_order);
 
 /**
@@ -1384,6 +1394,7 @@ EXPORT_SYMBOL_GPL(xas_try_split_min_order);
  *
  * Context: Any context.  The caller should hold the xa_lock.
  */
+#ifndef CONFIG_RUST_XARRAY_TRY_SPLIT
 void xas_try_split(struct xa_state *xas, void *entry, unsigned int order)
 {
 	unsigned int sibs = (1 << (order % XA_CHUNK_SHIFT)) - 1;
@@ -1466,6 +1477,12 @@ void xas_try_split(struct xa_state *xas, void *entry, unsigned int order)
 	node->nr_values += values;
 	xas_update(xas, node);
 }
+#else
+void xas_try_split(struct xa_state *xas, void *entry, unsigned int order)
+{
+	rust_xarray_try_split(xas, entry, order);
+}
+#endif
 EXPORT_SYMBOL_GPL(xas_try_split);
 #endif
 

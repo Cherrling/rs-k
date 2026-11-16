@@ -712,6 +712,24 @@ config RUST_XARRAY_SPLIT
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_XARRAY_TRY_SPLIT
+	bool "Rust implementation of XArray one-shot multi-index splitting"
+	depends on RUST_XARRAY_SPLIT && X86_64
+	default y
+	help
+	  Use Rust for the production one-shot XArray multi-index split
+	  policy behind xas_try_split_min_order() and xas_try_split().
+
+	  Rust owns the one-level split validation, opportunistic GFP_NOWAIT
+	  allocation, prepared-node consumption, mark propagation, and value
+	  accounting. Slab allocation, node and entry layout, RCU publication,
+	  mark bitmaps, update callbacks, and error encoding remain in C. The
+	  exported entry points remain as ABI adapters. The C fallback retains
+	  the complete one-shot split policy.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RBTREE_RUST_KUNIT_TEST
 	bool "KUnit tests for the Rust rbtree implementation"
 	depends on RUST_RBTREE && KUNIT

@@ -99,6 +99,13 @@ void rust_xarray_split(struct xa_state *xas, void *entry, unsigned int order);
 
 #endif /* CONFIG_RUST_XARRAY_SPLIT */
 
+#ifdef CONFIG_RUST_XARRAY_TRY_SPLIT
+
+unsigned int rust_xarray_try_split_min_order(unsigned int order);
+void rust_xarray_try_split(struct xa_state *xas, void *entry, unsigned int order);
+
+#endif /* CONFIG_RUST_XARRAY_TRY_SPLIT */
+
 #if defined(CONFIG_RUST_XARRAY_FREE_NODES) || \
 	defined(CONFIG_RUST_XARRAY_EXPAND) || \
 	defined(CONFIG_RUST_XARRAY_SPLIT)

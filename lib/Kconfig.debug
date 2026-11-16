@@ -3589,6 +3589,18 @@ config XARRAY_SPLIT_KUNIT_TEST
 
 	  If unsure, say N.
 
+config XARRAY_TRY_SPLIT_KUNIT_TEST
+	tristate "KUnit Test for XArray one-shot multi-index splitting" if !KUNIT_ALL_TESTS
+	depends on XARRAY_MULTI && KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This builds the KUnit test suite for XArray one-shot multi-index
+	  splitting. It tests minimum-order selection, top cursors, horizontal
+	  splits, vertical splits, opportunistic allocation, and rejection of
+	  unsupported cascade splits in the active implementation.
+
+	  If unsure, say N.
+
 config LIST_KUNIT_TEST
 	tristate "KUnit Test for Kernel Linked-list structures" if !KUNIT_ALL_TESTS
 	depends on KUNIT

@@ -124,6 +124,7 @@ more details.
     native-xarray-split
     native-xarray-squash
     native-xarray-store
+    native-xarray-try-split
     native-percpu-refcount
     refcount
     swait
