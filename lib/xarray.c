@@ -411,6 +411,13 @@ static void *xas_alloc(struct xa_state *xas, unsigned int shift)
 	return node;
 }
 
+#ifdef CONFIG_RUST_XARRAY_EXPAND
+struct xa_node *rust_xarray_alloc_node(struct xa_state *xas, unsigned int shift)
+{
+	return xas_alloc(xas, shift);
+}
+#endif
+
 #ifdef CONFIG_XARRAY_MULTI
 /* Returns the number of indices covered by a given xa_state */
 static unsigned long xas_size(const struct xa_state *xas)
@@ -425,6 +432,7 @@ static unsigned long xas_size(const struct xa_state *xas)
  * multi-index entry at index 0, the calculation is a little more complex
  * than you might expect.
  */
+#ifndef CONFIG_RUST_XARRAY_EXPAND
 static unsigned long xas_max(struct xa_state *xas)
 {
 	unsigned long max = xas->xa_index;
@@ -440,6 +448,7 @@ static unsigned long xas_max(struct xa_state *xas)
 
 	return max;
 }
+#endif
 
 /* The maximum index that can be contained in the array without expanding it */
 static unsigned long max_index(void *entry)
@@ -579,6 +588,7 @@ static void xas_free_nodes(struct xa_state *xas, struct xa_node *top)
  * xas_expand adds nodes to the head of the tree until it has reached
  * sufficient height to be able to contain @xas->xa_index
  */
+#ifndef CONFIG_RUST_XARRAY_EXPAND
 static int xas_expand(struct xa_state *xas, void *head)
 {
 	struct xarray *xa = xas->xa;
@@ -645,6 +655,7 @@ static int xas_expand(struct xa_state *xas, void *head)
 	xas->xa_node = node;
 	return shift;
 }
+#endif
 
 /*
  * xas_create() - Create a slot to store an entry in.
@@ -673,7 +684,11 @@ static void *xas_create(struct xa_state *xas, bool allow_root)
 		xas->xa_node = NULL;
 		if (!entry && xa_zero_busy(xa))
 			entry = XA_ZERO_ENTRY;
+#ifdef CONFIG_RUST_XARRAY_EXPAND
+		shift = rust_xarray_expand(xas, entry);
+#else
 		shift = xas_expand(xas, entry);
+#endif
 		if (shift < 0)
 			return NULL;
 		if (!shift && !allow_root)
@@ -798,12 +813,15 @@ void rust_xarray_free_nodes(struct xa_state *xas, struct xa_node *top)
 }
 #endif
 
-#ifdef CONFIG_RUST_XARRAY_FREE_NODES
+#if defined(CONFIG_RUST_XARRAY_FREE_NODES) || \
+	defined(CONFIG_RUST_XARRAY_EXPAND)
 void rust_xarray_notify_node(struct xa_state *xas, struct xa_node *node)
 {
 	xas_update(xas, node);
 }
+#endif
 
+#ifdef CONFIG_RUST_XARRAY_FREE_NODES
 void rust_xarray_retire_node(struct xa_node *node)
 {
 	xa_node_free(node);

@@ -109,6 +109,7 @@ more details.
     native-kfifo
     native-genradix
     native-xarray-delete-node
+    native-xarray-expand
     native-xarray-free-nodes
     native-xarray-load
     native-xarray-marks

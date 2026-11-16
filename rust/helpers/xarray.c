@@ -132,7 +132,8 @@ __rust_helper void rust_helper_xarray_assign_slot(struct xa_state *xas,
 #endif
 
 #if defined(CONFIG_RUST_XARRAY_MARKS) || \
-	defined(CONFIG_RUST_XARRAY_DELETE_NODE)
+	defined(CONFIG_RUST_XARRAY_DELETE_NODE) || \
+	defined(CONFIG_RUST_XARRAY_EXPAND)
 __rust_helper bool rust_helper_xarray_node_mark_get(const struct xa_node *node,
 						    unsigned int offset,
 						    xa_mark_t mark)
@@ -186,6 +187,44 @@ __rust_helper void rust_helper_xarray_root_mark_clear(struct xarray *xa,
 __rust_helper bool rust_helper_xarray_track_free(const struct xarray *xa)
 {
 	return xa->xa_flags & XA_FLAGS_TRACK_FREE;
+}
+#endif
+
+#ifdef CONFIG_RUST_XARRAY_EXPAND
+__rust_helper void *rust_helper_xarray_mk_node(const struct xa_node *node)
+{
+	return xa_mk_node(node);
+}
+
+__rust_helper void
+rust_helper_xarray_node_slot_zero_init(struct xa_node *node, void *entry)
+{
+	RCU_INIT_POINTER(node->slots[0], entry);
+}
+
+__rust_helper void
+rust_helper_xarray_node_mark_all(struct xa_node *node, xa_mark_t mark)
+{
+	bitmap_fill(node->marks[(__force unsigned int)mark], XA_CHUNK_SIZE);
+}
+
+__rust_helper void
+rust_helper_xarray_link_root_child(struct xa_node *child,
+				   struct xa_node *parent)
+{
+	child->offset = 0;
+	rcu_assign_pointer(child->parent, parent);
+}
+
+__rust_helper bool rust_helper_xarray_expand_check(struct xa_state *xas,
+						   unsigned int shift)
+{
+	if (WARN_ON_ONCE(shift > BITS_PER_LONG)) {
+		xas_set_err(xas, -EINVAL);
+		return false;
+	}
+
+	return true;
 }
 #endif
 

@@ -481,6 +481,23 @@ config RUST_XARRAY_STORE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_XARRAY_EXPAND
+	bool "Rust implementation of XArray root expansion"
+	depends on RUST_XARRAY_STORE && X86_64
+	default y
+	help
+	  Use Rust for the production XArray algorithm that grows the root
+	  until it can contain the requested index. Rust owns height selection,
+	  node-chain growth, mark propagation, parent links, and publication
+	  order.
+
+	  Slab allocation, node initialization, mark storage, root publication,
+	  update callbacks, and the node layout remain in C. The C fallback
+	  retains its existing expansion policy.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_XARRAY_FREE_NODES
 	bool "Rust implementation of XArray node reclamation"
 	depends on RUST_XARRAY_STORE && X86_64
