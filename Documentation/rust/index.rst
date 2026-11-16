@@ -119,6 +119,7 @@ more details.
     native-xarray-load
     native-xarray-marks
     native-xarray-next-prev
+    native-xarray-nomem
     native-xarray-pause
     native-xarray-squash
     native-xarray-store

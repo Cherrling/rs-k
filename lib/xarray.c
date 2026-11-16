@@ -9,6 +9,7 @@
 #include <linux/bitmap.h>
 #include <linux/export.h>
 #include <linux/list.h>
+#include <linux/panic.h>
 #include <linux/slab.h>
 #include <linux/xarray.h>
 #include <linux/xarray-rust.h>
@@ -281,6 +282,45 @@ static void xa_node_free(struct xa_node *node)
 	call_rcu(&node->rcu_head, radix_tree_node_rcu_free);
 }
 
+#ifdef CONFIG_RUST_XARRAY_NOMEM
+static void xa_prealloc_check(const struct xa_node *node)
+{
+#ifdef XA_DEBUG
+	if (unlikely(!list_empty(&node->private_list))) {
+		xa_dump_node(node);
+		panic("Corrupt XArray preallocation private list\n");
+	}
+#else
+	(void)node;
+#endif
+}
+
+struct xa_node *rust_xarray_alloc_prealloc(struct xa_state *xas, gfp_t gfp)
+{
+	if (xas->xa->xa_flags & XA_FLAGS_ACCOUNT)
+		gfp |= __GFP_ACCOUNT;
+
+	return kmem_cache_alloc_lru(radix_tree_node_cachep, xas->xa_lru, gfp);
+}
+
+struct xa_node *rust_xarray_parent_prealloc(const struct xa_node *node)
+{
+	return rcu_dereference_raw(node->parent);
+}
+
+void rust_xarray_prepare_prealloc(struct xa_node *node)
+{
+	RCU_INIT_POINTER(node->parent, NULL);
+	xa_prealloc_check(node);
+}
+
+void rust_xarray_free_prealloc(struct xa_node *node)
+{
+	xa_prealloc_check(node);
+	radix_tree_node_rcu_free(&node->rcu_head);
+}
+#endif
+
 /*
  * xas_destroy() - Free any resources allocated during the XArray operation.
  * @xas: XArray operation state.
@@ -288,6 +328,7 @@ static void xa_node_free(struct xa_node *node)
  * Most users will not need to call this function; it is called for you
  * by xas_nomem().
  */
+#ifndef CONFIG_RUST_XARRAY_NOMEM
 void xas_destroy(struct xa_state *xas)
 {
 	struct xa_node *next, *node = xas->xa_alloc;
@@ -299,6 +340,12 @@ void xas_destroy(struct xa_state *xas)
 		xas->xa_alloc = node = next;
 	}
 }
+#else
+void xas_destroy(struct xa_state *xas)
+{
+	rust_xarray_destroy(xas);
+}
+#endif
 EXPORT_SYMBOL_GPL(xas_destroy);
 
 /**
@@ -319,6 +366,7 @@ EXPORT_SYMBOL_GPL(xas_destroy);
  *
  * Return: true if memory was needed, and was successfully allocated.
  */
+#ifndef CONFIG_RUST_XARRAY_NOMEM
 bool xas_nomem(struct xa_state *xas, gfp_t gfp)
 {
 	if (xas->xa_node != XA_ERROR(-ENOMEM)) {
@@ -335,6 +383,12 @@ bool xas_nomem(struct xa_state *xas, gfp_t gfp)
 	xas->xa_node = XAS_RESTART;
 	return true;
 }
+#else
+bool xas_nomem(struct xa_state *xas, gfp_t gfp)
+{
+	return rust_xarray_nomem(xas, gfp);
+}
+#endif
 EXPORT_SYMBOL_GPL(xas_nomem);
 
 /*

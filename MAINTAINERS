@@ -29908,6 +29908,7 @@ F:	lib/tests/xarray_find_kunit.c
 F:	lib/tests/xarray_find_marked_kunit.c
 F:	lib/tests/xarray_free_nodes_kunit.c
 F:	lib/tests/xarray_next_prev_kunit.c
+F:	lib/tests/xarray_nomem_kunit.c
 F:	lib/tests/xarray_pause_kunit.c
 F:	lib/tests/xarray_marks_kunit.c
 F:	lib/tests/xarray_rust_kunit.c

@@ -466,6 +466,24 @@ config RUST_XARRAY_LOAD
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_XARRAY_NOMEM
+	bool "Rust implementation of XArray allocation lifecycle"
+	depends on RUST && X86_64
+	default y
+	help
+	  Use Rust for the production XArray operation-preallocation lifecycle
+	  behind xas_nomem() and xas_destroy().
+
+	  Rust owns ENOMEM detection, pending-node chain cleanup, cursor
+	  restart, and the decision to retain or release a new preallocation.
+	  Slab allocation, node layout, RCU parent access, debug invariant
+	  checks, and node reclamation remain in C. The exported entry points
+	  remain as ABI adapters. The C fallback retains its existing
+	  allocation-lifecycle policy.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_XARRAY_FIND
 	bool "Rust implementation of XArray forward search"
 	depends on RUST_XARRAY_LOAD && X86_64

@@ -3416,6 +3416,17 @@ config XARRAY_LOAD_KUNIT_TEST
 
 	  If unsure, say N.
 
+config XARRAY_NOMEM_KUNIT_TEST
+	tristate "KUnit Test for XArray allocation lifecycle" if !KUNIT_ALL_TESTS
+	depends on XARRAY_MULTI && KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This builds the KUnit test suite for XArray operation preallocation.
+	  It tests successful allocation, non-ENOMEM handling, pending-chain
+	  release, and allocation accounting in the active implementation.
+
+	  If unsure, say N.
+
 config XARRAY_FIND_KUNIT_TEST
 	tristate "KUnit Test for XArray forward search" if !KUNIT_ALL_TESTS
 	depends on XARRAY_MULTI && KUNIT

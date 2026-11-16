@@ -63,6 +63,7 @@ obj-$(CONFIG_GLOB_KUNIT_TEST) += glob_kunit.o
 obj-$(CONFIG_HASHTABLE_KUNIT_TEST) += hashtable_test.o
 obj-$(CONFIG_HASH_KUNIT_TEST) += test_hash.o
 obj-$(CONFIG_XARRAY_LOAD_KUNIT_TEST) += xarray_rust_kunit.o
+obj-$(CONFIG_XARRAY_NOMEM_KUNIT_TEST) += xarray_nomem_kunit.o
 obj-$(CONFIG_XARRAY_FIND_KUNIT_TEST) += xarray_find_kunit.o
 obj-$(CONFIG_XARRAY_FIND_CONFLICT_KUNIT_TEST) += xarray_find_conflict_kunit.o
 obj-$(CONFIG_XARRAY_FIND_MARKED_KUNIT_TEST) += xarray_find_marked_kunit.o

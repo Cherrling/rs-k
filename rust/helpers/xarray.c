@@ -28,7 +28,7 @@ __rust_helper void rust_helper_xa_unlock(struct xarray *xa)
 	return xa_unlock(xa);
 }
 
-#ifdef CONFIG_RUST_XARRAY_LOAD
+#if defined(CONFIG_RUST_XARRAY_LOAD) || defined(CONFIG_RUST_XARRAY_NOMEM)
 __rust_helper void *rust_helper_xarray_head(const struct xarray *xa)
 {
 	return xa_head(xa);

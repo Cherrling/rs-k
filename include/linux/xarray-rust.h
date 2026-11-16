@@ -20,6 +20,22 @@ void *rust_xarray_load_advanced(struct xa_state *xas);
 
 #endif /* CONFIG_RUST_XARRAY_LOAD */
 
+#ifdef CONFIG_RUST_XARRAY_NOMEM
+
+enum rust_xarray_nomem_constant {
+	RUST_XARRAY_NOMEM_ENOMEM = ENOMEM,
+};
+
+bool rust_xarray_nomem(struct xa_state *xas, gfp_t gfp);
+void rust_xarray_destroy(struct xa_state *xas);
+
+struct xa_node *rust_xarray_alloc_prealloc(struct xa_state *xas, gfp_t gfp);
+struct xa_node *rust_xarray_parent_prealloc(const struct xa_node *node);
+void rust_xarray_prepare_prealloc(struct xa_node *node);
+void rust_xarray_free_prealloc(struct xa_node *node);
+
+#endif /* CONFIG_RUST_XARRAY_NOMEM */
+
 #ifdef CONFIG_RUST_XARRAY_STORE
 
 void *rust_xarray_store(struct xa_state *xas, void *entry);
