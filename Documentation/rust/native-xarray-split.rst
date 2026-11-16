@@ -80,8 +80,9 @@ The unit must pass these checks before integration:
 
 * Rust-enabled x86_64 LLVM builds with one and four virtual CPUs.
 
-* Focused KUnit coverage for no-op allocation, multi-node preparation, top
-  cursors, horizontal splits, vertical splits, marks, and entry visibility.
+* Focused KUnit coverage for no-op allocation, unsupported requests,
+  multi-node preparation, top cursors, horizontal splits, vertical splits,
+  marks, and entry visibility.
 
 * The same four runs with this Rust unit disabled.
 
@@ -111,19 +112,26 @@ Every boot completed the focused suite and the complete upstream XArray suite:
      - XArray result
    * - Rust
      - SMP1, SMP4 rounds 1-3
-     - 5 passed, 0 failed
+     - 6 passed, 0 failed
      - 158825682 of 158825682 passed
    * - C fallback
      - SMP1, SMP4 rounds 1-3
-     - 5 passed, 0 failed
+     - 6 passed, 0 failed
      - 158825682 of 158825682 passed
    * - Rust with KASAN
      - SMP1, SMP4 rounds 1-3
-     - 5 passed, 0 failed
+     - 6 passed, 0 failed
      - 158825682 of 158825682 passed
 
-The boot logs contained no KUnit failures, BUG reports, warnings, Oops reports,
-panics, KASAN reports, call traces, or RCU stalls.
+Every boot emitted exactly one intentional ``WARN_ON`` from the unsupported
+request test. The boot logs contained no other warnings, KUnit failures, BUG
+reports, Oops reports, panics, KASAN reports, unexpected call traces, or RCU
+stalls.
+
+The unsupported request test asserts that ``xas_error()`` returns
+``-ENOMEM``. This covers the Rust failure path, which now passes the negative
+errno directly to the C error-encoding boundary. The C fallback already used
+the correct negative encoding.
 
 The Rust object defined ``rust_xarray_split_alloc`` and ``rust_xarray_split``.
 The Rust-enabled ``lib/xarray.o`` defined both public entry points as direct

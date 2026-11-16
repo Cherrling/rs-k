@@ -63,6 +63,19 @@ static void xarray_test_split_alloc_noop(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, xas_error(&xas), 0);
 }
 
+static void xarray_test_split_alloc_unsupported(struct kunit *test)
+{
+	struct xarray *xa = xarray_test_init(test);
+	void *entry = xa_mk_value(0x9150);
+	XA_STATE_ORDER(xas, xa, 0, 0);
+
+	KUNIT_ASSERT_NOT_NULL(test, xa);
+	xas_split_alloc(&xas, entry, 2 * XA_CHUNK_SHIFT, GFP_KERNEL);
+
+	KUNIT_EXPECT_NULL(test, xas.xa_alloc);
+	KUNIT_EXPECT_EQ(test, xas_error(&xas), -ENOMEM);
+}
+
 static void xarray_test_split_alloc_chain(struct kunit *test)
 {
 	struct xa_node *node;
@@ -166,6 +179,7 @@ static void xarray_test_split_vertical(struct kunit *test)
 
 static struct kunit_case xarray_split_test_cases[] = {
 	KUNIT_CASE(xarray_test_split_alloc_noop),
+	KUNIT_CASE(xarray_test_split_alloc_unsupported),
 	KUNIT_CASE(xarray_test_split_alloc_chain),
 	KUNIT_CASE(xarray_test_split_top_noop),
 	KUNIT_CASE(xarray_test_split_horizontal),

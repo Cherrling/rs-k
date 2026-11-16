@@ -210,7 +210,7 @@ unsafe fn allocation_failed(xas: *mut XaState) {
     // SAFETY: The split preparation chain is fully detached.
     unsafe { xarray_nomem::destroy(xas) };
     // SAFETY: The caller provides a valid writable cursor.
-    unsafe { set_error(xas, -ENOMEM) };
+    unsafe { set_error(xas, ENOMEM) };
 }
 
 /// Allocates and initializes the pending nodes needed by a multi-index split.
