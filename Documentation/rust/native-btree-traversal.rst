@@ -26,7 +26,7 @@ Rust owns:
 
 The original C traversal and leaf-update paths remain available when the
 option is disabled. Structural insertion, removal, merging, visitor
-traversal, and node reclamation remain separate migration units.
+traversal, and node reclamation are covered by separate migration units.
 
 Entry points and ownership
 --------------------------
@@ -44,9 +44,10 @@ geometry exposes the word count, pair count, and value offset to Rust. Rust
 interprets these fields, accesses keys and values directly, and owns every
 traversal decision and key operation.
 
-Node allocation, zeroing, the mempool, and structural tree modification
-remain in C. Callers continue to serialize each tree operation under the
-existing B+Tree contract.
+Node allocation and zeroing, the mempool, and B+Tree layout definitions
+remain in C. The native structural operations are documented separately.
+Callers continue to serialize each tree operation under the existing B+Tree
+contract.
 
 Important invariants
 --------------------

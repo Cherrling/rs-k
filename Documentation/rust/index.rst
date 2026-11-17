@@ -107,6 +107,7 @@ more details.
     native-find-bit
     native-bitmap-ops
     native-btree-traversal
+    native-btree-structural
     native-kfifo
     native-genradix
     native-maple-tree-load

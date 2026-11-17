@@ -52,6 +52,7 @@ obj-$(CONFIG_FFS_KUNIT_TEST) += ffs_kunit.o
 obj-$(CONFIG_FIND_BIT_RUST_KUNIT_TEST) += find_bit_rust_kunit.o
 obj-$(CONFIG_BITMAP_OPS_RUST_KUNIT_TEST) += bitmap_ops_kunit.o
 obj-$(CONFIG_BTREE_TRAVERSAL_KUNIT_TEST) += btree_traversal_kunit.o
+obj-$(CONFIG_BTREE_STRUCTURAL_KUNIT_TEST) += btree_structural_kunit.o
 CFLAGS_fortify_kunit.o += $(call cc-disable-warning, unsequenced)
 CFLAGS_fortify_kunit.o += $(call cc-disable-warning, stringop-overread)
 CFLAGS_fortify_kunit.o += $(call cc-disable-warning, stringop-truncation)
