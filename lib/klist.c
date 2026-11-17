@@ -16,24 +16,10 @@
  * that is safe and allows for modification of the list during the
  * iteration (e.g. insertion and removal), including modification of the
  * current node on the list.
- *
- * It works using a 3rd object type - struct klist_iter - that is declared
- * and initialized before an iteration. klist_next() is used to acquire the
- * next element in the list. It returns NULL if there are no more items.
- * Internally, that routine takes the klist's lock, decrements the
- * reference count of the previous klist_node and increments the count of
- * the next klist_node. It then drops the lock and returns.
- *
- * There are primitives for adding and removing nodes to/from a klist.
- * When deleting, klist_del() will simply decrement the reference count.
- * Only when the count goes to 0 is the node removed from the list.
- * klist_remove() will try to delete the node from the list and block until
- * it is actually removed. This is useful for objects (like devices) that
- * have been removed from the system and must be freed (but must wait until
- * all accessors have finished).
  */
 
 #include <linux/klist.h>
+#include <linux/klist-rust.h>
 #include <linux/export.h>
 #include <linux/sched.h>
 #include <linux/sched/task.h>
@@ -44,6 +30,96 @@
  */
 #define KNODE_DEAD		1LU
 #define KNODE_KLIST_MASK	~KNODE_DEAD
+
+struct klist_waiter {
+	struct list_head list;
+	struct klist_node *node;
+	struct task_struct *process;
+	int woken;
+};
+
+static DEFINE_SPINLOCK(klist_remove_lock);
+static LIST_HEAD(klist_remove_waiters);
+
+/*
+ * Wake tasks blocked in klist_remove(). This is shared with the native Rust
+ * release path because task state and scheduler wakeup remain C boundaries.
+ */
+void klist_wake_waiters(struct klist_node *node)
+{
+	struct klist_waiter *waiter, *tmp;
+
+	spin_lock(&klist_remove_lock);
+	list_for_each_entry_safe(waiter, tmp, &klist_remove_waiters, list) {
+		struct task_struct *p;
+
+		if (waiter->node != node)
+			continue;
+
+		p = waiter->process;
+		get_task_struct(p);
+		list_del(&waiter->list);
+		/* Publish only after the final waiter and node accesses */
+		smp_store_release(&waiter->woken, 1);
+		/* Order the wakeup after the release store visible to readers. */
+		mb();
+		wake_up_process(p);
+		put_task_struct(p);
+	}
+	spin_unlock(&klist_remove_lock);
+}
+
+/**
+ * klist_init - Initialize a klist structure.
+ * @k: The klist we're initializing.
+ * @get: The get function for the embedding object (NULL if none)
+ * @put: The put function for the embedding object (NULL if none)
+ *
+ * Initialises the klist structure.  If the klist_node structures are
+ * going to be embedded in refcounted objects (necessary for safe
+ * deletion) then the get/put arguments are used to initialise
+ * functions that take and release references on the embedding
+ * objects.
+ */
+void klist_init(struct klist *k, void (*get)(struct klist_node *),
+		void (*put)(struct klist_node *))
+{
+	INIT_LIST_HEAD(&k->k_list);
+	spin_lock_init(&k->k_lock);
+	k->get = get;
+	k->put = put;
+}
+EXPORT_SYMBOL_GPL(klist_init);
+
+/**
+ * klist_remove - Decrement the refcount of node and wait for it to go away.
+ * @n: node we're removing.
+ */
+void klist_remove(struct klist_node *n)
+{
+	struct klist_waiter waiter;
+
+	waiter.node = n;
+	waiter.process = current;
+	waiter.woken = 0;
+	spin_lock(&klist_remove_lock);
+	list_add(&waiter.list, &klist_remove_waiters);
+	spin_unlock(&klist_remove_lock);
+
+	klist_del(n);
+
+	for (;;) {
+		set_current_state(TASK_UNINTERRUPTIBLE);
+		/* Pairs with the release store in klist_wake_waiters() */
+		if (smp_load_acquire(&waiter.woken))
+			break;
+		schedule();
+	}
+	__set_current_state(TASK_RUNNING);
+}
+EXPORT_SYMBOL_GPL(klist_remove);
+
+#ifndef CONFIG_RUST_KLIST
 
 static struct klist *knode_klist(struct klist_node *knode)
 {
@@ -69,28 +145,6 @@ static void knode_kill(struct klist_node *knode)
 	WARN_ON(knode_dead(knode));
 	*(unsigned long *)&knode->n_klist |= KNODE_DEAD;
 }
-
-/**
- * klist_init - Initialize a klist structure.
- * @k: The klist we're initializing.
- * @get: The get function for the embedding object (NULL if none)
- * @put: The put function for the embedding object (NULL if none)
- *
- * Initialises the klist structure.  If the klist_node structures are
- * going to be embedded in refcounted objects (necessary for safe
- * deletion) then the get/put arguments are used to initialise
- * functions that take and release references on the embedding
- * objects.
- */
-void klist_init(struct klist *k, void (*get)(struct klist_node *),
-		void (*put)(struct klist_node *))
-{
-	INIT_LIST_HEAD(&k->k_list);
-	spin_lock_init(&k->k_lock);
-	k->get = get;
-	k->put = put;
-}
-EXPORT_SYMBOL_GPL(klist_init);
 
 static void add_head(struct klist *k, struct klist_node *n)
 {
@@ -158,7 +212,7 @@ EXPORT_SYMBOL_GPL(klist_add_behind);
 /**
  * klist_add_before - Init a klist_node and add it before an existing node
  * @n: node we're adding.
- * @pos: node to put @n after
+ * @pos: node to put @n before
  */
 void klist_add_before(struct klist_node *n, struct klist_node *pos)
 {
@@ -171,41 +225,14 @@ void klist_add_before(struct klist_node *n, struct klist_node *pos)
 }
 EXPORT_SYMBOL_GPL(klist_add_before);
 
-struct klist_waiter {
-	struct list_head list;
-	struct klist_node *node;
-	struct task_struct *process;
-	int woken;
-};
-
-static DEFINE_SPINLOCK(klist_remove_lock);
-static LIST_HEAD(klist_remove_waiters);
-
 static void klist_release(struct kref *kref)
 {
-	struct klist_waiter *waiter, *tmp;
 	struct klist_node *n = container_of(kref, struct klist_node, n_ref);
 
 	WARN_ON(!knode_dead(n));
 	list_del(&n->n_node);
 	knode_set_klist(n, NULL);
-	spin_lock(&klist_remove_lock);
-	list_for_each_entry_safe(waiter, tmp, &klist_remove_waiters, list) {
-		struct task_struct *p;
-
-		if (waiter->node != n)
-			continue;
-
-		p = waiter->process;
-		get_task_struct(p);
-		list_del(&waiter->list);
-		/* Publish only after the final waiter and n accesses */
-		smp_store_release(&waiter->woken, 1);
-		mb();
-		wake_up_process(p);
-		put_task_struct(p);
-	}
-	spin_unlock(&klist_remove_lock);
+	klist_wake_waiters(n);
 }
 
 static int klist_dec_and_del(struct klist_node *n)
@@ -239,40 +266,12 @@ void klist_del(struct klist_node *n)
 EXPORT_SYMBOL_GPL(klist_del);
 
 /**
- * klist_remove - Decrement the refcount of node and wait for it to go away.
- * @n: node we're removing.
- */
-void klist_remove(struct klist_node *n)
-{
-	struct klist_waiter waiter;
-
-	waiter.node = n;
-	waiter.process = current;
-	waiter.woken = 0;
-	spin_lock(&klist_remove_lock);
-	list_add(&waiter.list, &klist_remove_waiters);
-	spin_unlock(&klist_remove_lock);
-
-	klist_del(n);
-
-	for (;;) {
-		set_current_state(TASK_UNINTERRUPTIBLE);
-		/* Pairs with the release store in klist_release() */
-		if (smp_load_acquire(&waiter.woken))
-			break;
-		schedule();
-	}
-	__set_current_state(TASK_RUNNING);
-}
-EXPORT_SYMBOL_GPL(klist_remove);
-
-/**
  * klist_node_attached - Say whether a node is bound to a list or not.
  * @n: Node that we're testing.
  */
 int klist_node_attached(struct klist_node *n)
 {
-	return (n->n_klist != NULL);
+	return !!n->n_klist;
 }
 EXPORT_SYMBOL_GPL(klist_node_attached);
 
@@ -413,3 +412,74 @@ struct klist_node *klist_next(struct klist_iter *i)
 	return i->i_cur;
 }
 EXPORT_SYMBOL_GPL(klist_next);
+
+#else /* CONFIG_RUST_KLIST */
+
+void klist_add_head(struct klist_node *n, struct klist *k)
+{
+	rust_klist_add_head(n, k);
+}
+EXPORT_SYMBOL_GPL(klist_add_head);
+
+void klist_add_tail(struct klist_node *n, struct klist *k)
+{
+	rust_klist_add_tail(n, k);
+}
+EXPORT_SYMBOL_GPL(klist_add_tail);
+
+void klist_add_behind(struct klist_node *n, struct klist_node *pos)
+{
+	rust_klist_add_behind(n, pos);
+}
+EXPORT_SYMBOL_GPL(klist_add_behind);
+
+void klist_add_before(struct klist_node *n, struct klist_node *pos)
+{
+	rust_klist_add_before(n, pos);
+}
+EXPORT_SYMBOL_GPL(klist_add_before);
+
+void klist_del(struct klist_node *n)
+{
+	rust_klist_del(n);
+}
+EXPORT_SYMBOL_GPL(klist_del);
+
+int klist_node_attached(struct klist_node *n)
+{
+	return rust_klist_node_attached(n);
+}
+EXPORT_SYMBOL_GPL(klist_node_attached);
+
+void klist_iter_init(struct klist *k, struct klist_iter *i)
+{
+	rust_klist_iter_init(k, i);
+}
+EXPORT_SYMBOL_GPL(klist_iter_init);
+
+void klist_iter_init_node(struct klist *k, struct klist_iter *i,
+			  struct klist_node *n)
+{
+	rust_klist_iter_init_node(k, i, n);
+}
+EXPORT_SYMBOL_GPL(klist_iter_init_node);
+
+void klist_iter_exit(struct klist_iter *i)
+{
+	rust_klist_iter_exit(i);
+}
+EXPORT_SYMBOL_GPL(klist_iter_exit);
+
+struct klist_node *klist_prev(struct klist_iter *i)
+{
+	return rust_klist_prev(i);
+}
+EXPORT_SYMBOL_GPL(klist_prev);
+
+struct klist_node *klist_next(struct klist_iter *i)
+{
+	return rust_klist_next(i);
+}
+EXPORT_SYMBOL_GPL(klist_next);
+
+#endif /* CONFIG_RUST_KLIST */

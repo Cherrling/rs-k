@@ -24129,6 +24129,7 @@ F:	Documentation/rust/native-btree-structural.rst
 F:	Documentation/rust/native-btree-traversal.rst
 F:	Documentation/rust/native-btree-visitors.rst
 F:	Documentation/rust/native-interval-tree.rst
+F:	Documentation/rust/native-klist.rst
 F:	Documentation/rust/native-plist.rst
 F:	include/linux/btree-rust.h
 F:	include/linux/complete-signal-rust.h
@@ -24144,6 +24145,7 @@ F:	include/linux/hrtimer-rust.h
 F:	include/linux/interval-tree-rust.h
 F:	include/linux/itimer-rust.h
 F:	include/linux/kfifo-rust.h
+F:	include/linux/klist-rust.h
 F:	include/linux/mutex-rust.h
 F:	include/linux/pid-allocation-rust.h
 F:	include/linux/pid-association-rust.h
@@ -24183,12 +24185,14 @@ F:	include/linux/wait-bit-rust.h
 F:	include/linux/wait-rust.h
 F:	include/linux/xarray-rust.h
 F:	include/trace/events/rust_sample.h
+F:	lib/klist.c
 F:	lib/tests/bitmap_ops_kunit.c
 F:	lib/tests/btree_traversal_kunit.c
 F:	lib/tests/btree_visitor_kunit.c
 F:	lib/tests/genradix_kunit.c
 F:	lib/tests/interval_tree_kunit.c
 F:	lib/tests/kfifo_kunit.c
+F:	lib/tests/list-test.c
 F:	lib/tests/plist_kunit.c
 F:	lib/tests/xarray_rust_kunit.c
 F:	lib/tests/test_complete_signal.c
@@ -24228,8 +24232,10 @@ F:	lib/tests/test_vma_unmap.c
 F:	lib/tests/test_wait_bit.c
 F:	lib/tests/test_waitqueue.c
 F:	rust/
+F:	rust/helpers/klist.c
 F:	rust/kernel/btree.rs
 F:	rust/kernel/interval_tree.rs
+F:	rust/kernel/klist.rs
 F:	samples/rust/
 F:	scripts/*rust*
 F:	tools/testing/selftests/copy_mm/

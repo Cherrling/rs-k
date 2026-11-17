@@ -111,6 +111,7 @@ more details.
     native-btree-visitors
     native-plist
     native-interval-tree
+    native-klist
     native-kfifo
     native-genradix
     native-maple-tree-load

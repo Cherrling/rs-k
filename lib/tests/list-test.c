@@ -7,6 +7,9 @@
  */
 #include <kunit/test.h>
 
+#include <linux/atomic.h>
+#include <linux/completion.h>
+#include <linux/kthread.h>
 #include <linux/list.h>
 #include <linux/klist.h>
 
@@ -1482,6 +1485,140 @@ static void klist_test_node_attached(struct kunit *test)
 
 }
 
+static void klist_test_iter_prev_init_node(struct kunit *test)
+{
+	struct klist_node a, b, c;
+	struct klist mylist;
+	struct klist_iter i;
+
+	klist_init(&mylist, NULL, NULL);
+	klist_add_tail(&a, &mylist);
+	klist_add_tail(&b, &mylist);
+	klist_add_tail(&c, &mylist);
+
+	klist_iter_init_node(&mylist, &i, &b);
+	KUNIT_EXPECT_PTR_EQ(test, klist_next(&i), &c);
+	KUNIT_EXPECT_PTR_EQ(test, klist_prev(&i), &b);
+	KUNIT_EXPECT_PTR_EQ(test, klist_prev(&i), &a);
+	KUNIT_EXPECT_NULL(test, klist_prev(&i));
+	klist_iter_exit(&i);
+
+	klist_del(&a);
+	klist_del(&b);
+	klist_del(&c);
+}
+
+static void klist_test_iter_skips_dead(struct kunit *test)
+{
+	struct klist_node a, b, c;
+	struct klist mylist;
+	struct klist_iter holder;
+	struct klist_iter walker;
+
+	klist_init(&mylist, NULL, NULL);
+	klist_add_tail(&a, &mylist);
+	klist_add_tail(&b, &mylist);
+	klist_add_tail(&c, &mylist);
+
+	klist_iter_init_node(&mylist, &holder, &b);
+	klist_del(&b);
+	KUNIT_EXPECT_TRUE(test, klist_node_attached(&b));
+
+	klist_iter_init(&mylist, &walker);
+	KUNIT_EXPECT_PTR_EQ(test, klist_next(&walker), &a);
+	KUNIT_EXPECT_PTR_EQ(test, klist_next(&walker), &c);
+	KUNIT_EXPECT_NULL(test, klist_next(&walker));
+	klist_iter_exit(&walker);
+
+	klist_iter_exit(&holder);
+	KUNIT_EXPECT_FALSE(test, klist_node_attached(&b));
+
+	klist_del(&a);
+	klist_del(&c);
+}
+
+#define KLIST_STRESS_THREADS 2
+#define KLIST_STRESS_NODES 256
+
+struct klist_stress_ctx {
+	struct klist list;
+	struct klist_node *nodes;
+	atomic_t errors;
+};
+
+struct klist_stress_worker {
+	struct klist_stress_ctx *ctx;
+	struct completion done;
+	size_t first;
+};
+
+static int klist_stress_worker_fn(void *data)
+{
+	struct klist_stress_worker *worker = data;
+	struct klist_stress_ctx *ctx = worker->ctx;
+	size_t i;
+
+	for (i = 0; i < KLIST_STRESS_NODES; i++) {
+		struct klist_node *node = &ctx->nodes[worker->first + i];
+		struct klist_iter iter;
+		unsigned int count = 0;
+
+		klist_add_tail(node, &ctx->list);
+		klist_iter_init(&ctx->list, &iter);
+		while (klist_next(&iter))
+			count++;
+		klist_iter_exit(&iter);
+		if (!count)
+			atomic_inc(&ctx->errors);
+		klist_del(node);
+	}
+
+	complete(&worker->done);
+	return 0;
+}
+
+static void klist_test_concurrent_iteration(struct kunit *test)
+{
+	struct klist_stress_ctx ctx;
+	struct klist_stress_worker workers[KLIST_STRESS_THREADS];
+	struct task_struct *tasks[KLIST_STRESS_THREADS];
+	struct klist_iter iter;
+	size_t node_count = KLIST_STRESS_THREADS * KLIST_STRESS_NODES;
+	size_t i;
+
+	memset(&ctx, 0, sizeof(ctx));
+	klist_init(&ctx.list, NULL, NULL);
+	atomic_set(&ctx.errors, 0);
+	ctx.nodes = kunit_kcalloc(test, node_count, sizeof(*ctx.nodes), GFP_KERNEL);
+	KUNIT_ASSERT_NOT_NULL(test, ctx.nodes);
+
+	for (i = 0; i < KLIST_STRESS_THREADS; i++) {
+		workers[i].ctx = &ctx;
+		init_completion(&workers[i].done);
+		workers[i].first = i * KLIST_STRESS_NODES;
+		tasks[i] = kthread_run(klist_stress_worker_fn, &workers[i],
+				       "klist-stress-%zu", i);
+		if (IS_ERR(tasks[i])) {
+			while (i > 0) {
+				i--;
+				kthread_stop(tasks[i]);
+			}
+			KUNIT_FAIL(test, "failed to start klist stress worker");
+			return;
+		}
+	}
+
+	for (i = 0; i < KLIST_STRESS_THREADS; i++)
+		wait_for_completion(&workers[i].done);
+	for (i = 0; i < KLIST_STRESS_THREADS; i++)
+		kthread_stop(tasks[i]);
+
+	KUNIT_EXPECT_EQ(test, atomic_read(&ctx.errors), 0);
+	klist_iter_init(&ctx.list, &iter);
+	KUNIT_EXPECT_NULL(test, klist_next(&iter));
+	klist_iter_exit(&iter);
+}
+
 static struct kunit_case klist_test_cases[] = {
 	KUNIT_CASE(klist_test_add_tail),
 	KUNIT_CASE(klist_test_add_head),
@@ -1491,6 +1628,9 @@ static struct kunit_case klist_test_cases[] = {
 	KUNIT_CASE(klist_test_del_refcount_zero),
 	KUNIT_CASE(klist_test_remove),
 	KUNIT_CASE(klist_test_node_attached),
+	KUNIT_CASE(klist_test_iter_prev_init_node),
+	KUNIT_CASE(klist_test_iter_skips_dead),
+	KUNIT_CASE(klist_test_concurrent_iteration),
 	{},
 };
 

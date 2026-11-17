@@ -373,6 +373,28 @@ config RUST_PLIST
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_KLIST
+	bool "Rust implementation of kernel klists"
+	depends on RUST
+	depends on X86_64
+	default y
+	help
+	  Use Rust for the production klist insertion, deletion, reference
+	  transitions, attachment state, and iterator algorithms.
+
+	  Rust owns node initialization, list placement, the deleted-node bit,
+	  delayed release, iterator reference transfer, dead-node skipping, and
+	  forward or reverse traversal. The intrusive layouts, spinlocks,
+	  list_head pointer updates, refcount primitives, blocking remove wait,
+	  and task wakeup boundary remain in C. The C fallback retains the
+	  complete klist algorithms.
+
+	  The native implementation is currently validated only for x86_64.
+	  Other architectures use the C fallback.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_MAPLE_TREE_LOAD
 	bool "Rust implementation of Maple Tree loads"
 	depends on RUST && X86_64

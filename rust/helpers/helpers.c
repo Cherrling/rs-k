@@ -77,6 +77,9 @@
 #include "itimer.c"
 #endif
 #include "jump_label.c"
+#ifdef CONFIG_RUST_KLIST
+#include "klist.c"
+#endif
 #include "kunit.c"
 #include "list.c"
 #include "maple_tree.c"
