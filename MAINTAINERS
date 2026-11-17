@@ -24146,6 +24146,7 @@ F:	include/linux/interval-tree-rust.h
 F:	include/linux/itimer-rust.h
 F:	include/linux/kfifo-rust.h
 F:	include/linux/klist-rust.h
+F:	include/linux/lockref-rust.h
 F:	include/linux/mutex-rust.h
 F:	include/linux/pid-allocation-rust.h
 F:	include/linux/pid-association-rust.h
@@ -24186,6 +24187,8 @@ F:	include/linux/wait-rust.h
 F:	include/linux/xarray-rust.h
 F:	include/trace/events/rust_sample.h
 F:	lib/klist.c
+F:	lib/lockref.c
+F:	lib/tests/lockref_kunit.c
 F:	lib/tests/bitmap_ops_kunit.c
 F:	lib/tests/btree_traversal_kunit.c
 F:	lib/tests/btree_visitor_kunit.c
@@ -24233,9 +24236,11 @@ F:	lib/tests/test_wait_bit.c
 F:	lib/tests/test_waitqueue.c
 F:	rust/
 F:	rust/helpers/klist.c
+F:	rust/helpers/lockref.c
 F:	rust/kernel/btree.rs
 F:	rust/kernel/interval_tree.rs
 F:	rust/kernel/klist.rs
+F:	rust/kernel/lockref.rs
 F:	samples/rust/
 F:	scripts/*rust*
 F:	tools/testing/selftests/copy_mm/

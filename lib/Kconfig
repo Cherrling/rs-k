@@ -717,6 +717,27 @@ config RUST_REFCOUNT
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_LOCKREF
+	bool "Rust implementation of lockref operations"
+	depends on RUST && X86_64 && SMP
+	depends on ARCH_USE_CMPXCHG_LOCKREF
+	default y
+	help
+	  Use Rust for the production lockref increment, decrement,
+	  dead-state, and conditional-locking state machine.
+
+	  Rust owns the bounded compare-exchange loop, count transitions,
+	  dead-state rejection, and the decision to enter or return from the
+	  spinlock fallback. Architecture compare-exchange and spinlock
+	  primitives remain in C helpers.
+
+	  The existing C functions remain as exported ABI adapters. The
+	  complete C implementation remains available when this option is
+	  disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_RBTREE
 	bool "Rust implementation of red-black tree operations"
 	depends on RUST

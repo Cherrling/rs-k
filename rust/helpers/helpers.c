@@ -82,6 +82,9 @@
 #endif
 #include "kunit.c"
 #include "list.c"
+#ifdef CONFIG_RUST_LOCKREF
+#include "lockref.c"
+#endif
 #include "maple_tree.c"
 #include "mm.c"
 #include "mutex.c"

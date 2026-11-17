@@ -137,6 +137,8 @@ pub mod kunit;
 pub mod list;
 #[cfg(CONFIG_RUST_LIST_SORT)]
 mod list_sort;
+#[cfg(CONFIG_RUST_LOCKREF)]
+mod lockref;
 pub mod maple_tree;
 #[cfg(any(CONFIG_RUST_MAPLE_TREE_LOAD, CONFIG_RUST_MAPLE_TREE_WALK))]
 mod maple_tree_core;

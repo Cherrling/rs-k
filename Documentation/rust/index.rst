@@ -153,6 +153,7 @@ more details.
     native-xarray-try-split
     native-percpu-refcount
     refcount
+    native-lockref
     swait
 
 You can also find learning materials for Rust in its section in
