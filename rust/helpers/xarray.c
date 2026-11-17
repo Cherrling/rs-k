@@ -41,6 +41,28 @@ __rust_helper void *rust_helper_xarray_entry(const struct xarray *xa,
 	return xa_entry(xa, node, offset);
 }
 
+#if defined(CONFIG_RUST_XARRAY_FIND_MARKED) || \
+	defined(CONFIG_RUST_XARRAY_CREATE)
+/*
+ * IDR callers use a caller-owned lock instead of xa_lock. The caller must
+ * exclude concurrent XArray writers for the complete operation.
+ */
+__rust_helper void *
+rust_helper_xarray_head_external(const struct xarray *xa)
+{
+	return rcu_dereference_raw(xa->xa_head);
+}
+
+__rust_helper void *
+rust_helper_xarray_entry_external(const struct xarray *xa,
+				  const struct xa_node *node,
+				  unsigned int offset)
+{
+	XA_NODE_BUG_ON(node, offset >= XA_CHUNK_SIZE);
+	return rcu_dereference_raw(node->slots[offset]);
+}
+#endif
+
 __rust_helper bool rust_helper_xarray_is_node(const void *entry)
 {
 	return xa_is_node(entry);
@@ -120,6 +142,20 @@ __rust_helper void *rust_helper_xarray_slot_locked(const struct xa_state *xas,
 		return xa_entry_locked(xas->xa, node, offset);
 	return xa_head_locked(xas->xa);
 }
+
+#ifdef CONFIG_RUST_XARRAY_CREATE
+__rust_helper void *
+rust_helper_xarray_slot_external(const struct xa_state *xas,
+				 const struct xa_node *node,
+				 unsigned int offset)
+{
+	if (node) {
+		XA_NODE_BUG_ON(node, offset >= XA_CHUNK_SIZE);
+		return rcu_dereference_raw(node->slots[offset]);
+	}
+	return rcu_dereference_raw(xas->xa->xa_head);
+}
+#endif
 
 __rust_helper void rust_helper_xarray_assign_slot(struct xa_state *xas,
 						  struct xa_node *node,
@@ -264,6 +300,15 @@ rust_helper_xarray_parent(const struct xarray *xa,
 			  const struct xa_node *node)
 {
 	return xa_parent(xa, node);
+}
+#endif
+
+#ifdef CONFIG_RUST_XARRAY_FIND_MARKED
+__rust_helper struct xa_node *
+rust_helper_xarray_parent_external(const struct xarray *xa,
+				   const struct xa_node *node)
+{
+	return rcu_dereference_raw(node->parent);
 }
 #endif
 

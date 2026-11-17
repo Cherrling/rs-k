@@ -52,7 +52,7 @@ fn mk_node(node: *const XaNode) -> *mut c_void {
 ///
 /// # Safety
 ///
-/// `xas` must point to a valid, locked XArray state.
+/// `xas` must point to a valid XArray state protected by a writer lock.
 unsafe fn alloc_node(xas: *mut XaState, shift: u32) -> *mut XaNode {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { bindings::rust_xarray_alloc_node(xas, shift) }
@@ -63,7 +63,7 @@ unsafe fn alloc_node(xas: *mut XaState, shift: u32) -> *mut XaNode {
 ///
 /// # Safety
 ///
-/// `node` must be live and the XArray lock must be held.
+/// `node` must be live and protected by a writer lock.
 unsafe fn notify_node(xas: *mut XaState, node: *mut XaNode) {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { bindings::rust_xarray_notify_node(xas, node) }
@@ -74,7 +74,7 @@ unsafe fn notify_node(xas: *mut XaState, node: *mut XaNode) {
 ///
 /// # Safety
 ///
-/// `xa` must point to a valid XArray whose lock is held.
+/// `xa` must point to a valid XArray protected by a writer lock.
 unsafe fn track_free(xa: *const XArray) -> bool {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { bindings::xarray_track_free(xa) }
@@ -85,7 +85,7 @@ unsafe fn track_free(xa: *const XArray) -> bool {
 ///
 /// # Safety
 ///
-/// `xa` must point to a valid XArray whose lock is held.
+/// `xa` must point to a valid XArray protected by a writer lock.
 unsafe fn root_marked(xa: *const XArray, mark: Mark) -> bool {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { bindings::xarray_root_marked(xa, mark) }
@@ -96,7 +96,7 @@ unsafe fn root_marked(xa: *const XArray, mark: Mark) -> bool {
 ///
 /// # Safety
 ///
-/// `xa` must point to a valid XArray whose lock is held.
+/// `xa` must point to a valid XArray protected by a writer lock.
 unsafe fn root_mark_set(xa: *mut XArray, mark: Mark) {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { bindings::xarray_root_mark_set(xa, mark) };
@@ -107,7 +107,7 @@ unsafe fn root_mark_set(xa: *mut XArray, mark: Mark) {
 ///
 /// # Safety
 ///
-/// `node` must be live and the XArray lock must be held.
+/// `node` must be live and protected by a writer lock.
 unsafe fn node_mark_set(node: *mut XaNode, offset: u32, mark: Mark) {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { bindings::xarray_node_mark_test_and_set(node, offset, mark) };
@@ -118,7 +118,7 @@ unsafe fn node_mark_set(node: *mut XaNode, offset: u32, mark: Mark) {
 ///
 /// # Safety
 ///
-/// `node` must be live and the XArray lock must be held.
+/// `node` must be live and protected by a writer lock.
 unsafe fn node_mark_clear(node: *mut XaNode, offset: u32, mark: Mark) {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { bindings::xarray_node_mark_test_and_clear(node, offset, mark) };
@@ -129,7 +129,7 @@ unsafe fn node_mark_clear(node: *mut XaNode, offset: u32, mark: Mark) {
 ///
 /// # Safety
 ///
-/// `node` must be live and the XArray lock must be held.
+/// `node` must be live and protected by a writer lock.
 unsafe fn node_mark_all(node: *mut XaNode, mark: Mark) {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { bindings::xarray_node_mark_all(node, mark) };
@@ -151,7 +151,7 @@ unsafe fn init_slot_zero(node: *mut XaNode, head: *mut c_void) {
 ///
 /// # Safety
 ///
-/// `child` and `parent` must be live and the XArray lock must be held.
+/// `child` and `parent` must be live and protected by a writer lock.
 unsafe fn link_root_child(child: *mut XaNode, parent: *mut XaNode) {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { bindings::xarray_link_root_child(child, parent) };
@@ -162,7 +162,7 @@ unsafe fn link_root_child(child: *mut XaNode, parent: *mut XaNode) {
 ///
 /// # Safety
 ///
-/// `xas` must be valid, the lock must be held, and `head` must be fully
+/// `xas` must be valid, a writer lock must be held, and `head` must be fully
 /// initialized and remain live.
 unsafe fn publish_root(xas: *mut XaState, head: *mut c_void) {
     // SAFETY: A null node selects the root slot.
@@ -174,7 +174,7 @@ unsafe fn publish_root(xas: *mut XaState, head: *mut c_void) {
 ///
 /// # Safety
 ///
-/// `xas` must point to a valid locked XArray state.
+/// `xas` must point to a valid XArray state protected by a writer lock.
 unsafe fn check_width(xas: *mut XaState, shift: u32) -> bool {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { bindings::xarray_expand_check(xas, shift) }
@@ -219,8 +219,8 @@ unsafe fn max_required(xas: *const XaState) -> usize {
 ///
 /// # Safety
 ///
-/// `xas` must point to a valid locked XArray state and `head` must contain the
-/// current root entry.
+/// `xas` must point to a valid XArray state protected by a writer lock. `head`
+/// must contain the current root entry.
 pub(crate) unsafe fn expand(xas: *mut XaState, mut head: *mut c_void) -> i32 {
     // SAFETY: Guaranteed by this function's contract.
     let max = unsafe { max_required(xas) };
@@ -243,15 +243,15 @@ pub(crate) unsafe fn expand(xas: *mut XaState, mut head: *mut c_void) -> i32 {
         shift = u32::from(unsafe { (*node).shift }) + CHUNK_SHIFT;
     }
 
-    // SAFETY: The state is valid and the caller holds the XArray lock.
+    // SAFETY: The state is valid and the caller holds a writer lock.
     unsafe { (*xas).xa_node = core::ptr::null_mut() };
 
     while max > max_index(head) {
-        // SAFETY: The state is valid and locked.
+        // SAFETY: The state is valid and protected.
         if !unsafe { check_width(xas, shift) } {
             return EINVAL;
         }
-        // SAFETY: The state is valid and locked.
+        // SAFETY: The state is valid and protected.
         node = unsafe { alloc_node(xas, shift) };
         if node.is_null() {
             return -ENOMEM;
@@ -271,18 +271,18 @@ pub(crate) unsafe fn expand(xas: *mut XaState, mut head: *mut c_void) -> i32 {
 
         // Propagate aggregate marks from the old root into the new root.
         loop {
-            // SAFETY: The XArray is live and the lock protects root flags.
+            // SAFETY: The XArray is live and a writer lock protects root flags.
             if unsafe { track_free(xa) } && mark == FREE_MARK {
                 // SAFETY: `node` is new and owned by this expansion.
                 unsafe { node_mark_all(node, FREE_MARK) };
-                // SAFETY: The XArray is live and the lock protects root flags.
+                // SAFETY: The XArray is live and a writer lock protects flags.
                 if !unsafe { root_marked(xa, FREE_MARK) } {
                     // SAFETY: `node` is new and slot zero exists.
                     unsafe { node_mark_clear(node, 0, FREE_MARK) };
-                    // SAFETY: The XArray is live and locked.
+                    // SAFETY: The XArray is live and protected.
                     unsafe { root_mark_set(xa, FREE_MARK) };
                 }
-            // SAFETY: The XArray is live and the lock protects root flags.
+            // SAFETY: The XArray is live and a writer lock protects root flags.
             } else if unsafe { root_marked(xa, mark) } {
                 // SAFETY: `node` is new and slot zero exists.
                 unsafe { node_mark_set(node, 0, mark) };
@@ -308,7 +308,7 @@ pub(crate) unsafe fn expand(xas: *mut XaState, mut head: *mut c_void) -> i32 {
         shift += CHUNK_SHIFT;
     }
 
-    // SAFETY: The state is valid and the caller holds the XArray lock.
+    // SAFETY: The state is valid and the caller holds a writer lock.
     unsafe { (*xas).xa_node = node };
     shift as i32
 }
@@ -317,8 +317,8 @@ pub(crate) unsafe fn expand(xas: *mut XaState, mut head: *mut c_void) -> i32 {
 ///
 /// # Safety
 ///
-/// `xas` must point to a valid locked XArray state. `head` must contain the
-/// current root entry.
+/// `xas` must point to a valid XArray state protected by a writer lock. `head`
+/// must contain the current root entry.
 #[export]
 unsafe extern "C" fn rust_xarray_expand(xas: *mut XaState, head: *mut c_void) -> i32 {
     // SAFETY: Guaranteed by this function's contract.

@@ -1030,6 +1030,25 @@ config RUST_XARRAY_ALLOC
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_IDR_ALLOC
+	bool "Rust implementation of IDR allocation"
+	depends on RUST_XARRAY_CREATE && RUST_XARRAY_FIND_MARKED && \
+		RUST_XARRAY_NOMEM
+	default y
+	help
+	  Use Rust for the production IDR allocation policy behind
+	  idr_alloc_u32(), idr_alloc(), and idr_alloc_cyclic().
+
+	  Rust owns base-relative range normalization, first-fit free-slot
+	  selection, hole reuse, range exhaustion, cyclic search and wrap,
+	  next-ID publication ordering, and cursor updates. XArray node
+	  allocation, slot publication, free-mark storage, node layout, and
+	  tagged-entry encoding remain explicit boundaries. The C fallback
+	  retains the complete IDR allocation policy.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_XARRAY_SQUASH_MARKS
 	bool "Rust implementation of XArray multi-index mark squashing"
 	depends on RUST_XARRAY_MARKS && X86_64

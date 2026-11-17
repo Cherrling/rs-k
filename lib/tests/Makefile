@@ -78,6 +78,7 @@ obj-$(CONFIG_XARRAY_FREE_NODES_KUNIT_TEST) += xarray_free_nodes_kunit.o
 obj-$(CONFIG_XARRAY_DELETE_NODE_KUNIT_TEST) += xarray_delete_node_kunit.o
 obj-$(CONFIG_XARRAY_DESTROY_KUNIT_TEST) += xarray_destroy_kunit.o
 obj-$(CONFIG_XARRAY_ALLOC_KUNIT_TEST) += xarray_alloc_kunit.o
+obj-$(CONFIG_IDR_ALLOC_KUNIT_TEST) += idr_alloc_kunit.o
 obj-$(CONFIG_XARRAY_MARKS_KUNIT_TEST) += xarray_marks_kunit.o
 obj-$(CONFIG_XARRAY_SQUASH_KUNIT_TEST) += xarray_squash_kunit.o
 obj-$(CONFIG_XARRAY_SPLIT_KUNIT_TEST) += xarray_split_kunit.o

@@ -3,9 +3,40 @@
 #include <linux/bug.h>
 #include <linux/export.h>
 #include <linux/idr.h>
+#include <linux/idr-rust.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/xarray.h>
+
+#ifdef CONFIG_RUST_IDR_ALLOC
+void rust_idr_prepare(struct idr *idr)
+{
+	if (WARN_ON_ONCE(!(idr->idr_rt.xa_flags & ROOT_IS_IDR)))
+		idr->idr_rt.xa_flags |= IDR_RT_MARKER;
+}
+
+void rust_idr_warn_invalid_start(void)
+{
+	WARN_ON_ONCE(1);
+}
+
+void rust_idr_commit(struct idr *idr, struct xa_state *xas, void *ptr)
+{
+	struct radix_tree_iter iter = {
+		.index = xas->xa_index,
+		.node = xas->xa_node,
+	};
+	void __rcu **slot;
+
+	if (xas->xa_node)
+		slot = &xas->xa_node->slots[xas->xa_offset];
+	else
+		slot = &idr->idr_rt.xa_head;
+
+	radix_tree_iter_replace(&idr->idr_rt, &iter, slot, ptr);
+	radix_tree_iter_tag_clear(&idr->idr_rt, &iter, IDR_FREE);
+}
+#endif
 
 /**
  * idr_alloc_u32() - Allocate an ID.
@@ -33,6 +64,9 @@
 int idr_alloc_u32(struct idr *idr, void *ptr, u32 *nextid,
 			unsigned long max, gfp_t gfp)
 {
+#ifdef CONFIG_RUST_IDR_ALLOC
+	return rust_idr_alloc_u32(idr, ptr, nextid, max, gfp);
+#else
 	struct radix_tree_iter iter;
 	void __rcu **slot;
 	unsigned int base = idr->idr_base;
@@ -55,6 +89,7 @@ int idr_alloc_u32(struct idr *idr, void *ptr, u32 *nextid,
 	radix_tree_iter_tag_clear(&idr->idr_rt, &iter, IDR_FREE);
 
 	return 0;
+#endif
 }
 EXPORT_SYMBOL_GPL(idr_alloc_u32);
 
@@ -80,6 +115,9 @@ EXPORT_SYMBOL_GPL(idr_alloc_u32);
  */
 int idr_alloc(struct idr *idr, void *ptr, int start, int end, gfp_t gfp)
 {
+#ifdef CONFIG_RUST_IDR_ALLOC
+	return rust_idr_alloc(idr, ptr, start, end, gfp);
+#else
 	u32 id = start;
 	int ret;
 
@@ -91,6 +129,7 @@ int idr_alloc(struct idr *idr, void *ptr, int start, int end, gfp_t gfp)
 		return ret;
 
 	return id;
+#endif
 }
 EXPORT_SYMBOL_GPL(idr_alloc);
 
@@ -118,6 +157,9 @@ EXPORT_SYMBOL_GPL(idr_alloc);
  */
 int idr_alloc_cyclic(struct idr *idr, void *ptr, int start, int end, gfp_t gfp)
 {
+#ifdef CONFIG_RUST_IDR_ALLOC
+	return rust_idr_alloc_cyclic(idr, ptr, start, end, gfp);
+#else
 	u32 id = idr->idr_next;
 	int err, max = end > 0 ? end - 1 : INT_MAX;
 
@@ -134,6 +176,7 @@ int idr_alloc_cyclic(struct idr *idr, void *ptr, int start, int end, gfp_t gfp)
 
 	idr->idr_next = id + 1;
 	return id;
+#endif
 }
 EXPORT_SYMBOL(idr_alloc_cyclic);
 

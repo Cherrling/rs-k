@@ -3703,6 +3703,18 @@ config XARRAY_ALLOC_KUNIT_TEST
 
 	  If unsure, say N.
 
+config IDR_ALLOC_KUNIT_TEST
+	tristate "KUnit Test for IDR allocation" if !KUNIT_ALL_TESTS
+	depends on KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This builds the KUnit test suite for IDR first-fit and cyclic
+	  allocation. It tests base-relative ranges, holes, NULL entries,
+	  range exhaustion, cyclic wrap, and concurrent allocation in the
+	  active implementation.
+
+	  If unsure, say N.
+
 config XARRAY_MARKS_KUNIT_TEST
 	tristate "KUnit Test for XArray mark lifecycle" if !KUNIT_ALL_TESTS
 	depends on KUNIT

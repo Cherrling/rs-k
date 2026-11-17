@@ -75,6 +75,7 @@
 #include <linux/generic-radix-tree.h>
 #include <linux/generic-radix-tree-rust.h>
 #include <linux/i2c.h>
+#include <linux/idr-rust.h>
 #include <linux/interrupt.h>
 #include <linux/itimer-rust.h>
 #include <linux/io-pgtable.h>

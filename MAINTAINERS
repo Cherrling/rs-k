@@ -29926,13 +29926,16 @@ L:	linux-mm@kvack.org
 S:	Supported
 F:	Documentation/core-api/idr.rst
 F:	Documentation/core-api/xarray.rst
+F:	Documentation/rust/native-idr-alloc.rst
 F:	Documentation/rust/native-xarray-*.rst
+F:	include/linux/idr-rust.h
 F:	include/linux/idr.h
 F:	include/linux/xarray-rust.h
 F:	include/linux/xarray.h
 F:	lib/idr.c
 F:	lib/region_alloc_benchmark.c
 F:	lib/test_xarray.c
+F:	lib/tests/idr_alloc_kunit.c
 F:	lib/tests/xarray_alloc_kunit.c
 F:	lib/tests/xarray_create_kunit.c
 F:	lib/tests/xarray_create_range_kunit.c
@@ -29965,6 +29968,7 @@ W:	https://rust-for-linux.com
 B:	https://github.com/Rust-for-Linux/linux/issues
 C:	https://rust-for-linux.zulipchat.com
 T:	git https://github.com/Rust-for-Linux/linux.git xarray-next
+F:	rust/kernel/idr_alloc.rs
 F:	rust/kernel/xarray.rs
 F:	rust/kernel/xarray_alloc.rs
 F:	rust/kernel/xarray_create.rs

@@ -32,11 +32,24 @@ fn is_top(node: *mut XaNode) -> bool {
 ///
 /// # Safety
 ///
-/// `xas` must point to a locked XArray state. `node` and `offset` must
-/// identify a valid slot, or `node` must be null with a zero offset.
-unsafe fn load_slot(xas: *mut XaState, node: *mut XaNode, offset: u32) -> *mut c_void {
-    // SAFETY: Guaranteed by this function's contract.
-    unsafe { bindings::xarray_slot_locked(xas, node, offset) }
+/// `xas` must point to a valid XArray state. `node` and `offset` must identify
+/// a valid slot, or `node` must be null with a zero offset. The caller must
+/// hold the XArray lock unless `externally_locked` is true. If
+/// `externally_locked` is true, the caller must hold a lock that excludes every
+/// concurrent writer.
+unsafe fn load_slot(
+    xas: *mut XaState,
+    node: *mut XaNode,
+    offset: u32,
+    externally_locked: bool,
+) -> *mut c_void {
+    if externally_locked {
+        // SAFETY: The caller provides external writer exclusion.
+        unsafe { bindings::xarray_slot_external(xas, node, offset) }
+    } else {
+        // SAFETY: Guaranteed by this function's contract.
+        unsafe { bindings::xarray_slot_locked(xas, node, offset) }
+    }
 }
 
 /// Publishes a locked slot with the required RCU assignment operation.
@@ -45,9 +58,10 @@ unsafe fn load_slot(xas: *mut XaState, node: *mut XaNode, offset: u32) -> *mut c
 ///
 /// # Safety
 ///
-/// `xas` must point to a locked XArray state. `node` and `offset` must
-/// identify a valid slot, or `node` must be null with a zero offset. `entry`
-/// must be fully initialized and must remain live after publication.
+/// `xas` must point to an XArray state protected by the XArray lock or an
+/// external writer lock. `node` and `offset` must identify a valid slot, or
+/// `node` must be null with a zero offset. `entry` must be fully initialized
+/// and must remain live after publication.
 unsafe fn publish_slot(xas: *mut XaState, node: *mut XaNode, offset: u32, entry: *mut c_void) {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { bindings::xarray_assign_slot(xas, node, offset, entry) }
@@ -105,7 +119,7 @@ unsafe fn alloc_node(xas: *mut XaState, shift: u32) -> *mut XaNode {
 ///
 /// # Safety
 ///
-/// `xa` must point to a valid XArray whose lock is held.
+/// `xa` must point to a valid XArray protected by a writer lock.
 unsafe fn track_free(xa: *const XArray) -> bool {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { bindings::xarray_track_free(xa) }
@@ -116,7 +130,7 @@ unsafe fn track_free(xa: *const XArray) -> bool {
 ///
 /// # Safety
 ///
-/// `xa` must point to a valid XArray whose lock is held.
+/// `xa` must point to a valid XArray protected by a writer lock.
 unsafe fn zero_busy(xa: *const XArray) -> bool {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { bindings::xarray_zero_busy(xa) }
@@ -134,7 +148,7 @@ fn zero_entry() -> *mut c_void {
 ///
 /// # Safety
 ///
-/// `node` must be live and the XArray lock must be held.
+/// `node` must be live and protected by a writer lock.
 unsafe fn node_mark_all(node: *mut XaNode, mark: bindings::xa_mark_t) {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { bindings::xarray_node_mark_all(node, mark) }
@@ -155,22 +169,22 @@ unsafe fn get_offset(index: usize, node: *mut XaNode) -> u32 {
 ///
 /// # Safety
 ///
-/// `xas` must be valid, the XArray lock must be held, and `node` must be the
-/// live node selected for the cursor index.
-unsafe fn descend(xas: *mut XaState, node: *mut XaNode) -> *mut c_void {
+/// `xas` must be valid, the caller must hold the XArray lock or an external
+/// writer lock, and `node` must be the live node selected for the cursor index.
+unsafe fn descend(xas: *mut XaState, node: *mut XaNode, externally_locked: bool) -> *mut c_void {
     // SAFETY: Guaranteed by this function's contract.
     let index = unsafe { (*xas).xa_index };
     // SAFETY: `node` is live by this function's contract.
     let mut offset = unsafe { get_offset(index, node) };
-    // SAFETY: The selected slot is in range and protected by the XArray lock.
-    let mut entry = unsafe { load_slot(xas, node, offset) };
+    // SAFETY: The selected slot is in range and protected by a writer lock.
+    let mut entry = unsafe { load_slot(xas, node, offset, externally_locked) };
 
-    // SAFETY: The caller provides a writable state and holds the XArray lock.
+    // SAFETY: The caller provides a writable state and holds a writer lock.
     unsafe { (*xas).xa_node = node };
     while is_sibling(entry) {
         offset = to_sibling(entry);
         // SAFETY: A sibling entry contains a valid slot offset.
-        entry = unsafe { load_slot(xas, node, offset) };
+        entry = unsafe { load_slot(xas, node, offset, externally_locked) };
         // SAFETY: `node` is live by this function's contract.
         if unsafe { (*node).shift } != 0 && is_node(entry) {
             entry = retry_entry();
@@ -188,8 +202,12 @@ unsafe fn descend(xas: *mut XaState, node: *mut XaNode) -> *mut c_void {
 /// # Safety
 ///
 /// `xas` must point to a valid XArray state. The caller must hold the XArray
-/// lock when the state references an XArray.
-pub(crate) unsafe fn create(xas: *mut XaState, allow_root: bool) -> *mut c_void {
+/// lock or an external writer lock when the state references an XArray.
+unsafe fn create_inner(
+    xas: *mut XaState,
+    allow_root: bool,
+    externally_locked: bool,
+) -> *mut c_void {
     // SAFETY: Guaranteed by this function's contract.
     let state = unsafe { &mut *xas };
     let xa = state.xa;
@@ -201,10 +219,10 @@ pub(crate) unsafe fn create(xas: *mut XaState, allow_root: bool) -> *mut c_void 
     let mut shift;
 
     if is_top(node) {
-        // SAFETY: The root slot is locked and writable.
-        entry = unsafe { load_slot(xas, ptr::null_mut(), 0) };
+        // SAFETY: The root slot is protected by a writer lock.
+        entry = unsafe { load_slot(xas, ptr::null_mut(), 0, externally_locked) };
         state.xa_node = ptr::null_mut();
-        // SAFETY: `xa` is live and locked.
+        // SAFETY: `xa` is live and externally writable.
         if entry.is_null() && unsafe { zero_busy(xa) } {
             entry = zero_entry();
         }
@@ -218,21 +236,21 @@ pub(crate) unsafe fn create(xas: *mut XaState, allow_root: bool) -> *mut c_void 
             shift = CHUNK_SHIFT as i32;
         }
         // SAFETY: Expansion may have published a new root.
-        entry = unsafe { load_slot(xas, ptr::null_mut(), 0) };
+        entry = unsafe { load_slot(xas, ptr::null_mut(), 0, externally_locked) };
     // SAFETY: The state was validated by this function's contract.
     } else if unsafe { bindings::xarray_error(xas) } != 0 {
         return ptr::null_mut();
     } else if !node.is_null() {
         slot_node = node;
         slot_offset = u32::from(state.xa_offset);
-        // SAFETY: A non-null cursor node is live and locked.
+        // SAFETY: A non-null cursor node is live and protected.
         shift = i32::from(unsafe { (*node).shift });
         // SAFETY: The cursor identifies a locked slot.
-        entry = unsafe { load_slot(xas, node, slot_offset) };
+        entry = unsafe { load_slot(xas, node, slot_offset, externally_locked) };
     } else {
         shift = 0;
         // SAFETY: The root slot is locked.
-        entry = unsafe { load_slot(xas, ptr::null_mut(), 0) };
+        entry = unsafe { load_slot(xas, ptr::null_mut(), 0, externally_locked) };
     }
 
     while shift > order {
@@ -243,13 +261,13 @@ pub(crate) unsafe fn create(xas: *mut XaState, allow_root: bool) -> *mut c_void 
             if node.is_null() {
                 break;
             }
-            // SAFETY: `xa` is live and locked.
+            // SAFETY: `xa` is live and protected by a writer lock.
             if unsafe { track_free(xa) } {
                 // SAFETY: `node` is newly allocated and exclusively owned.
                 unsafe { node_mark_all(node, FREE_MARK) };
             }
             // SAFETY: The new node is fully initialized and the parent slot
-            // is locked.
+            // is protected by a writer lock.
             unsafe { publish_slot(xas, slot_node, slot_offset, mk_node(node)) };
         } else if is_node(entry) {
             node = to_node(entry);
@@ -258,13 +276,36 @@ pub(crate) unsafe fn create(xas: *mut XaState, allow_root: bool) -> *mut c_void 
         }
 
         // SAFETY: `node` is live and selected by the cursor path.
-        entry = unsafe { descend(xas, node) };
+        entry = unsafe { descend(xas, node, externally_locked) };
         slot_node = node;
         // SAFETY: `descend` leaves the state at the selected slot.
         slot_offset = u32::from(unsafe { (*xas).xa_offset });
     }
 
     entry
+}
+
+/// Creates the node chain under the XArray lock.
+///
+/// # Safety
+///
+/// `xas` must point to a valid XArray state. The caller must hold the XArray
+/// lock when the state references an XArray.
+pub(crate) unsafe fn create(xas: *mut XaState, allow_root: bool) -> *mut c_void {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { create_inner(xas, allow_root, false) }
+}
+
+/// Creates the node chain under caller-provided external synchronization.
+///
+/// # Safety
+///
+/// `xas` must point to a valid XArray state. The caller must hold a lock that
+/// excludes every concurrent writer for the complete operation.
+#[cfg(CONFIG_RUST_IDR_ALLOC)]
+pub(crate) unsafe fn create_external(xas: *mut XaState, allow_root: bool) -> *mut c_void {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { create_inner(xas, allow_root, true) }
 }
 
 /// Creates or selects the XArray slot for the current cursor.
