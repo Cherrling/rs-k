@@ -39,7 +39,11 @@ struct btree_head {
 };
 
 /* btree geometry */
-struct btree_geo;
+struct btree_geo {
+	int keylen;
+	int no_pairs;
+	int no_longs;
+};
 
 /**
  * btree_alloc - allocate function for the mempool

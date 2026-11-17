@@ -106,6 +106,7 @@ more details.
     wait-bit
     native-find-bit
     native-bitmap-ops
+    native-btree-traversal
     native-kfifo
     native-genradix
     native-maple-tree-load

@@ -325,6 +325,23 @@ config TEXTSEARCH_FSM
 config BTREE
 	bool
 
+config RUST_BTREE
+	bool "Rust implementation of B+Tree traversal"
+	depends on RUST && BTREE
+	default y
+	help
+	  Use Rust for the B+Tree lookup, predecessor, last-entry, and leaf
+	  update paths.
+
+	  Rust owns key storage access, comparison, copying, predecessor
+	  underflow, parent descent, predecessor retry, terminal entry selection,
+	  and leaf value publication. Node and geometry layout definitions, the
+	  mempool, and structural insertion and removal remain in C. The public
+	  entry points remain as ABI adapters.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_LIST_SORT
 	bool "Rust implementation of list_sort()"
 	depends on RUST
@@ -1123,6 +1140,20 @@ config RBTREE_RUST_KUNIT_TEST
 	help
 	  This option enables KUnit tests for the C ABI adapters and the
 	  Rust implementation of the core red-black tree operations.
+
+	  These tests are only for development and testing, not for regular
+	  kernel use cases.
+
+	  If unsure, say N.
+
+config BTREE_TRAVERSAL_KUNIT_TEST
+	bool "KUnit tests for B+Tree traversal"
+	depends on KUNIT
+	select BTREE
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for the B+Tree lookup, leaf update,
+	  last-entry, and predecessor paths in the active implementation.
 
 	  These tests are only for development and testing, not for regular
 	  kernel use cases.

@@ -56,6 +56,8 @@ pub mod bits;
 pub mod block;
 #[cfg(CONFIG_RUST_BRK)]
 mod brk;
+#[cfg(CONFIG_RUST_BTREE)]
+mod btree;
 pub mod bug;
 pub mod build_assert;
 pub mod clk;

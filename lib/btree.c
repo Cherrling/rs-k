@@ -38,18 +38,13 @@
  */
 
 #include <linux/btree.h>
+#include <linux/btree-rust.h>
 #include <linux/cache.h>
 #include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/module.h>
 
 #define NODESIZE MAX(L1_CACHE_BYTES, 128)
-
-struct btree_geo {
-	int keylen;
-	int no_pairs;
-	int no_longs;
-};
 
 struct btree_geo btree_geo32 = {
 	.keylen = 1,
@@ -131,6 +126,7 @@ static unsigned long *longset(unsigned long *s, unsigned long c, size_t n)
 	return s;
 }
 
+#ifndef CONFIG_RUST_BTREE
 static void dec_key(struct btree_geo *geo, unsigned long *key)
 {
 	unsigned long val;
@@ -143,6 +139,7 @@ static void dec_key(struct btree_geo *geo, unsigned long *key)
 			break;
 	}
 }
+#endif
 
 static unsigned long *bkey(struct btree_geo *geo, unsigned long *node, int n)
 {
@@ -206,6 +203,9 @@ EXPORT_SYMBOL_GPL(btree_destroy);
 void *btree_last(struct btree_head *head, struct btree_geo *geo,
 		 unsigned long *key)
 {
+#ifdef CONFIG_RUST_BTREE
+	return rust_btree_last(head, geo, key);
+#else
 	int height = head->height;
 	unsigned long *node = head->node;
 
@@ -217,6 +217,7 @@ void *btree_last(struct btree_head *head, struct btree_geo *geo,
 
 	longcpy(key, bkey(geo, node, 0), geo->keylen);
 	return bval(geo, node, 0);
+#endif
 }
 EXPORT_SYMBOL_GPL(btree_last);
 
@@ -226,6 +227,7 @@ static int keycmp(struct btree_geo *geo, unsigned long *node, int pos,
 	return longcmp(bkey(geo, node, pos), key, geo->keylen);
 }
 
+#ifndef CONFIG_RUST_BTREE
 static int keyzero(struct btree_geo *geo, unsigned long *key)
 {
 	int i;
@@ -258,10 +260,14 @@ static void *btree_lookup_node(struct btree_head *head, struct btree_geo *geo,
 	}
 	return node;
 }
+#endif
 
 void *btree_lookup(struct btree_head *head, struct btree_geo *geo,
 		unsigned long *key)
 {
+#ifdef CONFIG_RUST_BTREE
+	return rust_btree_lookup(head, geo, key);
+#else
 	int i;
 	unsigned long *node;
 
@@ -273,12 +279,16 @@ void *btree_lookup(struct btree_head *head, struct btree_geo *geo,
 		if (keycmp(geo, node, i, key) == 0)
 			return bval(geo, node, i);
 	return NULL;
+#endif
 }
 EXPORT_SYMBOL_GPL(btree_lookup);
 
 int btree_update(struct btree_head *head, struct btree_geo *geo,
 		 unsigned long *key, void *val)
 {
+#ifdef CONFIG_RUST_BTREE
+	return rust_btree_update(head, geo, key, val);
+#else
 	int i;
 	unsigned long *node;
 
@@ -292,6 +302,7 @@ int btree_update(struct btree_head *head, struct btree_geo *geo,
 			return 0;
 		}
 	return -ENOENT;
+#endif
 }
 EXPORT_SYMBOL_GPL(btree_update);
 
@@ -306,6 +317,9 @@ EXPORT_SYMBOL_GPL(btree_update);
 void *btree_get_prev(struct btree_head *head, struct btree_geo *geo,
 		     unsigned long *__key)
 {
+#ifdef CONFIG_RUST_BTREE
+	return rust_btree_get_prev(head, geo, __key);
+#else
 	int i, height;
 	unsigned long *node, *oldnode;
 	unsigned long *retry_key = NULL, key[MAX_KEYLEN];
@@ -352,6 +366,7 @@ miss:
 		goto retry;
 	}
 	return NULL;
+#endif
 }
 EXPORT_SYMBOL_GPL(btree_get_prev);
 
