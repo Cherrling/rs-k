@@ -39,6 +39,10 @@ fn unmap_end(start: usize, len: usize, task_size: usize) -> Result<usize, c_int>
 }
 
 /// Validates and aligns one unmap range for KUnit.
+///
+/// # Safety
+///
+/// `end` must point to writable storage for one `usize`.
 #[cfg(CONFIG_VMA_UNMAP_KUNIT_TEST)]
 #[export]
 unsafe extern "C" fn rust_vma_unmap_test_range(

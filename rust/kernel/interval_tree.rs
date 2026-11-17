@@ -14,6 +14,7 @@ type Endpoint = usize;
 type Node = bindings::interval_tree_node;
 type RbNode = bindings::rb_node;
 type Root = bindings::rb_root_cached;
+#[cfg(CONFIG_INTERVAL_TREE_SPAN_ITER)]
 type SpanIter = bindings::interval_tree_span_iter;
 
 /// Returns the node that contains an embedded red-black-tree link.
