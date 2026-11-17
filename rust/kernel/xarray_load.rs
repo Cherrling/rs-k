@@ -17,22 +17,44 @@ type XaState = bindings::xa_state;
 
 const CHUNK_MASK: usize = bindings::rust_xarray_constant_RUST_XARRAY_CHUNK_MASK as usize;
 
-/// Loads the current XArray head under the caller's RCU or lock protection.
+/// Loads the current XArray head under the caller's protection.
 ///
 /// # Safety
 ///
-/// `xa` must point to a valid XArray.
-unsafe fn head(xa: *mut XArray) -> *mut c_void {
+/// `xa` must point to a valid XArray. If `externally_locked` is true, the
+/// caller must hold a lock that excludes every concurrent writer.
+unsafe fn head(xa: *mut XArray, externally_locked: bool) -> *mut c_void {
+    #[cfg(CONFIG_RUST_IDR_NEXT)]
+    if externally_locked {
+        // SAFETY: The caller provides external writer exclusion.
+        return unsafe { bindings::xarray_head_external(xa) };
+    }
+
+    debug_assert!(!externally_locked);
     // SAFETY: Guaranteed by this function's contract.
     unsafe { bindings::xarray_head(xa) }
 }
 
-/// Loads one non-sibling slot under the caller's RCU or lock protection.
+/// Loads one non-sibling slot under the caller's protection.
 ///
 /// # Safety
 ///
-/// `xa` and `node` must be valid, and `offset` must be in range.
-unsafe fn entry(xa: *mut XArray, node: *mut XaNode, offset: u32) -> *mut c_void {
+/// `xa` and `node` must be valid, and `offset` must be in range. If
+/// `externally_locked` is true, the caller must hold a lock that excludes
+/// every concurrent writer.
+unsafe fn entry(
+    xa: *mut XArray,
+    node: *mut XaNode,
+    offset: u32,
+    externally_locked: bool,
+) -> *mut c_void {
+    #[cfg(CONFIG_RUST_IDR_NEXT)]
+    if externally_locked {
+        // SAFETY: The caller provides external writer exclusion.
+        return unsafe { bindings::xarray_entry_external(xa, node, offset) };
+    }
+
+    debug_assert!(!externally_locked);
     // SAFETY: Guaranteed by this function's contract.
     unsafe { bindings::xarray_entry(xa, node, offset) }
 }
@@ -78,21 +100,21 @@ fn is_zero(entry: *mut c_void) -> bool {
 /// # Safety
 ///
 /// `xas` must point to a valid XArray state under RCU or lock protection.
-unsafe fn reload(xas: *mut XaState) -> *mut c_void {
+unsafe fn reload(xas: *mut XaState, externally_locked: bool) -> *mut c_void {
     // SAFETY: Guaranteed by this function's contract.
     let state = unsafe { &*xas };
     let node = state.xa_node;
 
     if node.is_null() {
         // SAFETY: The state points to a valid XArray.
-        return unsafe { head(state.xa) };
+        return unsafe { head(state.xa, externally_locked) };
     }
 
     // SAFETY: A valid state with a non-NULL node points to a real node.
     let shift = unsafe { (*node).shift as usize };
     let mut offset = ((state.xa_index >> shift) & CHUNK_MASK) as u32;
     // SAFETY: `offset` is masked to the node slot count.
-    let loaded = unsafe { entry(state.xa, node, offset) };
+    let loaded = unsafe { entry(state.xa, node, offset, externally_locked) };
 
     if !is_sibling(loaded) {
         return loaded;
@@ -100,21 +122,21 @@ unsafe fn reload(xas: *mut XaState) -> *mut c_void {
 
     offset = to_sibling(loaded);
     // SAFETY: Sibling entries contain a valid slot offset.
-    unsafe { entry(state.xa, node, offset) }
+    unsafe { entry(state.xa, node, offset, externally_locked) }
 }
 
 /// Starts a load, preserving an existing cursor when it is valid.
 ///
 /// # Safety
 ///
-/// `xas` must point to a valid XArray state under RCU or lock protection.
-pub(crate) unsafe fn start(xas: *mut XaState) -> *mut c_void {
+/// `xas` must point to a valid XArray state under the caller's protection.
+unsafe fn start_inner(xas: *mut XaState, externally_locked: bool) -> *mut c_void {
     // SAFETY: Guaranteed by this function's contract.
     let state = unsafe { &mut *xas };
 
     if state.xa_node.addr() & 3 == 0 {
         // SAFETY: A valid cursor satisfies `reload`'s contract.
-        return unsafe { reload(xas) };
+        return unsafe { reload(xas, externally_locked) };
     }
 
     // SAFETY: The state points to a valid XArray.
@@ -123,7 +145,7 @@ pub(crate) unsafe fn start(xas: *mut XaState) -> *mut c_void {
     }
 
     // SAFETY: The state points to a valid XArray.
-    let loaded = unsafe { head(state.xa) };
+    let loaded = unsafe { head(state.xa, externally_locked) };
     if !is_node(loaded) {
         if state.xa_index != 0 {
             // SAFETY: The state is writable by this function's contract.
@@ -144,25 +166,40 @@ pub(crate) unsafe fn start(xas: *mut XaState) -> *mut c_void {
     loaded
 }
 
+/// Starts a load under RCU or XArray lock protection.
+///
+/// # Safety
+///
+/// `xas` must point to a valid XArray state under RCU or XArray lock
+/// protection.
+pub(crate) unsafe fn start(xas: *mut XaState) -> *mut c_void {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { start_inner(xas, false) }
+}
+
 /// Descends one level, resolving sibling entries in the selected node.
 ///
 /// # Safety
 ///
 /// `xas` must be valid and `node` must be the node selected for its index.
-pub(crate) unsafe fn descend(xas: *mut XaState, node: *mut XaNode) -> *mut c_void {
+unsafe fn descend_inner(
+    xas: *mut XaState,
+    node: *mut XaNode,
+    externally_locked: bool,
+) -> *mut c_void {
     // SAFETY: Guaranteed by this function's contract.
     let state = unsafe { &mut *xas };
     // SAFETY: `node` is valid by this function's contract.
     let shift = unsafe { (*node).shift as usize };
     let mut offset = ((state.xa_index >> shift) & CHUNK_MASK) as u32;
     // SAFETY: `offset` is masked to the node slot count.
-    let mut loaded = unsafe { entry(state.xa, node, offset) };
+    let mut loaded = unsafe { entry(state.xa, node, offset, externally_locked) };
 
     state.xa_node = node;
     while is_sibling(loaded) {
         offset = to_sibling(loaded);
         // SAFETY: Sibling entries contain a valid slot offset.
-        loaded = unsafe { entry(state.xa, node, offset) };
+        loaded = unsafe { entry(state.xa, node, offset, externally_locked) };
         if shift != 0 && is_node(loaded) {
             // SAFETY: This helper obtains the fixed retry-entry encoding.
             loaded = unsafe { bindings::xarray_retry_entry() };
@@ -173,14 +210,24 @@ pub(crate) unsafe fn descend(xas: *mut XaState, node: *mut XaNode) -> *mut c_voi
     loaded
 }
 
+/// Descends one level under RCU or XArray lock protection.
+///
+/// # Safety
+///
+/// `xas` must be valid and `node` must be the node selected for its index.
+pub(crate) unsafe fn descend(xas: *mut XaState, node: *mut XaNode) -> *mut c_void {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { descend_inner(xas, node, false) }
+}
+
 /// Implements the advanced XArray load walk.
 ///
 /// # Safety
 ///
-/// `xas` must point to a valid XArray state under RCU or lock protection.
-pub(crate) unsafe fn load_advanced(xas: *mut XaState) -> *mut c_void {
+/// `xas` must point to a valid XArray state under the caller's protection.
+unsafe fn load_advanced_inner(xas: *mut XaState, externally_locked: bool) -> *mut c_void {
     // SAFETY: Guaranteed by this function's contract.
-    let mut loaded = unsafe { start(xas) };
+    let mut loaded = unsafe { start_inner(xas, externally_locked) };
 
     while is_node(loaded) {
         let node = to_node(loaded);
@@ -190,7 +237,7 @@ pub(crate) unsafe fn load_advanced(xas: *mut XaState) -> *mut c_void {
         }
 
         // SAFETY: The node was selected by `start` or the previous descent.
-        loaded = unsafe { descend(xas, node) };
+        loaded = unsafe { descend_inner(xas, node, externally_locked) };
         // SAFETY: The node remains valid while the caller holds RCU or lock.
         if unsafe { (*node).shift } == 0 {
             break;
@@ -198,6 +245,29 @@ pub(crate) unsafe fn load_advanced(xas: *mut XaState) -> *mut c_void {
     }
 
     loaded
+}
+
+/// Implements the advanced XArray load walk under RCU or XArray lock protection.
+///
+/// # Safety
+///
+/// `xas` must point to a valid XArray state under RCU or XArray lock
+/// protection.
+pub(crate) unsafe fn load_advanced(xas: *mut XaState) -> *mut c_void {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { load_advanced_inner(xas, false) }
+}
+
+/// Implements the advanced XArray load walk under external synchronization.
+///
+/// # Safety
+///
+/// `xas` must point to a valid XArray state. The caller must hold a lock that
+/// excludes every concurrent writer for the complete operation.
+#[cfg(CONFIG_RUST_IDR_NEXT)]
+pub(crate) unsafe fn load_advanced_external(xas: *mut XaState) -> *mut c_void {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { load_advanced_inner(xas, true) }
 }
 
 /// Loads an entry through the advanced XArray API.

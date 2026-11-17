@@ -1049,6 +1049,22 @@ config RUST_IDR_ALLOC
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_IDR_NEXT
+	bool "Rust implementation of IDR iteration"
+	depends on RUST_XARRAY_FIND
+	default y
+	help
+	  Use Rust for the production IDR iteration policy behind
+	  idr_get_next_ul() and idr_get_next().
+
+	  Rust owns base-relative cursor normalization, sparse tree traversal
+	  control, retry recovery, and the signed-ID overflow check. XArray node
+	  and cursor layouts, RCU slot access, and entry classification remain
+	  explicit boundaries.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_XARRAY_SQUASH_MARKS
 	bool "Rust implementation of XArray multi-index mark squashing"
 	depends on RUST_XARRAY_MARKS && X86_64

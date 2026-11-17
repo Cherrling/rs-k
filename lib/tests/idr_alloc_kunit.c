@@ -141,7 +141,7 @@ static void *idr_test_find(struct idr_test_context *ctx, unsigned long id)
 static void idr_test_first_fit_holes(struct kunit *test)
 {
 	struct idr_test_context *ctx = idr_test_init(test, 0);
-	u8 entries[] = { 1, 2, 3 };
+	u32 entries[] = { 1, 2, 3 };
 
 	KUNIT_ASSERT_NOT_NULL(test, ctx);
 	KUNIT_ASSERT_EQ(test, idr_test_alloc(ctx, &entries[0], 0, 0), 0);

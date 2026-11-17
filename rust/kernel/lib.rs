@@ -109,6 +109,8 @@ pub mod i2c;
 pub mod id_pool;
 #[cfg(CONFIG_RUST_IDR_ALLOC)]
 mod idr_alloc;
+#[cfg(CONFIG_RUST_IDR_NEXT)]
+mod idr_next;
 #[doc(hidden)]
 pub mod impl_flags;
 pub mod init;

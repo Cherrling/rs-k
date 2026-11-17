@@ -42,7 +42,8 @@ __rust_helper void *rust_helper_xarray_entry(const struct xarray *xa,
 }
 
 #if defined(CONFIG_RUST_XARRAY_FIND_MARKED) || \
-	defined(CONFIG_RUST_XARRAY_CREATE)
+	defined(CONFIG_RUST_XARRAY_CREATE) || \
+	defined(CONFIG_RUST_IDR_NEXT)
 /*
  * IDR callers use a caller-owned lock instead of xa_lock. The caller must
  * exclude concurrent XArray writers for the complete operation.
@@ -303,7 +304,7 @@ rust_helper_xarray_parent(const struct xarray *xa,
 }
 #endif
 
-#ifdef CONFIG_RUST_XARRAY_FIND_MARKED
+#if defined(CONFIG_RUST_XARRAY_FIND_MARKED) || defined(CONFIG_RUST_IDR_NEXT)
 __rust_helper struct xa_node *
 rust_helper_xarray_parent_external(const struct xarray *xa,
 				   const struct xa_node *node)

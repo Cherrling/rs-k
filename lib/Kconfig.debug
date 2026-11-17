@@ -3715,6 +3715,18 @@ config IDR_ALLOC_KUNIT_TEST
 
 	  If unsure, say N.
 
+config IDR_NEXT_KUNIT_TEST
+	tristate "KUnit Test for IDR iteration" if !KUNIT_ALL_TESTS
+	depends on KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This builds the KUnit test suite for IDR next-entry iteration. It
+	  tests base-relative starts, sparse traversal, holes, allocated NULL
+	  entries, internal value entries, and signed-ID wrappers in the active
+	  implementation.
+
+	  If unsure, say N.
+
 config XARRAY_MARKS_KUNIT_TEST
 	tristate "KUnit Test for XArray mark lifecycle" if !KUNIT_ALL_TESTS
 	depends on KUNIT

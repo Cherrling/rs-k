@@ -124,6 +124,7 @@ more details.
     native-maple-tree-rebalance-store
     native-maple-tree-root-store
     native-idr-alloc
+    native-idr-next
     native-xarray-alloc
     native-xarray-create
     native-xarray-create-range

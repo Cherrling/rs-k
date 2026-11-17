@@ -65,22 +65,44 @@ unsafe fn set_bounds(xas: *mut XaState) {
     unsafe { bindings::xarray_set_bounds(xas) }
 }
 
-/// Loads one slot under the caller's RCU or lock protection.
+/// Loads one slot under the caller's protection.
 ///
 /// # Safety
 ///
-/// `xa` and `node` must be valid and `offset` must be in range.
-unsafe fn entry(xa: *const XArray, node: *mut XaNode, offset: u32) -> *mut c_void {
+/// `xa` and `node` must be valid and `offset` must be in range. If
+/// `externally_locked` is true, the caller must hold a lock that excludes
+/// every concurrent writer.
+unsafe fn entry(
+    xa: *const XArray,
+    node: *mut XaNode,
+    offset: u32,
+    externally_locked: bool,
+) -> *mut c_void {
+    #[cfg(CONFIG_RUST_IDR_NEXT)]
+    if externally_locked {
+        // SAFETY: The caller provides external writer exclusion.
+        return unsafe { bindings::xarray_entry_external(xa, node, offset) };
+    }
+
+    debug_assert!(!externally_locked);
     // SAFETY: Guaranteed by this function's contract.
     unsafe { bindings::xarray_entry(xa, node, offset) }
 }
 
-/// Loads the parent under the caller's RCU or lock protection.
+/// Loads the parent under the caller's protection.
 ///
 /// # Safety
 ///
-/// `xa` and `node` must be valid.
-unsafe fn parent(xa: *const XArray, node: *mut XaNode) -> *mut XaNode {
+/// `xa` and `node` must be valid. If `externally_locked` is true, the caller
+/// must hold a lock that excludes every concurrent writer.
+unsafe fn parent(xa: *const XArray, node: *mut XaNode, externally_locked: bool) -> *mut XaNode {
+    #[cfg(CONFIG_RUST_IDR_NEXT)]
+    if externally_locked {
+        // SAFETY: The caller provides external writer exclusion.
+        return unsafe { bindings::xarray_parent_external(xa, node) };
+    }
+
+    debug_assert!(!externally_locked);
     // SAFETY: Guaranteed by this function's contract.
     unsafe { bindings::xarray_parent(xa, node) }
 }
@@ -90,7 +112,14 @@ unsafe fn parent(xa: *const XArray, node: *mut XaNode) -> *mut XaNode {
 /// # Safety
 ///
 /// `xas` must be valid under RCU or lock protection.
-unsafe fn load(xas: *mut XaState) -> *mut c_void {
+unsafe fn load(xas: *mut XaState, externally_locked: bool) -> *mut c_void {
+    #[cfg(CONFIG_RUST_IDR_NEXT)]
+    if externally_locked {
+        // SAFETY: The caller provides external writer exclusion.
+        return unsafe { crate::xarray_load::load_advanced_external(xas) };
+    }
+
+    debug_assert!(!externally_locked);
     // SAFETY: Guaranteed by this function's contract.
     unsafe { crate::xarray_load::load_advanced(xas) }
 }
@@ -115,8 +144,8 @@ unsafe fn next_offset(state: &mut XaState) {
 ///
 /// # Safety
 ///
-/// `xas` must point to a valid XArray state under RCU or lock protection.
-pub(crate) unsafe fn find(xas: *mut XaState, max: usize) -> *mut c_void {
+/// `xas` must point to a valid XArray state under the caller's protection.
+unsafe fn find_inner(xas: *mut XaState, max: usize, externally_locked: bool) -> *mut c_void {
     // SAFETY: Guaranteed by this function's contract.
     let state = unsafe { &mut *xas };
 
@@ -137,7 +166,7 @@ pub(crate) unsafe fn find(xas: *mut XaState, max: usize) -> *mut c_void {
         return ptr::null_mut();
     } else if state.xa_node.addr() == RESTART_ADDRESS {
         // SAFETY: The top cursor is valid under RCU or lock protection.
-        let loaded = unsafe { load(xas) };
+        let loaded = unsafe { load(xas, externally_locked) };
         if !loaded.is_null() || not_node(state.xa_node) {
             return loaded;
         }
@@ -157,12 +186,19 @@ pub(crate) unsafe fn find(xas: *mut XaState, max: usize) -> *mut c_void {
             // SAFETY: The cursor identifies a live node.
             state.xa_offset = unsafe { (*state.xa_node).offset }.wrapping_add(1);
             // SAFETY: The node is live under RCU or lock protection.
-            state.xa_node = unsafe { parent(state.xa, state.xa_node) };
+            state.xa_node = unsafe { parent(state.xa, state.xa_node, externally_locked) };
             continue;
         }
 
         // SAFETY: The cursor offset identifies a slot in the live node.
-        let loaded = unsafe { entry(state.xa, state.xa_node, u32::from(state.xa_offset)) };
+        let loaded = unsafe {
+            entry(
+                state.xa,
+                state.xa_node,
+                u32::from(state.xa_offset),
+                externally_locked,
+            )
+        };
         if is_node(loaded) {
             state.xa_node = to_node(loaded);
             state.xa_offset = 0;
@@ -181,6 +217,29 @@ pub(crate) unsafe fn find(xas: *mut XaState, max: usize) -> *mut c_void {
         unsafe { set_bounds(xas) };
     }
     ptr::null_mut()
+}
+
+/// Finds the next present entry under RCU or XArray lock protection.
+///
+/// # Safety
+///
+/// `xas` must point to a valid XArray state under RCU or XArray lock
+/// protection.
+pub(crate) unsafe fn find(xas: *mut XaState, max: usize) -> *mut c_void {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { find_inner(xas, max, false) }
+}
+
+/// Finds the next present entry under external synchronization.
+///
+/// # Safety
+///
+/// `xas` must point to a valid XArray state. The caller must hold a lock that
+/// excludes every concurrent writer for the complete operation.
+#[cfg(CONFIG_RUST_IDR_NEXT)]
+pub(crate) unsafe fn find_external(xas: *mut XaState, max: usize) -> *mut c_void {
+    // SAFETY: Guaranteed by this function's contract.
+    unsafe { find_inner(xas, max, true) }
 }
 
 /// Finds the next present entry through the advanced XArray API.

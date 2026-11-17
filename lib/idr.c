@@ -38,6 +38,13 @@ void rust_idr_commit(struct idr *idr, struct xa_state *xas, void *ptr)
 }
 #endif
 
+#ifdef CONFIG_RUST_IDR_NEXT
+void rust_idr_warn_id_overflow(void)
+{
+	WARN_ON_ONCE(1);
+}
+#endif
+
 /**
  * idr_alloc_u32() - Allocate an ID.
  * @idr: IDR handle.
@@ -271,6 +278,9 @@ EXPORT_SYMBOL(idr_for_each);
  */
 void *idr_get_next_ul(struct idr *idr, unsigned long *nextid)
 {
+#ifdef CONFIG_RUST_IDR_NEXT
+	return rust_idr_get_next_ul(idr, nextid);
+#else
 	struct radix_tree_iter iter;
 	void __rcu **slot;
 	void *entry = NULL;
@@ -293,6 +303,7 @@ void *idr_get_next_ul(struct idr *idr, unsigned long *nextid)
 
 	*nextid = iter.index + base;
 	return entry;
+#endif
 }
 EXPORT_SYMBOL(idr_get_next_ul);
 
@@ -308,6 +319,9 @@ EXPORT_SYMBOL(idr_get_next_ul);
  */
 void *idr_get_next(struct idr *idr, int *nextid)
 {
+#ifdef CONFIG_RUST_IDR_NEXT
+	return rust_idr_get_next(idr, nextid);
+#else
 	unsigned long id = *nextid;
 	void *entry = idr_get_next_ul(idr, &id);
 
@@ -315,6 +329,7 @@ void *idr_get_next(struct idr *idr, int *nextid)
 		return NULL;
 	*nextid = id;
 	return entry;
+#endif
 }
 EXPORT_SYMBOL(idr_get_next);
 
