@@ -118,6 +118,8 @@ pub mod impl_flags;
 pub mod init;
 pub mod interop;
 pub mod interrupt;
+#[cfg(CONFIG_RUST_INTERVAL_TREE)]
+mod interval_tree;
 pub mod io;
 pub mod ioctl;
 pub mod iommu;

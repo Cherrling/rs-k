@@ -707,6 +707,27 @@ config RUST_RBTREE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_INTERVAL_TREE
+	bool "Rust implementation of interval tree operations"
+	depends on RUST && RUST_RBTREE && INTERVAL_TREE
+	depends on X86_64
+	default y
+	help
+	  Use Rust for the production interval-tree insertion, removal,
+	  augmented-subtree maintenance, overlap search, iteration, and span
+	  iteration algorithms.
+
+	  Rust owns the interval ordering, subtree maximum updates, overlap
+	  decisions, and used or hole span state machine. The intrusive node
+	  layout and augmented red-black tree primitives remain in C. The C
+	  fallback retains the complete interval tree algorithms.
+
+	  The native implementation is currently validated only for x86_64.
+	  Other architectures use the C fallback.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TIMERQUEUE
 	bool "Rust implementation of timer queues"
 	depends on RUST
@@ -1160,6 +1181,22 @@ config RBTREE_RUST_KUNIT_TEST
 	help
 	  This option enables KUnit tests for the C ABI adapters and the
 	  Rust implementation of the core red-black tree operations.
+
+	  These tests are only for development and testing, not for regular
+	  kernel use cases.
+
+	  If unsure, say N.
+
+config INTERVAL_TREE_RUST_KUNIT_TEST
+	bool "KUnit tests for interval tree implementations"
+	depends on KUNIT
+	select INTERVAL_TREE
+	select INTERVAL_TREE_SPAN_ITER
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for interval insertion, removal,
+	  augmented subtree maintenance, overlap search, iteration, and span
+	  iteration in the active implementation.
 
 	  These tests are only for development and testing, not for regular
 	  kernel use cases.

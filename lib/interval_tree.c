@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include <linux/interval_tree.h>
 #include <linux/interval_tree_generic.h>
+#include <linux/interval-tree-rust.h>
 #include <linux/compiler.h>
 #include <linux/export.h>
 
 #define START(node) ((node)->start)
 #define LAST(node)  ((node)->last)
+
+#ifndef CONFIG_RUST_INTERVAL_TREE
 
 INTERVAL_TREE_DEFINE(struct interval_tree_node, rb,
 		     unsigned long, __subtree_last,
@@ -17,7 +20,71 @@ EXPORT_SYMBOL_GPL(interval_tree_subtree_search);
 EXPORT_SYMBOL_GPL(interval_tree_iter_first);
 EXPORT_SYMBOL_GPL(interval_tree_iter_next);
 
+#else
+
+RB_DECLARE_CALLBACKS_MAX(static, interval_tree_rust_augment,
+			 struct interval_tree_node, rb,
+			 unsigned long, __subtree_last, LAST)
+
+void rust_interval_tree_link_insert(struct interval_tree_node *node,
+				    struct rb_root_cached *root,
+				    struct rb_node *parent,
+				    struct rb_node **link, bool leftmost)
+{
+	rb_link_node(&node->rb, parent, link);
+	rb_insert_augmented_cached(&node->rb, root, leftmost,
+				   &interval_tree_rust_augment);
+}
+
+void rust_interval_tree_erase(struct interval_tree_node *node,
+			      struct rb_root_cached *root)
+{
+	rb_erase_augmented_cached(&node->rb, root,
+				  &interval_tree_rust_augment);
+}
+
+void interval_tree_insert(struct interval_tree_node *node,
+			  struct rb_root_cached *root)
+{
+	rust_interval_tree_insert(node, root);
+}
+EXPORT_SYMBOL_GPL(interval_tree_insert);
+
+void interval_tree_remove(struct interval_tree_node *node,
+			  struct rb_root_cached *root)
+{
+	rust_interval_tree_remove(node, root);
+}
+EXPORT_SYMBOL_GPL(interval_tree_remove);
+
+struct interval_tree_node *
+interval_tree_subtree_search(struct interval_tree_node *node,
+			     unsigned long start, unsigned long last)
+{
+	return rust_interval_tree_subtree_search(node, start, last);
+}
+EXPORT_SYMBOL_GPL(interval_tree_subtree_search);
+
+struct interval_tree_node *
+interval_tree_iter_first(struct rb_root_cached *root,
+			 unsigned long start, unsigned long last)
+{
+	return rust_interval_tree_iter_first(root, start, last);
+}
+EXPORT_SYMBOL_GPL(interval_tree_iter_first);
+
+struct interval_tree_node *
+interval_tree_iter_next(struct interval_tree_node *node,
+			unsigned long start, unsigned long last)
+{
+	return rust_interval_tree_iter_next(node, start, last);
+}
+EXPORT_SYMBOL_GPL(interval_tree_iter_next);
+
+#endif /* CONFIG_RUST_INTERVAL_TREE */
+
 #ifdef CONFIG_INTERVAL_TREE_SPAN_ITER
+#ifndef CONFIG_RUST_INTERVAL_TREE
 /*
  * Roll nodes[1] into nodes[0] by advancing nodes[1] to the end of a contiguous
  * span of nodes. This makes nodes[0]->last the end of that contiguous used span
@@ -153,4 +220,29 @@ void interval_tree_span_iter_advance(struct interval_tree_span_iter *iter,
 					      iter->last_index);
 }
 EXPORT_SYMBOL_GPL(interval_tree_span_iter_advance);
+#else
+void interval_tree_span_iter_first(struct interval_tree_span_iter *iter,
+				   struct rb_root_cached *itree,
+				   unsigned long first_index,
+				   unsigned long last_index)
+{
+	rust_interval_tree_span_iter_first(iter, itree, first_index,
+					   last_index);
+}
+EXPORT_SYMBOL_GPL(interval_tree_span_iter_first);
+
+void interval_tree_span_iter_next(struct interval_tree_span_iter *iter)
+{
+	rust_interval_tree_span_iter_next(iter);
+}
+EXPORT_SYMBOL_GPL(interval_tree_span_iter_next);
+
+void interval_tree_span_iter_advance(struct interval_tree_span_iter *iter,
+				     struct rb_root_cached *itree,
+				     unsigned long new_index)
+{
+	rust_interval_tree_span_iter_advance(iter, itree, new_index);
+}
+EXPORT_SYMBOL_GPL(interval_tree_span_iter_advance);
+#endif /* CONFIG_RUST_INTERVAL_TREE */
 #endif

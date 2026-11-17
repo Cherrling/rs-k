@@ -55,6 +55,7 @@ obj-$(CONFIG_BTREE_TRAVERSAL_KUNIT_TEST) += btree_traversal_kunit.o
 obj-$(CONFIG_BTREE_STRUCTURAL_KUNIT_TEST) += btree_structural_kunit.o
 obj-$(CONFIG_BTREE_VISITOR_KUNIT_TEST) += btree_visitor_kunit.o
 obj-$(CONFIG_PLIST_KUNIT_TEST) += plist_kunit.o
+obj-$(CONFIG_INTERVAL_TREE_RUST_KUNIT_TEST) += interval_tree_kunit.o
 CFLAGS_fortify_kunit.o += $(call cc-disable-warning, unsequenced)
 CFLAGS_fortify_kunit.o += $(call cc-disable-warning, stringop-overread)
 CFLAGS_fortify_kunit.o += $(call cc-disable-warning, stringop-truncation)

@@ -110,6 +110,7 @@ more details.
     native-btree-structural
     native-btree-visitors
     native-plist
+    native-interval-tree
     native-kfifo
     native-genradix
     native-maple-tree-load
