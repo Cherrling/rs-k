@@ -113,6 +113,7 @@ more details.
     native-interval-tree
     native-kref
     native-klist
+    native-kobject
     native-list-lru
     native-kfifo
     native-genradix

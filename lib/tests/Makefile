@@ -119,6 +119,7 @@ obj-$(CONFIG_PRANDOM_KUNIT_TEST) += random32_kunit.o
 obj-$(CONFIG_PRINTF_KUNIT_TEST) += printf_kunit.o
 obj-$(CONFIG_REFCOUNT_KUNIT_TEST) += test_refcount.o
 obj-$(CONFIG_KREF_KUNIT_TEST) += kref_kunit.o
+obj-$(CONFIG_KOBJECT_KUNIT_TEST) += kobject_kunit.o
 obj-$(CONFIG_LOCKREF_KUNIT_TEST) += lockref_kunit.o
 obj-$(CONFIG_LIST_LRU_KUNIT_TEST) += list_lru_kunit.o
 obj-$(CONFIG_RANDSTRUCT_KUNIT_TEST) += randstruct_kunit.o

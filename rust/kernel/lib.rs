@@ -132,6 +132,8 @@ pub mod jump_label;
 mod kfifo;
 #[cfg(CONFIG_RUST_KLIST)]
 mod klist;
+#[cfg(CONFIG_RUST_KOBJECT)]
+mod kobject;
 #[cfg(CONFIG_RUST_KREF)]
 mod kref;
 #[cfg(CONFIG_KUNIT)]

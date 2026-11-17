@@ -24131,6 +24131,7 @@ F:	Documentation/rust/native-btree-visitors.rst
 F:	Documentation/rust/native-interval-tree.rst
 F:	Documentation/rust/native-kref.rst
 F:	Documentation/rust/native-klist.rst
+F:	Documentation/rust/native-kobject.rst
 F:	Documentation/rust/native-list-lru.rst
 F:	Documentation/rust/native-plist.rst
 F:	include/linux/btree-rust.h
@@ -24147,6 +24148,7 @@ F:	include/linux/hrtimer-rust.h
 F:	include/linux/interval-tree-rust.h
 F:	include/linux/itimer-rust.h
 F:	include/linux/kfifo-rust.h
+F:	include/linux/kobject-rust.h
 F:	include/linux/kref-rust.h
 F:	include/linux/klist-rust.h
 F:	include/linux/list_lru-rust.h
@@ -24191,7 +24193,9 @@ F:	include/linux/wait-rust.h
 F:	include/linux/xarray-rust.h
 F:	include/trace/events/rust_sample.h
 F:	lib/klist.c
+F:	lib/kobject.c
 F:	lib/lockref.c
+F:	lib/tests/kobject_kunit.c
 F:	lib/tests/kref_kunit.c
 F:	lib/tests/list_lru_kunit.c
 F:	lib/tests/lockref_kunit.c
@@ -24246,6 +24250,7 @@ F:	rust/helpers/list_lru.c
 F:	rust/helpers/lockref.c
 F:	rust/kernel/btree.rs
 F:	rust/kernel/interval_tree.rs
+F:	rust/kernel/kobject.rs
 F:	rust/kernel/kref.rs
 F:	rust/kernel/klist.rs
 F:	rust/kernel/list_lru.rs

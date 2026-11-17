@@ -13,6 +13,7 @@
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/kobject.h>
+#include <linux/kobject-rust.h>
 #include <linux/string.h>
 #include <linux/export.h>
 #include <linux/stat.h>
@@ -194,16 +195,65 @@ static void kobj_kset_leave(struct kobject *kobj)
 	kset_put(kobj->kset);
 }
 
+#ifdef CONFIG_RUST_KOBJECT
+bool rust_kobject_state_initialized(const struct kobject *kobj)
+{
+	return kobj->state_initialized;
+}
+
+void rust_kobject_state_reset(struct kobject *kobj)
+{
+	kobj->state_in_sysfs = 0;
+	kobj->state_add_uevent_sent = 0;
+	kobj->state_remove_uevent_sent = 0;
+}
+
+void rust_kobject_state_mark_initialized(struct kobject *kobj)
+{
+	kobj->state_initialized = 1;
+}
+
+void rust_kobject_warn_invalid_pointer(void)
+{
+	pr_err("kobject (NULL): invalid kobject pointer!\n");
+	dump_stack_lvl(KERN_ERR);
+}
+
+void rust_kobject_warn_missing_ktype(const struct kobject *kobj)
+{
+	pr_err("kobject (%p): must have a ktype to be initialized properly!\n",
+	       kobj);
+	dump_stack_lvl(KERN_ERR);
+}
+
+void rust_kobject_warn_reinitialized(const struct kobject *kobj)
+{
+	pr_err("kobject (%p): attempted to reinitialize an initialized object\n",
+	       kobj);
+	dump_stack_lvl(KERN_ERR);
+}
+
+void rust_kobject_warn_uninitialized(const struct kobject *kobj, bool is_put)
+{
+	WARN(1, "kobject: '%s' (%p): is not initialized for kobject_%s()\n",
+	     kobject_name(kobj), kobj, is_put ? "put" : "get");
+}
+#endif /* CONFIG_RUST_KOBJECT */
+
 static void kobject_init_internal(struct kobject *kobj)
 {
 	if (!kobj)
 		return;
+#ifdef CONFIG_RUST_KOBJECT
+	rust_kobject_init_internal(kobj);
+#else
 	kref_init(&kobj->kref);
 	INIT_LIST_HEAD(&kobj->entry);
 	kobj->state_in_sysfs = 0;
 	kobj->state_add_uevent_sent = 0;
 	kobj->state_remove_uevent_sent = 0;
 	kobj->state_initialized = 1;
+#endif /* CONFIG_RUST_KOBJECT */
 }
 
 
@@ -332,6 +382,9 @@ EXPORT_SYMBOL(kobject_set_name);
  */
 void kobject_init(struct kobject *kobj, const struct kobj_type *ktype)
 {
+#ifdef CONFIG_RUST_KOBJECT
+	rust_kobject_init(kobj, ktype);
+#else
 	char *err_str;
 
 	if (!kobj) {
@@ -356,6 +409,7 @@ void kobject_init(struct kobject *kobj, const struct kobj_type *ktype)
 error:
 	pr_err("kobject (%p): %s\n", kobj, err_str);
 	dump_stack_lvl(KERN_ERR);
+#endif /* CONFIG_RUST_KOBJECT */
 }
 EXPORT_SYMBOL(kobject_init);
 
@@ -635,6 +689,9 @@ EXPORT_SYMBOL(kobject_del);
  */
 struct kobject *kobject_get(struct kobject *kobj)
 {
+#ifdef CONFIG_RUST_KOBJECT
+	return rust_kobject_get(kobj);
+#else
 	if (kobj) {
 		if (!kobj->state_initialized)
 			WARN(1, KERN_WARNING
@@ -643,16 +700,21 @@ struct kobject *kobject_get(struct kobject *kobj)
 		kref_get(&kobj->kref);
 	}
 	return kobj;
+#endif /* CONFIG_RUST_KOBJECT */
 }
 EXPORT_SYMBOL(kobject_get);
 
 struct kobject * __must_check kobject_get_unless_zero(struct kobject *kobj)
 {
+#ifdef CONFIG_RUST_KOBJECT
+	return rust_kobject_get_unless_zero(kobj);
+#else
 	if (!kobj)
 		return NULL;
 	if (!kref_get_unless_zero(&kobj->kref))
 		kobj = NULL;
 	return kobj;
+#endif /* CONFIG_RUST_KOBJECT */
 }
 EXPORT_SYMBOL(kobject_get_unless_zero);
 
@@ -729,6 +791,9 @@ static void kobject_release(struct kref *kref)
  */
 void kobject_put(struct kobject *kobj)
 {
+#ifdef CONFIG_RUST_KOBJECT
+	rust_kobject_put(kobj, kobject_release);
+#else
 	if (kobj) {
 		if (!kobj->state_initialized)
 			WARN(1, KERN_WARNING
@@ -736,6 +801,7 @@ void kobject_put(struct kobject *kobj)
 			     kobject_name(kobj), kobj);
 		kref_put(&kobj->kref, kobject_release);
 	}
+#endif /* CONFIG_RUST_KOBJECT */
 }
 EXPORT_SYMBOL(kobject_put);
 

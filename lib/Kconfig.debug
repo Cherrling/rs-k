@@ -2337,6 +2337,20 @@ config KREF_KUNIT_TEST
 
 	  If unsure, say N.
 
+config KOBJECT_KUNIT_TEST
+	tristate "KUnit test for kobject lifecycle" if !KUNIT_ALL_TESTS
+	depends on KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for kobject initialization,
+	  references, conditional references, final release, and concurrent
+	  reference transitions.
+
+	  The same tests run with either the C implementation or the native
+	  Rust implementation selected.
+
+	  If unsure, say N.
+
 config LOCKREF_KUNIT_TEST
 	tristate "KUnit test for lockref operations" if !KUNIT_ALL_TESTS
 	depends on KUNIT
