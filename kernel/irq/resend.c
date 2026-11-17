@@ -16,6 +16,7 @@
 #include <linux/module.h>
 #include <linux/random.h>
 #include <linux/interrupt.h>
+#include <linux/irq-resend-rust.h>
 
 #include "internals.h"
 
@@ -25,6 +26,10 @@
 static HLIST_HEAD(irq_resend_list);
 static DEFINE_RAW_SPINLOCK(irq_resend_lock);
 
+#ifdef CONFIG_RUST_IRQ_RESEND
+/* Tasklet to run the Rust-owned software resend state machine: */
+static DECLARE_TASKLET(resend_tasklet, rust_irq_resend_tasklet);
+#else
 /*
  * Run software resends of IRQ's
  */
@@ -81,27 +86,188 @@ static int irq_sw_resend(struct irq_desc *desc)
 	tasklet_schedule(&resend_tasklet);
 	return 0;
 }
+#endif /* CONFIG_RUST_IRQ_RESEND */
 
-void clear_irq_resend(struct irq_desc *desc)
+#ifdef CONFIG_RUST_IRQ_RESEND
+bool rust_irq_resend_is_level(struct irq_desc *desc)
 {
-	guard(raw_spinlock)(&irq_resend_lock);
+	return irq_settings_is_level(desc);
+}
+
+bool rust_irq_resend_is_nested(struct irq_desc *desc)
+{
+	return irq_settings_is_nested_thread(desc);
+}
+
+bool rust_irq_resend_enforces_irqctx(struct irq_desc *desc)
+{
+	return irqd_is_handle_enforce_irqctx(&desc->irq_data);
+}
+
+bool rust_irq_resend_is_pending(struct irq_desc *desc)
+{
+	return desc->istate & IRQS_PENDING;
+}
+
+bool rust_irq_resend_is_replay(struct irq_desc *desc)
+{
+	return desc->istate & IRQS_REPLAY;
+}
+
+void rust_irq_resend_clear_pending(struct irq_desc *desc)
+{
+	desc->istate &= ~IRQS_PENDING;
+}
+
+void rust_irq_resend_set_replay(struct irq_desc *desc)
+{
+	desc->istate |= IRQS_REPLAY;
+}
+
+int rust_irq_resend_parent_irq(struct irq_desc *desc)
+{
+	return desc->parent_irq;
+}
+
+struct irq_desc *rust_irq_resend_desc(unsigned int irq)
+{
+	return irq_to_desc(irq);
+}
+
+bool rust_irq_resend_has_direct_retrigger(struct irq_desc *desc)
+{
+	return desc->irq_data.chip->irq_retrigger;
+}
+
+int rust_irq_resend_retrigger(struct irq_desc *desc)
+{
+	return desc->irq_data.chip->irq_retrigger(&desc->irq_data);
+}
+
+int rust_irq_resend_retrigger_hierarchy(struct irq_desc *desc)
+{
+#ifdef CONFIG_IRQ_DOMAIN_HIERARCHY
+	return irq_chip_retrigger_hierarchy(&desc->irq_data);
+#else
+	return 0;
+#endif
+}
+
+void rust_irq_resend_lock(void)
+{
+	raw_spin_lock(&irq_resend_lock);
+}
+
+void rust_irq_resend_unlock(void)
+{
+	raw_spin_unlock(&irq_resend_lock);
+}
+
+void rust_irq_resend_lock_irq(void)
+{
+	raw_spin_lock_irq(&irq_resend_lock);
+}
+
+void rust_irq_resend_unlock_irq(void)
+{
+	raw_spin_unlock_irq(&irq_resend_lock);
+}
+
+bool rust_irq_resend_node_hashed(struct irq_desc *desc)
+{
+	return !hlist_unhashed(&desc->resend_node);
+}
+
+void rust_irq_resend_node_add(struct irq_desc *desc)
+{
+	hlist_add_head(&desc->resend_node, &irq_resend_list);
+}
+
+void rust_irq_resend_node_del(struct irq_desc *desc)
+{
 	hlist_del_init(&desc->resend_node);
 }
 
-void irq_resend_init(struct irq_desc *desc)
+struct irq_desc *rust_irq_resend_pop(void)
+{
+	struct irq_desc *desc;
+
+	if (hlist_empty(&irq_resend_list))
+		return NULL;
+
+	desc = hlist_entry(irq_resend_list.first, struct irq_desc, resend_node);
+	hlist_del_init(&desc->resend_node);
+	return desc;
+}
+
+void rust_irq_resend_schedule(void)
+{
+	tasklet_schedule(&resend_tasklet);
+}
+
+void rust_irq_resend_handle(struct irq_desc *desc)
+{
+	desc->handle_irq(desc);
+}
+
+void rust_irq_resend_init_node(struct irq_desc *desc)
 {
 	INIT_HLIST_NODE(&desc->resend_node);
 }
-#else
-void clear_irq_resend(struct irq_desc *desc) {}
-void irq_resend_init(struct irq_desc *desc) {}
+#endif /* CONFIG_RUST_IRQ_RESEND */
 
+#if defined(CONFIG_IRQ_KUNIT_TEST) && defined(CONFIG_HARDIRQS_SW_RESEND)
+void irq_resend_test_pause(void)
+{
+	tasklet_disable(&resend_tasklet);
+}
+
+void irq_resend_test_resume(void)
+{
+	tasklet_enable(&resend_tasklet);
+}
+
+void irq_resend_test_drain(void)
+{
+#ifdef CONFIG_RUST_IRQ_RESEND
+	rust_irq_resend_tasklet(NULL);
+#else
+	resend_irqs(NULL);
+#endif
+}
+#endif /* CONFIG_IRQ_KUNIT_TEST && CONFIG_HARDIRQS_SW_RESEND */
+
+#else /* !CONFIG_HARDIRQS_SW_RESEND */
+
+#ifndef CONFIG_RUST_IRQ_RESEND
 static int irq_sw_resend(struct irq_desc *desc)
 {
 	return -EINVAL;
 }
 #endif
 
+#endif /* CONFIG_HARDIRQS_SW_RESEND */
+
+void clear_irq_resend(struct irq_desc *desc)
+{
+#ifdef CONFIG_RUST_IRQ_RESEND
+	rust_irq_resend_clear(desc);
+#elif defined(CONFIG_HARDIRQS_SW_RESEND)
+	guard(raw_spinlock)(&irq_resend_lock);
+	hlist_del_init(&desc->resend_node);
+#endif
+}
+
+void irq_resend_init(struct irq_desc *desc)
+{
+#ifdef CONFIG_RUST_IRQ_RESEND
+	rust_irq_resend_init(desc);
+#elif defined(CONFIG_HARDIRQS_SW_RESEND)
+	INIT_HLIST_NODE(&desc->resend_node);
+#endif
+}
+
+#ifndef CONFIG_RUST_IRQ_RESEND
 static int try_retrigger(struct irq_desc *desc)
 {
 	if (desc->irq_data.chip->irq_retrigger)
@@ -113,6 +279,7 @@ static int try_retrigger(struct irq_desc *desc)
 	return 0;
 #endif
 }
+#endif /* !CONFIG_RUST_IRQ_RESEND */
 
 /*
  * IRQ resend
@@ -121,6 +288,9 @@ static int try_retrigger(struct irq_desc *desc)
  */
 int check_irq_resend(struct irq_desc *desc, bool inject)
 {
+#ifdef CONFIG_RUST_IRQ_RESEND
+	return rust_irq_resend_check(desc, inject);
+#else
 	int err = 0;
 
 	/*
@@ -148,6 +318,7 @@ int check_irq_resend(struct irq_desc *desc, bool inject)
 	if (!err)
 		desc->istate |= IRQS_REPLAY;
 	return err;
+#endif /* CONFIG_RUST_IRQ_RESEND */
 }
 
 #ifdef CONFIG_GENERIC_IRQ_INJECTION

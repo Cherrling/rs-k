@@ -1938,6 +1938,26 @@ config RUST_IRQ_WORK
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_IRQ_RESEND
+	bool "Rust implementation of IRQ resend"
+	depends on RUST && HARDIRQS_SW_RESEND
+	default y
+	help
+	  Use Rust for the production IRQ resend state machine. This includes
+	  level, replay, and pending decisions, hardware retrigger fallback,
+	  nested parent selection, software queue insertion policy, tasklet
+	  drain ordering, and resend state transitions.
+
+	  C helpers retain descriptor field access, the raw resend lock, hlist
+	  operations, tasklet scheduling, irqchip callbacks, and flow-handler
+	  calls.
+
+	  The complete C implementation remains available when this option is
+	  disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_TEARDOWN
 	bool "Rust implementation of final task teardown"
 	depends on RUST
