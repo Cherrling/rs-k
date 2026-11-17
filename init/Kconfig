@@ -1938,6 +1938,25 @@ config RUST_IRQ_WORK
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_IRQ_EVENT
+	bool "Rust implementation of IRQ event dispatch"
+	depends on RUST
+	default y
+	help
+	  Use Rust for per-CPU IRQ action traversal, handler result
+	  aggregation, threaded wake policy, and IRQ event lifecycle
+	  transitions.
+
+	  C helpers retain action fields and links, handler invocation with
+	  tracing and duration diagnostics, atomic thread flags, descriptor
+	  lock transitions, and scheduler wake primitives.
+
+	  The complete C implementation remains available when this option is
+	  disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_IRQ_RESEND
 	bool "Rust implementation of IRQ resend"
 	depends on RUST && HARDIRQS_SW_RESEND

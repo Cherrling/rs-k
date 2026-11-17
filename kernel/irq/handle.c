@@ -12,6 +12,7 @@
 #include <linux/random.h>
 #include <linux/sched.h>
 #include <linux/interrupt.h>
+#include <linux/irq-event-rust.h>
 #include <linux/kernel_stat.h>
 
 #include <asm/irq_regs.h>
@@ -60,6 +61,9 @@ static void warn_no_thread(unsigned int irq, struct irqaction *action)
 
 void __irq_wake_thread(struct irq_desc *desc, struct irqaction *action)
 {
+#ifdef CONFIG_RUST_IRQ_EVENT
+	rust_irq_event_wake_thread(desc, action);
+#else
 	/*
 	 * In case the thread crashed and was killed we just pretend that
 	 * we handled the interrupt. The hardirq handler has disabled the
@@ -142,6 +146,7 @@ void __irq_wake_thread(struct irq_desc *desc, struct irqaction *action)
 	 * the RUN flag before it goes to sleep in wait_for_interrupt().
 	 */
 	wake_up_state(action->thread, TASK_INTERRUPTIBLE);
+#endif /* CONFIG_RUST_IRQ_EVENT */
 }
 
 static DEFINE_STATIC_KEY_FALSE(irqhandler_duration_check_enabled);
@@ -182,8 +187,146 @@ static inline void irqhandler_duration_check(u64 ts_start, unsigned int irq,
 	}
 }
 
+#ifdef CONFIG_RUST_IRQ_EVENT
+struct irqaction *rust_irq_event_first_action(struct irq_desc *desc)
+{
+	return desc->action;
+}
+
+struct irqaction *rust_irq_event_next_action(struct irqaction *action)
+{
+	return action->next;
+}
+
+bool rust_irq_event_action_can_thread(struct irq_desc *desc,
+				      struct irqaction *action)
+{
+	return irq_settings_can_thread(desc) &&
+	       !(action->flags & (IRQF_NO_THREAD | IRQF_PERCPU | IRQF_ONESHOT));
+}
+
+void rust_irq_event_mark_force_threaded(void)
+{
+	lockdep_hardirq_threaded();
+}
+
+u32 rust_irq_event_call_handler(struct irq_desc *desc,
+				struct irqaction *action)
+{
+	unsigned int irq = desc->irq_data.irq;
+	irqreturn_t res;
+
+	trace_irq_handler_entry(irq, action);
+
+	if (static_branch_unlikely(&irqhandler_duration_check_enabled)) {
+		u64 ts_start = local_clock();
+
+		res = action->handler(irq, action->dev_id);
+		irqhandler_duration_check(ts_start, irq, action);
+	} else {
+		res = action->handler(irq, action->dev_id);
+	}
+
+	trace_irq_handler_exit(irq, action, res);
+	return (u32)res;
+}
+
+bool rust_irq_event_irqs_disabled(void)
+{
+	return irqs_disabled();
+}
+
+void rust_irq_event_warn_irqs_enabled(struct irq_desc *desc,
+				      struct irqaction *action)
+{
+	WARN_ONCE(!irqs_disabled(), "irq %u handler %pS enabled interrupts\n",
+		  desc->irq_data.irq, action->handler);
+}
+
+void rust_irq_event_local_irq_disable(void)
+{
+	local_irq_disable();
+}
+
+bool rust_irq_event_action_has_thread(struct irqaction *action)
+{
+	return action->thread_fn;
+}
+
+void rust_irq_event_warn_no_thread(struct irq_desc *desc,
+				   struct irqaction *action)
+{
+	warn_no_thread(desc->irq_data.irq, action);
+}
+
+bool rust_irq_event_thread_exiting(struct irqaction *action)
+{
+	return action->thread->flags & PF_EXITING;
+}
+
+bool rust_irq_event_claim_thread(struct irqaction *action)
+{
+	return !test_and_set_bit(IRQTF_RUNTHREAD, &action->thread_flags);
+}
+
+void rust_irq_event_add_oneshot(struct irq_desc *desc,
+				struct irqaction *action)
+{
+	desc->threads_oneshot |= action->thread_mask;
+}
+
+void rust_irq_event_inc_thread_active(struct irq_desc *desc)
+{
+	atomic_inc(&desc->threads_active);
+}
+
+void rust_irq_event_wake_task(struct irqaction *action)
+{
+	wake_up_state(action->thread, TASK_INTERRUPTIBLE);
+}
+
+void rust_irq_event_add_randomness(struct irq_desc *desc)
+{
+	add_interrupt_randomness(desc->irq_data.irq);
+}
+
+bool rust_irq_event_has_debug(struct irq_desc *desc)
+{
+	return !irq_settings_no_debug(desc);
+}
+
+void rust_irq_event_note(struct irq_desc *desc, u32 action_ret)
+{
+	note_interrupt(desc, (irqreturn_t)action_ret);
+}
+
+void rust_irq_event_begin(struct irq_desc *desc)
+{
+	desc->istate &= ~IRQS_PENDING;
+	irqd_set(&desc->irq_data, IRQD_IRQ_INPROGRESS);
+}
+
+void rust_irq_event_unlock(struct irq_desc *desc)
+{
+	raw_spin_unlock(&desc->lock);
+}
+
+void rust_irq_event_lock(struct irq_desc *desc)
+{
+	raw_spin_lock(&desc->lock);
+}
+
+void rust_irq_event_finish(struct irq_desc *desc)
+{
+	irqd_clear(&desc->irq_data, IRQD_IRQ_INPROGRESS);
+}
+#endif /* CONFIG_RUST_IRQ_EVENT */
+
 irqreturn_t __handle_irq_event_percpu(struct irq_desc *desc)
 {
+#ifdef CONFIG_RUST_IRQ_EVENT
+	return (irqreturn_t)rust_irq_event_dispatch(desc);
+#else
 	irqreturn_t retval = IRQ_NONE;
 	unsigned int irq = desc->irq_data.irq;
 	struct irqaction *action;
@@ -237,10 +380,14 @@ irqreturn_t __handle_irq_event_percpu(struct irq_desc *desc)
 	}
 
 	return retval;
+#endif /* CONFIG_RUST_IRQ_EVENT */
 }
 
 irqreturn_t handle_irq_event_percpu(struct irq_desc *desc)
 {
+#ifdef CONFIG_RUST_IRQ_EVENT
+	return (irqreturn_t)rust_irq_event_percpu(desc);
+#else
 	irqreturn_t retval;
 
 	retval = __handle_irq_event_percpu(desc);
@@ -250,10 +397,14 @@ irqreturn_t handle_irq_event_percpu(struct irq_desc *desc)
 	if (!irq_settings_no_debug(desc))
 		note_interrupt(desc, retval);
 	return retval;
+#endif /* CONFIG_RUST_IRQ_EVENT */
 }
 
 irqreturn_t handle_irq_event(struct irq_desc *desc)
 {
+#ifdef CONFIG_RUST_IRQ_EVENT
+	return (irqreturn_t)rust_irq_event_handle(desc);
+#else
 	irqreturn_t ret;
 
 	desc->istate &= ~IRQS_PENDING;
@@ -265,6 +416,7 @@ irqreturn_t handle_irq_event(struct irq_desc *desc)
 	raw_spin_lock(&desc->lock);
 	irqd_clear(&desc->irq_data, IRQD_IRQ_INPROGRESS);
 	return ret;
+#endif /* CONFIG_RUST_IRQ_EVENT */
 }
 
 #ifdef CONFIG_GENERIC_IRQ_MULTI_HANDLER

@@ -81,6 +81,7 @@
 #include <linux/idr-rust.h>
 #include <linux/interrupt.h>
 #include <linux/interval-tree-rust.h>
+#include <linux/irq-event-rust.h>
 #include <linux/irq-resend-rust.h>
 #include <linux/irq-work-rust.h>
 #include <linux/itimer-rust.h>

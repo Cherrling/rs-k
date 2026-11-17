@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LGPL-2.1+
 
 #include <linux/cleanup.h>
+#include <linux/completion.h>
 #include <linux/cpu.h>
 #include <linux/cpumask.h>
 #include <linux/interrupt.h>
@@ -15,6 +16,47 @@
 static irqreturn_t noop_handler(int irq, void *data)
 {
 	return IRQ_HANDLED;
+}
+
+struct irq_event_test_context {
+	struct irq_desc *desc;
+	struct completion *done;
+	irqreturn_t result;
+	unsigned int calls;
+	unsigned int thread_calls;
+	bool irqs_disabled;
+	bool pending_seen;
+	bool in_progress_seen;
+};
+
+static irqreturn_t irq_event_record_handler(int irq, void *data)
+{
+	struct irq_event_test_context *ctx = data;
+
+	ctx->calls++;
+	ctx->irqs_disabled = irqs_disabled();
+	ctx->pending_seen = !!(ctx->desc->istate & IRQS_PENDING);
+	ctx->in_progress_seen = irqd_irq_inprogress(&ctx->desc->irq_data);
+	return ctx->result;
+}
+
+static irqreturn_t irq_event_record_thread(int irq, void *data)
+{
+	struct irq_event_test_context *ctx = data;
+
+	ctx->thread_calls++;
+	if (ctx->done)
+		complete(ctx->done);
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t irq_event_run_locked(struct irq_desc *desc)
+{
+	irqreturn_t ret;
+
+	guard(raw_spinlock_irqsave)(&desc->lock);
+	ret = handle_irq_event(desc);
+	return ret;
 }
 
 static void noop(struct irq_data *data) { }
@@ -299,6 +341,192 @@ static void irq_cpuhotplug_test(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, desc->depth, 0);
 
 	free_irq(virq, NULL);
+}
+
+static void irq_event_aggregate_test(struct kunit *test)
+{
+	struct irq_event_test_context ctx0 = {
+		.result = IRQ_NONE,
+	};
+	struct irq_event_test_context ctx1 = {
+		.result = IRQ_HANDLED,
+	};
+	struct irq_desc *desc;
+	irqreturn_t ret;
+	int virq, request_ret;
+
+	virq = irq_test_setup_fake_irq(test, NULL);
+	desc = irq_to_desc(virq);
+	KUNIT_ASSERT_PTR_NE(test, desc, NULL);
+	irq_settings_set_no_debug(desc);
+	ctx0.desc = desc;
+	ctx1.desc = desc;
+
+	request_ret = request_irq(virq, irq_event_record_handler,
+				  IRQF_SHARED | IRQF_NO_THREAD,
+				  "event-test-0", &ctx0);
+	KUNIT_ASSERT_EQ(test, request_ret, 0);
+	request_ret = request_irq(virq, irq_event_record_handler,
+				  IRQF_SHARED | IRQF_NO_THREAD,
+				  "event-test-1", &ctx1);
+	KUNIT_ASSERT_EQ(test, request_ret, 0);
+
+	desc->istate |= IRQS_PENDING;
+	ret = irq_event_run_locked(desc);
+
+	KUNIT_EXPECT_EQ(test, ret, IRQ_HANDLED);
+	KUNIT_EXPECT_EQ(test, ctx0.calls, 1);
+	KUNIT_EXPECT_EQ(test, ctx1.calls, 1);
+	KUNIT_EXPECT_TRUE(test, ctx0.irqs_disabled);
+	KUNIT_EXPECT_TRUE(test, ctx1.irqs_disabled);
+	KUNIT_EXPECT_FALSE(test, ctx0.pending_seen);
+	KUNIT_EXPECT_FALSE(test, ctx1.pending_seen);
+	KUNIT_EXPECT_TRUE(test, ctx0.in_progress_seen);
+	KUNIT_EXPECT_TRUE(test, ctx1.in_progress_seen);
+	KUNIT_EXPECT_FALSE(test, desc->istate & IRQS_PENDING);
+	KUNIT_EXPECT_FALSE(test, irqd_irq_inprogress(&desc->irq_data));
+
+	free_irq(virq, &ctx0);
+	free_irq(virq, &ctx1);
+	irq_free_desc(virq);
+}
+
+static void irq_event_wake_thread_test(struct kunit *test)
+{
+	struct completion done;
+	struct irq_event_test_context ctx = {
+		.done = &done,
+		.result = IRQ_WAKE_THREAD,
+	};
+	struct irq_desc *desc;
+	irqreturn_t ret;
+	int virq, request_ret;
+
+	virq = irq_test_setup_fake_irq(test, NULL);
+	desc = irq_to_desc(virq);
+	KUNIT_ASSERT_PTR_NE(test, desc, NULL);
+	irq_settings_set_no_debug(desc);
+	ctx.desc = desc;
+	init_completion(&done);
+
+	request_ret = request_threaded_irq(virq, irq_event_record_handler,
+					   irq_event_record_thread, IRQF_NO_THREAD,
+					   "event-thread-test", &ctx);
+	KUNIT_ASSERT_EQ(test, request_ret, 0);
+
+	ret = irq_event_run_locked(desc);
+	KUNIT_EXPECT_EQ(test, ret, IRQ_WAKE_THREAD);
+	KUNIT_EXPECT_EQ(test, ctx.calls, 1);
+	KUNIT_EXPECT_TRUE(test, ctx.irqs_disabled);
+	KUNIT_EXPECT_FALSE(test, ctx.pending_seen);
+	KUNIT_EXPECT_TRUE(test, ctx.in_progress_seen);
+	KUNIT_EXPECT_NE(test, 0, wait_for_completion_timeout(&done, HZ));
+	KUNIT_EXPECT_EQ(test, ctx.thread_calls, 1);
+
+	synchronize_irq(virq);
+	KUNIT_EXPECT_EQ(test, atomic_read(&desc->threads_active), 0);
+	KUNIT_EXPECT_EQ(test, desc->threads_oneshot, 0);
+	free_irq(virq, &ctx);
+	irq_free_desc(virq);
+}
+
+static void irq_event_wake_dedup_test(struct kunit *test)
+{
+	struct irqaction action = {
+		.thread = current,
+		.thread_mask = 1,
+		.name = "event-wake-dedup",
+	};
+	struct irq_desc *desc;
+	int virq;
+
+	virq = irq_test_setup_fake_irq(test, NULL);
+	desc = irq_to_desc(virq);
+	KUNIT_ASSERT_PTR_NE(test, desc, NULL);
+
+	__irq_wake_thread(desc, &action);
+	__irq_wake_thread(desc, &action);
+
+	KUNIT_EXPECT_TRUE(test, test_bit(IRQTF_RUNTHREAD, &action.thread_flags));
+	KUNIT_EXPECT_EQ(test, atomic_read(&desc->threads_active), 1);
+	KUNIT_EXPECT_EQ(test, desc->threads_oneshot, 1);
+
+	clear_bit(IRQTF_RUNTHREAD, &action.thread_flags);
+	action.thread = NULL;
+	desc->threads_oneshot = 0;
+	atomic_set(&desc->threads_active, 0);
+	irq_free_desc(virq);
+}
+
+static void irq_event_unknown_result_test(struct kunit *test)
+{
+	struct irq_event_test_context ctx = {
+		.result = (irqreturn_t)4,
+	};
+	struct irqaction action = {
+		.handler = irq_event_record_handler,
+		.dev_id = &ctx,
+		.irq = 0,
+		.name = "event-unknown-result",
+	};
+	struct irqaction *old_action;
+	struct irq_desc *desc;
+	irqreturn_t ret;
+	int virq;
+
+	virq = irq_test_setup_fake_irq(test, NULL);
+	desc = irq_to_desc(virq);
+	KUNIT_ASSERT_PTR_NE(test, desc, NULL);
+	ctx.desc = desc;
+	action.irq = virq;
+
+	scoped_guard(raw_spinlock_irqsave, &desc->lock) {
+		old_action = desc->action;
+		desc->action = &action;
+		ret = __handle_irq_event_percpu(desc);
+		desc->action = old_action;
+	}
+
+	KUNIT_EXPECT_EQ(test, ret, 4);
+	KUNIT_EXPECT_EQ(test, ctx.calls, 1);
+	irq_free_desc(virq);
+}
+
+static void irq_event_no_thread_test(struct kunit *test)
+{
+	struct irq_event_test_context ctx = {
+		.result = IRQ_WAKE_THREAD,
+	};
+	struct irqaction action = {
+		.handler = irq_event_record_handler,
+		.dev_id = &ctx,
+		.irq = 0,
+		.name = "event-no-thread",
+	};
+	struct irqaction *old_action;
+	struct irq_desc *desc;
+	irqreturn_t ret;
+	int virq;
+
+	virq = irq_test_setup_fake_irq(test, NULL);
+	desc = irq_to_desc(virq);
+	KUNIT_ASSERT_PTR_NE(test, desc, NULL);
+	ctx.desc = desc;
+	action.irq = virq;
+
+	scoped_guard(raw_spinlock_irqsave, &desc->lock) {
+		old_action = desc->action;
+		desc->action = &action;
+		ret = __handle_irq_event_percpu(desc);
+		desc->action = old_action;
+	}
+
+	KUNIT_EXPECT_EQ(test, ret, IRQ_WAKE_THREAD);
+	KUNIT_EXPECT_EQ(test, ctx.calls, 1);
+	KUNIT_EXPECT_TRUE(test, ctx.irqs_disabled);
+	KUNIT_EXPECT_TRUE(test, test_bit(IRQTF_WARNED, &action.thread_flags));
+
+	irq_free_desc(virq);
 }
 
 #ifdef CONFIG_HARDIRQS_SW_RESEND
@@ -612,6 +840,11 @@ static struct kunit_case irq_test_cases[] = {
 	KUNIT_CASE(irq_free_disabled_test),
 	KUNIT_CASE(irq_shutdown_depth_test),
 	KUNIT_CASE(irq_cpuhotplug_test),
+	KUNIT_CASE(irq_event_aggregate_test),
+	KUNIT_CASE(irq_event_wake_thread_test),
+	KUNIT_CASE(irq_event_wake_dedup_test),
+	KUNIT_CASE(irq_event_unknown_result_test),
+	KUNIT_CASE(irq_event_no_thread_test),
 #ifdef CONFIG_HARDIRQS_SW_RESEND
 	KUNIT_CASE(irq_resend_level_test),
 	KUNIT_CASE(irq_resend_replay_test),

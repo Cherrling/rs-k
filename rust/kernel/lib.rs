@@ -127,6 +127,8 @@ pub mod ioctl;
 pub mod iommu;
 pub mod iov;
 pub mod irq;
+#[cfg(CONFIG_RUST_IRQ_EVENT)]
+mod irq_event;
 #[cfg(CONFIG_RUST_IRQ_RESEND)]
 mod irq_resend;
 #[cfg(CONFIG_RUST_IRQ_WORK)]
