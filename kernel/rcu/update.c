@@ -39,6 +39,7 @@
 #include <linux/kthread.h>
 #include <linux/tick.h>
 #include <linux/rcupdate_wait.h>
+#include <linux/rcuwait.h>
 #include <linux/sched/isolation.h>
 #include <linux/kprobes.h>
 #include <linux/slab.h>
@@ -449,8 +450,12 @@ EXPORT_SYMBOL_GPL(__wait_rcu_gp);
 
 void finish_rcuwait(struct rcuwait *w)
 {
+#ifdef CONFIG_RUST_RCUWAIT
+	rust_rcuwait_finish(w);
+#else
 	rcu_assign_pointer(w->task, NULL);
 	__set_current_state(TASK_RUNNING);
+#endif /* CONFIG_RUST_RCUWAIT */
 }
 EXPORT_SYMBOL_GPL(finish_rcuwait);
 

@@ -332,6 +332,9 @@ repeat:
 
 int rcuwait_wake_up(struct rcuwait *w)
 {
+#ifdef CONFIG_RUST_RCUWAIT
+	return rust_rcuwait_wake_up(w);
+#else
 	int ret = 0;
 	struct task_struct *task;
 
@@ -356,6 +359,7 @@ int rcuwait_wake_up(struct rcuwait *w)
 	rcu_read_unlock();
 
 	return ret;
+#endif /* CONFIG_RUST_RCUWAIT */
 }
 EXPORT_SYMBOL_GPL(rcuwait_wake_up);
 

@@ -140,6 +140,7 @@
 #include <linux/refcount.h>
 #include <linux/refcount-rust.h>
 #include <linux/regulator/consumer.h>
+#include <linux/rcuwait.h>
 #include <linux/rwsem-rust.h>
 #include <linux/rwlock-rust.h>
 #include <linux/sched.h>

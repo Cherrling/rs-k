@@ -2407,6 +2407,20 @@ config SWAIT_KUNIT_TEST
 
 	  If unsure, say N.
 
+config RCUWAIT_KUNIT_TEST
+	bool "KUnit test for rcuwait" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for rcuwait task publication,
+	  condition ordering, wakeup, timeout retirement, signal interruption,
+	  and repeated wake handoffs.
+
+	  The same tests run with either the C implementation or the native
+	  Rust implementation selected.
+
+	  If unsure, say N.
+
 config COMPLETION_KUNIT_TEST
 	bool "KUnit test for completions" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

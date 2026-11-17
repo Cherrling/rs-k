@@ -922,6 +922,25 @@ config RUST_COMPLETION
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_RCUWAIT
+	bool "Rust implementation of rcuwait"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production rcuwait single-task wait state machine.
+	  This includes task publication, wait-state transitions, condition and
+	  signal decisions, timeout accounting, scheduling selection, completion
+	  cleanup, and wake ordering.
+
+	  C retains condition-expression expansion and the low-level RCU,
+	  task-state, scheduler, and wakeup primitives.
+
+	  The complete C implementation remains available when this option is
+	  disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_SEMAPHORE
 	bool "Rust implementation of counting semaphores"
 	depends on RUST

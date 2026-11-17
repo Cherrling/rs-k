@@ -109,6 +109,9 @@
 #include "rcu.c"
 #include "refcount.c"
 #include "regulator.c"
+#ifdef CONFIG_RUST_RCUWAIT
+#include "rcuwait.c"
+#endif
 #include "scatterlist.c"
 #include "security.c"
 #include "serdev.c"

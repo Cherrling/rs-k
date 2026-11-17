@@ -56,6 +56,7 @@ more details.
     pid-number
     pid-lifecycle
     native-irq-work
+    native-rcuwait
     native-task-work
     mm-lifetime
     mm-teardown

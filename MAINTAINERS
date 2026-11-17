@@ -24134,6 +24134,7 @@ F:	Documentation/rust/native-irq-work.rst
 F:	Documentation/rust/native-kref.rst
 F:	Documentation/rust/native-klist.rst
 F:	Documentation/rust/native-kobject.rst
+F:	Documentation/rust/native-rcuwait.rst
 F:	Documentation/rust/native-list-lru.rst
 F:	Documentation/rust/native-plist.rst
 F:	Documentation/rust/native-task-work.rst
@@ -24165,6 +24166,7 @@ F:	include/linux/pid-number-rust.h
 F:	include/linux/pid-rust.h
 F:	include/linux/plist-rust.h
 F:	include/linux/prepare-signal-rust.h
+F:	include/linux/rcuwait-rust.h
 F:	include/linux/rwlock-rust.h
 F:	include/linux/rwsem-rust.h
 F:	include/linux/sched-rust.h
@@ -24216,6 +24218,7 @@ F:	lib/tests/irq_work_kunit.c
 F:	lib/tests/kfifo_kunit.c
 F:	lib/tests/list-test.c
 F:	lib/tests/plist_kunit.c
+F:	lib/tests/rcuwait_kunit.c
 F:	lib/tests/task_work_kunit.c
 F:	lib/tests/xarray_rust_kunit.c
 F:	lib/tests/test_complete_signal.c
@@ -24258,6 +24261,7 @@ F:	rust/
 F:	rust/helpers/klist.c
 F:	rust/helpers/list_lru.c
 F:	rust/helpers/lockref.c
+F:	rust/helpers/rcuwait.c
 F:	rust/kernel/btree.rs
 F:	rust/kernel/dec_and_lock.rs
 F:	rust/kernel/interval_tree.rs
@@ -24267,6 +24271,7 @@ F:	rust/kernel/kref.rs
 F:	rust/kernel/klist.rs
 F:	rust/kernel/list_lru.rs
 F:	rust/kernel/lockref.rs
+F:	rust/kernel/rcuwait.rs
 F:	rust/kernel/task_work.rs
 F:	samples/rust/
 F:	scripts/*rust*
