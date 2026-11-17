@@ -83,6 +83,7 @@
 #include <linux/interval-tree-rust.h>
 #include <linux/irq-event-rust.h>
 #include <linux/irq-resend-rust.h>
+#include <linux/irq-spurious-rust.h>
 #include <linux/irq-work-rust.h>
 #include <linux/itimer-rust.h>
 #include <linux/klist-rust.h>

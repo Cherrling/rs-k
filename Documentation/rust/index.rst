@@ -56,6 +56,7 @@ more details.
     pid-number
     pid-lifecycle
     native-irq-event
+    native-irq-spurious
     native-irq-resend
     native-irq-work
     native-rcuwait

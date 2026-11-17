@@ -131,6 +131,8 @@ pub mod irq;
 mod irq_event;
 #[cfg(CONFIG_RUST_IRQ_RESEND)]
 mod irq_resend;
+#[cfg(CONFIG_RUST_IRQ_SPURIOUS)]
+mod irq_spurious;
 #[cfg(CONFIG_RUST_IRQ_WORK)]
 mod irq_work;
 #[cfg(CONFIG_RUST_ITIMER)]

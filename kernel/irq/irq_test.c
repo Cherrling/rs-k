@@ -529,6 +529,209 @@ static void irq_event_no_thread_test(struct kunit *test)
 	irq_free_desc(virq);
 }
 
+#define IRQ_SPURIOUS_DEFERRED	0x80000000U
+
+static void irq_spurious_polling_test(struct kunit *test)
+{
+	struct irq_desc *desc;
+	int virq;
+
+	virq = irq_test_setup_fake_irq(test, NULL);
+	desc = irq_to_desc(virq);
+	KUNIT_ASSERT_PTR_NE(test, desc, NULL);
+
+	desc->istate |= IRQS_POLL_INPROGRESS;
+	note_interrupt(desc, IRQ_NONE);
+	KUNIT_EXPECT_EQ(test, desc->irqs_unhandled, 0);
+	KUNIT_EXPECT_EQ(test, desc->irq_count, 0);
+
+	desc->istate &= ~IRQS_POLL_INPROGRESS;
+	desc->status_use_accessors |= _IRQ_IS_POLLED;
+	note_interrupt(desc, IRQ_NONE);
+	KUNIT_EXPECT_EQ(test, desc->irqs_unhandled, 0);
+	KUNIT_EXPECT_EQ(test, desc->irq_count, 0);
+
+	irq_free_desc(virq);
+}
+
+static void irq_spurious_invalid_result_test(struct kunit *test)
+{
+	struct irq_desc *desc;
+	int virq;
+
+	virq = irq_test_setup_fake_irq(test, NULL);
+	desc = irq_to_desc(virq);
+	KUNIT_ASSERT_PTR_NE(test, desc, NULL);
+
+	note_interrupt(desc, (irqreturn_t)(IRQ_HANDLED | IRQ_WAKE_THREAD | 4));
+
+	KUNIT_EXPECT_EQ(test, desc->irqs_unhandled, 0);
+	KUNIT_EXPECT_EQ(test, desc->irq_count, 0);
+	KUNIT_EXPECT_EQ(test, desc->threads_handled_last, 0);
+
+	irq_free_desc(virq);
+}
+
+static void irq_spurious_thread_deferred_test(struct kunit *test)
+{
+	struct irq_desc *desc;
+	int virq;
+
+	virq = irq_test_setup_fake_irq(test, NULL);
+	desc = irq_to_desc(virq);
+	KUNIT_ASSERT_PTR_NE(test, desc, NULL);
+
+	note_interrupt(desc, IRQ_WAKE_THREAD);
+
+	KUNIT_EXPECT_EQ(test, (u32)desc->threads_handled_last,
+			IRQ_SPURIOUS_DEFERRED);
+	KUNIT_EXPECT_EQ(test, desc->irqs_unhandled, 0);
+	KUNIT_EXPECT_EQ(test, desc->irq_count, 0);
+
+	irq_free_desc(virq);
+}
+
+static void irq_spurious_thread_unhandled_test(struct kunit *test)
+{
+	struct irq_desc *desc;
+	int virq;
+
+	virq = irq_test_setup_fake_irq(test, NULL);
+	desc = irq_to_desc(virq);
+	KUNIT_ASSERT_PTR_NE(test, desc, NULL);
+
+	note_interrupt(desc, IRQ_WAKE_THREAD);
+	note_interrupt(desc, IRQ_WAKE_THREAD);
+
+	KUNIT_EXPECT_EQ(test, (u32)desc->threads_handled_last,
+			IRQ_SPURIOUS_DEFERRED);
+	KUNIT_EXPECT_EQ(test, desc->irqs_unhandled, 1);
+	KUNIT_EXPECT_EQ(test, desc->irq_count, 1);
+
+	irq_free_desc(virq);
+}
+
+static void irq_spurious_thread_handled_test(struct kunit *test)
+{
+	struct irq_desc *desc;
+	int virq;
+
+	virq = irq_test_setup_fake_irq(test, NULL);
+	desc = irq_to_desc(virq);
+	KUNIT_ASSERT_PTR_NE(test, desc, NULL);
+
+	note_interrupt(desc, IRQ_WAKE_THREAD);
+	atomic_inc(&desc->threads_handled);
+	note_interrupt(desc, IRQ_WAKE_THREAD);
+
+	KUNIT_EXPECT_EQ(test, (u32)desc->threads_handled_last,
+			IRQ_SPURIOUS_DEFERRED | 1);
+	KUNIT_EXPECT_EQ(test, desc->irqs_unhandled, 0);
+	KUNIT_EXPECT_EQ(test, desc->irq_count, 0);
+
+	irq_free_desc(virq);
+}
+
+static void irq_spurious_thread_primary_handled_test(struct kunit *test)
+{
+	struct irq_desc *desc;
+	int virq;
+
+	virq = irq_test_setup_fake_irq(test, NULL);
+	desc = irq_to_desc(virq);
+	KUNIT_ASSERT_PTR_NE(test, desc, NULL);
+
+	desc->threads_handled_last = (int)IRQ_SPURIOUS_DEFERRED;
+	note_interrupt(desc, IRQ_HANDLED | IRQ_WAKE_THREAD);
+
+	KUNIT_EXPECT_EQ(test, (u32)desc->threads_handled_last, 0);
+	KUNIT_EXPECT_EQ(test, desc->irqs_unhandled, 0);
+	KUNIT_EXPECT_EQ(test, desc->irq_count, 0);
+
+	irq_free_desc(virq);
+}
+
+static void irq_spurious_unhandled_window_test(struct kunit *test)
+{
+	struct irq_desc *desc;
+	int virq;
+
+	virq = irq_test_setup_fake_irq(test, NULL);
+	desc = irq_to_desc(virq);
+	KUNIT_ASSERT_PTR_NE(test, desc, NULL);
+
+	desc->irqs_unhandled = 4;
+	desc->last_unhandled = jiffies;
+	note_interrupt(desc, IRQ_NONE);
+
+	KUNIT_EXPECT_EQ(test, desc->irqs_unhandled, 5);
+	KUNIT_EXPECT_EQ(test, desc->irq_count, 1);
+
+	desc->irqs_unhandled = 4;
+	desc->last_unhandled = jiffies - 2 * HZ / 10;
+	note_interrupt(desc, IRQ_NONE);
+
+	KUNIT_EXPECT_EQ(test, desc->irqs_unhandled, 1);
+	KUNIT_EXPECT_EQ(test, desc->irq_count, 2);
+
+	irq_free_desc(virq);
+}
+
+static void irq_spurious_stuck_test(struct kunit *test)
+{
+	struct irq_desc *desc;
+	int depth, virq;
+
+	virq = irq_test_setup_fake_irq(test, NULL);
+	desc = irq_to_desc(virq);
+	KUNIT_ASSERT_PTR_NE(test, desc, NULL);
+
+	desc->irqs_unhandled = 99901;
+	desc->irq_count = 99999;
+	desc->last_unhandled = jiffies;
+	depth = desc->depth;
+	note_interrupt(desc, IRQ_NONE);
+	irq_spurious_test_cancel_poll();
+
+	KUNIT_EXPECT_TRUE(test, desc->istate & IRQS_SPURIOUS_DISABLED);
+	KUNIT_EXPECT_EQ(test, desc->depth, depth + 1);
+	KUNIT_EXPECT_TRUE(test, irqd_irq_disabled(&desc->irq_data));
+	KUNIT_EXPECT_EQ(test, desc->irqs_unhandled, 0);
+	KUNIT_EXPECT_EQ(test, desc->irq_count, 0);
+
+	irq_free_desc(virq);
+}
+
+static void irq_spurious_misroute_test(struct kunit *test)
+{
+	struct irq_desc *desc;
+	int virq, old_fixup;
+
+	virq = irq_test_setup_fake_irq(test, NULL);
+	desc = irq_to_desc(virq);
+	KUNIT_ASSERT_PTR_NE(test, desc, NULL);
+
+	old_fixup = irq_spurious_test_fixup_level();
+	irq_spurious_test_set_misroute_result(1);
+	irq_spurious_test_set_fixup_level(0);
+	note_interrupt(desc, IRQ_NONE);
+	KUNIT_EXPECT_EQ(test, desc->irqs_unhandled, 1);
+
+	desc->irqs_unhandled = 0;
+	desc->irq_count = 0;
+	desc->last_unhandled = jiffies;
+	irq_spurious_test_set_fixup_level(1);
+	note_interrupt(desc, IRQ_NONE);
+
+	irq_spurious_test_set_fixup_level(old_fixup);
+	irq_spurious_test_set_misroute_result(-1);
+
+	KUNIT_EXPECT_EQ(test, desc->irqs_unhandled, 0);
+	KUNIT_EXPECT_EQ(test, desc->irq_count, 0);
+
+	irq_free_desc(virq);
+}
+
 #ifdef CONFIG_HARDIRQS_SW_RESEND
 
 static void irq_resend_level_test(struct kunit *test)
@@ -845,6 +1048,15 @@ static struct kunit_case irq_test_cases[] = {
 	KUNIT_CASE(irq_event_wake_dedup_test),
 	KUNIT_CASE(irq_event_unknown_result_test),
 	KUNIT_CASE(irq_event_no_thread_test),
+	KUNIT_CASE(irq_spurious_polling_test),
+	KUNIT_CASE(irq_spurious_invalid_result_test),
+	KUNIT_CASE(irq_spurious_thread_deferred_test),
+	KUNIT_CASE(irq_spurious_thread_unhandled_test),
+	KUNIT_CASE(irq_spurious_thread_handled_test),
+	KUNIT_CASE(irq_spurious_thread_primary_handled_test),
+	KUNIT_CASE(irq_spurious_unhandled_window_test),
+	KUNIT_CASE(irq_spurious_stuck_test),
+	KUNIT_CASE(irq_spurious_misroute_test),
 #ifdef CONFIG_HARDIRQS_SW_RESEND
 	KUNIT_CASE(irq_resend_level_test),
 	KUNIT_CASE(irq_resend_replay_test),

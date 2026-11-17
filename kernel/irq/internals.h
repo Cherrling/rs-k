@@ -140,6 +140,12 @@ void irq_resend_test_pause(void);
 void irq_resend_test_resume(void);
 void irq_resend_test_drain(void);
 #endif
+#ifdef CONFIG_IRQ_KUNIT_TEST
+int irq_spurious_test_fixup_level(void);
+void irq_spurious_test_set_fixup_level(int value);
+void irq_spurious_test_set_misroute_result(int value);
+void irq_spurious_test_cancel_poll(void);
+#endif
 void __irq_wake_thread(struct irq_desc *desc, struct irqaction *action);
 
 void wake_threads_waitq(struct irq_desc *desc);

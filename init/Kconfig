@@ -1977,6 +1977,26 @@ config RUST_IRQ_RESEND
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_IRQ_SPURIOUS
+	bool "Rust implementation of spurious IRQ detection"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production spurious IRQ detection state machine.
+	  This includes polling exclusions, bad handler results, deferred
+	  threaded results, unhandled windows, misroute policy, and stuck IRQ
+	  thresholds.
+
+	  C helpers retain descriptor fields, jiffies arithmetic, diagnostics,
+	  full IRQ descriptor scans, descriptor disabling, and timer
+	  rearming.
+
+	  The complete C implementation remains available when this option is
+	  disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_TEARDOWN
 	bool "Rust implementation of final task teardown"
 	depends on RUST

@@ -7,6 +7,7 @@
 
 #include <linux/jiffies.h>
 #include <linux/irq.h>
+#include <linux/irq-spurious-rust.h>
 #include <linux/module.h>
 #include <linux/interrupt.h>
 #include <linux/moduleparam.h>
@@ -21,6 +22,30 @@ static void poll_spurious_irqs(struct timer_list *unused);
 static DEFINE_TIMER(poll_spurious_irq_timer, poll_spurious_irqs);
 int irq_poll_cpu;
 static atomic_t irq_poll_active;
+
+#ifdef CONFIG_IRQ_KUNIT_TEST
+static int irq_spurious_test_misroute_result = -1;
+
+int irq_spurious_test_fixup_level(void)
+{
+	return irqfixup;
+}
+
+void irq_spurious_test_set_fixup_level(int value)
+{
+	irqfixup = value;
+}
+
+void irq_spurious_test_set_misroute_result(int value)
+{
+	irq_spurious_test_misroute_result = value;
+}
+
+void irq_spurious_test_cancel_poll(void)
+{
+	timer_delete_sync(&poll_spurious_irq_timer);
+}
+#endif
 
 /*
  * Recovery handler for misrouted interrupts.
@@ -101,6 +126,15 @@ out:
 	atomic_dec(&irq_poll_active);
 	/* So the caller can adjust the irq error counts */
 	return ok;
+}
+
+static int irq_spurious_misrouted(unsigned int irq)
+{
+#ifdef CONFIG_IRQ_KUNIT_TEST
+	if (irq_spurious_test_misroute_result >= 0)
+		return irq_spurious_test_misroute_result;
+#endif
+	return misrouted_irq(irq);
 }
 
 static void poll_spurious_irqs(struct timer_list *unused)
@@ -186,6 +220,7 @@ static void report_bad_irq(struct irq_desc *desc, irqreturn_t action_ret)
 	}
 }
 
+#ifndef CONFIG_RUST_IRQ_SPURIOUS
 static inline bool try_misrouted_irq(unsigned int irq, struct irq_desc *desc,
 				     irqreturn_t action_ret)
 {
@@ -216,9 +251,116 @@ static inline bool try_misrouted_irq(unsigned int irq, struct irq_desc *desc,
 	action = READ_ONCE(desc->action);
 	return action && (action->flags & IRQF_IRQPOLL);
 }
+#endif
 
 #define SPURIOUS_DEFERRED	0x80000000
 
+#ifdef CONFIG_RUST_IRQ_SPURIOUS
+bool rust_irq_spurious_poll_in_progress(struct irq_desc *desc)
+{
+	return desc->istate & IRQS_POLL_INPROGRESS;
+}
+
+bool rust_irq_spurious_is_polled(struct irq_desc *desc)
+{
+	return irq_settings_is_polled(desc);
+}
+
+void rust_irq_spurious_report_bad(struct irq_desc *desc, u32 action_ret)
+{
+	report_bad_irq(desc, (irqreturn_t)action_ret);
+}
+
+void rust_irq_spurious_report_stuck(struct irq_desc *desc, u32 action_ret)
+{
+	__report_bad_irq(desc, (irqreturn_t)action_ret);
+}
+
+u32 rust_irq_spurious_threads_last(struct irq_desc *desc)
+{
+	return (u32)desc->threads_handled_last;
+}
+
+void rust_irq_spurious_set_threads_last(struct irq_desc *desc, u32 value)
+{
+	WRITE_ONCE(desc->threads_handled_last, (int)value);
+}
+
+u32 rust_irq_spurious_threads_handled(struct irq_desc *desc)
+{
+	return (u32)atomic_read(&desc->threads_handled);
+}
+
+u32 rust_irq_spurious_unhandled(struct irq_desc *desc)
+{
+	return READ_ONCE(desc->irqs_unhandled);
+}
+
+void rust_irq_spurious_set_unhandled(struct irq_desc *desc, u32 value)
+{
+	WRITE_ONCE(desc->irqs_unhandled, value);
+}
+
+bool rust_irq_spurious_window_expired(struct irq_desc *desc)
+{
+	return time_after(jiffies, desc->last_unhandled + HZ / 10);
+}
+
+void rust_irq_spurious_mark_unhandled(struct irq_desc *desc)
+{
+	WRITE_ONCE(desc->last_unhandled, jiffies);
+}
+
+u32 rust_irq_spurious_irq_count(struct irq_desc *desc)
+{
+	return READ_ONCE(desc->irq_count);
+}
+
+void rust_irq_spurious_set_irq_count(struct irq_desc *desc, u32 value)
+{
+	WRITE_ONCE(desc->irq_count, value);
+}
+
+u32 rust_irq_spurious_irq(struct irq_desc *desc)
+{
+	return irq_desc_get_irq(desc);
+}
+
+int rust_irq_spurious_fixup_level(void)
+{
+	return READ_ONCE(irqfixup);
+}
+
+bool rust_irq_spurious_action_is_irqpoll(struct irq_desc *desc)
+{
+	struct irqaction *action = READ_ONCE(desc->action);
+
+	return action && (action->flags & IRQF_IRQPOLL);
+}
+
+bool rust_irq_spurious_misrouted(struct irq_desc *desc)
+{
+	return irq_spurious_misrouted(irq_desc_get_irq(desc));
+}
+
+void rust_irq_spurious_disable(struct irq_desc *desc)
+{
+	pr_emerg("Disabling IRQ #%d\n", irq_desc_get_irq(desc));
+	desc->istate |= IRQS_SPURIOUS_DISABLED;
+	desc->depth++;
+	irq_disable(desc);
+}
+
+void rust_irq_spurious_schedule_poll(void)
+{
+	mod_timer(&poll_spurious_irq_timer, jiffies + POLL_SPURIOUS_IRQ_INTERVAL);
+}
+
+void note_interrupt(struct irq_desc *desc, irqreturn_t action_ret)
+{
+	rust_irq_spurious_note(desc, (u32)action_ret);
+}
+#else
 void note_interrupt(struct irq_desc *desc, irqreturn_t action_ret)
 {
 	unsigned int irq;
@@ -347,7 +489,7 @@ void note_interrupt(struct irq_desc *desc, irqreturn_t action_ret)
 
 	irq = irq_desc_get_irq(desc);
 	if (unlikely(try_misrouted_irq(irq, desc, action_ret))) {
-		int ok = misrouted_irq(irq);
+		int ok = irq_spurious_misrouted(irq);
 		if (action_ret == IRQ_NONE)
 			desc->irqs_unhandled -= ok;
 	}
@@ -378,6 +520,7 @@ void note_interrupt(struct irq_desc *desc, irqreturn_t action_ret)
 	}
 	desc->irqs_unhandled = 0;
 }
+#endif /* CONFIG_RUST_IRQ_SPURIOUS */
 
 bool noirqdebug __read_mostly;
 

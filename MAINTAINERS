@@ -24130,6 +24130,7 @@ F:	Documentation/rust/native-btree-traversal.rst
 F:	Documentation/rust/native-btree-visitors.rst
 F:	Documentation/rust/native-dec-and-lock.rst
 F:	Documentation/rust/native-irq-event.rst
+F:	Documentation/rust/native-irq-spurious.rst
 F:	Documentation/rust/native-interval-tree.rst
 F:	Documentation/rust/native-irq-resend.rst
 F:	Documentation/rust/native-irq-work.rst
@@ -24154,6 +24155,7 @@ F:	include/linux/generic-radix-tree-rust.h
 F:	include/linux/hrtimer-rust.h
 F:	include/linux/interval-tree-rust.h
 F:	include/linux/irq-event-rust.h
+F:	include/linux/irq-spurious-rust.h
 F:	include/linux/irq-resend-rust.h
 F:	include/linux/irq-work-rust.h
 F:	include/linux/itimer-rust.h
@@ -24270,6 +24272,7 @@ F:	rust/kernel/btree.rs
 F:	rust/kernel/dec_and_lock.rs
 F:	rust/kernel/interval_tree.rs
 F:	rust/kernel/irq_event.rs
+F:	rust/kernel/irq_spurious.rs
 F:	rust/kernel/irq_resend.rs
 F:	rust/kernel/irq_work.rs
 F:	rust/kernel/kobject.rs
