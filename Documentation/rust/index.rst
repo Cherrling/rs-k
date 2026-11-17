@@ -112,6 +112,7 @@ more details.
     native-plist
     native-interval-tree
     native-klist
+    native-list-lru
     native-kfifo
     native-genradix
     native-maple-tree-load

@@ -82,6 +82,9 @@
 #endif
 #include "kunit.c"
 #include "list.c"
+#ifdef CONFIG_RUST_LIST_LRU
+#include "list_lru.c"
+#endif
 #ifdef CONFIG_RUST_LOCKREF
 #include "lockref.c"
 #endif

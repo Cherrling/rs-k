@@ -135,6 +135,8 @@ mod klist;
 #[cfg(CONFIG_KUNIT)]
 pub mod kunit;
 pub mod list;
+#[cfg(CONFIG_RUST_LIST_LRU)]
+mod list_lru;
 #[cfg(CONFIG_RUST_LIST_SORT)]
 mod list_sort;
 #[cfg(CONFIG_RUST_LOCKREF)]

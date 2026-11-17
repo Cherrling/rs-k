@@ -9,6 +9,7 @@
 #include <linux/module.h>
 #include <linux/mm.h>
 #include <linux/list_lru.h>
+#include <linux/list_lru-rust.h>
 #include <linux/slab.h>
 #include <linux/mutex.h>
 #include <linux/memcontrol.h>
@@ -121,10 +122,12 @@ static void list_lru_unregister(struct list_lru *lru)
 {
 }
 
+#ifndef CONFIG_RUST_LIST_LRU
 static int lru_shrinker_id(struct list_lru *lru)
 {
 	return -1;
 }
+#endif
 
 static inline bool list_lru_memcg_aware(struct list_lru *lru)
 {
@@ -149,6 +152,20 @@ lock_list_lru_of_memcg(struct list_lru *lru, int nid,
 	return l;
 }
 #endif /* CONFIG_MEMCG */
+
+#ifdef CONFIG_RUST_LIST_LRU
+struct list_lru_one *
+rust_list_lru_walk_lock(struct list_lru *lru, int nid,
+			struct mem_cgroup **memcg, bool irq, bool skip_empty)
+{
+	return lock_list_lru_of_memcg(lru, nid, memcg, irq, NULL, skip_empty);
+}
+
+void rust_list_lru_walk_unlock(struct list_lru_one *l, bool irq_off)
+{
+	unlock_list_lru(l, irq_off, NULL);
+}
+#endif /* CONFIG_RUST_LIST_LRU */
 
 struct list_lru_one *list_lru_lock(struct list_lru *lru, int nid,
 				   struct mem_cgroup **memcg)
@@ -191,6 +208,9 @@ bool __list_lru_add(struct list_lru *lru, struct list_lru_one *l,
 		    struct list_head *item, int nid,
 		    struct mem_cgroup *memcg)
 {
+#ifdef CONFIG_RUST_LIST_LRU
+	return rust_list_lru_add_slice(lru, l, item, nid, memcg);
+#else
 	if (list_empty(item)) {
 		list_add_tail(item, &l->list);
 		/*
@@ -204,12 +224,16 @@ bool __list_lru_add(struct list_lru *lru, struct list_lru_one *l,
 		return true;
 	}
 	return false;
+#endif /* CONFIG_RUST_LIST_LRU */
 }
 EXPORT_SYMBOL_GPL(list_lru_add);
 
 bool __list_lru_del(struct list_lru *lru, struct list_lru_one *l,
 		    struct list_head *item, int nid)
 {
+#ifdef CONFIG_RUST_LIST_LRU
+	return rust_list_lru_del_slice(lru, l, item, nid);
+#else
 	if (!list_empty(item)) {
 		list_del_init(item);
 		l->nr_items--;
@@ -217,6 +241,7 @@ bool __list_lru_del(struct list_lru *lru, struct list_lru_one *l,
 		return true;
 	}
 	return false;
+#endif /* CONFIG_RUST_LIST_LRU */
 }
 
 /* The caller must ensure the memcg lifetime. */
@@ -293,16 +318,24 @@ EXPORT_SYMBOL_GPL(list_lru_del_obj);
 
 void list_lru_isolate(struct list_lru_one *list, struct list_head *item)
 {
+#ifdef CONFIG_RUST_LIST_LRU
+	rust_list_lru_isolate_slice(list, item);
+#else
 	list_del_init(item);
 	list->nr_items--;
+#endif /* CONFIG_RUST_LIST_LRU */
 }
 EXPORT_SYMBOL_GPL(list_lru_isolate);
 
 void list_lru_isolate_move(struct list_lru_one *list, struct list_head *item,
 			   struct list_head *head)
 {
+#ifdef CONFIG_RUST_LIST_LRU
+	rust_list_lru_isolate_move_slice(list, item, head);
+#else
 	list_move(item, head);
 	list->nr_items--;
+#endif /* CONFIG_RUST_LIST_LRU */
 }
 EXPORT_SYMBOL_GPL(list_lru_isolate_move);
 
@@ -310,15 +343,20 @@ unsigned long list_lru_count_one(struct list_lru *lru,
 				 int nid, struct mem_cgroup *memcg)
 {
 	struct list_lru_one *l;
-	long count;
+	unsigned long count;
+#ifndef CONFIG_RUST_LIST_LRU
+	long raw_count;
+#endif
 
 	rcu_read_lock();
 	l = list_lru_from_memcg_idx(lru, nid, memcg_kmem_id(memcg));
-	count = l ? READ_ONCE(l->nr_items) : 0;
+#ifdef CONFIG_RUST_LIST_LRU
+	count = l ? rust_list_lru_count_slice(l) : 0;
+#else
+	raw_count = l ? READ_ONCE(l->nr_items) : 0;
+	count = raw_count < 0 ? 0 : raw_count;
+#endif /* CONFIG_RUST_LIST_LRU */
 	rcu_read_unlock();
-
-	if (unlikely(count < 0))
-		count = 0;
 
 	return count;
 }
@@ -329,7 +367,11 @@ unsigned long list_lru_count_node(struct list_lru *lru, int nid)
 	struct list_lru_node *nlru;
 
 	nlru = &lru->node[nid];
+#ifdef CONFIG_RUST_LIST_LRU
+	return rust_list_lru_count_node(nlru);
+#else
 	return atomic_long_read(&nlru->nr_items);
+#endif /* CONFIG_RUST_LIST_LRU */
 }
 EXPORT_SYMBOL_GPL(list_lru_count_node);
 
@@ -338,6 +380,10 @@ __list_lru_walk_one(struct list_lru *lru, int nid, struct mem_cgroup *memcg,
 		    list_lru_walk_cb isolate, void *cb_arg,
 		    unsigned long *nr_to_walk, bool irq_off)
 {
+#ifdef CONFIG_RUST_LIST_LRU
+	return rust_list_lru_walk_one(lru, nid, memcg, isolate, cb_arg,
+				      nr_to_walk, irq_off);
+#else
 	struct list_lru_node *nlru = &lru->node[nid];
 	struct list_lru_one *l = NULL;
 	struct list_head *item, *n;
@@ -389,6 +435,7 @@ restart:
 	unlock_list_lru(l, irq_off, NULL);
 out:
 	return isolated;
+#endif /* CONFIG_RUST_LIST_LRU */
 }
 
 unsigned long

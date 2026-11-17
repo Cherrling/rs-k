@@ -738,6 +738,29 @@ config RUST_LOCKREF
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_LIST_LRU
+	bool "Rust implementation of list_lru operations"
+	depends on RUST && X86_64
+	default y
+	help
+	  Use Rust for the production list_lru add, delete, isolate,
+	  count, and walk state machine.
+
+	  Rust owns item presence checks, list placement decisions, per-slice
+	  count transitions, walk status handling, retry restarts, stop
+	  decisions, and count clamping. C helpers retain spinlock and IRQ
+	  modes, RCU and memcg resolution, list and atomic primitives, shrinker
+	  bit notification, and callback dispatch.
+
+	  Initialization, destruction, memcg allocation, and memcg reparenting
+	  remain C boundaries for later migration units.
+
+	  The complete C node-local algorithms remain available when this
+	  option is disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_RBTREE
 	bool "Rust implementation of red-black tree operations"
 	depends on RUST

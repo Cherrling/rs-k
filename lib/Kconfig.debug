@@ -2337,6 +2337,19 @@ config LOCKREF_KUNIT_TEST
 
 	  If unsure, say N.
 
+config LIST_LRU_KUNIT_TEST
+	tristate "KUnit test for list_lru operations" if !KUNIT_ALL_TESTS
+	depends on KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for list_lru node-local add,
+	  delete, isolate, count, walk, retry, stop, and concurrent paths.
+
+	  The same tests run with either the C implementation or the native
+	  Rust implementation selected.
+
+	  If unsure, say N.
+
 config SWAIT_KUNIT_TEST
 	bool "KUnit test for simple wait queues" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y
