@@ -24127,6 +24127,7 @@ F:	.rustfmt.toml
 F:	Documentation/rust/
 F:	Documentation/rust/native-btree-structural.rst
 F:	Documentation/rust/native-btree-traversal.rst
+F:	Documentation/rust/native-btree-visitors.rst
 F:	include/linux/btree-rust.h
 F:	include/linux/complete-signal-rust.h
 F:	include/linux/completion-rust.h
@@ -24180,6 +24181,7 @@ F:	include/linux/xarray-rust.h
 F:	include/trace/events/rust_sample.h
 F:	lib/tests/bitmap_ops_kunit.c
 F:	lib/tests/btree_traversal_kunit.c
+F:	lib/tests/btree_visitor_kunit.c
 F:	lib/tests/genradix_kunit.c
 F:	lib/tests/kfifo_kunit.c
 F:	lib/tests/xarray_rust_kunit.c

@@ -30,7 +30,8 @@ Rust owns:
 * Empty-target merge by direct root transfer.
 
 The original structural algorithms remain available when the option is
-disabled.
+disabled. Visitor traversal and node reclamation are documented in
+``native-btree-visitors``.
 
 Entry points and ownership
 --------------------------

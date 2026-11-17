@@ -108,6 +108,7 @@ more details.
     native-bitmap-ops
     native-btree-traversal
     native-btree-structural
+    native-btree-visitors
     native-kfifo
     native-genradix
     native-maple-tree-load

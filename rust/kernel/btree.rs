@@ -4,9 +4,9 @@
 //!
 //! Rust owns key storage access, key comparison, key copying, predecessor
 //! underflow, parent descent, predecessor retries, terminal entry selection,
-//! structural insertion, removal, merging, and leaf value publication. C
-//! retains the structure layouts, node allocation primitives, and public ABI
-//! adapters.
+//! structural insertion, removal, merging, visitor traversal, node
+//! reclamation, and leaf value publication. C retains the structure layouts,
+//! node allocation primitives, and public ABI adapters.
 
 use crate::bindings;
 use crate::ffi::{c_int, c_ulong};
@@ -16,6 +16,7 @@ use macros::export;
 type Btree = bindings::btree_head;
 type Geo = bindings::btree_geo;
 type Key = [c_ulong; MAX_KEYLEN];
+type VisitFn = bindings::btree_rust_visit_fn;
 
 const MAX_KEYLEN: usize = 128 / (core::mem::size_of::<c_ulong>() * 8);
 const MAX_TREE_HEIGHT: usize = core::mem::size_of::<usize>() * 8;
@@ -994,6 +995,61 @@ unsafe fn merge_trees(
     0
 }
 
+struct VisitContext<'a> {
+    head: *mut Btree,
+    geo: &'a Geo,
+    opaque: c_ulong,
+    func: VisitFn,
+    func2: *mut c_void,
+    reap: bool,
+}
+
+impl VisitContext<'_> {
+    /// Visits one subtree in entry order and optionally releases each node.
+    ///
+    /// # Safety
+    ///
+    /// `node` must satisfy the public visitor contract. `height` must describe
+    /// `node`, and the caller must serialize writers.
+    unsafe fn for_each(&self, node: *mut c_ulong, height: c_int, mut count: usize) -> usize {
+        let pairs = no_pairs(self.geo);
+        for pos in 0..pairs {
+            // SAFETY: `pos` is in range, and `node` is valid.
+            let elem = unsafe { node_value(self.geo, node, pos) };
+            if elem.is_null() {
+                break;
+            }
+
+            if height > 1 {
+                // SAFETY: The pair identifies a child at the next lower level.
+                count = unsafe { self.for_each(elem.cast(), height - 1, count) };
+            } else {
+                if !self.func2.is_null() {
+                    let callback = self.func.expect("B+Tree visitor callback is NULL");
+                    // SAFETY: The callback receives the current entry and index.
+                    unsafe {
+                        callback(
+                            elem,
+                            self.opaque,
+                            node_key(self.geo, node, pos).cast_mut(),
+                            count,
+                            self.func2,
+                        )
+                    };
+                }
+                count = count.wrapping_add(1);
+            }
+        }
+
+        if self.reap {
+            // SAFETY: The subtree has been visited, and the caller serializes
+            // writers.
+            unsafe { bindings::btree_rust_node_free(self.head, node) };
+        }
+        count
+    }
+}
+
 /// Implements `btree_lookup()`.
 ///
 /// # Safety
@@ -1115,4 +1171,78 @@ unsafe extern "C" fn rust_btree_get_prev(
     let geo = unsafe { &*geo };
     // SAFETY: The public B+Tree contract guarantees valid arguments.
     unsafe { get_prev(head, geo, key) }
+}
+
+/// Implements `btree_visitor()`.
+///
+/// # Safety
+///
+/// The arguments must satisfy the public B+Tree visitor contract.
+#[export]
+unsafe extern "C" fn rust_btree_visitor(
+    head: *mut Btree,
+    geo: *mut Geo,
+    opaque: c_ulong,
+    func: VisitFn,
+    func2: *mut c_void,
+) -> usize {
+    // SAFETY: The public B+Tree contract guarantees a valid geometry.
+    let geo = unsafe { &*geo };
+    // SAFETY: The public B+Tree contract guarantees a valid head.
+    let node = unsafe { (*head).node };
+    if node.is_null() {
+        return 0;
+    }
+
+    let context = VisitContext {
+        head,
+        geo,
+        opaque,
+        func,
+        func2,
+        reap: false,
+    };
+    // SAFETY: The public contract guarantees a valid root and height.
+    unsafe { context.for_each(node, (*head).height, 0) }
+}
+
+/// Implements `btree_grim_visitor()`.
+///
+/// # Safety
+///
+/// The arguments must satisfy the public B+Tree visitor contract.
+#[export]
+unsafe extern "C" fn rust_btree_grim_visitor(
+    head: *mut Btree,
+    geo: *mut Geo,
+    opaque: c_ulong,
+    func: VisitFn,
+    func2: *mut c_void,
+) -> usize {
+    // SAFETY: The public B+Tree contract guarantees a valid geometry.
+    let geo = unsafe { &*geo };
+    // SAFETY: The public B+Tree contract guarantees a valid head.
+    let node = unsafe { (*head).node };
+    let context = VisitContext {
+        head,
+        geo,
+        opaque,
+        func,
+        func2,
+        reap: true,
+    };
+    let count = if node.is_null() {
+        0
+    } else {
+        // SAFETY: The public contract guarantees a valid root and height.
+        unsafe { context.for_each(node, (*head).height, 0) }
+    };
+
+    // SAFETY: The caller serializes writers. The mempool remains owned by
+    // the tree head.
+    unsafe {
+        (*head).node = core::ptr::null_mut();
+        (*head).height = 0;
+    }
+    count
 }

@@ -8,6 +8,10 @@
 
 #include <linux/btree.h>
 
+typedef void (*btree_rust_visit_fn)(void *elem, unsigned long opaque,
+				    unsigned long *key, size_t index,
+				    void *func2);
+
 #ifdef CONFIG_RUST_BTREE
 
 unsigned long *btree_rust_node_alloc(struct btree_head *head, gfp_t gfp);
@@ -27,6 +31,12 @@ void *rust_btree_last(struct btree_head *head, struct btree_geo *geo,
 		      unsigned long *key);
 void *rust_btree_get_prev(struct btree_head *head, struct btree_geo *geo,
 			  unsigned long *key);
+size_t rust_btree_visitor(struct btree_head *head, struct btree_geo *geo,
+			  unsigned long opaque, btree_rust_visit_fn func,
+			  void *func2);
+size_t rust_btree_grim_visitor(struct btree_head *head, struct btree_geo *geo,
+			       unsigned long opaque, btree_rust_visit_fn func,
+			       void *func2);
 
 #endif /* CONFIG_RUST_BTREE */
 

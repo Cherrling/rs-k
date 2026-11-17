@@ -331,13 +331,15 @@ config RUST_BTREE
 	default y
 	help
 	  Use Rust for the B+Tree lookup, predecessor, last-entry, leaf update,
-	  insertion, removal, rebalancing, and merge paths.
+	  insertion, removal, rebalancing, merge, visitor, and grim visitor
+	  paths.
 
 	  Rust owns key storage access, comparison, copying, predecessor
 	  underflow, parent descent, predecessor retry, terminal entry selection,
 	  leaf value publication, node splitting, root growth and shrink,
-	  underfull-node recovery, node reclaim, and ordinary tree merging. Node
-	  and geometry layout definitions and mempool allocation primitives
+	  underfull-node recovery, recursive visitor traversal, node reclaim,
+	  and ordinary tree merging. Node and geometry layout definitions,
+	  mempool allocation primitives, and typed visitor callback adapters
 	  remain in C. The public entry points remain as ABI adapters.
 
 	  This is part of the experimental native Rust kernel migration.
@@ -1169,6 +1171,20 @@ config BTREE_STRUCTURAL_KUNIT_TEST
 	help
 	  This option enables KUnit tests for the active B+Tree insertion,
 	  removal, rebalancing, and merge paths.
+
+	  These tests are only for development and testing, not for regular
+	  kernel use cases.
+
+	  If unsure, say N.
+
+config BTREE_VISITOR_KUNIT_TEST
+	bool "KUnit tests for B+Tree visitors"
+	depends on KUNIT
+	select BTREE
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for the active B+Tree visitor and
+	  grim visitor paths.
 
 	  These tests are only for development and testing, not for regular
 	  kernel use cases.
