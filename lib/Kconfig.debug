@@ -2666,6 +2666,20 @@ config TASK_WORK_KUNIT_TEST
 
 	  If unsure, say N.
 
+config IRQ_WORK_KUNIT_TEST
+	bool "KUnit test for IRQ work" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y && IRQ_WORK
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for irq_work claim and duplicate
+	  suppression, LIFO list draining, callback re-enqueue, lazy work,
+	  remote CPU delivery, synchronization, and concurrent producers.
+
+	  The behavior cases run with either the C implementation or the native
+	  Rust implementation selected.
+
+	  If unsure, say N.
+
 config TASK_RELEASE_KUNIT_TEST
 	bool "KUnit test for zombie task release" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

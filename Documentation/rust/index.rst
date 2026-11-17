@@ -55,6 +55,7 @@ more details.
     pid-association
     pid-number
     pid-lifecycle
+    native-irq-work
     native-task-work
     mm-lifetime
     mm-teardown

@@ -81,6 +81,7 @@
 #include <linux/idr-rust.h>
 #include <linux/interrupt.h>
 #include <linux/interval-tree-rust.h>
+#include <linux/irq-work-rust.h>
 #include <linux/itimer-rust.h>
 #include <linux/klist-rust.h>
 #include <linux/io-pgtable.h>

@@ -24130,6 +24130,7 @@ F:	Documentation/rust/native-btree-traversal.rst
 F:	Documentation/rust/native-btree-visitors.rst
 F:	Documentation/rust/native-dec-and-lock.rst
 F:	Documentation/rust/native-interval-tree.rst
+F:	Documentation/rust/native-irq-work.rst
 F:	Documentation/rust/native-kref.rst
 F:	Documentation/rust/native-klist.rst
 F:	Documentation/rust/native-kobject.rst
@@ -24149,6 +24150,7 @@ F:	include/linux/exit-mmap-rust.h
 F:	include/linux/generic-radix-tree-rust.h
 F:	include/linux/hrtimer-rust.h
 F:	include/linux/interval-tree-rust.h
+F:	include/linux/irq-work-rust.h
 F:	include/linux/itimer-rust.h
 F:	include/linux/kfifo-rust.h
 F:	include/linux/kobject-rust.h
@@ -24210,6 +24212,7 @@ F:	lib/tests/btree_visitor_kunit.c
 F:	lib/tests/dec_and_lock_kunit.c
 F:	lib/tests/genradix_kunit.c
 F:	lib/tests/interval_tree_kunit.c
+F:	lib/tests/irq_work_kunit.c
 F:	lib/tests/kfifo_kunit.c
 F:	lib/tests/list-test.c
 F:	lib/tests/plist_kunit.c
@@ -24258,6 +24261,7 @@ F:	rust/helpers/lockref.c
 F:	rust/kernel/btree.rs
 F:	rust/kernel/dec_and_lock.rs
 F:	rust/kernel/interval_tree.rs
+F:	rust/kernel/irq_work.rs
 F:	rust/kernel/kobject.rs
 F:	rust/kernel/kref.rs
 F:	rust/kernel/klist.rs

@@ -127,6 +127,8 @@ pub mod ioctl;
 pub mod iommu;
 pub mod iov;
 pub mod irq;
+#[cfg(CONFIG_RUST_IRQ_WORK)]
+mod irq_work;
 #[cfg(CONFIG_RUST_ITIMER)]
 mod itimer_core;
 pub mod jump_label;

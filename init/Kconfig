@@ -1900,6 +1900,25 @@ config RUST_TASK_WORK
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_IRQ_WORK
+	bool "Rust implementation of IRQ work"
+	depends on RUST && IRQ_WORK
+	default y
+	help
+	  Use Rust for the production irq_work claim, duplicate-suppression,
+	  local and remote queue policy, callback state transitions, list
+	  draining, and synchronization decisions.
+
+	  C helpers retain per-CPU list storage, preemption, IPI delivery,
+	  hotplug and RT thread plumbing, KASAN, lockdep, architecture IRQ
+	  entry points, and low-level wait primitives.
+
+	  The complete C implementation remains available when this option is
+	  disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_TEARDOWN
 	bool "Rust implementation of final task teardown"
 	depends on RUST

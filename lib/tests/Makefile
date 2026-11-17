@@ -32,6 +32,7 @@ obj-$(CONFIG_DUP_MMAP_KUNIT_TEST) += test_dup_mmap.o
 obj-$(CONFIG_DUP_TASK_STRUCT_KUNIT_TEST) += test_dup_task_struct.o
 obj-$(CONFIG_TASK_TEARDOWN_KUNIT_TEST) += test_task_teardown.o
 obj-$(CONFIG_TASK_WORK_KUNIT_TEST) += task_work_kunit.o
+obj-$(CONFIG_IRQ_WORK_KUNIT_TEST) += irq_work_kunit.o
 obj-$(CONFIG_TASK_RELEASE_KUNIT_TEST) += test_task_release.o
 obj-$(CONFIG_TASK_GROUP_EXIT_SYNC_KUNIT_TEST) += test_task_group_exit_sync.o
 obj-$(CONFIG_COMPLETE_SIGNAL_KUNIT_TEST) += test_complete_signal.o

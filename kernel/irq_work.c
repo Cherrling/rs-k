@@ -10,6 +10,7 @@
 #include <linux/kernel.h>
 #include <linux/export.h>
 #include <linux/irq_work.h>
+#include <linux/irq-work-rust.h>
 #include <linux/percpu.h>
 #include <linux/hardirq.h>
 #include <linux/irqflags.h>
@@ -51,6 +52,184 @@ static int irq_workd_should_run(unsigned int cpu)
 	return !llist_empty(this_cpu_ptr(&lazy_list));
 }
 
+void __weak arch_irq_work_raise(void)
+{
+	/*
+	 * Lame architectures will get the timer tick callback
+	 */
+}
+
+static __always_inline void irq_work_raise(struct irq_work *work)
+{
+	if (trace_ipi_send_cpu_enabled() && arch_irq_work_has_interrupt())
+		trace_call__ipi_send_cpu(smp_processor_id(), _RET_IP_, work->func);
+
+	arch_irq_work_raise();
+}
+
+#ifdef CONFIG_RUST_IRQ_WORK
+
+atomic_t *rust_irq_work_flags(struct irq_work *work)
+{
+	return &work->node.a_flags;
+}
+
+struct llist_node *rust_irq_work_node(struct irq_work *work)
+{
+	return &work->node.llist;
+}
+
+struct irq_work *rust_irq_work_from_node(struct llist_node *node)
+{
+	return llist_entry(node, struct irq_work, node.llist);
+}
+
+struct llist_node *rust_irq_work_next_node(struct llist_node *node)
+{
+	return llist_next(node);
+}
+
+struct llist_head *rust_irq_work_list_current(bool lazy)
+{
+	if (lazy)
+		return this_cpu_ptr(&lazy_list);
+	return this_cpu_ptr(&raised_list);
+}
+
+struct llist_head *rust_irq_work_list_cpu(int cpu, bool lazy)
+{
+	if (lazy)
+		return per_cpu_ptr(&lazy_list, cpu);
+	return per_cpu_ptr(&raised_list, cpu);
+}
+
+bool rust_irq_work_llist_add(struct llist_node *node,
+			     struct llist_head *list)
+{
+	return llist_add(node, list);
+}
+
+bool rust_irq_work_llist_empty(struct llist_head *list)
+{
+	return llist_empty(list);
+}
+
+struct llist_node *rust_irq_work_llist_del_all(struct llist_head *list)
+{
+	return llist_del_all(list);
+}
+
+void rust_irq_work_preempt_disable(void)
+{
+	preempt_disable();
+}
+
+void rust_irq_work_preempt_enable(void)
+{
+	preempt_enable();
+}
+
+int rust_irq_work_current_cpu(void)
+{
+	return smp_processor_id();
+}
+
+bool rust_irq_work_has_interrupt(void)
+{
+	return arch_irq_work_has_interrupt();
+}
+
+bool rust_irq_work_tick_stopped(void)
+{
+	return tick_nohz_tick_stopped();
+}
+
+void rust_irq_work_raise(struct irq_work *work)
+{
+	irq_work_raise(work);
+}
+
+#ifdef CONFIG_SMP
+void rust_irq_work_remote_queue(int cpu, struct irq_work *work)
+{
+	__smp_call_single_queue(cpu, &work->node.llist);
+}
+
+void rust_irq_work_warn_offline(int cpu)
+{
+	WARN_ON_ONCE(cpu_is_offline(cpu));
+}
+
+void rust_irq_work_warn_in_nmi(void)
+{
+	WARN_ON_ONCE(in_nmi());
+}
+
+struct irq_work *rust_irq_work_remote_wakeup(int cpu)
+{
+	return &per_cpu(irq_work_wakeup, cpu);
+}
+#endif
+
+void rust_irq_work_warn_current_offline(void)
+{
+	WARN_ON_ONCE(cpu_is_offline(smp_processor_id()));
+}
+
+void rust_irq_work_wake_thread(void)
+{
+	wake_irq_workd();
+}
+
+void rust_irq_work_record_aux_stack(struct irq_work *work)
+{
+	kasan_record_aux_stack(work);
+}
+
+void rust_irq_work_lockdep_enter(int flags)
+{
+	lockdep_irq_work_enter(flags);
+}
+
+void rust_irq_work_lockdep_exit(int flags)
+{
+	lockdep_irq_work_exit(flags);
+}
+
+void rust_irq_work_smp_mb(void)
+{
+	/* Pair the PENDING claim with callback state publication. */
+	smp_mb();
+}
+
+void rust_irq_work_rcuwait_wait(struct irq_work *work)
+{
+	rcuwait_wait_event(&work->irqwait, !irq_work_is_busy(work),
+			   TASK_UNINTERRUPTIBLE);
+}
+
+void rust_irq_work_rcuwait_wake(struct irq_work *work)
+{
+	rcuwait_wake_up(&work->irqwait);
+}
+
+void rust_irq_work_sync_rcu(void)
+{
+	synchronize_rcu();
+}
+
+void rust_irq_work_cpu_relax(void)
+{
+	cpu_relax();
+}
+
+void rust_irq_work_assert_run_context(void)
+{
+	BUG_ON(!irqs_disabled() && !IS_ENABLED(CONFIG_PREEMPT_RT));
+}
+
+#else /* CONFIG_RUST_IRQ_WORK */
+
 /*
  * Claim the entry so that no one else will poke at it.
  */
@@ -67,21 +246,6 @@ static bool irq_work_claim(struct irq_work *work)
 	if (oflags & IRQ_WORK_PENDING)
 		return false;
 	return true;
-}
-
-void __weak arch_irq_work_raise(void)
-{
-	/*
-	 * Lame architectures will get the timer tick callback
-	 */
-}
-
-static __always_inline void irq_work_raise(struct irq_work *work)
-{
-	if (trace_ipi_send_cpu_enabled() && arch_irq_work_has_interrupt())
-		trace_call__ipi_send_cpu(smp_processor_id(), _RET_IP_, work->func);
-
-	arch_irq_work_raise();
 }
 
 /* Enqueue on current CPU, work must already be claimed and preempt disabled */
@@ -112,9 +276,14 @@ static void __irq_work_queue_local(struct irq_work *work)
 		irq_work_raise(work);
 }
 
+#endif /* CONFIG_RUST_IRQ_WORK */
+
 /* Enqueue the irq work @work on the current CPU */
 bool irq_work_queue(struct irq_work *work)
 {
+#ifdef CONFIG_RUST_IRQ_WORK
+	return rust_irq_work_queue(work);
+#else
 	/* Only queue if not already pending */
 	if (!irq_work_claim(work))
 		return false;
@@ -125,6 +294,7 @@ bool irq_work_queue(struct irq_work *work)
 	preempt_enable();
 
 	return true;
+#endif
 }
 EXPORT_SYMBOL_GPL(irq_work_queue);
 
@@ -136,6 +306,9 @@ EXPORT_SYMBOL_GPL(irq_work_queue);
  */
 bool irq_work_queue_on(struct irq_work *work, int cpu)
 {
+#ifdef CONFIG_RUST_IRQ_WORK
+	return rust_irq_work_queue_on(work, cpu);
+#else
 #ifndef CONFIG_SMP
 	return irq_work_queue(work);
 
@@ -179,10 +352,14 @@ out:
 
 	return true;
 #endif /* CONFIG_SMP */
+#endif /* CONFIG_RUST_IRQ_WORK */
 }
 
 bool irq_work_needs_cpu(void)
 {
+#ifdef CONFIG_RUST_IRQ_WORK
+	return rust_irq_work_needs_cpu();
+#else
 	struct llist_head *raised, *lazy;
 
 	raised = this_cpu_ptr(&raised_list);
@@ -196,10 +373,14 @@ bool irq_work_needs_cpu(void)
 	WARN_ON_ONCE(cpu_is_offline(smp_processor_id()));
 
 	return true;
+#endif
 }
 
 void irq_work_single(void *arg)
 {
+#ifdef CONFIG_RUST_IRQ_WORK
+	rust_irq_work_single(arg);
+#else
 	struct irq_work *work = arg;
 	int flags;
 
@@ -230,8 +411,10 @@ void irq_work_single(void *arg)
 	if ((IS_ENABLED(CONFIG_PREEMPT_RT) && !irq_work_is_hard(work)) ||
 	    !arch_irq_work_has_interrupt())
 		rcuwait_wake_up(&work->irqwait);
+#endif
 }
 
+#ifndef CONFIG_RUST_IRQ_WORK
 static void irq_work_run_list(struct llist_head *list)
 {
 	struct irq_work *work, *tmp;
@@ -251,6 +434,7 @@ static void irq_work_run_list(struct llist_head *list)
 	llist_for_each_entry_safe(work, tmp, llnode, node.llist)
 		irq_work_single(work);
 }
+#endif
 
 /*
  * hotplug calls this through:
@@ -258,16 +442,23 @@ static void irq_work_run_list(struct llist_head *list)
  */
 void irq_work_run(void)
 {
+#ifdef CONFIG_RUST_IRQ_WORK
+	rust_irq_work_run();
+#else
 	irq_work_run_list(this_cpu_ptr(&raised_list));
 	if (!IS_ENABLED(CONFIG_PREEMPT_RT))
 		irq_work_run_list(this_cpu_ptr(&lazy_list));
 	else
 		wake_irq_workd();
+#endif
 }
 EXPORT_SYMBOL_GPL(irq_work_run);
 
 void irq_work_tick(void)
 {
+#ifdef CONFIG_RUST_IRQ_WORK
+	rust_irq_work_tick();
+#else
 	struct llist_head *raised = this_cpu_ptr(&raised_list);
 
 	if (!llist_empty(raised) && !arch_irq_work_has_interrupt())
@@ -277,6 +468,7 @@ void irq_work_tick(void)
 		irq_work_run_list(this_cpu_ptr(&lazy_list));
 	else
 		wake_irq_workd();
+#endif
 }
 
 /*
@@ -288,6 +480,9 @@ void irq_work_sync(struct irq_work *work)
 	lockdep_assert_irqs_enabled();
 	might_sleep();
 
+#ifdef CONFIG_RUST_IRQ_WORK
+	rust_irq_work_sync(work);
+#else
 	if ((IS_ENABLED(CONFIG_PREEMPT_RT) && !irq_work_is_hard(work)) ||
 	    !arch_irq_work_has_interrupt()) {
 		rcuwait_wait_event(&work->irqwait, !irq_work_is_busy(work),
@@ -303,13 +498,18 @@ void irq_work_sync(struct irq_work *work)
 
 	while (irq_work_is_busy(work))
 		cpu_relax();
+#endif
 }
 EXPORT_SYMBOL_GPL(irq_work_sync);
 
 static void run_irq_workd(unsigned int cpu)
 {
 	guard(rcu)();
+#ifdef CONFIG_RUST_IRQ_WORK
+	rust_irq_work_run_lazy();
+#else
 	irq_work_run_list(this_cpu_ptr(&lazy_list));
+#endif
 }
 
 static void irq_workd_setup(unsigned int cpu)
