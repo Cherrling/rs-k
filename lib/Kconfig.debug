@@ -2651,6 +2651,21 @@ config TASK_TEARDOWN_KUNIT_TEST
 
 	  If unsure, say N.
 
+config TASK_WORK_KUNIT_TEST
+	bool "KUnit test for task work queues" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for task_work enqueue order,
+	  cancellation, notifications, reentrant callbacks, exit sentinels,
+	  and concurrent queue updates.
+
+	  The behavior cases run with either the C implementation or the native
+	  Rust implementation selected. The exit-sentinel case runs only with
+	  the native Rust implementation.
+
+	  If unsure, say N.
+
 config TASK_RELEASE_KUNIT_TEST
 	bool "KUnit test for zombie task release" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

@@ -310,6 +310,8 @@ mod task_group_exit_sync;
 mod task_release;
 #[cfg(CONFIG_RUST_TASK_TEARDOWN)]
 mod task_teardown;
+#[cfg(CONFIG_RUST_TASK_WORK)]
+mod task_work;
 pub mod time;
 #[cfg(CONFIG_RUST_TIMERQUEUE)]
 mod timerqueue_core;

@@ -162,6 +162,7 @@
 #include <linux/task-release-rust.h>
 #include <linux/task-rust.h>
 #include <linux/task_work.h>
+#include <linux/task-work-rust.h>
 #include <linux/timerqueue-rust.h>
 #include <linux/tracepoint.h>
 #include <linux/usb.h>

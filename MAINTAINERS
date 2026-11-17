@@ -24135,6 +24135,7 @@ F:	Documentation/rust/native-klist.rst
 F:	Documentation/rust/native-kobject.rst
 F:	Documentation/rust/native-list-lru.rst
 F:	Documentation/rust/native-plist.rst
+F:	Documentation/rust/native-task-work.rst
 F:	include/linux/btree-rust.h
 F:	include/linux/complete-signal-rust.h
 F:	include/linux/completion-rust.h
@@ -24178,6 +24179,7 @@ F:	include/linux/task-exit-notify-rust.h
 F:	include/linux/task-group-exit-sync-rust.h
 F:	include/linux/task-release-rust.h
 F:	include/linux/task-rust.h
+F:	include/linux/task-work-rust.h
 F:	include/linux/timerqueue-rust.h
 F:	include/linux/vma-merge-commit-rust.h
 F:	include/linux/vma-merge-compat-rust.h
@@ -24211,6 +24213,7 @@ F:	lib/tests/interval_tree_kunit.c
 F:	lib/tests/kfifo_kunit.c
 F:	lib/tests/list-test.c
 F:	lib/tests/plist_kunit.c
+F:	lib/tests/task_work_kunit.c
 F:	lib/tests/xarray_rust_kunit.c
 F:	lib/tests/test_complete_signal.c
 F:	lib/tests/test_copy_mm.c
@@ -24260,6 +24263,7 @@ F:	rust/kernel/kref.rs
 F:	rust/kernel/klist.rs
 F:	rust/kernel/list_lru.rs
 F:	rust/kernel/lockref.rs
+F:	rust/kernel/task_work.rs
 F:	samples/rust/
 F:	scripts/*rust*
 F:	tools/testing/selftests/copy_mm/

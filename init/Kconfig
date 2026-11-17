@@ -1882,6 +1882,24 @@ config RUST_DUP_TASK_STRUCT
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_TASK_WORK
+	bool "Rust implementation of task work queues"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production task_work enqueue, cancellation,
+	  exit-sentinel, queue-detachment, callback-dispatch, and reentrant
+	  draining state machine.
+
+	  C helpers retain task field access, the task PI lock, notification
+	  flags, diagnostics, IRQ work, and callback ABI entry points.
+
+	  The complete C implementation remains available when this option is
+	  disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_TEARDOWN
 	bool "Rust implementation of final task teardown"
 	depends on RUST
