@@ -717,6 +717,24 @@ config RUST_REFCOUNT
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_KREF
+	bool "Rust implementation of kref lifecycle"
+	depends on RUST_REFCOUNT
+	default y
+	help
+	  Use Rust for the production kref initialization, reference,
+	  conditional-reference, final-reference, and release decisions.
+
+	  Rust calls the native refcount_t state machine directly. C retains
+	  the public inline ABI adapters, mutex and spinlock acquisition, and
+	  release callback entry.
+
+	  The complete C kref implementation remains available when this
+	  option is disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_LOCKREF
 	bool "Rust implementation of lockref operations"
 	depends on RUST && X86_64 && SMP

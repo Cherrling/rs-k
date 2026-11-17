@@ -111,6 +111,7 @@ more details.
     native-btree-visitors
     native-plist
     native-interval-tree
+    native-kref
     native-klist
     native-list-lru
     native-kfifo

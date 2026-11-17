@@ -15,12 +15,59 @@
 
 #include <linux/spinlock.h>
 #include <linux/refcount.h>
+#include <linux/kref-rust.h>
 
 struct kref {
 	refcount_t refcount;
 };
 
 #define KREF_INIT(n)	{ .refcount = REFCOUNT_INIT(n), }
+
+#ifdef CONFIG_RUST_KREF
+
+static inline void kref_init(struct kref *kref)
+{
+	rust_kref_init(kref);
+}
+
+static inline unsigned int kref_read(const struct kref *kref)
+{
+	return rust_kref_read(kref);
+}
+
+static inline void kref_get(struct kref *kref)
+{
+	rust_kref_get(kref);
+}
+
+static inline int kref_put(struct kref *kref,
+			   void (*release)(struct kref *kref))
+{
+	return rust_kref_put(kref, release);
+}
+
+static inline int kref_put_mutex(struct kref *kref,
+				 void (*release)(struct kref *kref),
+				 struct mutex *mutex)
+	__cond_acquires(true, mutex)
+{
+	return rust_kref_put_mutex(kref, release, mutex);
+}
+
+static inline int kref_put_lock(struct kref *kref,
+				void (*release)(struct kref *kref),
+				spinlock_t *lock)
+	__cond_acquires(true, lock)
+{
+	return rust_kref_put_lock(kref, release, lock);
+}
+
+static inline int __must_check kref_get_unless_zero(struct kref *kref)
+{
+	return rust_kref_get_unless_zero(kref);
+}
+
+#else /* !CONFIG_RUST_KREF */
 
 /**
  * kref_init - initialize object.
@@ -132,4 +179,7 @@ static inline int __must_check kref_get_unless_zero(struct kref *kref)
 {
 	return refcount_inc_not_zero(&kref->refcount);
 }
+
+#endif /* CONFIG_RUST_KREF */
+
 #endif /* _KREF_H_ */
