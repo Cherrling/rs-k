@@ -717,6 +717,26 @@ config RUST_REFCOUNT
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_DEC_AND_LOCK
+	bool "Rust implementation of decrement-and-lock protocols"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production atomic decrement and lock-ordering
+	  protocol behind the atomic_dec_and_lock(), raw-lock, IRQ-save, and
+	  mutex-lock family.
+
+	  Rust owns the fast decrement, the lock-backed slow path, the second
+	  decrement, and the decision to return with the lock held. C retains
+	  the architecture atomic operations, lock and IRQ primitives, and
+	  public ABI adapters.
+
+	  The complete C implementations remain available when this option is
+	  disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_KREF
 	bool "Rust implementation of kref lifecycle"
 	depends on RUST_REFCOUNT

@@ -77,6 +77,8 @@ pub mod cpumask;
 mod cpupri_core;
 pub mod cred;
 pub mod debugfs;
+#[cfg(CONFIG_RUST_DEC_AND_LOCK)]
+mod dec_and_lock;
 pub mod device;
 pub mod device_id;
 pub mod devres;

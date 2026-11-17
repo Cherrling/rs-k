@@ -28,6 +28,7 @@
 #include <linux/spinlock.h>
 #include <linux/interrupt.h>
 #include <linux/debug_locks.h>
+#include <linux/dec-and-lock-rust.h>
 #include <linux/osq_lock.h>
 #include <linux/hung_task.h>
 
@@ -1359,6 +1360,9 @@ __weak void arch_contended_release_trace_unreg(void) { }
  */
 int atomic_dec_and_mutex_lock(atomic_t *cnt, struct mutex *lock)
 {
+#ifdef CONFIG_RUST_DEC_AND_LOCK
+	return rust_dec_and_mutex_lock(cnt, lock);
+#else
 	/* dec if we can't possibly hit 0 */
 	if (atomic_add_unless(cnt, -1, 1))
 		return 0;
@@ -1371,5 +1375,6 @@ int atomic_dec_and_mutex_lock(atomic_t *cnt, struct mutex *lock)
 	}
 	/* we hit 0, and we hold the lock */
 	return 1;
+#endif /* CONFIG_RUST_DEC_AND_LOCK */
 }
 EXPORT_SYMBOL(atomic_dec_and_mutex_lock);

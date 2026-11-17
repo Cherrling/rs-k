@@ -118,6 +118,7 @@ obj-$(CONFIG_PERCPU_REFCOUNT_KUNIT_TEST) += test_percpu_refcount.o
 obj-$(CONFIG_PRANDOM_KUNIT_TEST) += random32_kunit.o
 obj-$(CONFIG_PRINTF_KUNIT_TEST) += printf_kunit.o
 obj-$(CONFIG_REFCOUNT_KUNIT_TEST) += test_refcount.o
+obj-$(CONFIG_DEC_AND_LOCK_KUNIT_TEST) += dec_and_lock_kunit.o
 obj-$(CONFIG_KREF_KUNIT_TEST) += kref_kunit.o
 obj-$(CONFIG_KOBJECT_KUNIT_TEST) += kobject_kunit.o
 obj-$(CONFIG_LOCKREF_KUNIT_TEST) += lockref_kunit.o

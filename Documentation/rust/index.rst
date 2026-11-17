@@ -112,6 +112,7 @@ more details.
     native-plist
     native-interval-tree
     native-kref
+    native-dec-and-lock
     native-klist
     native-kobject
     native-list-lru

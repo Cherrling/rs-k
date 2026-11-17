@@ -2323,6 +2323,20 @@ config REFCOUNT_KUNIT_TEST
 
 	  If unsure, say N.
 
+config DEC_AND_LOCK_KUNIT_TEST
+	tristate "KUnit test for decrement-and-lock protocols" if !KUNIT_ALL_TESTS
+	depends on KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for the atomic decrement-and-lock
+	  family, including spinlock, IRQ-save, raw spinlock, mutex, and
+	  concurrent reference transitions.
+
+	  The same tests run with either the C implementation or the native
+	  Rust implementation selected.
+
+	  If unsure, say N.
+
 config KREF_KUNIT_TEST
 	tristate "KUnit test for kref lifecycle" if !KUNIT_ALL_TESTS
 	depends on KUNIT

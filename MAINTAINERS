@@ -24128,6 +24128,7 @@ F:	Documentation/rust/
 F:	Documentation/rust/native-btree-structural.rst
 F:	Documentation/rust/native-btree-traversal.rst
 F:	Documentation/rust/native-btree-visitors.rst
+F:	Documentation/rust/native-dec-and-lock.rst
 F:	Documentation/rust/native-interval-tree.rst
 F:	Documentation/rust/native-kref.rst
 F:	Documentation/rust/native-klist.rst
@@ -24140,6 +24141,7 @@ F:	include/linux/completion-rust.h
 F:	include/linux/copy-mm-rust.h
 F:	include/linux/cpupri-rust.h
 F:	include/linux/cpupri.h
+F:	include/linux/dec-and-lock-rust.h
 F:	include/linux/dup-mmap-rust.h
 F:	include/linux/dup-task-struct-rust.h
 F:	include/linux/exit-mmap-rust.h
@@ -24192,6 +24194,7 @@ F:	include/linux/wait-bit-rust.h
 F:	include/linux/wait-rust.h
 F:	include/linux/xarray-rust.h
 F:	include/trace/events/rust_sample.h
+F:	lib/dec_and_lock.c
 F:	lib/klist.c
 F:	lib/kobject.c
 F:	lib/lockref.c
@@ -24202,6 +24205,7 @@ F:	lib/tests/lockref_kunit.c
 F:	lib/tests/bitmap_ops_kunit.c
 F:	lib/tests/btree_traversal_kunit.c
 F:	lib/tests/btree_visitor_kunit.c
+F:	lib/tests/dec_and_lock_kunit.c
 F:	lib/tests/genradix_kunit.c
 F:	lib/tests/interval_tree_kunit.c
 F:	lib/tests/kfifo_kunit.c
@@ -24249,6 +24253,7 @@ F:	rust/helpers/klist.c
 F:	rust/helpers/list_lru.c
 F:	rust/helpers/lockref.c
 F:	rust/kernel/btree.rs
+F:	rust/kernel/dec_and_lock.rs
 F:	rust/kernel/interval_tree.rs
 F:	rust/kernel/kobject.rs
 F:	rust/kernel/kref.rs
