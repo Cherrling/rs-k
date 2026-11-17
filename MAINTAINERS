@@ -24128,6 +24128,7 @@ F:	Documentation/rust/
 F:	Documentation/rust/native-btree-structural.rst
 F:	Documentation/rust/native-btree-traversal.rst
 F:	Documentation/rust/native-btree-visitors.rst
+F:	Documentation/rust/native-plist.rst
 F:	include/linux/btree-rust.h
 F:	include/linux/complete-signal-rust.h
 F:	include/linux/completion-rust.h
@@ -24146,6 +24147,7 @@ F:	include/linux/pid-allocation-rust.h
 F:	include/linux/pid-association-rust.h
 F:	include/linux/pid-number-rust.h
 F:	include/linux/pid-rust.h
+F:	include/linux/plist-rust.h
 F:	include/linux/prepare-signal-rust.h
 F:	include/linux/rwlock-rust.h
 F:	include/linux/rwsem-rust.h
@@ -24184,6 +24186,7 @@ F:	lib/tests/btree_traversal_kunit.c
 F:	lib/tests/btree_visitor_kunit.c
 F:	lib/tests/genradix_kunit.c
 F:	lib/tests/kfifo_kunit.c
+F:	lib/tests/plist_kunit.c
 F:	lib/tests/xarray_rust_kunit.c
 F:	lib/tests/test_complete_signal.c
 F:	lib/tests/test_copy_mm.c

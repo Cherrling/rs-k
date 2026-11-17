@@ -356,6 +356,23 @@ config RUST_LIST_SORT
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_PLIST
+	bool "Rust implementation of priority-sorted intrusive lists"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production implementation behind plist_add(),
+	  plist_del(), and plist_requeue().
+
+	  Rust owns priority placement, same-priority FIFO ordering,
+	  priority-bucket maintenance, removal promotion, and requeue decisions.
+	  The intrusive plist_head and plist_node layouts, raw linked-list
+	  primitives, public ABI adapters, and debug validation remain in C.
+	  The C fallback retains the complete priority-list algorithms.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_MAPLE_TREE_LOAD
 	bool "Rust implementation of Maple Tree loads"
 	depends on RUST && X86_64
@@ -1185,6 +1202,19 @@ config BTREE_VISITOR_KUNIT_TEST
 	help
 	  This option enables KUnit tests for the active B+Tree visitor and
 	  grim visitor paths.
+
+	  These tests are only for development and testing, not for regular
+	  kernel use cases.
+
+	  If unsure, say N.
+
+config PLIST_KUNIT_TEST
+	bool "KUnit tests for priority-sorted intrusive lists"
+	depends on KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for plist insertion, removal,
+	  priority buckets, same-priority FIFO ordering, and requeue.
 
 	  These tests are only for development and testing, not for regular
 	  kernel use cases.

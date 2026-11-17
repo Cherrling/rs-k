@@ -109,6 +109,7 @@ more details.
     native-btree-traversal
     native-btree-structural
     native-btree-visitors
+    native-plist
     native-kfifo
     native-genradix
     native-maple-tree-load

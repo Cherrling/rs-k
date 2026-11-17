@@ -219,6 +219,8 @@ pub mod pid_namespace;
 #[cfg(CONFIG_RUST_PID_NUMBER)]
 mod pid_number;
 pub mod platform;
+#[cfg(CONFIG_RUST_PLIST)]
+mod plist;
 pub mod prelude;
 #[cfg(CONFIG_RUST_PREPARE_SIGNAL)]
 mod prepare_signal;

@@ -24,6 +24,7 @@
 
 #include <linux/bug.h>
 #include <linux/plist.h>
+#include <linux/plist-rust.h>
 
 #ifdef CONFIG_DEBUG_PLIST
 
@@ -64,6 +65,30 @@ static void plist_check_head(struct plist_head *head)
 # define plist_check_head(h)	do { } while (0)
 #endif
 
+#ifdef CONFIG_RUST_PLIST
+
+bool rust_plist_list_empty(const struct list_head *list)
+{
+	return list_empty(list);
+}
+
+void rust_plist_list_add(struct list_head *new, struct list_head *head)
+{
+	list_add(new, head);
+}
+
+void rust_plist_list_add_tail(struct list_head *new, struct list_head *head)
+{
+	list_add_tail(new, head);
+}
+
+void rust_plist_list_del_init(struct list_head *entry)
+{
+	list_del_init(entry);
+}
+
+#endif /* CONFIG_RUST_PLIST */
+
 /**
  * plist_add - add @node to @head
  *
@@ -72,13 +97,18 @@ static void plist_check_head(struct plist_head *head)
  */
 void plist_add(struct plist_node *node, struct plist_head *head)
 {
+#ifndef CONFIG_RUST_PLIST
 	struct plist_node *first, *iter, *prev = NULL, *last, *reverse_iter;
 	struct list_head *node_next = &head->node_list;
+#endif
 
 	plist_check_head(head);
 	WARN_ON(!plist_node_empty(node));
 	WARN_ON(!list_empty(&node->prio_list));
 
+#ifdef CONFIG_RUST_PLIST
+	rust_plist_add(node, head);
+#else
 	if (plist_head_empty(head))
 		goto ins_node;
 
@@ -109,6 +139,7 @@ void plist_add(struct plist_node *node, struct plist_head *head)
 		list_add_tail(&node->prio_list, &iter->prio_list);
 ins_node:
 	list_add_tail(&node->node_list, node_next);
+#endif
 
 	plist_check_head(head);
 }
@@ -123,6 +154,9 @@ void plist_del(struct plist_node *node, struct plist_head *head)
 {
 	plist_check_head(head);
 
+#ifdef CONFIG_RUST_PLIST
+	rust_plist_del(node, head);
+#else
 	if (!list_empty(&node->prio_list)) {
 		if (node->node_list.next != &head->node_list) {
 			struct plist_node *next;
@@ -138,6 +172,7 @@ void plist_del(struct plist_node *node, struct plist_head *head)
 	}
 
 	list_del_init(&node->node_list);
+#endif
 
 	plist_check_head(head);
 }
@@ -154,13 +189,18 @@ void plist_del(struct plist_node *node, struct plist_head *head)
  */
 void plist_requeue(struct plist_node *node, struct plist_head *head)
 {
+#ifndef CONFIG_RUST_PLIST
 	struct plist_node *iter;
 	struct list_head *node_next = &head->node_list;
+#endif
 
 	plist_check_head(head);
 	BUG_ON(plist_head_empty(head));
 	BUG_ON(plist_node_empty(node));
 
+#ifdef CONFIG_RUST_PLIST
+	rust_plist_requeue(node, head);
+#else
 	if (node == plist_last(head))
 		return;
 
@@ -197,6 +237,7 @@ void plist_requeue(struct plist_node *node, struct plist_head *head)
 	}
 queue:
 	list_add_tail(&node->node_list, node_next);
+#endif
 
 	plist_check_head(head);
 }
