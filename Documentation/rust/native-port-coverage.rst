@@ -49,6 +49,16 @@ Klist entry operations
   attachment state, and iteration. The native C file retains list
   initialization, blocking removal, and the shared wakeup callback.
 
+Lockref operations
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-lockref`.
+
+  Rust defines the six public ``lockref_*`` symbols. The native C object
+  retains only their non-GPL export metadata. C also retains the packed
+  layout, initialization, architecture compare-exchange, and spinlock
+  helpers.
+
 Boundary-retained inventory
 ---------------------------
 
@@ -69,8 +79,8 @@ Shared type layouts
 Public ABI
   Status: ``boundary-retained``.
 
-  Owner: The public symbols defined in ``include/linux/llist.h`` and
-  ``include/linux/klist.h``.
+  Owner: The public symbols defined in ``include/linux/llist.h``,
+  ``include/linux/klist.h``, and ``include/linux/lockref.h``.
 
   Reason: Existing callers and loadable modules use the stable C ABI.
 
@@ -161,6 +171,56 @@ Klist primitive helpers
   Exit condition: Approved Rust list, lock, and refcount abstractions cover the
   complete helper contract.
 
+Lockref layout and initialization
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/lockref.h``.
+
+  Reason: The packed spinlock and signed count share an architecture-specific
+  word. ``lockref_init()`` initializes architecture lock debugging state.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT runs exercise
+  the layout and initialization.
+
+  Risk: A layout or initialization mismatch can make a packed update race with
+  the embedded lock.
+
+  Exit condition: A Rust abstraction owns the packed layout and equivalent
+  lock-debugging initialization.
+
+Lockref architecture helpers
+  Status: ``boundary-retained``.
+
+  Owner: ``rust/helpers/lockref.c``.
+
+  Reason: Relaxed compare-exchange, packed-word decoding, and spinlock
+  operations depend on architecture and lock implementation details.
+
+  Test: Native SMP1/SMP4, KASAN, lockdep, and PREEMPT_RT runs execute the
+  fast and serialized paths.
+
+  Risk: Incorrect ordering or packed-word handling can lose a reference or
+  corrupt the embedded lock state.
+
+  Exit condition: Approved Rust atomics and spinlock abstractions preserve the
+  complete packed operation contract.
+
+Lockref export metadata
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/lockref.c``.
+
+  Reason: The existing public API is exported as non-GPL ABI, while Rust GPL
+  exports are generated automatically.
+
+  Test: ``Module.symvers`` records all six public symbols as
+  ``EXPORT_SYMBOL`` and the native object defines no lockref function body.
+
+  Risk: Duplicate exports or a class change can break module compatibility.
+
+  Exit condition: Rust export metadata supports the original non-GPL class
+  without C export entries.
+
 The lock-less list boundary is valid only while the inline producer paths,
 intrusive layouts, and atomic semantics remain shared ABI. A boundary entry
 does not transfer policy, retry decisions, state transitions, or exported
@@ -170,6 +230,10 @@ The klist boundary is valid only while initialization, blocking removal,
 task wakeup, and shared primitive behavior remain outside the migrated entry
 scope. The retained C functions do not select insertion, reference, deletion,
 attachment, or traversal policy.
+
+The lockref boundary is valid only while initialization, the packed layout,
+architecture operations, and non-GPL export metadata remain shared C
+boundaries. Rust owns every reference transition and fallback decision.
 
 Pending inventory
 -----------------

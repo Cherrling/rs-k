@@ -11,13 +11,6 @@
 
 #ifdef CONFIG_RUST_LOCKREF
 
-void rust_lockref_get(struct lockref *lockref);
-bool rust_lockref_get_not_zero(struct lockref *lockref);
-int rust_lockref_put_return(struct lockref *lockref);
-bool rust_lockref_put_or_lock(struct lockref *lockref);
-void rust_lockref_mark_dead(struct lockref *lockref);
-bool rust_lockref_get_not_dead(struct lockref *lockref);
-
 u64 rust_lockref_read_raw(const struct lockref *lockref);
 int rust_lockref_raw_count(u64 raw);
 bool rust_lockref_raw_unlocked(u64 raw);

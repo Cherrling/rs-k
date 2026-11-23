@@ -65,7 +65,7 @@ fn fast_path<T>(lockref: *mut LockRef, decide: impl Fn(c_int) -> Decision<T>) ->
 ///
 /// `lockref` must point to a valid initialized lockref.
 #[export]
-unsafe extern "C" fn rust_lockref_get(lockref: *mut LockRef) {
+unsafe extern "C" fn lockref_get(lockref: *mut LockRef) {
     let outcome = fast_path(lockref, |count| Decision::Apply {
         count: count.wrapping_add(1),
         value: (),
@@ -89,7 +89,7 @@ unsafe extern "C" fn rust_lockref_get(lockref: *mut LockRef) {
 ///
 /// `lockref` must point to a valid initialized lockref.
 #[export]
-unsafe extern "C" fn rust_lockref_get_not_zero(lockref: *mut LockRef) -> bool {
+unsafe extern "C" fn lockref_get_not_zero(lockref: *mut LockRef) -> bool {
     let outcome = fast_path(lockref, |count| {
         if count <= 0 {
             Decision::Return(false)
@@ -128,7 +128,7 @@ unsafe extern "C" fn rust_lockref_get_not_zero(lockref: *mut LockRef) -> bool {
 ///
 /// `lockref` must point to a valid initialized lockref.
 #[export]
-unsafe extern "C" fn rust_lockref_put_return(lockref: *mut LockRef) -> c_int {
+unsafe extern "C" fn lockref_put_return(lockref: *mut LockRef) -> c_int {
     let outcome = fast_path(lockref, |count| {
         if count <= 0 {
             Decision::Return(-1)
@@ -154,7 +154,7 @@ unsafe extern "C" fn rust_lockref_put_return(lockref: *mut LockRef) -> c_int {
 ///
 /// `lockref`, and the spinlock it contains, must be valid and lockable.
 #[export]
-unsafe extern "C" fn rust_lockref_put_or_lock(lockref: *mut LockRef) -> bool {
+unsafe extern "C" fn lockref_put_or_lock(lockref: *mut LockRef) -> bool {
     let outcome = fast_path(lockref, |count| {
         if count <= 1 {
             Decision::Fallback
@@ -192,7 +192,7 @@ unsafe extern "C" fn rust_lockref_put_or_lock(lockref: *mut LockRef) -> bool {
 ///
 /// `lockref` must be valid and its spinlock must be held by the caller.
 #[export]
-unsafe extern "C" fn rust_lockref_mark_dead(lockref: *mut LockRef) {
+unsafe extern "C" fn lockref_mark_dead(lockref: *mut LockRef) {
     // SAFETY: The caller guarantees the lock contract.
     unsafe { bindings::rust_lockref_mark_dead_under_lock(lockref, DEAD_COUNT) };
 }
@@ -203,7 +203,7 @@ unsafe extern "C" fn rust_lockref_mark_dead(lockref: *mut LockRef) {
 ///
 /// `lockref` must point to a valid initialized lockref.
 #[export]
-unsafe extern "C" fn rust_lockref_get_not_dead(lockref: *mut LockRef) -> bool {
+unsafe extern "C" fn lockref_get_not_dead(lockref: *mut LockRef) -> bool {
     let outcome = fast_path(lockref, |count| {
         if count < 0 {
             Decision::Return(false)

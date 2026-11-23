@@ -1,44 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0
 #include <linux/export.h>
 #include <linux/lockref.h>
-#include <linux/lockref-rust.h>
 
 #ifdef CONFIG_RUST_LOCKREF
 
-void lockref_get(struct lockref *lockref)
-{
-	rust_lockref_get(lockref);
-}
 EXPORT_SYMBOL(lockref_get);
-
-bool lockref_get_not_zero(struct lockref *lockref)
-{
-	return rust_lockref_get_not_zero(lockref);
-}
 EXPORT_SYMBOL(lockref_get_not_zero);
-
-int lockref_put_return(struct lockref *lockref)
-{
-	return rust_lockref_put_return(lockref);
-}
 EXPORT_SYMBOL(lockref_put_return);
-
-bool lockref_put_or_lock(struct lockref *lockref)
-{
-	return rust_lockref_put_or_lock(lockref);
-}
 EXPORT_SYMBOL(lockref_put_or_lock);
-
-void lockref_mark_dead(struct lockref *lockref)
-{
-	rust_lockref_mark_dead(lockref);
-}
 EXPORT_SYMBOL(lockref_mark_dead);
-
-bool lockref_get_not_dead(struct lockref *lockref)
-{
-	return rust_lockref_get_not_dead(lockref);
-}
 EXPORT_SYMBOL(lockref_get_not_dead);
 
 #else

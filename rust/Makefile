@@ -560,11 +560,23 @@ $(obj)/helpers/helpers_module.bc: private part-of-module := y
 $(obj)/helpers/helpers.bc $(obj)/helpers/helpers_module.bc: $(src)/helpers/helpers.c FORCE
 	+$(call if_changed_dep,rust_helper)
 
+# Rust-defined public symbols that retain a non-GPL export class. C emits
+# their EXPORT_SYMBOL() metadata, so the automatic Rust exporter must skip
+# them to avoid duplicate GPL exports.
+rust_non_gpl_exports := \
+	lockref_get \
+	lockref_get_not_zero \
+	lockref_put_return \
+	lockref_put_or_lock \
+	lockref_mark_dead \
+	lockref_get_not_dead
+
 rust_exports = $(NM) -p --defined-only $(1) | awk '$$2~/(T|R|D|B)/ && $$3!~/__(pfx|cfi|odr_asan)/ { printf $(2),$$3 }'
+rust_gpl_exports = $(NM) -p --defined-only $(1) | awk -v skip='$(rust_non_gpl_exports)' 'BEGIN { count = split(skip, symbols); for (i = 1; i <= count; i++) non_gpl[symbols[i]] = 1 } $$2~/(T|R|D|B)/ && $$3!~/__(pfx|cfi|odr_asan)/ && !($$3 in non_gpl) { printf $(2),$$3 }'
 
 quiet_cmd_exports = EXPORTS $@
       cmd_exports = \
-	$(call rust_exports,$<,"EXPORT_SYMBOL_RUST_GPL(%s);\n") > $@
+	$(call rust_gpl_exports,$<,"EXPORT_SYMBOL_RUST_GPL(%s);\n") > $@
 
 $(obj)/exports_core_generated.h: $(obj)/core.o FORCE
 	$(call if_changed,exports)

@@ -17,8 +17,8 @@ Entry points and ownership
 --------------------------
 
 The public ``lockref_*()`` interfaces keep their existing signatures and
-export classes. When the option is enabled, their C entry points forward to
-native Rust functions.
+export classes. When the option is enabled, Rust directly defines the six
+public symbols.
 
 Rust owns:
 
@@ -59,8 +59,12 @@ These helpers do not select reference transitions. Rust supplies every new
 count and chooses whether the operation succeeds, returns early, or enters
 the serialized fallback.
 
-The public C wrappers retain the exported ABI. The complete C implementation
-remains compiled in fallback configurations.
+``lockref_init()`` remains a C inline function because spinlock initialization
+is an architecture and lock debugging boundary.
+
+The native ``lib/lockref.o`` contains only the six non-GPL ``EXPORT_SYMBOL()``
+metadata entries. It defines no lockref function body. The complete C
+implementation remains compiled in fallback configurations.
 
 Important invariants
 --------------------
@@ -109,16 +113,20 @@ The unit must pass these checks before integration:
 
 * Rust-enabled KASAN and lockdep runs.
 
+* Rust-enabled PREEMPT_RT run.
+
+* Adjacent percpu-ref, refcount, kref, and kobject KUnit suites.
+
 * Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
   ``git diff --check``.
 
-* Symbol checks that the native C object calls all Rust entry points and that
-  fallback objects reference no Rust lockref symbol.
+* Symbol checks that Rust defines all six public entry points, the C object
+  contains only export metadata, and the non-GPL export class is unchanged.
 
 Validation results
 ------------------
 
-Validation on 2026-11-17 used parent commit ``d4e1d5d24a92``.
+Validation on 2026-11-23 used parent commit ``ed53e1eb6519``.
 
 ================  ============================================================
 Build             Configuration
@@ -129,40 +137,52 @@ Pure C            ``CONFIG_RUST=n``
 Native KASAN      Native Rust configuration plus ``CONFIG_KASAN=y``
 Native lockdep    Native Rust configuration plus
                   ``CONFIG_PROVE_LOCKING=y``
+Native RT         Native Rust configuration plus ``CONFIG_PREEMPT_RT=y``
 ================  ============================================================
 
 Every configuration used x86_64, ``CONFIG_SMP=y``, ``CONFIG_NR_CPUS=4``,
-``CONFIG_KUNIT=y``, and ``CONFIG_LOCKREF_KUNIT_TEST=y``.
+``CONFIG_MODULES=y``, ``CONFIG_KUNIT=y``, and
+``CONFIG_LOCKREF_KUNIT_TEST=y``.
 
-All ten QEMU runs passed with one and four virtual CPUs. Each run reported
-four of four KUnit cases passed.
+All nine QEMU runs passed all four KUnit cases. Native, fallback, and C-only
+runs used both one and four virtual CPUs. KASAN, lockdep, and RT runs used
+four virtual CPUs.
 
 The concurrent case used four kthreads. Each worker performed 10000
 iterations. Every iteration completed one unconditional reference cycle and
 one zero-checked reference cycle, for 80000 guarded get and conditional
 release cycles.
 
+The adjacent object and reference regression passed all 116 enabled cases
+with 6 intentional skips. This included all seven percpu-ref cases, all seven
+refcount cases, all four kref cases, all three kobject cases, and all four
+lockref cases.
+
 The KASAN run initialized generic KASAN. The lockdep run initialized the lock
-dependency validator. The logs contained no KASAN report, BUG, warning,
-Oops, lock inversion, recursive locking report, or RCU stall.
+dependency validator. The RT kernel reported ``SMP PREEMPT_RT``. Full boot
+logs contained no KASAN report, BUG, warning, Oops, lock inversion, recursive
+locking report, kernel panic, or RCU stall.
 
 The lockdep build expands ``spinlock_t`` to 64 bytes and disables the packed
 lock and count word. C helpers then report that the lockless path is
 unavailable. Rust still owns every count transition and runs the serialized
 spinlock path.
 
-In the native configuration, ``lib/lockref.o`` referenced all six
-``rust_lockref_*`` entry points. Each public adapter was a 9-byte tail jump.
-``rust/kernel.o`` defined all six Rust symbols. The Rust-fallback and pure C
-objects referenced no Rust lockref symbol.
+In the native configuration, ``rust/kernel.o`` defined all six public
+``lockref_*`` symbols. The native ``lib/lockref.o`` defined no lockref
+function and contained only undefined references plus export metadata.
+``Module.symvers`` retained the six symbols as ``EXPORT_SYMBOL`` and listed
+the nine C helper symbols separately as ``EXPORT_SYMBOL_GPL``. The generated
+Rust GPL export header contained none of the six public lockref symbols.
 
-The build gate also exposed two existing configuration-only issues. The
-interval-tree span type alias now follows the same configuration guard as its
-users. A VMA-unmap KUnit entry point now documents its output-pointer safety
-contract. These changes do not alter production behavior.
+The Rust-fallback and pure C ``lib/lockref.o`` objects defined the complete C
+implementation. Their Rust kernel objects contained no lockref state-machine
+symbol.
 
-Rustfmt, Clippy ``bzImage``, Rustdoc, focused Sphinx generation, strict
-checkpatch, and ``git diff --check`` passed.
+Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
+``git diff --check`` passed.
+Focused Sphinx generation emitted only two unrelated cross-reference warnings
+in ``rust/index.rst`` and ``rust/quick-start.rst``.
 
 Review conditions
 -----------------
@@ -177,8 +197,11 @@ Reopen a retained boundary decision if any of these conditions changes:
 
 * The zero, dead, or conditional-locking contract changes.
 
-* Rust stops controlling count transitions or fallback selection.
+* Rust stops defining the public entry points, count transitions, or fallback
+  selection.
 
 * A fallback object starts to use a Rust lockref symbol.
+
+* The non-GPL export class or C export metadata changes.
 
 * Another architecture passes the complete validation gate.

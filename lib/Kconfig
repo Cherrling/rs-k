@@ -808,9 +808,9 @@ config RUST_LOCKREF
 	  spinlock fallback. Architecture compare-exchange and spinlock
 	  primitives remain in C helpers.
 
-	  The existing C functions remain as exported ABI adapters. The
-	  complete C implementation remains available when this option is
-	  disabled.
+	  Rust directly defines the six public functions. C retains only their
+	  non-GPL export metadata. The complete C implementation remains
+	  available when this option is disabled.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
