@@ -28,13 +28,15 @@ The existing C load traversal remains available when the option is disabled.
 Entry point and ownership
 -------------------------
 
-The public interface and its ``EXPORT_SYMBOL`` class do not change. With this
-option enabled, ``mtree_load()`` is an ABI adapter that calls
-``rust_mtree_load()`` in ``rust/kernel/maple_tree_load.rs``.
+Rust directly defines ``mtree_load()`` in
+``rust/kernel/maple_tree_load.rs``. The public interface and its ordinary
+``EXPORT_SYMBOL`` class do not change. C retains the export metadata in
+``lib/maple_tree.c``, and ``rust/Makefile`` excludes ``mtree_load`` from the
+automatic Rust GPL exporter.
 
-Rust owns the complete public lookup control flow. The enabled C object does
-not select pivots, descend nodes, retry dead nodes, or duplicate the lookup
-policy.
+Rust owns the complete public lookup control flow. The native C object does
+not define ``mtree_load()``, select pivots, descend nodes, retry dead nodes,
+or duplicate the lookup policy.
 
 Retained C boundaries
 ---------------------
@@ -99,47 +101,65 @@ The unit must pass these checks before integration:
 * Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
   ``git diff --check``.
 
-* Symbol checks showing that the fallback contains no Rust load symbols.
+* Symbol checks showing that Rust defines ``mtree_load()``, the native C
+  object defines no load body, and the fallback and C-only objects define the
+  complete traversal.
 
-* Disassembly checks showing that ``mtree_load()`` calls Rust when enabled and
-  that the C fallback retains the complete traversal.
+* Export checks showing that ``mtree_load`` remains an ordinary
+  ``EXPORT_SYMBOL`` and the generated Rust GPL export header excludes it.
 
 Validation results
 ------------------
 
-The final revision passed the formal twelve-run startup matrix: one single-CPU
-run and three four-CPU runs for each of the Rust, C fallback, and Rust plus
-KASAN builds. Every run passed the five focused KUnit cases and the complete
-upstream Maple Tree regression. The one-CPU runs passed 5,357,658 checks. The
-four-CPU runs passed 5,357,709 checks. The matrix passed 64,292,355 checks in
-total.
+Validation ran on 2026-11-24 with x86_64 LLVM builds and QEMU.
 
-The lockdep build passed the focused five-case KUnit suite in one single-CPU
-run and one four-CPU run. The logs contained no BUG, WARNING, Oops, KASAN
-report, RCU stall, or panic marker.
+================  ============================================================
+Build             Configuration
+================  ============================================================
+Native            Native Rust, one and three four-CPU runs
+Rust fallback     ``CONFIG_RUST_MAPLE_TREE_LOAD=n``, one and three four-CPU
+                  runs
+Pure C            ``CONFIG_RUST=n``, one and four virtual CPUs
+Native KASAN      Native Rust plus ``CONFIG_KASAN=y``, one and three four-CPU
+                  runs
+Native lockdep    Native Rust plus ``CONFIG_PROVE_LOCKING=y``, four CPUs
+Native RT         Native Rust plus ``CONFIG_PREEMPT_RT=y``, four CPUs
+================  ============================================================
 
-Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
-``git diff --check`` passed. Strict checkpatch reported zero errors, warnings,
-and checks after excluding its generic new-file reminder, because MAINTAINERS
-already lists the new files. The focused Sphinx build reported two existing
-cross-reference warnings outside this document.
+Every configuration used ``CONFIG_SMP=y``, ``CONFIG_NR_CPUS=4``,
+``CONFIG_KUNIT=y``, ``CONFIG_MAPLE_TREE_LOAD_KUNIT_TEST=y``, and
+``CONFIG_TEST_MAPLE_TREE=y``.
 
-The Rust build contains both ``mtree_load`` and ``rust_mtree_load``. Its
-``mtree_load`` body tail-jumps to ``rust_mtree_load``. The fallback build
-contains only ``mtree_load`` and retains the complete C traversal.
+All six kernel configurations compiled successfully. All 16 QEMU runs passed
+all five ``maple_tree_load`` KUnit cases and the complete Maple Tree self-test.
+Native, fallback, C-only, lockdep, and RT runs passed 3,809,321 checks each.
+The KASAN SMP1 run passed 5,357,658 checks. Each KASAN SMP4 run passed
+5,357,709 checks. The matrix passed 67,142,637 checks in total.
+
+The KASAN run initialized KASAN. The lockdep run enabled lock dependency
+tracking and prove-locking. The RT kernel reported an ``SMP PREEMPT_RT``
+build. The logs contained no BUG, warning, KASAN report, suspicious RCU
+usage, lock inversion, Oops, panic, or RCU stall.
+
+Rustfmt, Clippy, Rustdoc, kernel-doc, focused Sphinx generation, strict
+checkpatch, and ``git diff --check`` passed. The focused Sphinx build reported
+two existing cross-reference warnings outside this document.
+
+The Rust build contains ``mtree_load`` but no ``rust_mtree_load`` adapter.
+``rust/kernel.o`` defines ``mtree_load``. The native ``lib/maple_tree.o``
+defines no load body and retains one unresolved reference and the export
+metadata. The fallback and C-only objects define the complete C traversal.
+``Module.symvers`` records ``mtree_load`` as ``EXPORT_SYMBOL``, and the
+generated Rust GPL export header excludes it.
 
 Configuration notes
 -------------------
 
-KASAN used outline instrumentation and ``CONFIG_FRAME_WARN=4096``. Existing C
-stack frames in ``mas_wr_store_entry`` and ``vfs_coredump`` exceed the inline
-KASAN limit. This configuration does not relax a limit reached only by the
-new Rust code.
+KASAN used inline instrumentation and ``CONFIG_FRAME_WARN=2048``. All tested
+C and Rust stack frames fit this limit.
 
-The lockdep run used ``CONFIG_TEST_MAPLE_TREE=n`` and ran the focused KUnit
-suite. The existing C ``mt_validate`` path reports suspicious RCU usage under
-lockdep. A strict RCU grace-period configuration was not validated for this
-unit.
+The lockdep run also enabled ``CONFIG_TEST_MAPLE_TREE`` and completed the full
+Maple Tree self-test without a lockdep or RCU diagnostic.
 
 Review conditions
 -----------------

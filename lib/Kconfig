@@ -431,9 +431,9 @@ config RUST_MAPLE_TREE_LOAD
 	  descent, dead-node restart, and RCU lifecycle behind mtree_load().
 
 	  Maple node encoding, node layout, protected slot access, tracepoint
-	  emission, and lockdep checks remain in C. The exported C entry point
-	  remains as an ABI adapter. The C fallback retains the complete load
-	  traversal.
+	  emission, and lockdep checks remain in C. Rust directly defines the
+	  public entry point, and C retains its ordinary export metadata. The
+	  C fallback retains the complete load traversal.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

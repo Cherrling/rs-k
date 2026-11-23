@@ -109,9 +109,9 @@ unsafe fn load(tree: *mut MapleTree, index: usize) -> *mut c_void {
 ///
 /// # Safety
 ///
-/// The C caller must provide a valid initialized Maple tree.
+/// The caller must provide a valid initialized Maple tree.
 #[export]
-unsafe extern "C" fn rust_mtree_load(tree: *mut MapleTree, index: usize) -> *mut c_void {
+unsafe extern "C" fn mtree_load(tree: *mut MapleTree, index: usize) -> *mut c_void {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { load(tree, index) }
 }

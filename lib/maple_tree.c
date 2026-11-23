@@ -6514,11 +6514,9 @@ void __init maple_tree_init(void)
  *
  * Return: the entry or %NULL
  */
+#ifndef CONFIG_RUST_MAPLE_TREE_LOAD
 void *mtree_load(struct maple_tree *mt, unsigned long index)
 {
-#ifdef CONFIG_RUST_MAPLE_TREE_LOAD
-	return rust_mtree_load(mt, index);
-#else
 	MA_STATE(mas, mt, index, index);
 	void *entry;
 
@@ -6545,9 +6543,11 @@ unlock:
 		return NULL;
 
 	return entry;
-#endif /* CONFIG_RUST_MAPLE_TREE_LOAD */
 }
 EXPORT_SYMBOL(mtree_load);
+#else
+EXPORT_SYMBOL(mtree_load);
+#endif /* CONFIG_RUST_MAPLE_TREE_LOAD */
 
 /**
  * mtree_store_range() - Store an entry at a given range.

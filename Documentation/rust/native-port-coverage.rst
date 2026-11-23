@@ -153,6 +153,18 @@ Generic bitmap operations
   configurations retain the complete algorithms. All nine bitmap KUnit runs
   passed, and native symbol inspection showed all 31 Rust-defined entries.
 
+Maple Tree loads
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-maple-tree-load`.
+
+  Rust directly defines ``mtree_load()`` and owns root selection, pivot
+  descent, dead-node restart, and the RCU lookup lifetime. C retains node
+  encoding and layout, protected slot access, lockdep diagnostics, tracepoint
+  emission, and ordinary export metadata. C fallback configurations retain
+  the complete load traversal. All 16 load KUnit runs and complete Maple Tree
+  self-tests passed.
+
 Generic radix trees
   Status: ``migrated``.
 
@@ -218,7 +230,8 @@ Public ABI
   ``include/linux/plist.h``, ``include/linux/list_sort.h``,
   ``include/linux/list_lru.h``, ``include/linux/generic-radix-tree.h``,
   ``include/linux/btree.h``, ``include/linux/find.h``,
-  ``include/linux/bitmap.h``, and ``include/linux/kfifo.h``.
+  ``include/linux/bitmap.h``, ``include/linux/maple_tree.h``, and
+  ``include/linux/kfifo.h``.
 
   Reason: Existing callers and loadable modules use the stable C ABI.
 
@@ -329,6 +342,43 @@ Generic bitmap export metadata
 
   Exit condition: Rust export metadata supports the original non-GPL and
   unexported classes without C export entries.
+
+Maple Tree node layout and protected access
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/maple_tree.h``, ``lib/maple_tree.c``, and
+  ``rust/kernel/maple_tree_core.rs``.
+
+  Reason: Rust reads encoded roots, node types, pivots, and protected slots
+  through C helpers that preserve Maple node layout and RCU access rules.
+
+  Test: Native and fallback Maple Tree load KUnit runs exercise empty,
+  direct-root, deep-node, zero-entry, maximum-index, and concurrent RCU
+  lookup paths.
+
+  Risk: A layout or protection change can make Rust select the wrong pivot,
+  read an unstable slot, or miss a dead node.
+
+  Exit condition: Rust owns the Maple node representation and equivalent
+  protected-access contract.
+
+Maple Tree load diagnostics and metadata
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/maple_tree.c`` and ``rust/Makefile``.
+
+  Reason: Lockdep checks, ``ma_read`` tracing, and the ordinary
+  ``EXPORT_SYMBOL`` class remain C boundaries.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT runs execute
+  the load suite. ``Module.symvers`` records one ordinary export, and the
+  generated Rust GPL export header excludes ``mtree_load``.
+
+  Risk: A diagnostic or export-class mismatch can hide an RCU violation or
+  break module compatibility.
+
+  Exit condition: Rust diagnostics and export generation preserve the
+  existing trace, lockdep, and non-GPL contracts.
 
 Random set-bit primitive
   Status: ``boundary-retained``.
@@ -1019,6 +1069,11 @@ formatting, storage operations, constant-foldable inline accessors, and
 ordinary export metadata remain named boundaries. Rust defines every public
 out-of-line bitmap operation and owns every mask, traversal, count, mapping,
 selection, and conversion decision.
+
+The Maple Tree load boundary is valid only while encoded roots, node layouts,
+protected slot access, lockdep diagnostics, tracing, and ordinary export
+metadata remain named C boundaries. Rust defines the public load entry and
+owns every root, pivot, restart, and RCU lifetime decision.
 
 The generic radix tree boundary is valid only while the tagged layouts,
 inline container API, atomic publication helpers, allocation primitives, and

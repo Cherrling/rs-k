@@ -655,7 +655,8 @@ rust_non_gpl_exports := \
 	bitmap_from_arr32 \
 	bitmap_to_arr32 \
 	bitmap_from_arr64 \
-	bitmap_to_arr64
+	bitmap_to_arr64 \
+	mtree_load
 
 # Rust-defined production symbols that must not receive automatic exports.
 rust_unexported_symbols := \
