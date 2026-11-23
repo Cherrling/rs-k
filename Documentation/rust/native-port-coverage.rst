@@ -126,6 +126,19 @@ List LRU
   destruction, memory-cgroup slice allocation, and reparenting. C fallback
   configurations retain the complete algorithms.
 
+Generic radix trees
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-genradix`.
+
+  Rust directly defines the six public non-GPL entry points for sparse
+  lookup, allocation, forward and reverse iteration, preallocation, and
+  release. It owns root growth, tagged-root publication retries, traversal,
+  iterator advancement, and recursive release. The native C object retains
+  only export metadata. C also retains node allocation, tagged-root and node
+  layouts, atomic root and child publication, root exchange, and the inline
+  type-aware API. C fallback configurations retain the complete algorithms.
+
 Boundary-retained inventory
 ---------------------------
 
@@ -150,8 +163,8 @@ Public ABI
   ``include/linux/klist.h``, ``include/linux/lockref.h``,
   ``include/linux/kobject.h``, ``include/linux/interval_tree.h``,
   ``include/linux/rbtree.h``, ``include/linux/rbtree_augmented.h``,
-  ``include/linux/plist.h``, ``include/linux/list_sort.h``, and
-  ``include/linux/list_lru.h``.
+  ``include/linux/plist.h``, ``include/linux/list_sort.h``,
+  ``include/linux/list_lru.h``, and ``include/linux/generic-radix-tree.h``.
 
   Reason: Existing callers and loadable modules use the stable C ABI.
 
@@ -603,6 +616,75 @@ List LRU export metadata
   Exit condition: Rust export metadata supports per-symbol export and
   unexported status without the skip list.
 
+Generic radix tree layouts and inline API
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/generic-radix-tree.h``.
+
+  Reason: C and Rust access the tagged root, interior child array, leaf data
+  union, iterator, and type-aware container macros through one shared ABI.
+
+  Test: Native, fallback, and C-only KUnit runs exercise shallow and deep
+  trees, sparse entries, non-power-of-two objects, and repeated concurrent
+  allocation.
+
+  Risk: A layout, depth encoding, or offset-conversion change can make Rust
+  traverse the wrong node or return a misaligned leaf entry.
+
+  Exit condition: Rust-owned tree, node, iterator, and container interfaces
+  replace the generic radix tree macros and layouts.
+
+Generic radix tree atomic helpers
+  Status: ``boundary-retained``.
+
+  Owner: ``rust/helpers/genradix.c``.
+
+  Reason: Root and child publication require kernel release compare-exchange,
+  read-once child loads, and null exchange semantics.
+
+  Test: Native SMP4, KASAN, lockdep, and PREEMPT_RT runs execute concurrent
+  root and child allocation paths.
+
+  Risk: A weaker or mismatched atomic primitive can publish an uninitialized
+  child, lose an allocated node, or expose an incomplete tree.
+
+  Exit condition: Rust owns equivalent layout-aware atomic publication and
+  release primitives.
+
+Generic radix tree allocation and release primitives
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/generic-radix-tree.h`` and
+  ``rust/helpers/genradix.c``.
+
+  Reason: Zeroed page allocation, page release, and leaf data access retain
+  the kernel allocator, memory-tagging, and layout contracts.
+
+  Test: Every configuration checks zeroed pages, preallocated-node reuse,
+  recursive release, and tree reset.
+
+  Risk: An allocation or release mismatch can leak nodes, return nonzero
+  entries, or free a published subtree.
+
+  Exit condition: Rust owns allocation and release with equivalent zeroing,
+  reuse, and lifetime behavior.
+
+Generic radix tree export metadata
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/generic-radix-tree.c`` and ``rust/Makefile``.
+
+  Reason: All six public symbols retain ordinary non-GPL exports while
+  generated Rust exports use the GPL class.
+
+  Test: ``vmlinux.symvers`` records six ``EXPORT_SYMBOL`` entries, and the
+  generated Rust GPL export header excludes all six names.
+
+  Risk: A duplicate export or class change can break module compatibility.
+
+  Exit condition: Rust export metadata supports the original non-GPL class
+  without C export entries.
+
 The lock-less list boundary is valid only while the inline producer paths,
 intrusive layouts, and atomic semantics remain shared ABI. A boundary entry
 does not transfer policy, retry decisions, state transitions, or exported
@@ -647,6 +729,12 @@ interrupt modes, RCU and memory-cgroup resolution, initialization and
 destruction, and dynamic slice allocation and reparenting remain named C
 boundaries. Rust defines every node-local public entry and owns every item,
 count, scan, and walk transition.
+
+The generic radix tree boundary is valid only while the tagged layouts,
+inline container API, atomic publication helpers, allocation primitives, and
+non-GPL export metadata remain named C boundaries. Rust defines every public
+out-of-line entry and owns every growth, traversal, iteration, allocation
+policy, and release transition.
 
 Pending inventory
 -----------------

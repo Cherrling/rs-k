@@ -234,49 +234,11 @@ EXPORT_SYMBOL(__genradix_free);
 
 #else /* CONFIG_RUST_GENRADIX */
 
-void *__genradix_ptr(struct __genradix *radix, size_t offset)
-{
-	return rust_genradix_ptr(radix, offset);
-}
 EXPORT_SYMBOL(__genradix_ptr);
-
-void *__genradix_ptr_alloc(struct __genradix *radix, size_t offset,
-			   struct genradix_node **preallocated,
-			   gfp_t gfp_mask)
-{
-	return rust_genradix_ptr_alloc(radix, offset, preallocated, gfp_mask);
-}
 EXPORT_SYMBOL(__genradix_ptr_alloc);
-
-void *__genradix_iter_peek(struct genradix_iter *iter,
-			   struct __genradix *radix,
-			   size_t objs_per_page)
-{
-	return rust_genradix_iter_peek(iter, radix, objs_per_page);
-}
 EXPORT_SYMBOL(__genradix_iter_peek);
-
-void *__genradix_iter_peek_prev(struct genradix_iter *iter,
-				struct __genradix *radix,
-				size_t objs_per_page,
-				size_t obj_size_plus_page_remainder)
-{
-	return rust_genradix_iter_peek_prev(iter, radix, objs_per_page,
-					    obj_size_plus_page_remainder);
-}
 EXPORT_SYMBOL(__genradix_iter_peek_prev);
-
-int __genradix_prealloc(struct __genradix *radix, size_t size,
-			gfp_t gfp_mask)
-{
-	return rust_genradix_prealloc(radix, size, gfp_mask);
-}
 EXPORT_SYMBOL(__genradix_prealloc);
-
-void __genradix_free(struct __genradix *radix)
-{
-	rust_genradix_free(radix);
-}
 EXPORT_SYMBOL(__genradix_free);
 
 #endif /* CONFIG_RUST_GENRADIX */

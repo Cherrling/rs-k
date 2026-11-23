@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
-//! Native implementation of the generic radix tree algorithms.
+//! Native generic radix tree implementation.
 //!
-//! Rust owns root growth, node traversal, forward and reverse sparse
-//! iteration, preallocation, and recursive release. C retains node allocation,
+//! Rust directly defines the public generic radix tree entry points. It owns
+//! root growth, node traversal, forward and reverse sparse iteration,
+//! preallocation, and recursive release. C retains node allocation,
 //! tagged-root representation helpers, atomic publication, and root exchange.
 
 use crate::bindings;
@@ -108,7 +109,7 @@ unsafe fn node_data(node: Node) -> *mut u8 {
 ///
 /// `radix` must point to a valid generic radix tree.
 #[export]
-unsafe extern "C" fn rust_genradix_ptr(radix: *mut Radix, mut offset: usize) -> *mut c_void {
+unsafe extern "C" fn __genradix_ptr(radix: *mut Radix, mut offset: usize) -> *mut c_void {
     // SAFETY: The function contract requires a valid radix tree.
     let (_, mut node, depth) = unsafe { root_state(radix) };
     let mut shift = depth_shift(depth);
@@ -237,14 +238,14 @@ unsafe fn ptr_alloc(
     unsafe { node_data(node).add(offset & (NODE_SIZE - 1)).cast() }
 }
 
-/// Finds or allocates an entry through the C ABI.
+/// Finds or allocates an entry.
 ///
 /// # Safety
 ///
 /// `radix` must point to a valid tree. If non-NULL, `preallocated` must be a
 /// writable node pointer.
 #[export]
-unsafe extern "C" fn rust_genradix_ptr_alloc(
+unsafe extern "C" fn __genradix_ptr_alloc(
     radix: *mut Radix,
     offset: usize,
     preallocated: *mut Node,
@@ -260,7 +261,7 @@ unsafe extern "C" fn rust_genradix_ptr_alloc(
 ///
 /// `iter` must be writable and `radix` must point to a valid tree.
 #[export]
-unsafe extern "C" fn rust_genradix_iter_peek(
+unsafe extern "C" fn __genradix_iter_peek(
     iter: *mut Iter,
     radix: *mut Radix,
     objs_per_page: usize,
@@ -322,7 +323,7 @@ unsafe extern "C" fn rust_genradix_iter_peek(
 ///
 /// `iter` must be writable and `radix` must point to a valid tree.
 #[export]
-unsafe extern "C" fn rust_genradix_iter_peek_prev(
+unsafe extern "C" fn __genradix_iter_peek_prev(
     iter: *mut Iter,
     radix: *mut Radix,
     objs_per_page: usize,
@@ -407,17 +408,13 @@ unsafe fn prealloc(radix: *mut Radix, size: usize, gfp_mask: Gfp) -> c_int {
     0
 }
 
-/// Preallocates pages through the C ABI.
+/// Preallocates pages.
 ///
 /// # Safety
 ///
 /// `radix` must point to a valid generic radix tree.
 #[export]
-unsafe extern "C" fn rust_genradix_prealloc(
-    radix: *mut Radix,
-    size: usize,
-    gfp_mask: Gfp,
-) -> c_int {
+unsafe extern "C" fn __genradix_prealloc(radix: *mut Radix, size: usize, gfp_mask: Gfp) -> c_int {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { prealloc(radix, size, gfp_mask) }
 }
@@ -447,13 +444,13 @@ unsafe fn free_node(node: Node, depth: c_uint) {
     unsafe { bindings::genradix_node_free(node) };
 }
 
-/// Releases a generic radix tree through the C ABI.
+/// Releases a generic radix tree.
 ///
 /// # Safety
 ///
 /// `radix` must point to a valid generic radix tree with exclusive access.
 #[export]
-unsafe extern "C" fn rust_genradix_free(radix: *mut Radix) {
+unsafe extern "C" fn __genradix_free(radix: *mut Radix) {
     // SAFETY: The function contract guarantees a valid root slot.
     let root = unsafe { bindings::genradix_root_xchg_null(radix) };
     // SAFETY: Decode the detached tagged root.

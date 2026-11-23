@@ -584,7 +584,13 @@ rust_non_gpl_exports := \
 	rb_replace_node_rcu \
 	rb_next_postorder \
 	rb_first_postorder \
-	list_sort
+	list_sort \
+	__genradix_ptr \
+	__genradix_ptr_alloc \
+	__genradix_iter_peek \
+	__genradix_iter_peek_prev \
+	__genradix_prealloc \
+	__genradix_free
 
 # Rust-defined production symbols that must not receive automatic exports.
 rust_unexported_symbols := \

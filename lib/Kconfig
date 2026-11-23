@@ -947,12 +947,13 @@ config RUST_GENRADIX
 	depends on RUST && X86_64
 	default y
 	help
-	  Use Rust for the production generic-radix-tree traversal, growth,
-	  iteration, preallocation, and recursive release algorithms.
+	  Rust directly defines the public generic radix tree entry points. It
+	  owns traversal, root growth, iteration, preallocation, and recursive
+	  release.
 
 	  Node allocation, atomic root and child publication, root exchange,
-	  and the node representation remain in C. The exported entry points
-	  remain as ABI adapters.
+	  and the node representation remain in C. The C fallback retains the
+	  complete algorithms.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
