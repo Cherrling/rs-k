@@ -113,6 +113,7 @@ more details.
     wait-bit
     native-find-bit
     native-bitmap-ops
+    native-btree-entry
     native-btree-traversal
     native-btree-structural
     native-btree-visitors

@@ -33,8 +33,9 @@ Entry points and ownership
 --------------------------
 
 The public ``btree_visitor()`` and ``btree_grim_visitor()`` interfaces and
-their export classes do not change. With this option enabled, each C entry
-point forwards directly to the matching Rust production function.
+their GPL export classes do not change. With this option enabled, Rust
+directly defines both public entry points. The C fallback retains the complete
+implementations.
 
 The typed ``btree_visitor32()``, ``btree_visitor64()``,
 ``btree_visitor128()``, and matching grim visitor interfaces keep their
@@ -107,13 +108,16 @@ The unit must pass these checks before integration:
 * Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
   ``git diff --check``.
 
-* Symbol checks showing that the enabled C object calls both Rust visitor
-  entry points and that the fallback objects contain no such calls.
+* Symbol checks showing that Rust defines both visitor entry points, that the
+  native C object defines neither, and that the fallback and C-only objects
+  contain the complete implementations and GPL exports.
 
 Validation results
 ------------------
 
-Validation on 2026-11-17 used parent commit ``b8dbff5b61ee``.
+Validation of the native algorithm migration on 2026-11-17 used parent commit
+``b8dbff5b61ee``. Direct public-entry validation is documented in
+:doc:`native-btree-entry`.
 
 ================  ============================================================
 Build             Configuration
@@ -141,9 +145,10 @@ reset, and tree reuse.
 The KASAN and lockdep logs contained no KASAN report, BUG, warning, Oops,
 lock inversion, recursive locking report, or RCU stall.
 
-``rust/kernel.o`` defined all nine ``rust_btree_*`` entry points. The native
-``lib/btree.o`` referenced both visitor entry points. The Rust-fallback and
-pure C ``lib/btree.o`` objects referenced neither visitor entry point.
+At that migration stage, ``rust/kernel.o`` defined all nine
+``rust_btree_*`` entry points. The native ``lib/btree.o`` referenced both
+visitor entry points. The Rust-fallback and pure C ``lib/btree.o`` objects
+referenced neither visitor entry point.
 
 Rustfmt, Clippy, Rustdoc, focused Sphinx generation, and ``git diff --check``
 passed. Strict checkpatch reported no errors or checks. It retained the generic

@@ -139,6 +139,19 @@ Generic radix trees
   layouts, atomic root and child publication, root exchange, and the inline
   type-aware API. C fallback configurations retain the complete algorithms.
 
+B+Tree operations
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-btree-entry`.
+
+  Rust directly defines the nine public GPL entry points for lookup, update,
+  last-entry selection, predecessor traversal, insertion, removal, merge,
+  and visitor traversal. Rust owns every traversal, update, structural,
+  merge, callback, and reclamation decision. The native C object retains node
+  and geometry layouts, typed visitor callback adapters, mempool allocation
+  and release, lifecycle initialization, and geometry objects. C fallback
+  configurations retain the complete algorithms.
+
 Boundary-retained inventory
 ---------------------------
 
@@ -164,7 +177,8 @@ Public ABI
   ``include/linux/kobject.h``, ``include/linux/interval_tree.h``,
   ``include/linux/rbtree.h``, ``include/linux/rbtree_augmented.h``,
   ``include/linux/plist.h``, ``include/linux/list_sort.h``,
-  ``include/linux/list_lru.h``, and ``include/linux/generic-radix-tree.h``.
+  ``include/linux/list_lru.h``, ``include/linux/generic-radix-tree.h``, and
+  ``include/linux/btree.h``.
 
   Reason: Existing callers and loadable modules use the stable C ABI.
 
@@ -685,6 +699,59 @@ Generic radix tree export metadata
   Exit condition: Rust export metadata supports the original non-GPL class
   without C export entries.
 
+B+Tree layouts and geometry
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/btree.h``.
+
+  Reason: C and Rust access the same tree head, geometry, node arrays, key
+  slots, and value slots through one shared layout.
+
+  Test: Native, fallback, and C-only traversal, structural, and visitor
+  suites exercise 32-bit, 64-bit, and 128-bit keys in multi-level trees.
+
+  Risk: A layout or geometry change can make Rust read or write the wrong key
+  or value slot.
+
+  Exit condition: Rust-owned tree, geometry, node, and key representations
+  replace the shared C layout.
+
+B+Tree allocation and lifecycle
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/btree-rust.h`` and ``lib/btree.c``.
+
+  Reason: Zeroed mempool allocation, node release, geometry objects,
+  initialization, destruction, allocator callbacks, and module setup retain
+  kernel allocator and lifecycle contracts.
+
+  Test: Native, fallback, and C-only suites check root growth, split rollback,
+  failed allocations, merge ownership, node release, and tree reuse.
+
+  Risk: An allocation or release mismatch can leak nodes, use a freed node,
+  or attach a node from the wrong mempool.
+
+  Exit condition: Rust owns node allocation, release, geometry setup, and tree
+  lifecycle with equivalent zeroing and ownership behavior.
+
+B+Tree typed visitor callbacks
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/btree.h`` and ``lib/btree.c``.
+
+  Reason: The four public typed visitor adapters retain the existing 32-bit,
+  64-bit, and 128-bit callback signatures while Rust uses the shared machine
+  word key representation.
+
+  Test: Native, fallback, and C-only visitor suites check callback keys,
+  descending order, stable indices, counts, grim release, and tree reuse.
+
+  Risk: A callback-ABI change can corrupt typed keys or break visitor
+  compatibility.
+
+  Exit condition: Rust directly supplies compatible typed visitor interfaces
+  for every public key width.
+
 The lock-less list boundary is valid only while the inline producer paths,
 intrusive layouts, and atomic semantics remain shared ABI. A boundary entry
 does not transfer policy, retry decisions, state transitions, or exported
@@ -735,6 +802,12 @@ inline container API, atomic publication helpers, allocation primitives, and
 non-GPL export metadata remain named C boundaries. Rust defines every public
 out-of-line entry and owns every growth, traversal, iteration, allocation
 policy, and release transition.
+
+The B+Tree boundary is valid only while the shared tree and node layouts,
+mempool allocation primitives, typed visitor callbacks, geometry objects, and
+lifecycle functions remain named C boundaries. Rust defines every public
+algorithm entry and owns every traversal, update, structural, merge, visitor,
+and reclamation decision.
 
 Pending inventory
 -----------------

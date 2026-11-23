@@ -216,12 +216,10 @@ void btree_destroy(struct btree_head *head)
 }
 EXPORT_SYMBOL_GPL(btree_destroy);
 
+#ifndef CONFIG_RUST_BTREE
 void *btree_last(struct btree_head *head, struct btree_geo *geo,
 		 unsigned long *key)
 {
-#ifdef CONFIG_RUST_BTREE
-	return rust_btree_last(head, geo, key);
-#else
 	int height = head->height;
 	unsigned long *node = head->node;
 
@@ -233,9 +231,9 @@ void *btree_last(struct btree_head *head, struct btree_geo *geo,
 
 	longcpy(key, bkey(geo, node, 0), geo->keylen);
 	return bval(geo, node, 0);
-#endif
 }
 EXPORT_SYMBOL_GPL(btree_last);
+#endif
 
 #ifndef CONFIG_RUST_BTREE
 static int keycmp(struct btree_geo *geo, unsigned long *node, int pos,
@@ -278,12 +276,10 @@ static void *btree_lookup_node(struct btree_head *head, struct btree_geo *geo,
 }
 #endif
 
+#ifndef CONFIG_RUST_BTREE
 void *btree_lookup(struct btree_head *head, struct btree_geo *geo,
 		unsigned long *key)
 {
-#ifdef CONFIG_RUST_BTREE
-	return rust_btree_lookup(head, geo, key);
-#else
 	int i;
 	unsigned long *node;
 
@@ -295,16 +291,12 @@ void *btree_lookup(struct btree_head *head, struct btree_geo *geo,
 		if (keycmp(geo, node, i, key) == 0)
 			return bval(geo, node, i);
 	return NULL;
-#endif
 }
 EXPORT_SYMBOL_GPL(btree_lookup);
 
 int btree_update(struct btree_head *head, struct btree_geo *geo,
 		 unsigned long *key, void *val)
 {
-#ifdef CONFIG_RUST_BTREE
-	return rust_btree_update(head, geo, key, val);
-#else
 	int i;
 	unsigned long *node;
 
@@ -318,7 +310,6 @@ int btree_update(struct btree_head *head, struct btree_geo *geo,
 			return 0;
 		}
 	return -ENOENT;
-#endif
 }
 EXPORT_SYMBOL_GPL(btree_update);
 
@@ -333,9 +324,6 @@ EXPORT_SYMBOL_GPL(btree_update);
 void *btree_get_prev(struct btree_head *head, struct btree_geo *geo,
 		     unsigned long *__key)
 {
-#ifdef CONFIG_RUST_BTREE
-	return rust_btree_get_prev(head, geo, __key);
-#else
 	int i, height;
 	unsigned long *node, *oldnode;
 	unsigned long *retry_key = NULL, key[MAX_KEYLEN];
@@ -382,9 +370,9 @@ miss:
 		goto retry;
 	}
 	return NULL;
-#endif
 }
 EXPORT_SYMBOL_GPL(btree_get_prev);
+#endif
 
 #ifndef CONFIG_RUST_BTREE
 static int getpos(struct btree_geo *geo, unsigned long *node,
@@ -535,17 +523,15 @@ retry:
 }
 #endif
 
+#ifndef CONFIG_RUST_BTREE
 int btree_insert(struct btree_head *head, struct btree_geo *geo,
 		unsigned long *key, void *val, gfp_t gfp)
 {
-#ifdef CONFIG_RUST_BTREE
-	return rust_btree_insert(head, geo, key, val, gfp);
-#else
 	BUG_ON(!val);
 	return btree_insert_level(head, geo, key, val, 1, gfp);
-#endif
 }
 EXPORT_SYMBOL_GPL(btree_insert);
+#endif
 
 #ifndef CONFIG_RUST_BTREE
 static void *btree_remove_level(struct btree_head *head, struct btree_geo *geo,
@@ -660,26 +646,20 @@ static void *btree_remove_level(struct btree_head *head, struct btree_geo *geo,
 }
 #endif
 
+#ifndef CONFIG_RUST_BTREE
 void *btree_remove(struct btree_head *head, struct btree_geo *geo,
 		unsigned long *key)
 {
-#ifdef CONFIG_RUST_BTREE
-	return rust_btree_remove(head, geo, key);
-#else
 	if (head->height == 0)
 		return NULL;
 
 	return btree_remove_level(head, geo, key, 1);
-#endif
 }
 EXPORT_SYMBOL_GPL(btree_remove);
 
 int btree_merge(struct btree_head *target, struct btree_head *victim,
 		struct btree_geo *geo, gfp_t gfp)
 {
-#ifdef CONFIG_RUST_BTREE
-	return rust_btree_merge(target, victim, geo, gfp);
-#else
 	unsigned long key[MAX_KEYLEN];
 	unsigned long dup[MAX_KEYLEN];
 	void *val;
@@ -711,9 +691,9 @@ int btree_merge(struct btree_head *target, struct btree_head *victim,
 		btree_remove(victim, geo, dup);
 	}
 	return 0;
-#endif
 }
 EXPORT_SYMBOL_GPL(btree_merge);
+#endif
 
 #ifndef CONFIG_RUST_BTREE
 static size_t __btree_for_each(struct btree_head *head, struct btree_geo *geo,
@@ -785,14 +765,12 @@ void visitor128(void *elem, unsigned long opaque, unsigned long *__key,
 }
 EXPORT_SYMBOL_GPL(visitor128);
 
+#ifndef CONFIG_RUST_BTREE
 size_t btree_visitor(struct btree_head *head, struct btree_geo *geo,
 		     unsigned long opaque,
 		     btree_rust_visit_fn func,
 		     void *func2)
 {
-#ifdef CONFIG_RUST_BTREE
-	return rust_btree_visitor(head, geo, opaque, func, func2);
-#else
 	size_t count = 0;
 
 	if (!func2)
@@ -801,7 +779,6 @@ size_t btree_visitor(struct btree_head *head, struct btree_geo *geo,
 		count = __btree_for_each(head, geo, head->node, opaque, func,
 				func2, 0, head->height, 0);
 	return count;
-#endif
 }
 EXPORT_SYMBOL_GPL(btree_visitor);
 
@@ -810,9 +787,6 @@ size_t btree_grim_visitor(struct btree_head *head, struct btree_geo *geo,
 			  btree_rust_visit_fn func,
 			  void *func2)
 {
-#ifdef CONFIG_RUST_BTREE
-	return rust_btree_grim_visitor(head, geo, opaque, func, func2);
-#else
 	size_t count = 0;
 
 	if (!func2)
@@ -822,9 +796,9 @@ size_t btree_grim_visitor(struct btree_head *head, struct btree_geo *geo,
 				func2, 1, head->height, 0);
 	__btree_init(head);
 	return count;
-#endif
 }
 EXPORT_SYMBOL_GPL(btree_grim_visitor);
+#endif
 
 static int __init btree_module_init(void)
 {

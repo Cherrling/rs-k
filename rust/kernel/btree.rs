@@ -2,11 +2,12 @@
 
 //! Native B+Tree operations.
 //!
-//! Rust owns key storage access, key comparison, key copying, predecessor
-//! underflow, parent descent, predecessor retries, terminal entry selection,
-//! structural insertion, removal, merging, visitor traversal, node
-//! reclamation, and leaf value publication. C retains the structure layouts,
-//! node allocation primitives, and public ABI adapters.
+//! Rust directly defines the public B+Tree entry points. It owns key storage
+//! access, key comparison, key copying, predecessor underflow, parent descent,
+//! predecessor retries, terminal entry selection, structural insertion,
+//! removal, merging, visitor traversal, node reclamation, leaf value
+//! publication, and entry ordering. C retains the structure layouts, node
+//! allocation primitives, and typed visitor callback adapters.
 
 use crate::bindings;
 use crate::ffi::{c_int, c_ulong};
@@ -1050,13 +1051,13 @@ impl VisitContext<'_> {
     }
 }
 
-/// Implements `btree_lookup()`.
+/// Looks up a key through the public B+Tree entry point.
 ///
 /// # Safety
 ///
 /// The arguments must satisfy the public B+Tree contract.
 #[export]
-unsafe extern "C" fn rust_btree_lookup(
+unsafe extern "C" fn btree_lookup(
     head: *mut Btree,
     geo: *mut Geo,
     key: *mut c_ulong,
@@ -1067,13 +1068,13 @@ unsafe extern "C" fn rust_btree_lookup(
     unsafe { lookup(head, geo, key) }
 }
 
-/// Implements `btree_update()`.
+/// Updates an existing key through the public B+Tree entry point.
 ///
 /// # Safety
 ///
 /// The arguments must satisfy the public B+Tree contract.
 #[export]
-unsafe extern "C" fn rust_btree_update(
+unsafe extern "C" fn btree_update(
     head: *mut Btree,
     geo: *mut Geo,
     key: *mut c_ulong,
@@ -1085,13 +1086,13 @@ unsafe extern "C" fn rust_btree_update(
     unsafe { update(head, geo, key, val) }
 }
 
-/// Implements `btree_insert()`.
+/// Inserts a key through the public B+Tree entry point.
 ///
 /// # Safety
 ///
 /// The arguments must satisfy the public B+Tree contract.
 #[export]
-unsafe extern "C" fn rust_btree_insert(
+unsafe extern "C" fn btree_insert(
     head: *mut Btree,
     geo: *mut Geo,
     key: *mut c_ulong,
@@ -1104,13 +1105,13 @@ unsafe extern "C" fn rust_btree_insert(
     unsafe { insert(head, geo, key, val, gfp) }
 }
 
-/// Implements `btree_remove()`.
+/// Removes a key through the public B+Tree entry point.
 ///
 /// # Safety
 ///
 /// The arguments must satisfy the public B+Tree contract.
 #[export]
-unsafe extern "C" fn rust_btree_remove(
+unsafe extern "C" fn btree_remove(
     head: *mut Btree,
     geo: *mut Geo,
     key: *mut c_ulong,
@@ -1121,13 +1122,13 @@ unsafe extern "C" fn rust_btree_remove(
     unsafe { remove(head, geo, key) }
 }
 
-/// Implements `btree_merge()`.
+/// Merges two trees through the public B+Tree entry point.
 ///
 /// # Safety
 ///
 /// The arguments must satisfy the public B+Tree contract.
 #[export]
-unsafe extern "C" fn rust_btree_merge(
+unsafe extern "C" fn btree_merge(
     target: *mut Btree,
     victim: *mut Btree,
     geo: *mut Geo,
@@ -1139,30 +1140,26 @@ unsafe extern "C" fn rust_btree_merge(
     unsafe { merge_trees(target, victim, geo, gfp) }
 }
 
-/// Implements `btree_last()`.
+/// Returns the greatest entry through the public B+Tree entry point.
 ///
 /// # Safety
 ///
 /// The arguments must satisfy the public B+Tree contract.
 #[export]
-unsafe extern "C" fn rust_btree_last(
-    head: *mut Btree,
-    geo: *mut Geo,
-    key: *mut c_ulong,
-) -> *mut c_void {
+unsafe extern "C" fn btree_last(head: *mut Btree, geo: *mut Geo, key: *mut c_ulong) -> *mut c_void {
     // SAFETY: The public B+Tree contract guarantees a valid geometry.
     let geo = unsafe { &*geo };
     // SAFETY: The public B+Tree contract guarantees valid arguments.
     unsafe { last(head, geo, key) }
 }
 
-/// Implements `btree_get_prev()`.
+/// Returns the predecessor through the public B+Tree entry point.
 ///
 /// # Safety
 ///
 /// The arguments must satisfy the public B+Tree contract.
 #[export]
-unsafe extern "C" fn rust_btree_get_prev(
+unsafe extern "C" fn btree_get_prev(
     head: *mut Btree,
     geo: *mut Geo,
     key: *mut c_ulong,
@@ -1173,13 +1170,13 @@ unsafe extern "C" fn rust_btree_get_prev(
     unsafe { get_prev(head, geo, key) }
 }
 
-/// Implements `btree_visitor()`.
+/// Visits every entry through the public B+Tree visitor entry point.
 ///
 /// # Safety
 ///
 /// The arguments must satisfy the public B+Tree visitor contract.
 #[export]
-unsafe extern "C" fn rust_btree_visitor(
+unsafe extern "C" fn btree_visitor(
     head: *mut Btree,
     geo: *mut Geo,
     opaque: c_ulong,
@@ -1206,13 +1203,13 @@ unsafe extern "C" fn rust_btree_visitor(
     unsafe { context.for_each(node, (*head).height, 0) }
 }
 
-/// Implements `btree_grim_visitor()`.
+/// Drains every entry through the public B+Tree visitor entry point.
 ///
 /// # Safety
 ///
 /// The arguments must satisfy the public B+Tree visitor contract.
 #[export]
-unsafe extern "C" fn rust_btree_grim_visitor(
+unsafe extern "C" fn btree_grim_visitor(
     head: *mut Btree,
     geo: *mut Geo,
     opaque: c_ulong,

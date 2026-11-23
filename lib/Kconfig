@@ -330,17 +330,18 @@ config RUST_BTREE
 	depends on RUST && BTREE
 	default y
 	help
-	  Use Rust for the B+Tree lookup, predecessor, last-entry, leaf update,
-	  insertion, removal, rebalancing, merge, visitor, and grim visitor
-	  paths.
+	  Use Rust for the production B+Tree lookup, predecessor, last-entry,
+	  leaf update, insertion, removal, rebalancing, merge, visitor, and
+	  grim visitor paths.
 
-	  Rust owns key storage access, comparison, copying, predecessor
-	  underflow, parent descent, predecessor retry, terminal entry selection,
-	  leaf value publication, node splitting, root growth and shrink,
-	  underfull-node recovery, recursive visitor traversal, node reclaim,
-	  and ordinary tree merging. Node and geometry layout definitions,
-	  mempool allocation primitives, and typed visitor callback adapters
-	  remain in C. The public entry points remain as ABI adapters.
+	  Rust directly defines all nine public entry points. It owns key
+	  storage access, comparison, copying, predecessor underflow, parent
+	  descent, predecessor retry, terminal entry selection, leaf value
+	  publication, node splitting, root growth and shrink, underfull-node
+	  recovery, recursive visitor traversal, node reclaim, and ordinary
+	  tree merging. Rust generates the GPL exports. Node and geometry
+	  layout definitions, mempool allocation and release primitives, and
+	  typed visitor callback adapters remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

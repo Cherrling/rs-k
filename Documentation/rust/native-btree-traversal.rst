@@ -32,9 +32,9 @@ Entry points and ownership
 --------------------------
 
 The public entry points ``btree_lookup()``, ``btree_update()``,
-``btree_last()``, and ``btree_get_prev()`` and their export classes do not
-change. With this option enabled, each C entry point forwards directly to
-the matching Rust production function.
+``btree_last()``, and ``btree_get_prev()`` and their GPL export classes do not
+change. With this option enabled, Rust directly defines each public entry
+point. The C fallback retains the complete implementations.
 
 Retained C boundaries
 ---------------------
@@ -92,11 +92,16 @@ The unit must pass these checks before integration:
 * Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
   ``git diff --check``.
 
-* Symbol checks showing that the enabled C object calls the Rust traversal
-  entry points and that the fallback objects contain no such calls.
+* Symbol checks showing that Rust defines all four traversal entry points,
+  that the native C object defines none of them, and that the fallback and
+  C-only objects contain the complete implementations and GPL exports.
 
 Validation results
 ------------------
+
+Validation of the native algorithm migration on 2026-11-17 used the same
+build matrix. Direct public-entry validation is documented in
+:doc:`native-btree-entry`.
 
 The final x86_64 LLVM build matrix used these configurations:
 
@@ -121,10 +126,11 @@ keys. The 128-bit test includes a decrement that borrows across machine words.
 The KASAN and lockdep logs contained no KASAN report, BUG, warning, Oops,
 lock inversion, recursive locking report, or RCU stall.
 
-``rust/kernel.o`` defined ``rust_btree_get_prev``, ``rust_btree_last``,
-``rust_btree_lookup``, and ``rust_btree_update``. The native
-``lib/btree.o`` referenced all four symbols. The Rust-fallback and pure C
-``lib/btree.o`` objects referenced none of them.
+At that migration stage, ``rust/kernel.o`` defined
+``rust_btree_get_prev``, ``rust_btree_last``, ``rust_btree_lookup``, and
+``rust_btree_update``. The native ``lib/btree.o`` referenced all four
+symbols. The Rust-fallback and pure C ``lib/btree.o`` objects referenced none
+of them.
 
 Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
 ``git diff --check`` passed. Sphinx emitted only the two existing warnings for

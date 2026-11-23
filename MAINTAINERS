@@ -24125,6 +24125,7 @@ T:	git https://github.com/Rust-for-Linux/linux.git rust-next
 F:	.clippy.toml
 F:	.rustfmt.toml
 F:	Documentation/rust/
+F:	Documentation/rust/native-btree-entry.rst
 F:	Documentation/rust/native-btree-structural.rst
 F:	Documentation/rust/native-btree-traversal.rst
 F:	Documentation/rust/native-btree-visitors.rst
