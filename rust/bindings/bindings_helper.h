@@ -99,6 +99,7 @@
 #include <linux/kref.h>
 #include <linux/list_sort.h>
 #include <linux/list_lru-rust.h>
+#include <linux/llist.h>
 #include <linux/lockref-rust.h>
 #include <linux/maple_tree_rust.h>
 #include <linux/mdio.h>

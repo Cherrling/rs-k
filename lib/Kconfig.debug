@@ -2392,6 +2392,20 @@ config LIST_LRU_KUNIT_TEST
 
 	  If unsure, say N.
 
+config LLIST_KUNIT_TEST
+	tristate "KUnit test for lock-less lists" if !KUNIT_ALL_TESTS
+	depends on KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for lock-less list first-node
+	  deletion, conditional first-node deletion, chain reversal, and
+	  concurrent producer and consumer paths.
+
+	  The same tests run with either the C implementation or the native
+	  Rust implementation selected.
+
+	  If unsure, say N.
+
 config SWAIT_KUNIT_TEST
 	bool "KUnit test for simple wait queues" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

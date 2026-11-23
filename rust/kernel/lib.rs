@@ -153,6 +153,8 @@ pub mod list;
 mod list_lru;
 #[cfg(CONFIG_RUST_LIST_SORT)]
 mod list_sort;
+#[cfg(CONFIG_RUST_LLIST)]
+mod llist;
 #[cfg(CONFIG_RUST_LOCKREF)]
 mod lockref;
 pub mod maple_tree;

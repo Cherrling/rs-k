@@ -37,6 +37,7 @@ more details.
     coding-guidelines
     arch-support
     testing
+    native-port-coverage
     dup-task-struct
     task-teardown
     task-release
@@ -120,6 +121,7 @@ more details.
     native-kref
     native-dec-and-lock
     native-klist
+    native-llist
     native-kobject
     native-list-lru
     native-kfifo

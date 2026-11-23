@@ -395,6 +395,25 @@ config RUST_KLIST
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_LLIST
+	bool "Rust implementation of lock-less lists"
+	depends on RUST && X86_64
+	default y
+	help
+	  Use Rust for the production first-node deletion, conditional
+	  first-node deletion, and detached-chain reversal entry points.
+
+	  Rust owns the atomic accesses, compare-exchange retry loops,
+	  empty-list decisions, conditional deletion checks, reversal state
+	  machine, and public ABI entry points. C retains the intrusive
+	  layouts and inline producer operations.
+
+	  The C implementation is excluded from the native build. The fallback
+	  retains the complete out-of-line llist algorithms.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_MAPLE_TREE_LOAD
 	bool "Rust implementation of Maple Tree loads"
 	depends on RUST && X86_64

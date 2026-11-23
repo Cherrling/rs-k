@@ -14,6 +14,7 @@
 #include <linux/export.h>
 #include <linux/llist.h>
 
+#ifndef CONFIG_RUST_LLIST
 /**
  * llist_del_first - delete the first entry of lock-less list
  * @head:	the head for your lock-less list
@@ -92,3 +93,12 @@ struct llist_node *llist_reverse_order(struct llist_node *head)
 	return new_head;
 }
 EXPORT_SYMBOL_GPL(llist_reverse_order);
+
+#else /* CONFIG_RUST_LLIST */
+
+/*
+ * The native Rust implementation defines and exports these entry points.
+ * This translation unit only provides the C fallback when the option is off.
+ */
+
+#endif /* CONFIG_RUST_LLIST */
