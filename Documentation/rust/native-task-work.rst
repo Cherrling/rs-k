@@ -6,9 +6,10 @@ Native Rust task work queues
 Status and scope
 ----------------
 
-The ``CONFIG_RUST_TASK_WORK`` option selects native Rust implementations for
-enqueue, cancellation, exit sealing, queue detachment, callback dispatch, and
-reentrant draining in ``kernel/task_work.c``.
+Rust directly defines the public task_work entry points when
+``CONFIG_RUST_TASK_WORK`` is enabled. The native implementation owns enqueue,
+cancellation, exit sealing, queue detachment, callback dispatch, and reentrant
+draining.
 
 This unit covers the core task-work queue state machine. It does not migrate
 task structure layout, the task PI lock, notification thread flags, IRQ work,
@@ -19,8 +20,10 @@ The existing C implementation remains available when the option is disabled.
 Entry points and ownership
 --------------------------
 
-The existing ``task_work_*()`` functions remain C ABI entry points. When the
-option is enabled, each entry point calls a native Rust implementation.
+Rust directly defines all five public ``task_work_*()`` functions. They retain
+their names, signatures, and unexported status. The native
+``kernel/task_work.o`` object defines no public task_work entry body and
+retains the narrow helper boundary.
 
 Rust owns:
 
@@ -44,7 +47,7 @@ C helpers retain:
 
 * Notification flags, diagnostics, IRQ work, and ``cond_resched()``.
 
-* Public ABI adapters and the callback ABI.
+* The callback ABI.
 
 The C helpers do not retain a separate queue or cancellation state machine.
 
@@ -94,7 +97,9 @@ The unit must pass these checks before integration:
 
 * Native Rust with lockdep, prove-locking, and debug spinlocks.
 
-* Symbol checks for all five Rust entry points.
+* Symbol checks showing Rust defines all five public entry points and the
+  native C object defines no public task_work body. The five entries remain
+  unexported.
 
 * Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
   ``git diff --check``.
@@ -102,18 +107,25 @@ The unit must pass these checks before integration:
 Validation results
 ------------------
 
-Ten final SMP boot tests passed with no failures. The native, KASAN, and
-lockdep configurations passed six cases on one and four CPUs. The fallback
-and C-only configurations passed five cases on one and four CPUs.
+Seventeen final SMP boot tests passed with no failures. The native
+configuration passed six cases on one CPU and in three consecutive four-CPU
+runs. KASAN passed the same matrix. Lockdep passed six cases on one and four
+CPUs, and PREEMPT_RT passed six cases on four CPUs. The fallback configuration
+passed five cases on one CPU and in three consecutive four-CPU runs. C-only
+passed five cases on one and four CPUs. The adjacent completion KUnit test
+also passed six cases on four CPUs.
 
-A scan of all ten boot logs found no BUG, warning, KASAN report, lock
-inversion, panic, or RCU stall. KASAN initialized its generic mode for both
-KASAN boots, and lockdep initialized for both lockdep boots.
+A scan of all boot logs found no BUG, warning, KASAN report, lock inversion,
+panic, or RCU stall. KASAN initialized its generic mode for all four KASAN
+boots, and lockdep initialized for both lockdep boots.
 
-The native, KASAN, and lockdep ``kernel/task_work.o`` objects reference all
-five Rust entry points. The fallback and C-only objects reference none of
-them. The five C ABI entry points tail-call their Rust implementations in the
-native object.
+The native, KASAN, lockdep, and RT ``rust/kernel.o`` objects define all five
+public entry points, while their ``kernel/task_work.o`` objects define none.
+The fallback and C-only ``kernel/task_work.o`` objects define all five, while
+the fallback Rust object defines none. All six ``Module.symvers`` files and
+generated Rust export headers exclude the five public names and the old
+``rust_task_work_*`` adapters. The KUnit-only synthetic-task drain bridge
+exists in Rust test builds and remains unexported.
 
 Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
 ``git diff --check`` passed.
@@ -130,5 +142,5 @@ Reopen the C boundary decision if any of these conditions changes:
 
 * The IRQ work notification path moves out of architecture-independent code.
 
-* Measurements show that crossing the C ABI on enqueue causes an unacceptable
-  hot-path regression.
+* Measurements show that the retained helper boundary causes an unacceptable
+  enqueue or drain hot-path regression.

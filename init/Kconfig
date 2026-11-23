@@ -1911,8 +1911,10 @@ config RUST_TASK_WORK
 	  exit-sentinel, queue-detachment, callback-dispatch, and reentrant
 	  draining state machine.
 
+	  Rust directly defines the public entry points.
+
 	  C helpers retain task field access, the task PI lock, notification
-	  flags, diagnostics, IRQ work, and callback ABI entry points.
+	  flags, diagnostics, IRQ work, and callback ABI.
 
 	  The complete C implementation remains available when this option is
 	  disabled.

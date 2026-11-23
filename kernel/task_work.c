@@ -159,12 +159,10 @@ void rust_task_work_cond_resched(void)
  * RETURNS:
  * 0 if succeeds or -ESRCH.
  */
+#ifndef CONFIG_RUST_TASK_WORK
 int task_work_add(struct task_struct *task, struct callback_head *work,
 		  enum task_work_notify_mode notify)
 {
-#ifdef CONFIG_RUST_TASK_WORK
-	return rust_task_work_add(task, work, notify);
-#else
 	struct callback_head *head;
 
 	if (notify == TWA_NMI_CURRENT) {
@@ -207,8 +205,8 @@ int task_work_add(struct task_struct *task, struct callback_head *work,
 	}
 
 	return 0;
-#endif /* CONFIG_RUST_TASK_WORK */
 }
+#endif /* !CONFIG_RUST_TASK_WORK */
 
 /**
  * task_work_cancel_match - cancel a pending work added by task_work_add()
@@ -219,14 +217,12 @@ int task_work_add(struct task_struct *task, struct callback_head *work,
  * RETURNS:
  * The found work or NULL if not found.
  */
+#ifndef CONFIG_RUST_TASK_WORK
 struct callback_head *
 task_work_cancel_match(struct task_struct *task,
 		       bool (*match)(struct callback_head *, void *data),
 		       void *data)
 {
-#ifdef CONFIG_RUST_TASK_WORK
-	return rust_task_work_cancel_match(task, match, data);
-#else
 	struct callback_head **pprev = &task->task_works;
 	struct callback_head *work;
 	unsigned long flags;
@@ -251,8 +247,8 @@ task_work_cancel_match(struct task_struct *task,
 	raw_spin_unlock_irqrestore(&task->pi_lock, flags);
 
 	return work;
-#endif /* CONFIG_RUST_TASK_WORK */
 }
+#endif /* !CONFIG_RUST_TASK_WORK */
 
 #ifndef CONFIG_RUST_TASK_WORK
 static bool task_work_func_match(struct callback_head *cb, void *data)
@@ -272,15 +268,13 @@ static bool task_work_func_match(struct callback_head *cb, void *data)
  * RETURNS:
  * The found work or NULL if not found.
  */
+#ifndef CONFIG_RUST_TASK_WORK
 struct callback_head *
 task_work_cancel_func(struct task_struct *task, task_work_func_t func)
 {
-#ifdef CONFIG_RUST_TASK_WORK
-	return rust_task_work_cancel_func(task, func);
-#else
 	return task_work_cancel_match(task, task_work_func_match, func);
-#endif /* CONFIG_RUST_TASK_WORK */
 }
+#endif /* !CONFIG_RUST_TASK_WORK */
 
 #ifndef CONFIG_RUST_TASK_WORK
 static bool task_work_match(struct callback_head *cb, void *data)
@@ -299,18 +293,16 @@ static bool task_work_match(struct callback_head *cb, void *data)
  * RETURNS:
  * True if the callback was queued and got cancelled, false otherwise.
  */
+#ifndef CONFIG_RUST_TASK_WORK
 bool task_work_cancel(struct task_struct *task, struct callback_head *cb)
 {
-#ifdef CONFIG_RUST_TASK_WORK
-	return rust_task_work_cancel(task, cb);
-#else
 	struct callback_head *ret;
 
 	ret = task_work_cancel_match(task, task_work_match, cb);
 
 	return ret == cb;
-#endif /* CONFIG_RUST_TASK_WORK */
 }
+#endif /* !CONFIG_RUST_TASK_WORK */
 
 /**
  * task_work_run - execute the works added by task_work_add()
@@ -320,11 +312,9 @@ bool task_work_cancel(struct task_struct *task, struct callback_head *cb)
  * it exits. In the latter case task_work_add() can no longer add the
  * new work after task_work_run() returns.
  */
+#ifndef CONFIG_RUST_TASK_WORK
 void task_work_run(void)
 {
-#ifdef CONFIG_RUST_TASK_WORK
-	rust_task_work_run_task(current);
-#else
 	struct task_struct *task = current;
 	struct callback_head *work, *head, *next;
 
@@ -361,5 +351,5 @@ void task_work_run(void)
 			cond_resched();
 		} while (work);
 	}
-#endif /* CONFIG_RUST_TASK_WORK */
 }
+#endif /* !CONFIG_RUST_TASK_WORK */

@@ -192,7 +192,7 @@ static void task_work_test_exiting(struct kunit *test)
 	task->flags = PF_EXITING;
 	task_work_test_init_item(&context, &item, 1);
 
-	rust_task_work_run_task(task);
+	rust_task_work_test_run_task(task);
 	KUNIT_EXPECT_TRUE(test, task_work_pending(task));
 	KUNIT_EXPECT_EQ(test, task_work_add(task, &item.head, TWA_NONE),
 			-ESRCH);

@@ -83,6 +83,19 @@ Completion state machine
   simple-wait, and ordinary export boundaries. C fallback configurations
   retain the complete implementations.
 
+Task work queues
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-task-work`.
+
+  Rust directly defines the five public enqueue, cancellation, and drain
+  entries. Rust owns LIFO publication, cancellation matching, exit-sentinel
+  sealing, queue detachment, callback dispatch, and reentrant draining. C
+  retains task fields, the task PI lock, compare-exchange primitives,
+  notification flags, diagnostics, IRQ work, and scheduler progress. All five
+  entries remain unexported. C fallback configurations retain the complete
+  implementations.
+
 Kobject lifecycle
   Status: ``migrated``.
 
@@ -267,7 +280,8 @@ Public ABI
   ``include/linux/list_lru.h``, ``include/linux/generic-radix-tree.h``,
   ``include/linux/btree.h``, ``include/linux/find.h``,
   ``include/linux/bitmap.h``, ``include/linux/maple_tree.h``,
-  ``include/linux/kfifo.h``, and ``include/linux/completion.h``.
+  ``include/linux/kfifo.h``, ``include/linux/completion.h``, and
+  ``include/linux/task_work.h``.
 
   Reason: Existing callers and loadable modules use the stable C ABI.
 
@@ -658,6 +672,44 @@ Completion export metadata
   Exit condition: Rust export metadata supports the original non-GPL and
   unexported classes without C export records.
 
+Task work layout and callback ABI
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/task_work.h``, ``include/linux/sched.h``, and
+  ``rust/kernel/task_work.rs``.
+
+  Reason: C and Rust share the task work-list head, callback links and
+  function, notification modes, exit sentinel, and callback calling
+  convention.
+
+  Test: Native, fallback, and C-only KUnit runs exercise enqueue,
+  cancellation, exit sealing, reentrant draining, and callback invocation.
+
+  Risk: A layout or callback mismatch can corrupt the task work list, invoke
+  a callback with the wrong ABI, or publish the exit sentinel incorrectly.
+
+  Exit condition: Rust-owned task and callback types replace the shared
+  task-work representation and callback interface.
+
+Task work primitive helpers
+  Status: ``boundary-retained``.
+
+  Owner: ``kernel/task_work.c`` and the Rust bindings.
+
+  Reason: Task field access, the task PI lock, one-copy atomic reads,
+  compare-exchange, notification flags, diagnostics, IRQ work, and scheduler
+  progress retain task and architecture contracts.
+
+  Test: Native SMP1/SMP4, KASAN, lockdep, and PREEMPT_RT runs exercise
+  concurrent enqueue and cancellation, all notification modes, and
+  reentrant callback draining.
+
+  Risk: A primitive mismatch can lose a callback, expose it before
+  notification, or race cancellation with detachment.
+
+  Exit condition: Approved Rust task, lock, atomic, notification, and
+  scheduler abstractions preserve the complete helper contracts.
+
 Kobject layout and state
   Status: ``boundary-retained``.
 
@@ -855,11 +907,12 @@ Unexported Rust public symbols
 
   Owner: ``rust/Makefile``.
 
-  Reason: Automatic Rust exports are GPL, while the three priority-list
-  functions and five list LRU helpers have no module export.
+  Reason: Automatic Rust exports are GPL, while the selected symbols
+  intentionally have no module export.
 
-  Test: ``vmlinux.symvers`` contains no priority-list symbol or list LRU
-  helper, and the generated Rust export header excludes all eight names.
+  Test: ``vmlinux.symvers`` contains none of the names in the
+  unexported-symbol list, and the generated Rust export header excludes every
+  listed name.
 
   Risk: An automatic export can unintentionally expand the module ABI.
 
@@ -1183,6 +1236,12 @@ inline initialization, task and signal primitives, scheduler timeout calls,
 simple-wait operations, PREEMPT_RT assertion, and export metadata remain named
 C boundaries. Rust defines every public entry and owns every count, wait,
 timeout, signal, wake, and consumption decision.
+
+The task work boundary is valid only while the shared task work-list and
+callback layout, task PI lock, atomic primitives, notification flags,
+diagnostics, IRQ work, scheduler progress, and unexported symbol policy remain
+named C boundaries. Rust defines every public entry and owns every enqueue,
+cancellation, detachment, dispatch, exit, and reentrant-drain decision.
 
 The kobject boundary is valid only while the shared layout, bitfields,
 diagnostics, final cleanup callback, and non-GPL export metadata remain named

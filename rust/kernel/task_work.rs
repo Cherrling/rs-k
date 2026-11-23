@@ -130,11 +130,7 @@ unsafe fn notify_task(task: *mut Task, notify: Notify) {
 /// `task` and `work` must point to valid storage. `work` must remain allocated
 /// until the callback runs or cancellation succeeds.
 #[export]
-unsafe extern "C" fn rust_task_work_add(
-    task: *mut Task,
-    work: *mut Callback,
-    notify: Notify,
-) -> c_int {
+unsafe extern "C" fn task_work_add(task: *mut Task, work: *mut Callback, notify: Notify) -> c_int {
     if notify == TWA_NMI_CURRENT {
         // SAFETY: This helper only reads the current task pointer.
         let current = unsafe { bindings::rust_task_work_current() };
@@ -180,7 +176,7 @@ unsafe extern "C" fn rust_task_work_add(
 /// `task` must point to valid task storage. `match_fn` must remain valid for
 /// the duration of the call.
 #[export]
-unsafe extern "C" fn rust_task_work_cancel_match(
+unsafe extern "C" fn task_work_cancel_match(
     task: *mut Task,
     match_fn: MatchFunc,
     data: *mut core::ffi::c_void,
@@ -233,14 +229,11 @@ unsafe extern "C" fn rust_task_work_cancel_match(
 ///
 /// `task` must point to valid task storage.
 #[export]
-unsafe extern "C" fn rust_task_work_cancel_func(
-    task: *mut Task,
-    func: TaskWorkFunc,
-) -> *mut Callback {
+unsafe extern "C" fn task_work_cancel_func(task: *mut Task, func: TaskWorkFunc) -> *mut Callback {
     let mut func = func;
     // SAFETY: The caller provides the same contract for `task`.
     unsafe {
-        rust_task_work_cancel_match(
+        task_work_cancel_match(
             task,
             Some(match_func),
             ptr::from_mut(&mut func).cast::<core::ffi::c_void>(),
@@ -254,10 +247,10 @@ unsafe extern "C" fn rust_task_work_cancel_func(
 ///
 /// `task` and `callback` must point to valid storage.
 #[export]
-unsafe extern "C" fn rust_task_work_cancel(task: *mut Task, callback: *mut Callback) -> bool {
+unsafe extern "C" fn task_work_cancel(task: *mut Task, callback: *mut Callback) -> bool {
     // SAFETY: The caller provides the same contract for `task` and `callback`.
     unsafe {
-        rust_task_work_cancel_match(
+        task_work_cancel_match(
             task,
             Some(match_callback),
             callback.cast::<core::ffi::c_void>(),
@@ -300,8 +293,7 @@ unsafe fn detach(task: *mut Task) -> *mut Callback {
 /// # Safety
 ///
 /// `task` must remain valid for the duration of the call.
-#[export]
-unsafe extern "C" fn rust_task_work_run_task(task: *mut Task) {
+unsafe fn run_task(task: *mut Task) {
     loop {
         // SAFETY: The caller guarantees that `task` is valid.
         let mut work = unsafe { detach(task) };
@@ -330,4 +322,30 @@ unsafe extern "C" fn rust_task_work_run_task(task: *mut Task) {
             }
         }
     }
+}
+
+/// Executes the works added by `task_work_add()`.
+///
+/// # Safety
+///
+/// The caller must execute in the context of the task whose work is drained.
+/// It must permit callback execution and scheduler progress.
+#[export]
+unsafe extern "C" fn task_work_run() {
+    // SAFETY: This helper only reads the current task pointer.
+    let current = unsafe { bindings::rust_task_work_current() };
+    // SAFETY: The current task remains valid for the duration of the drain.
+    unsafe { run_task(current) };
+}
+
+/// Runs pending callbacks for a test task without requiring it to be current.
+///
+/// # Safety
+///
+/// `task` must remain valid for the duration of the call.
+#[cfg(CONFIG_TASK_WORK_KUNIT_TEST)]
+#[export]
+unsafe extern "C" fn rust_task_work_test_run_task(task: *mut Task) {
+    // SAFETY: The caller guarantees that `task` remains valid.
+    unsafe { run_task(task) };
 }

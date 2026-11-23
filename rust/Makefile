@@ -688,7 +688,13 @@ rust_unexported_symbols := \
 	plist_requeue \
 	bitmap_onto \
 	bitmap_fold \
-	complete_on_current_cpu
+	complete_on_current_cpu \
+	task_work_add \
+	task_work_cancel \
+	task_work_cancel_func \
+	task_work_cancel_match \
+	task_work_run \
+	rust_task_work_test_run_task
 
 rust_exports = $(NM) -p --defined-only $(1) | awk '$$2~/(T|R|D|B)/ && $$3!~/__(pfx|cfi|odr_asan)/ { printf $(2),$$3 }'
 rust_auto_export_skip := $(rust_non_gpl_exports) $(rust_unexported_symbols)

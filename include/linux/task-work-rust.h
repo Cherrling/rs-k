@@ -10,17 +10,6 @@
 
 #ifdef CONFIG_RUST_TASK_WORK
 
-int rust_task_work_add(struct task_struct *task, struct callback_head *work,
-		       enum task_work_notify_mode notify);
-struct callback_head *
-rust_task_work_cancel_match(struct task_struct *task,
-			    bool (*match)(struct callback_head *, void *data),
-			    void *data);
-struct callback_head *
-rust_task_work_cancel_func(struct task_struct *task, task_work_func_t func);
-bool rust_task_work_cancel(struct task_struct *task, struct callback_head *cb);
-void rust_task_work_run_task(struct task_struct *task);
-
 struct task_struct *rust_task_work_current(void);
 struct callback_head *rust_task_work_exited(void);
 struct callback_head **rust_task_work_head_ptr(struct task_struct *task);
@@ -44,6 +33,11 @@ void rust_task_work_warn_invalid_mode(void);
 void rust_task_work_pi_lock(struct task_struct *task, unsigned long *flags);
 void rust_task_work_pi_unlock(struct task_struct *task, unsigned long flags);
 void rust_task_work_cond_resched(void);
+
+#ifdef CONFIG_TASK_WORK_KUNIT_TEST
+/* Exercise exit sealing on a synthetic task from KUnit. */
+void rust_task_work_test_run_task(struct task_struct *task);
+#endif
 
 #endif /* CONFIG_RUST_TASK_WORK */
 
