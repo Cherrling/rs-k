@@ -610,7 +610,23 @@ rust_non_gpl_exports := \
 	__kfifo_to_user_r \
 	__kfifo_dma_in_prepare_r \
 	__kfifo_dma_in_finish_r \
-	__kfifo_dma_out_prepare_r
+	__kfifo_dma_out_prepare_r \
+	_find_first_bit \
+	_find_first_and_bit \
+	_find_first_andnot_bit \
+	_find_first_and_and_bit \
+	_find_first_zero_bit \
+	_find_next_bit \
+	_find_next_and_bit \
+	_find_next_andnot_bit \
+	_find_next_or_bit \
+	_find_next_zero_bit \
+	__find_nth_bit \
+	__find_nth_and_bit \
+	__find_nth_and_andnot_bit \
+	_find_last_bit \
+	find_next_clump8 \
+	find_random_bit
 
 # Rust-defined production symbols that must not receive automatic exports.
 rust_unexported_symbols := \

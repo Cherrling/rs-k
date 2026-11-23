@@ -45,52 +45,6 @@ unsigned long _find_next_bit_le(const unsigned long *addr, unsigned
 unsigned long find_random_bit(const unsigned long *addr, unsigned long size);
 
 #ifdef CONFIG_RUST_FIND_BIT
-unsigned long rust_find_first_bit(const unsigned long *addr, unsigned long size);
-unsigned long rust_find_first_and_bit(const unsigned long *addr1,
-				      const unsigned long *addr2,
-				      unsigned long size);
-unsigned long rust_find_first_andnot_bit(const unsigned long *addr1,
-					 const unsigned long *addr2,
-					 unsigned long size);
-unsigned long rust_find_first_and_and_bit(const unsigned long *addr1,
-					  const unsigned long *addr2,
-					  const unsigned long *addr3,
-					  unsigned long size);
-unsigned long rust_find_first_zero_bit(const unsigned long *addr,
-				       unsigned long size);
-unsigned long rust_find_next_bit(const unsigned long *addr,
-				 unsigned long size, unsigned long start);
-unsigned long rust_find_next_and_bit(const unsigned long *addr1,
-				     const unsigned long *addr2,
-				     unsigned long size, unsigned long start);
-unsigned long rust_find_next_andnot_bit(const unsigned long *addr1,
-					const unsigned long *addr2,
-					unsigned long size,
-					unsigned long start);
-unsigned long rust_find_next_or_bit(const unsigned long *addr1,
-				    const unsigned long *addr2,
-				    unsigned long size, unsigned long start);
-unsigned long rust_find_next_zero_bit(const unsigned long *addr,
-				      unsigned long size, unsigned long start);
-unsigned long rust_find_nth_bit(const unsigned long *addr,
-				unsigned long size, unsigned long n);
-unsigned long rust_find_nth_and_bit(const unsigned long *addr1,
-				    const unsigned long *addr2,
-				    unsigned long size, unsigned long n);
-unsigned long rust_find_nth_and_andnot_bit(const unsigned long *addr1,
-					   const unsigned long *addr2,
-					   const unsigned long *addr3,
-					   unsigned long size,
-					   unsigned long n);
-unsigned long rust_find_last_bit(const unsigned long *addr, unsigned long size);
-unsigned long rust_find_next_clump8(unsigned long *clump,
-				    const unsigned long *addr,
-				    unsigned long size, unsigned long offset);
-unsigned long rust_find_random_bit(const unsigned long *addr,
-				   unsigned long size);
-#endif /* CONFIG_RUST_FIND_BIT */
-
-#ifdef CONFIG_RUST_FIND_BIT
 #define FIND_BIT_INLINE_FAST_PATH(nbits)	(false && (nbits))
 #else
 #define FIND_BIT_INLINE_FAST_PATH(nbits)	small_const_nbits(nbits)

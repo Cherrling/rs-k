@@ -126,6 +126,18 @@ List LRU
   destruction, memory-cgroup slice allocation, and reparenting. C fallback
   configurations retain the complete algorithms.
 
+Generic bit searches
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-find-bit`.
+
+  Rust directly defines the sixteen public out-of-line searches and owns word
+  traversal, range masks, partial-word filtering, population counts, nth-bit
+  selection, clump extraction, and random-bit resolution. The native C object
+  retains ordinary non-GPL export metadata. C also retains the shared bitmap
+  storage layout and the random-number primitive. C fallback configurations
+  retain the complete algorithms.
+
 Generic radix trees
   Status: ``migrated``.
 
@@ -190,7 +202,8 @@ Public ABI
   ``include/linux/rbtree.h``, ``include/linux/rbtree_augmented.h``,
   ``include/linux/plist.h``, ``include/linux/list_sort.h``,
   ``include/linux/list_lru.h``, ``include/linux/generic-radix-tree.h``,
-  ``include/linux/btree.h``, and ``include/linux/kfifo.h``.
+  ``include/linux/btree.h``, ``include/linux/find.h``, and
+  ``include/linux/kfifo.h``.
 
   Reason: Existing callers and loadable modules use the stable C ABI.
 
@@ -215,6 +228,56 @@ Architecture atomics
 
   Exit condition: A replacement atomic API preserves the complete LKMM
   contract and all architecture implementations.
+
+Generic bitmap storage and inline interface
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/bitmap.h`` and ``include/linux/find.h``.
+
+  Reason: C callers and Rust share the ``unsigned long`` word layout, inline
+  public names, and range contracts.
+
+  Test: Native, fallback, and C-only runs exercise first, next, nth, last,
+  clump, and random searches on partial and multiword bitmaps.
+
+  Risk: A storage or range-contract change can make Rust read the wrong word
+  or expose tail bits outside the logical size.
+
+  Exit condition: Rust-owned bitmap accessors and inline interfaces replace
+  the shared C representation.
+
+Generic bit-search export metadata
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/find_bit.c`` and ``rust/Makefile``.
+
+  Reason: The sixteen Rust-defined searches retain ordinary non-GPL exports
+  while generated Rust exports use the GPL class.
+
+  Test: ``vmlinux.symvers`` records sixteen ``EXPORT_SYMBOL`` entries, and the
+  generated Rust GPL export header excludes all sixteen names.
+
+  Risk: A duplicate export or class change can break module compatibility.
+
+  Exit condition: Rust export metadata supports the original non-GPL class
+  without C export entries.
+
+Random set-bit primitive
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/random.h`` and the Rust bindings.
+
+  Reason: Rust resolves the selected set-bit ordinal, while
+  ``__get_random_u32_below()`` remains the kernel random-number primitive.
+
+  Test: Empty, singleton, random-membership, concurrent, KASAN, lockdep, and
+  PREEMPT_RT runs exercise the random path.
+
+  Risk: A primitive range or return-contract change can select an out-of-range
+  ordinal.
+
+  Exit condition: A Rust random abstraction preserves the primitive range
+  contract and kernel entropy policy.
 
 Lock-less list inline paths
   Status: ``boundary-retained``.
@@ -876,6 +939,12 @@ interrupt modes, RCU and memory-cgroup resolution, initialization and
 destruction, and dynamic slice allocation and reparenting remain named C
 boundaries. Rust defines every node-local public entry and owns every item,
 count, scan, and walk transition.
+
+The generic bit-search boundary is valid only while the shared
+``unsigned long`` bitmap layout, inline public interface, random-number
+primitive, and ordinary export metadata remain named boundaries. Rust defines
+every public out-of-line search and owns every mask, traversal, count, and
+selection decision.
 
 The generic radix tree boundary is valid only while the tagged layouts,
 inline container API, atomic publication helpers, allocation primitives, and

@@ -90,7 +90,7 @@ out:										\
 	if (sz % BITS_PER_LONG)							\
 		tmp = (FETCH) & BITMAP_LAST_WORD_MASK(sz);			\
 found:										\
-	sz = idx * BITS_PER_LONG + fns(tmp, nr);				\
+	sz = min(idx * BITS_PER_LONG + fns(tmp, nr), sz);			\
 out:										\
 	sz;									\
 })
@@ -317,123 +317,26 @@ EXPORT_SYMBOL(find_random_bit);
 #error "RUST_FIND_BIT currently supports the x86_64 little-endian layout"
 #endif
 
-unsigned long _find_first_bit(const unsigned long *addr, unsigned long size)
-{
-	return rust_find_first_bit(addr, size);
-}
+/*
+ * Rust directly defines the public out-of-line searches. C retains ordinary
+ * export metadata for the historical public ABI. The Rust exporter skips
+ * these names to avoid duplicate GPL exports.
+ */
 EXPORT_SYMBOL(_find_first_bit);
-
-unsigned long _find_first_and_bit(const unsigned long *addr1,
-				  const unsigned long *addr2,
-				  unsigned long size)
-{
-	return rust_find_first_and_bit(addr1, addr2, size);
-}
 EXPORT_SYMBOL(_find_first_and_bit);
-
-unsigned long _find_first_andnot_bit(const unsigned long *addr1,
-				     const unsigned long *addr2,
-				     unsigned long size)
-{
-	return rust_find_first_andnot_bit(addr1, addr2, size);
-}
 EXPORT_SYMBOL(_find_first_andnot_bit);
-
-unsigned long _find_first_and_and_bit(const unsigned long *addr1,
-				      const unsigned long *addr2,
-				      const unsigned long *addr3,
-				      unsigned long size)
-{
-	return rust_find_first_and_and_bit(addr1, addr2, addr3, size);
-}
 EXPORT_SYMBOL(_find_first_and_and_bit);
-
-unsigned long _find_first_zero_bit(const unsigned long *addr, unsigned long size)
-{
-	return rust_find_first_zero_bit(addr, size);
-}
 EXPORT_SYMBOL(_find_first_zero_bit);
-
-unsigned long _find_next_bit(const unsigned long *addr, unsigned long size,
-			     unsigned long start)
-{
-	return rust_find_next_bit(addr, size, start);
-}
 EXPORT_SYMBOL(_find_next_bit);
-
-unsigned long _find_next_and_bit(const unsigned long *addr1,
-				 const unsigned long *addr2,
-				 unsigned long size, unsigned long start)
-{
-	return rust_find_next_and_bit(addr1, addr2, size, start);
-}
 EXPORT_SYMBOL(_find_next_and_bit);
-
-unsigned long _find_next_andnot_bit(const unsigned long *addr1,
-				    const unsigned long *addr2,
-				    unsigned long size, unsigned long start)
-{
-	return rust_find_next_andnot_bit(addr1, addr2, size, start);
-}
 EXPORT_SYMBOL(_find_next_andnot_bit);
-
-unsigned long _find_next_or_bit(const unsigned long *addr1,
-				const unsigned long *addr2,
-				unsigned long size, unsigned long start)
-{
-	return rust_find_next_or_bit(addr1, addr2, size, start);
-}
 EXPORT_SYMBOL(_find_next_or_bit);
-
-unsigned long _find_next_zero_bit(const unsigned long *addr, unsigned long size,
-				  unsigned long start)
-{
-	return rust_find_next_zero_bit(addr, size, start);
-}
 EXPORT_SYMBOL(_find_next_zero_bit);
-
-unsigned long __find_nth_bit(const unsigned long *addr, unsigned long size,
-			     unsigned long n)
-{
-	return rust_find_nth_bit(addr, size, n);
-}
 EXPORT_SYMBOL(__find_nth_bit);
-
-unsigned long __find_nth_and_bit(const unsigned long *addr1,
-				 const unsigned long *addr2,
-				 unsigned long size, unsigned long n)
-{
-	return rust_find_nth_and_bit(addr1, addr2, size, n);
-}
 EXPORT_SYMBOL(__find_nth_and_bit);
-
-unsigned long __find_nth_and_andnot_bit(const unsigned long *addr1,
-					const unsigned long *addr2,
-					const unsigned long *addr3,
-					unsigned long size, unsigned long n)
-{
-	return rust_find_nth_and_andnot_bit(addr1, addr2, addr3, size, n);
-}
 EXPORT_SYMBOL(__find_nth_and_andnot_bit);
-
-unsigned long _find_last_bit(const unsigned long *addr, unsigned long size)
-{
-	return rust_find_last_bit(addr, size);
-}
 EXPORT_SYMBOL(_find_last_bit);
-
-unsigned long find_next_clump8(unsigned long *clump,
-			       const unsigned long *addr,
-			       unsigned long size, unsigned long offset)
-{
-	return rust_find_next_clump8(clump, addr, size, offset);
-}
 EXPORT_SYMBOL(find_next_clump8);
-
-unsigned long find_random_bit(const unsigned long *addr, unsigned long size)
-{
-	return rust_find_random_bit(addr, size);
-}
 EXPORT_SYMBOL(find_random_bit);
 
 #endif /* CONFIG_RUST_FIND_BIT */

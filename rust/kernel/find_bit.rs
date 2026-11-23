@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
-//! Native implementation of the generic bit search algorithms.
+//! Native generic bit search implementation.
 //!
 //! Rust owns the production word traversal, masking, counting, nth-bit
-//! selection, clump extraction, and random-bit selection. The C entry points
-//! retain the existing exported ABI and only forward to these functions.
-//! Architecture-specific bitmap storage remains an `unsigned long` array.
+//! selection, clump extraction, and random-bit selection. Rust directly
+//! defines the public out-of-line searches. C retains ordinary export metadata
+//! and architecture-specific bitmap storage remains an `unsigned long` array.
 
 use crate::bindings;
 use core::ptr;
@@ -280,7 +280,7 @@ unsafe fn weight(addr: *const Word, size: usize) -> u32 {
 ///
 /// `addr` must be valid for `size` bits.
 #[export]
-unsafe extern "C" fn rust_find_first_bit(addr: *const Word, size: Word) -> Word {
+unsafe extern "C" fn _find_first_bit(addr: *const Word, size: Word) -> Word {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { find_first::<ONE>(addr, ptr::null(), ptr::null(), size) }
 }
@@ -291,7 +291,7 @@ unsafe extern "C" fn rust_find_first_bit(addr: *const Word, size: Word) -> Word 
 ///
 /// Both inputs must be valid for `size` bits.
 #[export]
-unsafe extern "C" fn rust_find_first_and_bit(
+unsafe extern "C" fn _find_first_and_bit(
     addr1: *const Word,
     addr2: *const Word,
     size: Word,
@@ -306,7 +306,7 @@ unsafe extern "C" fn rust_find_first_and_bit(
 ///
 /// Both inputs must be valid for `size` bits.
 #[export]
-unsafe extern "C" fn rust_find_first_andnot_bit(
+unsafe extern "C" fn _find_first_andnot_bit(
     addr1: *const Word,
     addr2: *const Word,
     size: Word,
@@ -321,7 +321,7 @@ unsafe extern "C" fn rust_find_first_andnot_bit(
 ///
 /// All inputs must be valid for `size` bits.
 #[export]
-unsafe extern "C" fn rust_find_first_and_and_bit(
+unsafe extern "C" fn _find_first_and_and_bit(
     addr1: *const Word,
     addr2: *const Word,
     addr3: *const Word,
@@ -337,7 +337,7 @@ unsafe extern "C" fn rust_find_first_and_and_bit(
 ///
 /// `addr` must be valid for `size` bits.
 #[export]
-unsafe extern "C" fn rust_find_first_zero_bit(addr: *const Word, size: Word) -> Word {
+unsafe extern "C" fn _find_first_zero_bit(addr: *const Word, size: Word) -> Word {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { find_first::<NOT>(addr, ptr::null(), ptr::null(), size) }
 }
@@ -348,7 +348,7 @@ unsafe extern "C" fn rust_find_first_zero_bit(addr: *const Word, size: Word) -> 
 ///
 /// `addr` must be valid for `size` bits.
 #[export]
-unsafe extern "C" fn rust_find_next_bit(addr: *const Word, size: Word, start: Word) -> Word {
+unsafe extern "C" fn _find_next_bit(addr: *const Word, size: Word, start: Word) -> Word {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { find_next::<ONE>(addr, ptr::null(), ptr::null(), size, start) }
 }
@@ -359,7 +359,7 @@ unsafe extern "C" fn rust_find_next_bit(addr: *const Word, size: Word, start: Wo
 ///
 /// Both inputs must be valid for `size` bits.
 #[export]
-unsafe extern "C" fn rust_find_next_and_bit(
+unsafe extern "C" fn _find_next_and_bit(
     addr1: *const Word,
     addr2: *const Word,
     size: Word,
@@ -375,7 +375,7 @@ unsafe extern "C" fn rust_find_next_and_bit(
 ///
 /// Both inputs must be valid for `size` bits.
 #[export]
-unsafe extern "C" fn rust_find_next_andnot_bit(
+unsafe extern "C" fn _find_next_andnot_bit(
     addr1: *const Word,
     addr2: *const Word,
     size: Word,
@@ -391,7 +391,7 @@ unsafe extern "C" fn rust_find_next_andnot_bit(
 ///
 /// Both inputs must be valid for `size` bits.
 #[export]
-unsafe extern "C" fn rust_find_next_or_bit(
+unsafe extern "C" fn _find_next_or_bit(
     addr1: *const Word,
     addr2: *const Word,
     size: Word,
@@ -407,7 +407,7 @@ unsafe extern "C" fn rust_find_next_or_bit(
 ///
 /// `addr` must be valid for `size` bits.
 #[export]
-unsafe extern "C" fn rust_find_next_zero_bit(addr: *const Word, size: Word, start: Word) -> Word {
+unsafe extern "C" fn _find_next_zero_bit(addr: *const Word, size: Word, start: Word) -> Word {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { find_next::<NOT>(addr, ptr::null(), ptr::null(), size, start) }
 }
@@ -418,7 +418,7 @@ unsafe extern "C" fn rust_find_next_zero_bit(addr: *const Word, size: Word, star
 ///
 /// `addr` must be valid for `size` bits.
 #[export]
-unsafe extern "C" fn rust_find_nth_bit(addr: *const Word, size: Word, n: Word) -> Word {
+unsafe extern "C" fn __find_nth_bit(addr: *const Word, size: Word, n: Word) -> Word {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { find_nth::<ONE>(addr, ptr::null(), ptr::null(), size, n) }
 }
@@ -429,7 +429,7 @@ unsafe extern "C" fn rust_find_nth_bit(addr: *const Word, size: Word, n: Word) -
 ///
 /// Both inputs must be valid for `size` bits.
 #[export]
-unsafe extern "C" fn rust_find_nth_and_bit(
+unsafe extern "C" fn __find_nth_and_bit(
     addr1: *const Word,
     addr2: *const Word,
     size: Word,
@@ -445,7 +445,7 @@ unsafe extern "C" fn rust_find_nth_and_bit(
 ///
 /// All inputs must be valid for `size` bits.
 #[export]
-unsafe extern "C" fn rust_find_nth_and_andnot_bit(
+unsafe extern "C" fn __find_nth_and_andnot_bit(
     addr1: *const Word,
     addr2: *const Word,
     addr3: *const Word,
@@ -462,7 +462,7 @@ unsafe extern "C" fn rust_find_nth_and_andnot_bit(
 ///
 /// `addr` must be valid for `size` bits.
 #[export]
-unsafe extern "C" fn rust_find_last_bit(addr: *const Word, size: Word) -> Word {
+unsafe extern "C" fn _find_last_bit(addr: *const Word, size: Word) -> Word {
     if size == 0 {
         return 0;
     }
@@ -492,7 +492,7 @@ unsafe extern "C" fn rust_find_last_bit(addr: *const Word, size: Word) -> Word {
 ///
 /// `addr` must be valid for `size` bits and `clump` must be writable.
 #[export]
-unsafe extern "C" fn rust_find_next_clump8(
+unsafe extern "C" fn find_next_clump8(
     clump: *mut Word,
     addr: *const Word,
     size: Word,
@@ -520,7 +520,7 @@ unsafe extern "C" fn rust_find_next_clump8(
 ///
 /// `addr` must be valid for `size` bits.
 #[export]
-unsafe extern "C" fn rust_find_random_bit(addr: *const Word, size: Word) -> Word {
+unsafe extern "C" fn find_random_bit(addr: *const Word, size: Word) -> Word {
     // SAFETY: Guaranteed by this function's contract.
     let count = unsafe { weight(addr, size) };
 

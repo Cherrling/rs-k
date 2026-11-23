@@ -906,8 +906,9 @@ config RUST_FIND_BIT
 	  find_first_bit(), find_next_bit(), find_nth_bit(),
 	  find_last_bit(), and related bitmap searches.
 
-	  The exported C entry points remain as ABI adapters. This option
-	  currently supports x86_64, where the generic C searches are used.
+	  Rust directly defines the sixteen public out-of-line searches.
+	  The ordinary export metadata and the architecture bitmap layout
+	  remain in C. This option currently supports x86_64.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
