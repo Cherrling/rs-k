@@ -10,24 +10,26 @@
 
 #ifdef CONFIG_RUST_LIST_LRU
 
-bool rust_list_lru_add_slice(struct list_lru *lru, struct list_lru_one *l,
-			     struct list_head *item, int nid,
-			     struct mem_cgroup *memcg);
-bool rust_list_lru_del_slice(struct list_lru *lru, struct list_lru_one *l,
-			     struct list_head *item, int nid);
-void rust_list_lru_isolate_slice(struct list_lru_one *l,
-				 struct list_head *item);
-void rust_list_lru_isolate_move_slice(struct list_lru_one *l,
-				      struct list_head *item,
-				      struct list_head *head);
-unsigned long rust_list_lru_count_slice(struct list_lru_one *l);
-unsigned long rust_list_lru_count_node(struct list_lru_node *nlru);
-unsigned long rust_list_lru_walk_one(struct list_lru *lru, int nid,
-				     struct mem_cgroup *memcg,
-				     list_lru_walk_cb isolate,
-				     void *cb_arg,
-				     unsigned long *nr_to_walk,
-				     bool irq_off);
+struct rust_list_lru_obj_lock {
+	struct list_lru_one *l;
+	struct mem_cgroup *memcg;
+	int nid;
+	bool rcu_locked;
+};
+
+bool rust_list_lru_lock_obj(struct list_lru *lru, struct list_head *item,
+			    bool irq, struct rust_list_lru_obj_lock *ctx);
+void rust_list_lru_unlock_obj(struct rust_list_lru_obj_lock *ctx, bool irq);
+struct list_lru_one *rust_list_lru_rcu_lock_slice(struct list_lru *lru,
+						  int nid,
+						  struct mem_cgroup *memcg);
+void rust_list_lru_rcu_unlock(void);
+unsigned long
+rust_list_lru_walk_memcg(struct list_lru *lru, int nid,
+			 unsigned long (*walk)(struct mem_cgroup *memcg,
+					       void *arg),
+			 void *arg,
+			 unsigned long *nr_to_walk);
 
 bool rust_list_lru_item_empty(const struct list_head *item);
 void rust_list_lru_item_add_tail(struct list_head *item,

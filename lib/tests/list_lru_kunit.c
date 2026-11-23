@@ -8,6 +8,7 @@
 #include <linux/kthread.h>
 #include <linux/list_lru.h>
 #include <linux/lockdep.h>
+#include <linux/mm.h>
 #include <linux/spinlock.h>
 
 #define LIST_LRU_TEST_NID 0
@@ -222,6 +223,31 @@ static void list_lru_test_count_clamp(struct kunit *test)
 	list_lru_destroy(&lru);
 }
 
+static void list_lru_test_obj_ops(struct kunit *test)
+{
+	struct list_lru_test_item *item;
+	struct list_lru lru;
+	int nid;
+
+	item = kunit_kzalloc(test, sizeof(*item), GFP_KERNEL);
+	KUNIT_ASSERT_NOT_NULL(test, item);
+	INIT_LIST_HEAD(&item->node);
+	nid = page_to_nid(virt_to_page(item));
+
+	KUNIT_ASSERT_EQ(test, list_lru_init(&lru), 0);
+	KUNIT_EXPECT_TRUE(test, list_lru_add_obj(&lru, &item->node));
+	KUNIT_EXPECT_FALSE(test, list_lru_add_obj(&lru, &item->node));
+	KUNIT_EXPECT_EQ(test, list_lru_count_one(&lru, nid, NULL), 1UL);
+	KUNIT_EXPECT_EQ(test, list_lru_count_node(&lru, nid), 1L);
+
+	KUNIT_EXPECT_TRUE(test, list_lru_del_obj(&lru, &item->node));
+	KUNIT_EXPECT_FALSE(test, list_lru_del_obj(&lru, &item->node));
+	KUNIT_EXPECT_EQ(test, list_lru_count_one(&lru, nid, NULL), 0UL);
+	KUNIT_EXPECT_EQ(test, list_lru_count_node(&lru, nid), 0L);
+
+	list_lru_destroy(&lru);
+}
+
 static void list_lru_test_walk_rotate_skip(struct kunit *test)
 {
 	struct list_lru_test_walk_ctx ctx;
@@ -391,6 +417,45 @@ static void list_lru_test_walk_stop(struct kunit *test)
 	list_lru_destroy(&lru);
 }
 
+static void list_lru_test_walk_variants(struct kunit *test)
+{
+	struct list_lru_test_walk_ctx ctx;
+	struct list_lru_test_item items[2];
+	struct list_lru lru;
+	unsigned long nr_to_walk;
+
+	list_lru_test_init_items(items, ARRAY_SIZE(items));
+	KUNIT_ASSERT_EQ(test, list_lru_init(&lru), 0);
+	KUNIT_EXPECT_TRUE(test, list_lru_add(&lru, &items[0].node,
+					     LIST_LRU_TEST_NID, NULL));
+	KUNIT_EXPECT_TRUE(test, list_lru_add(&lru, &items[1].node,
+					     LIST_LRU_TEST_NID, NULL));
+
+	list_lru_test_init_ctx(test, &ctx, LRU_SKIP);
+	nr_to_walk = 2;
+	KUNIT_EXPECT_EQ(test,
+			list_lru_walk_one_irq(&lru, LIST_LRU_TEST_NID, NULL,
+					      list_lru_test_walk_cb, &ctx,
+					      &nr_to_walk), 0UL);
+	KUNIT_EXPECT_EQ(test, ctx.calls, 2U);
+	KUNIT_EXPECT_EQ(test, nr_to_walk, 0UL);
+
+	list_lru_test_init_ctx(test, &ctx, LRU_REMOVED);
+	nr_to_walk = 2;
+	KUNIT_EXPECT_EQ(test,
+			list_lru_walk_node(&lru, LIST_LRU_TEST_NID,
+					   list_lru_test_walk_cb, &ctx,
+					   &nr_to_walk), 2UL);
+	KUNIT_EXPECT_EQ(test, ctx.calls, 2U);
+	KUNIT_EXPECT_EQ(test, nr_to_walk, 0UL);
+	KUNIT_EXPECT_EQ(test, list_lru_count_one(&lru, LIST_LRU_TEST_NID, NULL),
+			0UL);
+	KUNIT_EXPECT_EQ(test, list_lru_count_node(&lru, LIST_LRU_TEST_NID), 0L);
+	list_lru_test_expect_unlocked(test, &lru);
+
+	list_lru_destroy(&lru);
+}
+
 struct list_lru_test_worker {
 	struct list_lru *lru;
 	struct list_lru_test_item *items;
@@ -508,11 +573,13 @@ static struct kunit_case list_lru_test_cases[] = {
 	KUNIT_CASE(list_lru_test_isolate),
 	KUNIT_CASE(list_lru_test_isolate_move),
 	KUNIT_CASE(list_lru_test_count_clamp),
+	KUNIT_CASE(list_lru_test_obj_ops),
 	KUNIT_CASE(list_lru_test_walk_rotate_skip),
 	KUNIT_CASE(list_lru_test_walk_removed),
 	KUNIT_CASE(list_lru_test_walk_retry),
 	KUNIT_CASE(list_lru_test_walk_removed_retry),
 	KUNIT_CASE(list_lru_test_walk_stop),
+	KUNIT_CASE(list_lru_test_walk_variants),
 	KUNIT_CASE(list_lru_test_concurrent),
 	{}
 };

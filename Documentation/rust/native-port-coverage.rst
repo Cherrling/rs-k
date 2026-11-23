@@ -112,6 +112,20 @@ List sort
   doubly-linked list. The native C object retains only the non-GPL export
   metadata. C fallback configurations retain the complete algorithm.
 
+List LRU
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-list-lru`.
+
+  Rust directly defines the fourteen node-local add, delete, isolate, count,
+  and walk entry points. Nine functions retain GPL exports, three public
+  helpers remain unexported, and two caller-locked helpers are internal. Rust
+  owns item presence, list placement, slice and node count transitions,
+  shrinker notification, scan budgets, retry and stop handling, and isolate
+  accounting. The native C object retains lock accessors, initialization,
+  destruction, memory-cgroup slice allocation, and reparenting. C fallback
+  configurations retain the complete algorithms.
+
 Boundary-retained inventory
 ---------------------------
 
@@ -136,7 +150,8 @@ Public ABI
   ``include/linux/klist.h``, ``include/linux/lockref.h``,
   ``include/linux/kobject.h``, ``include/linux/interval_tree.h``,
   ``include/linux/rbtree.h``, ``include/linux/rbtree_augmented.h``,
-  ``include/linux/plist.h``, and ``include/linux/list_sort.h``.
+  ``include/linux/plist.h``, ``include/linux/list_sort.h``, and
+  ``include/linux/list_lru.h``.
 
   Reason: Existing callers and loadable modules use the stable C ABI.
 
@@ -475,10 +490,10 @@ Unexported Rust public symbols
   Owner: ``rust/Makefile``.
 
   Reason: Automatic Rust exports are GPL, while the three priority-list
-  functions have no module export.
+  functions and five list LRU helpers have no module export.
 
-  Test: ``vmlinux.symvers`` contains no priority-list symbol, and the
-  generated Rust export header excludes all three names.
+  Test: ``vmlinux.symvers`` contains no priority-list symbol or list LRU
+  helper, and the generated Rust export header excludes all eight names.
 
   Risk: An automatic export can unintentionally expand the module ABI.
 
@@ -519,6 +534,75 @@ List sort export metadata
   Exit condition: Rust export metadata supports the original non-GPL class
   without C export entries.
 
+List LRU layout
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/list_lru.h``.
+
+  Reason: C and Rust access the same intrusive ``list_head``, node, slice,
+  memory-cgroup slice, and memory-cgroup-aware xarray layouts.
+
+  Test: Native, fallback, and C-only KUnit runs exercise add, delete,
+  isolate, count, object-backed operations, every walk status, and concurrent
+  workers on the same shared layouts.
+
+  Risk: A layout change can invalidate direct Rust field access or make a C
+  helper operate on the wrong slice or counter.
+
+  Exit condition: Rust-owned types and accessors replace the shared C layouts.
+
+List LRU locking and memory-cgroup resolution
+  Status: ``boundary-retained``.
+
+  Owner: ``mm/list_lru.c`` and ``include/linux/list_lru-rust.h``.
+
+  Reason: Spinlock and interrupt modes, RCU protection, object page-to-memcg
+  lookup, dying-memcg traversal, and xarray slice iteration depend on MM and
+  locking internals shared with C.
+
+  Test: Native SMP1/SMP4, KASAN, lockdep, and PREEMPT_RT runs execute locked,
+  interrupt, RCU, retry, stop, and concurrent paths.
+
+  Risk: A lock-mode or lifetime mismatch can leave a slice locked, use a dead
+  memcg, or expose a reparented slice.
+
+  Exit condition: Rust owns the complete lock, RCU, memcg, and xarray lifetime
+  contract.
+
+List LRU lifecycle and memory-cgroup slices
+  Status: ``boundary-retained``.
+
+  Owner: ``mm/list_lru.c``.
+
+  Reason: Initialization, destruction, dynamic per-memcg slice allocation,
+  and reparenting retain their existing C lifecycle and allocation rules.
+
+  Test: Every configuration uses C-initialized list LRUs and runs the full
+  suite in native, fallback, pure C, KASAN, lockdep, and PREEMPT_RT builds.
+
+  Risk: Incorrect allocation or reparent ordering can corrupt slice counts or
+  detach live objects from the selected memcg.
+
+  Exit condition: Rust owns list LRU allocation, destruction, and memcg
+  reparenting with equivalent lifetime rules.
+
+List LRU export metadata
+  Status: ``boundary-retained``.
+
+  Owner: ``mm/list_lru.c`` and ``rust/Makefile``.
+
+  Reason: Nine node-local functions retain GPL exports, while three public
+  helpers and two caller-locked helpers have no module export.
+
+  Test: ``vmlinux.symvers`` records the nine GPL exports, and the generated
+  Rust GPL export header excludes all five unexported helpers.
+
+  Risk: A duplicate export or class change can break module compatibility or
+  expose an internal caller-locked interface.
+
+  Exit condition: Rust export metadata supports per-symbol export and
+  unexported status without the skip list.
+
 The lock-less list boundary is valid only while the inline producer paths,
 intrusive layouts, and atomic semantics remain shared ABI. A boundary entry
 does not transfer policy, retry decisions, state transitions, or exported
@@ -557,6 +641,12 @@ The list sort boundary is valid only while the shared list layout, comparator
 ABI, and historical export metadata remain named boundaries. Rust defines the
 public entry and owns every merge, pending-list, stability, and final-link
 decision.
+
+The list LRU boundary is valid only while the shared layouts, lock and
+interrupt modes, RCU and memory-cgroup resolution, initialization and
+destruction, and dynamic slice allocation and reparenting remain named C
+boundaries. Rust defines every node-local public entry and owns every item,
+count, scan, and walk transition.
 
 Pending inventory
 -----------------

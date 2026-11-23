@@ -7,21 +7,46 @@ Status and scope
 ----------------
 
 The ``CONFIG_RUST_LIST_LRU`` option selects native Rust implementations of
-node-local ``list_lru`` operations. The option depends on x86_64 and
+the node-local ``list_lru`` operations. The option depends on x86_64 and
 ``CONFIG_RUST``.
 
-The original C node-local algorithms remain available when the option is
-disabled.
+Rust directly defines fourteen production entry points for add, delete,
+isolate, count, and walk operations. The original C node-local algorithms
+remain available when the option is disabled.
 
-This unit covers add, delete, isolate, count, and walk operations. Memory
-cgroup allocation and reparenting remain a separate migration unit.
+This unit covers node-local list and count transitions. Memory cgroup slice
+allocation and reparenting remain a separate lifecycle boundary.
 
 Entry points and ownership
 --------------------------
 
 The public ``list_lru_*()`` interfaces keep their existing signatures and
-export classes. When the option is enabled, their C entry points forward to
-native Rust functions.
+export classes. With this option enabled, Rust directly defines the symbols.
+
+Rust defines these exported GPL functions:
+
+* ``list_lru_add()``
+
+* ``list_lru_add_obj()``
+
+* ``list_lru_del_obj()``
+
+* ``list_lru_isolate()``
+
+* ``list_lru_isolate_move()``
+
+* ``list_lru_count_one()``
+
+* ``list_lru_count_node()``
+
+* ``list_lru_walk_one()``
+
+* ``list_lru_walk_node()``
+
+Rust also defines ``list_lru_add_irq()``, ``list_lru_del()``, and
+``list_lru_walk_one_irq()``. These public functions remain unexported.
+The caller-locked ``__list_lru_add()`` and ``__list_lru_del()`` functions are
+internal Rust entry points and also remain unexported.
 
 Rust owns:
 
@@ -29,26 +54,23 @@ Rust owns:
 
 * List tail insertion, deletion, movement, and rotation decisions.
 
-* Per-slice count transitions.
+* Per-slice and per-node count transitions.
 
-* The decision to notify the shrinker after the first item enters a slice.
-
-* Per-node atomic count transitions.
+* The decision to notify the shrinker when the first item enters a slice.
 
 * Count clamping for dead slices and transient negative states.
 
-* Walk iteration, scan budget consumption, and restart handling.
+* Walk iteration, callback dispatch, and scan budget consumption.
 
-* All six ``lru_status`` transitions.
+* Every ``lru_status`` transition.
 
-* Isolated item accounting and per-node count decrements.
+* Restart, stop, and isolated item accounting.
 
 Retained C boundaries
 ---------------------
 
-The intrusive layouts remain in C. The list nodes, list slices, per-node
-counters, memcg slices, xarray, and shrinker identifiers keep their existing
-ABI.
+The intrusive layouts remain in C. List nodes, slices, nodes, memory-cgroup
+slices, and the xarray keep their existing ABI.
 
 Small C helpers retain:
 
@@ -61,18 +83,32 @@ Small C helpers retain:
 
 * Spinlock acquisition and release, including interrupt modes.
 
-* Memory cgroup and xarray resolution.
+* RCU protection, object page-to-memcg lookup, and xarray traversal.
 
 * Shrinker bit notification.
 
 * Invalid-status diagnostics.
 
-These helpers perform storage operations and synchronization. Rust selects
+These helpers perform storage and synchronization operations. Rust selects
 every production count transition, list placement transition, and walk status
 transition.
 
-Initialization, destruction, memory cgroup allocation, and memory cgroup
-reparenting remain C boundaries for a later unit.
+Initialization, destruction, dynamic per-memcg slice allocation, and memcg
+reparenting remain C boundaries.
+
+The native ``mm/list_lru.o`` object retains the lock accessor functions,
+``__list_lru_init()``, and ``list_lru_destroy()``. It does not define the
+node-local production algorithms.
+
+Export classes
+--------------
+
+Nine Rust-defined node-local functions retain their historical GPL exports.
+The three unexported public functions and the two caller-locked helpers have
+no module export.
+
+``rust/Makefile`` excludes all five unexported functions from the automatic
+Rust GPL exporter. This prevents accidental expansion of the module ABI.
 
 Important invariants
 --------------------
@@ -99,6 +135,10 @@ returns directly for ``LRU_STOP``.
 Slice counts can become negative during memory cgroup reparenting.
 ``list_lru_count_one()`` reports zero for these dead or transient states.
 
+Callback pointers, item links, and lock ownership follow the existing C
+contract. Unknown callbacks and unknown status values terminate through the
+existing invalid-status diagnostic.
+
 Validation gate
 ---------------
 
@@ -106,11 +146,13 @@ The unit must pass these checks before integration:
 
 * Rust-enabled x86_64 LLVM builds with one and four virtual CPUs.
 
-* The same tests with native Rust list_lru operations disabled.
+* The same tests with native Rust list LRU operations disabled.
 
 * The same tests with ``CONFIG_RUST`` disabled.
 
 * Add, duplicate add, delete, and duplicate delete.
+
+* Object-backed add and delete.
 
 * Isolate and isolate-move transitions.
 
@@ -119,60 +161,89 @@ The unit must pass these checks before integration:
 * ``LRU_ROTATE``, ``LRU_SKIP``, ``LRU_REMOVED``, ``LRU_RETRY``,
   ``LRU_REMOVED_RETRY``, and ``LRU_STOP``.
 
+* Interrupt lock and whole-node walk variants.
+
 * Concurrent add and delete workers on SMP.
 
-* Rust-enabled KASAN and lockdep runs.
+* Rust-enabled KASAN, lockdep, and PREEMPT_RT runs.
 
 * Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
   ``git diff --check``.
 
-* Symbol checks that the native C object calls every Rust entry point and
-  that fallback objects reference no Rust list_lru symbol.
+* Symbol checks that Rust defines all fourteen entry points, the native C
+  object contains no node-local production algorithm, and fallback objects
+  contain the complete C implementation.
 
 Validation results
 ------------------
 
-On 2026-11-17, ten x86_64 virtual-machine boots passed. Each boot ran the
-suite with one or four virtual CPUs. Every boot reported ``pass:10 fail:0
-skip:0 total:10``.
+Validation on 2026-11-23 used parent commit ``f08ee8ccfdc1``.
 
-The matrix covered the following configurations:
+================  ============================================================
+Build             Configuration
+================  ============================================================
+Native SMP1       Native Rust, one virtual CPU
+Native SMP4       Native Rust, four virtual CPUs
+Rust fallback     ``CONFIG_RUST_LIST_LRU=n``, one and four virtual CPUs
+Pure C            ``CONFIG_RUST=n``, one and four virtual CPUs
+Native KASAN      Native Rust configuration plus
+                  ``CONFIG_KASAN_GENERIC=y``
+Native lockdep    Native Rust configuration plus
+                  ``CONFIG_PROVE_LOCKING=y``
+Native RT         Native Rust configuration plus ``CONFIG_PREEMPT_RT=y``
+================  ============================================================
 
-* Native Rust with ``CONFIG_RUST_LIST_LRU=y`` and ``CONFIG_MEMCG=y``.
+Every configuration used x86_64, ``CONFIG_SMP=y``, ``CONFIG_NR_CPUS=4``,
+``CONFIG_MODULES=y``, ``CONFIG_MEMCG=y``, ``CONFIG_KUNIT=y``, and
+``CONFIG_LIST_LRU_KUNIT_TEST=y``.
 
-* Rust fallback with ``CONFIG_RUST=y`` and ``CONFIG_RUST_LIST_LRU=n``.
+All nine QEMU runs reported twelve of twelve KUnit cases passed. The suite
+checked duplicate operations, isolate accounting, count clamping,
+object-backed operations, every walk status, interrupt lock variants,
+whole-node walks, and four concurrent add and delete workers.
 
-* C-only fallback with ``CONFIG_RUST=n``.
+The KASAN configuration used generic inline KASAN. The lockdep configuration
+enabled lockdep, spinlock debugging, and RCU lockdep checking. The RT kernel
+reported ``SMP PREEMPT_RT``. No run reported KASAN, a BUG, warning, Oops,
+kernel panic, lock inversion, or RCU stall.
 
-* Native Rust with ``CONFIG_KASAN=y`` and
-  ``CONFIG_KASAN_GENERIC=y``.
+The adjacent regression passed all 39 ``list-kunit-test`` cases, the
+``list-private-kunit-test`` case, both ``list_sort`` cases, and both
+``plist`` cases.
 
-* Native Rust with ``CONFIG_PROVE_LOCKING=y``,
-  ``CONFIG_DEBUG_SPINLOCK=y``, and ``CONFIG_LOCKDEP=y``.
+In the native configuration, ``rust/kernel.o`` defined all fourteen
+node-local entry points. The native ``mm/list_lru.o`` object defined only the
+lock accessors, ``__list_lru_init()``, and ``list_lru_destroy()`` from this
+unit. ``vmlinux.symvers`` contained the nine historical
+``EXPORT_SYMBOL_GPL()`` entries, and the generated Rust GPL export header
+excluded the five unexported functions.
 
-The KASAN and lockdep boots reported no sanitizer error, lock cycle,
-warning, panic, or RCU stall. The native and fallback builds reported no
-compiler or linker warning.
+The Rust-fallback and pure C ``mm/list_lru.o`` objects defined the complete
+node-local C implementation. The fallback Rust kernel object contained no
+public list LRU symbol.
 
-Strict checkpatch reported one ``AVOID_BUG`` warning for the invalid-status
-helper. The helper must terminate because an unknown callback status leaves
-the lock disposition undefined. Recovery is not safe in that state.
+Rustfmt, Clippy, Rustdoc, focused Sphinx generation, kernel-doc, strict
+checkpatch, and ``git diff --check`` passed. Focused Sphinx generation emitted
+only the existing unknown ``kernel-docs`` document and ``getting_llvm`` label
+warnings.
 
 Review conditions
 -----------------
 
 Reopen a retained boundary decision if any of these conditions changes:
 
-* The list, slice, node, or memory cgroup layout changes.
+* The list, slice, node, memory-cgroup, or xarray layout changes.
 
-* Spinlock, interrupt, atomic, or memory-order semantics change.
+* Spinlock, interrupt, RCU, atomic, or memory-order semantics change.
 
 * The callback lock contract or any ``lru_status`` transition changes.
 
 * The scan budget, restart, stop, or isolate accounting changes.
 
-* Rust stops controlling count transitions or walk transitions.
+* Rust stops controlling node-local count or walk transitions.
 
-* A fallback object starts to use a Rust list_lru symbol.
+* A fallback object starts to use a Rust list LRU symbol.
+
+* The public function gains a different module export class.
 
 * Another architecture passes the complete validation gate.

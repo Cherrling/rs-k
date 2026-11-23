@@ -586,9 +586,13 @@ rust_non_gpl_exports := \
 	rb_first_postorder \
 	list_sort
 
-# Rust-defined public symbols that are not exported to modules. The
-# automatic Rust exporter must skip them as well.
+# Rust-defined production symbols that must not receive automatic exports.
 rust_unexported_symbols := \
+	__list_lru_add \
+	__list_lru_del \
+	list_lru_add_irq \
+	list_lru_del \
+	list_lru_walk_one_irq \
 	plist_add \
 	plist_del \
 	plist_requeue

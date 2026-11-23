@@ -165,6 +165,85 @@ void rust_list_lru_walk_unlock(struct list_lru_one *l, bool irq_off)
 {
 	unlock_list_lru(l, irq_off, NULL);
 }
+
+struct list_lru_one *rust_list_lru_rcu_lock_slice(struct list_lru *lru,
+						  int nid,
+						  struct mem_cgroup *memcg)
+{
+	rcu_read_lock();
+	return list_lru_from_memcg_idx(lru, nid, memcg_kmem_id(memcg));
+}
+
+void rust_list_lru_rcu_unlock(void)
+{
+	rcu_read_unlock();
+}
+
+bool rust_list_lru_lock_obj(struct list_lru *lru, struct list_head *item,
+			    bool irq, struct rust_list_lru_obj_lock *ctx)
+{
+	ctx->nid = page_to_nid(virt_to_page(item));
+	ctx->rcu_locked = list_lru_memcg_aware(lru);
+	if (ctx->rcu_locked) {
+		rcu_read_lock();
+		ctx->memcg = mem_cgroup_from_virt(item);
+	} else {
+		ctx->memcg = NULL;
+	}
+
+	ctx->l = lock_list_lru_of_memcg(lru, ctx->nid, &ctx->memcg, irq, NULL, false);
+	if (ctx->l)
+		return true;
+
+	if (ctx->rcu_locked)
+		rcu_read_unlock();
+	return false;
+}
+
+void rust_list_lru_unlock_obj(struct rust_list_lru_obj_lock *ctx, bool irq)
+{
+	unlock_list_lru(ctx->l, irq, NULL);
+	if (ctx->rcu_locked)
+		rcu_read_unlock();
+}
+
+unsigned long
+rust_list_lru_walk_memcg(struct list_lru *lru, int nid,
+			 unsigned long (*walk)(struct mem_cgroup *memcg,
+					       void *arg),
+			 void *arg,
+			 unsigned long *nr_to_walk)
+{
+#ifdef CONFIG_MEMCG
+	unsigned long isolated = 0;
+	struct list_lru_memcg *mlru;
+	struct mem_cgroup *memcg;
+	unsigned long index;
+
+	if (!*nr_to_walk || !list_lru_memcg_aware(lru))
+		return 0;
+
+	xa_for_each(&lru->xa, index, mlru) {
+		rcu_read_lock();
+		memcg = mem_cgroup_from_private_id(index);
+		if (!mem_cgroup_tryget(memcg)) {
+			rcu_read_unlock();
+			continue;
+		}
+		rcu_read_unlock();
+
+		isolated += walk(memcg, arg);
+		mem_cgroup_put(memcg);
+
+		if (*nr_to_walk <= 0)
+			break;
+	}
+
+	return isolated;
+#else
+	return 0;
+#endif
+}
 #endif /* CONFIG_RUST_LIST_LRU */
 
 struct list_lru_one *list_lru_lock(struct list_lru *lru, int nid,
@@ -204,13 +283,12 @@ void list_lru_unlock_irqrestore(struct list_lru_one *l, unsigned long *flags)
 	unlock_list_lru(l, /*irq_off=*/true, /*irq_flags=*/flags);
 }
 
+#ifndef CONFIG_RUST_LIST_LRU
+
 bool __list_lru_add(struct list_lru *lru, struct list_lru_one *l,
 		    struct list_head *item, int nid,
 		    struct mem_cgroup *memcg)
 {
-#ifdef CONFIG_RUST_LIST_LRU
-	return rust_list_lru_add_slice(lru, l, item, nid, memcg);
-#else
 	if (list_empty(item)) {
 		list_add_tail(item, &l->list);
 		/*
@@ -224,16 +302,12 @@ bool __list_lru_add(struct list_lru *lru, struct list_lru_one *l,
 		return true;
 	}
 	return false;
-#endif /* CONFIG_RUST_LIST_LRU */
 }
 EXPORT_SYMBOL_GPL(list_lru_add);
 
 bool __list_lru_del(struct list_lru *lru, struct list_lru_one *l,
 		    struct list_head *item, int nid)
 {
-#ifdef CONFIG_RUST_LIST_LRU
-	return rust_list_lru_del_slice(lru, l, item, nid);
-#else
 	if (!list_empty(item)) {
 		list_del_init(item);
 		l->nr_items--;
@@ -241,7 +315,6 @@ bool __list_lru_del(struct list_lru *lru, struct list_lru_one *l,
 		return true;
 	}
 	return false;
-#endif /* CONFIG_RUST_LIST_LRU */
 }
 
 /* The caller must ensure the memcg lifetime. */
@@ -318,24 +391,16 @@ EXPORT_SYMBOL_GPL(list_lru_del_obj);
 
 void list_lru_isolate(struct list_lru_one *list, struct list_head *item)
 {
-#ifdef CONFIG_RUST_LIST_LRU
-	rust_list_lru_isolate_slice(list, item);
-#else
 	list_del_init(item);
 	list->nr_items--;
-#endif /* CONFIG_RUST_LIST_LRU */
 }
 EXPORT_SYMBOL_GPL(list_lru_isolate);
 
 void list_lru_isolate_move(struct list_lru_one *list, struct list_head *item,
 			   struct list_head *head)
 {
-#ifdef CONFIG_RUST_LIST_LRU
-	rust_list_lru_isolate_move_slice(list, item, head);
-#else
 	list_move(item, head);
 	list->nr_items--;
-#endif /* CONFIG_RUST_LIST_LRU */
 }
 EXPORT_SYMBOL_GPL(list_lru_isolate_move);
 
@@ -344,18 +409,12 @@ unsigned long list_lru_count_one(struct list_lru *lru,
 {
 	struct list_lru_one *l;
 	unsigned long count;
-#ifndef CONFIG_RUST_LIST_LRU
 	long raw_count;
-#endif
 
 	rcu_read_lock();
 	l = list_lru_from_memcg_idx(lru, nid, memcg_kmem_id(memcg));
-#ifdef CONFIG_RUST_LIST_LRU
-	count = l ? rust_list_lru_count_slice(l) : 0;
-#else
 	raw_count = l ? READ_ONCE(l->nr_items) : 0;
 	count = raw_count < 0 ? 0 : raw_count;
-#endif /* CONFIG_RUST_LIST_LRU */
 	rcu_read_unlock();
 
 	return count;
@@ -367,11 +426,7 @@ unsigned long list_lru_count_node(struct list_lru *lru, int nid)
 	struct list_lru_node *nlru;
 
 	nlru = &lru->node[nid];
-#ifdef CONFIG_RUST_LIST_LRU
-	return rust_list_lru_count_node(nlru);
-#else
 	return atomic_long_read(&nlru->nr_items);
-#endif /* CONFIG_RUST_LIST_LRU */
 }
 EXPORT_SYMBOL_GPL(list_lru_count_node);
 
@@ -380,10 +435,6 @@ __list_lru_walk_one(struct list_lru *lru, int nid, struct mem_cgroup *memcg,
 		    list_lru_walk_cb isolate, void *cb_arg,
 		    unsigned long *nr_to_walk, bool irq_off)
 {
-#ifdef CONFIG_RUST_LIST_LRU
-	return rust_list_lru_walk_one(lru, nid, memcg, isolate, cb_arg,
-				      nr_to_walk, irq_off);
-#else
 	struct list_lru_node *nlru = &lru->node[nid];
 	struct list_lru_one *l = NULL;
 	struct list_head *item, *n;
@@ -435,7 +486,6 @@ restart:
 	unlock_list_lru(l, irq_off, NULL);
 out:
 	return isolated;
-#endif /* CONFIG_RUST_LIST_LRU */
 }
 
 unsigned long
@@ -494,6 +544,8 @@ unsigned long list_lru_walk_node(struct list_lru *lru, int nid,
 	return isolated;
 }
 EXPORT_SYMBOL_GPL(list_lru_walk_node);
+
+#endif /* CONFIG_RUST_LIST_LRU */
 
 static void init_one_lru(struct list_lru *lru, struct list_lru_one *l)
 {
