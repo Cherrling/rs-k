@@ -40,6 +40,15 @@ Lock-less lists
   ``llist_reverse_order()``. The native build contains no C implementation or
   C ABI adapter for those operations.
 
+Klist entry operations
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-klist`.
+
+  Rust defines the eleven public GPL symbols for insertion, deletion,
+  attachment state, and iteration. The native C file retains list
+  initialization, blocking removal, and the shared wakeup callback.
+
 Boundary-retained inventory
 ---------------------------
 
@@ -60,7 +69,8 @@ Shared type layouts
 Public ABI
   Status: ``boundary-retained``.
 
-  Owner: The public symbols defined in ``include/linux/llist.h``.
+  Owner: The public symbols defined in ``include/linux/llist.h`` and
+  ``include/linux/klist.h``.
 
   Reason: Existing callers and loadable modules use the stable C ABI.
 
@@ -102,10 +112,64 @@ Lock-less list inline paths
   Exit condition: All producers use a Rust-owned intrusive container API and
   the inline C interface is removed.
 
+Klist initialization
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/klist.c``.
+
+  Reason: Spinlock initialization depends on architecture and lock debugging
+  support.
+
+  Test: Every klist KUnit case uses a C-initialized list, and lockdep runs the
+  suite with expanded lock metadata.
+
+  Risk: Incorrect initialization can leave lockdep state or architecture lock
+  state invalid.
+
+  Exit condition: A Rust abstraction provides equivalent lock initialization
+  and debug behavior.
+
+Blocking klist removal
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/klist.c``.
+
+  Reason: The operation registers a waiter and uses task state, scheduling,
+  and wakeup primitives.
+
+  Test: The blocking ``klist_remove()`` KUnit case runs in native, fallback,
+  and C-only configurations.
+
+  Risk: Incorrect publication or wake ordering can lose a wakeup or return
+  before final release.
+
+  Exit condition: Rust owns the complete waiter and task-wakeup lifecycle.
+
+Klist primitive helpers
+  Status: ``boundary-retained``.
+
+  Owner: ``rust/helpers/klist.c``.
+
+  Reason: The helpers preserve list debugging, refcount, spinlock, and
+  interrupt-state semantics shared with C.
+
+  Test: Native KUnit, KASAN, lockdep, and PREEMPT_RT runs exercise the helpers.
+
+  Risk: A mismatched lock or reference primitive can break list lifetime or
+  interrupt-state restoration.
+
+  Exit condition: Approved Rust list, lock, and refcount abstractions cover the
+  complete helper contract.
+
 The lock-less list boundary is valid only while the inline producer paths,
 intrusive layouts, and atomic semantics remain shared ABI. A boundary entry
 does not transfer policy, retry decisions, state transitions, or exported
 production entry points back to C.
+
+The klist boundary is valid only while initialization, blocking removal,
+task wakeup, and shared primitive behavior remain outside the migrated entry
+scope. The retained C functions do not select insertion, reference, deletion,
+attachment, or traversal policy.
 
 Pending inventory
 -----------------

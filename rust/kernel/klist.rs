@@ -2,13 +2,18 @@
 
 //! Native klist operations.
 //!
-//! Rust owns list placement, node lifecycle state, reference transitions,
-//! iterator reference transfer, dead-node skipping, and traversal direction.
-//! C retains the intrusive layouts, locking primitives, linked-list pointer
-//! updates, refcount primitives, and blocking remove wakeup boundary.
+//! Rust defines the public symbols for insertion, deletion, attachment state,
+//! and iteration. It owns list placement, node lifecycle state, reference
+//! transitions, iterator reference transfer, dead-node skipping, and
+//! traversal direction. C retains the intrusive layouts, locking primitives,
+//! linked-list pointer updates, refcount primitives, initialization, and the
+//! blocking remove wakeup boundary.
 
 use crate::{bindings, container_of};
-use core::{ffi::c_void, ptr};
+use core::{
+    ffi::{c_int, c_void},
+    ptr,
+};
 use macros::export;
 
 type Iter = bindings::klist_iter;
@@ -399,7 +404,7 @@ unsafe fn iter_move(iter: *mut Iter, forward: bool) -> *mut Node {
 ///
 /// The arguments must satisfy the public klist contract.
 #[export]
-unsafe extern "C" fn rust_klist_add_head(node: *mut Node, klist: *mut KList) {
+unsafe extern "C" fn klist_add_head(node: *mut Node, klist: *mut KList) {
     // SAFETY: Guaranteed by the public contract.
     unsafe { init_node(klist, node) };
     // SAFETY: The list sentinel is a valid insertion position.
@@ -412,7 +417,7 @@ unsafe extern "C" fn rust_klist_add_head(node: *mut Node, klist: *mut KList) {
 ///
 /// The arguments must satisfy the public klist contract.
 #[export]
-unsafe extern "C" fn rust_klist_add_tail(node: *mut Node, klist: *mut KList) {
+unsafe extern "C" fn klist_add_tail(node: *mut Node, klist: *mut KList) {
     // SAFETY: Guaranteed by the public contract.
     unsafe { init_node(klist, node) };
     // SAFETY: The list sentinel is a valid insertion position.
@@ -425,7 +430,7 @@ unsafe extern "C" fn rust_klist_add_tail(node: *mut Node, klist: *mut KList) {
 ///
 /// The arguments must satisfy the public klist contract.
 #[export]
-unsafe extern "C" fn rust_klist_add_behind(node: *mut Node, position: *mut Node) {
+unsafe extern "C" fn klist_add_behind(node: *mut Node, position: *mut Node) {
     // SAFETY: Guaranteed by the public contract.
     let klist = unsafe { node_klist(position) };
     // SAFETY: Guaranteed by the public contract.
@@ -440,7 +445,7 @@ unsafe extern "C" fn rust_klist_add_behind(node: *mut Node, position: *mut Node)
 ///
 /// The arguments must satisfy the public klist contract.
 #[export]
-unsafe extern "C" fn rust_klist_add_before(node: *mut Node, position: *mut Node) {
+unsafe extern "C" fn klist_add_before(node: *mut Node, position: *mut Node) {
     // SAFETY: Guaranteed by the public contract.
     let klist = unsafe { node_klist(position) };
     // SAFETY: Guaranteed by the public contract.
@@ -455,7 +460,7 @@ unsafe extern "C" fn rust_klist_add_before(node: *mut Node, position: *mut Node)
 ///
 /// The argument must satisfy the public klist contract.
 #[export]
-unsafe extern "C" fn rust_klist_del(node: *mut Node) {
+unsafe extern "C" fn klist_del(node: *mut Node) {
     // SAFETY: Guaranteed by the public contract.
     unsafe { put(node, true) };
 }
@@ -466,7 +471,7 @@ unsafe extern "C" fn rust_klist_del(node: *mut Node) {
 ///
 /// `node` must point to a valid initialized klist node.
 #[export]
-unsafe extern "C" fn rust_klist_node_attached(node: *mut Node) -> i32 {
+unsafe extern "C" fn klist_node_attached(node: *mut Node) -> c_int {
     // SAFETY: The caller guarantees a valid node.
     i32::from(!unsafe { (*node).n_klist }.is_null())
 }
@@ -477,9 +482,9 @@ unsafe extern "C" fn rust_klist_node_attached(node: *mut Node) -> i32 {
 ///
 /// The arguments must satisfy the public klist contract.
 #[export]
-unsafe extern "C" fn rust_klist_iter_init(klist: *mut KList, iter: *mut Iter) {
+unsafe extern "C" fn klist_iter_init(klist: *mut KList, iter: *mut Iter) {
     // SAFETY: Guaranteed by the public contract.
-    unsafe { rust_klist_iter_init_node(klist, iter, ptr::null_mut()) };
+    unsafe { klist_iter_init_node(klist, iter, ptr::null_mut()) };
 }
 
 /// Implements `klist_iter_init_node()`.
@@ -488,11 +493,7 @@ unsafe extern "C" fn rust_klist_iter_init(klist: *mut KList, iter: *mut Iter) {
 ///
 /// The arguments must satisfy the public klist contract.
 #[export]
-unsafe extern "C" fn rust_klist_iter_init_node(
-    klist: *mut KList,
-    iter: *mut Iter,
-    node: *mut Node,
-) {
+unsafe extern "C" fn klist_iter_init_node(klist: *mut KList, iter: *mut Iter, node: *mut Node) {
     // SAFETY: The iterator is writable.
     unsafe {
         (*iter).i_klist = klist;
@@ -513,7 +514,7 @@ unsafe extern "C" fn rust_klist_iter_init_node(
 ///
 /// `iter` must be a live klist iterator.
 #[export]
-unsafe extern "C" fn rust_klist_iter_exit(iter: *mut Iter) {
+unsafe extern "C" fn klist_iter_exit(iter: *mut Iter) {
     // SAFETY: The caller guarantees a live iterator.
     let current = unsafe { (*iter).i_cur };
     if current.is_null() {
@@ -531,7 +532,7 @@ unsafe extern "C" fn rust_klist_iter_exit(iter: *mut Iter) {
 ///
 /// `iter` must be a live klist iterator.
 #[export]
-unsafe extern "C" fn rust_klist_prev(iter: *mut Iter) -> *mut Node {
+unsafe extern "C" fn klist_prev(iter: *mut Iter) -> *mut Node {
     // SAFETY: Guaranteed by the public contract.
     unsafe { iter_move(iter, false) }
 }
@@ -542,7 +543,7 @@ unsafe extern "C" fn rust_klist_prev(iter: *mut Iter) -> *mut Node {
 ///
 /// `iter` must be a live klist iterator.
 #[export]
-unsafe extern "C" fn rust_klist_next(iter: *mut Iter) -> *mut Node {
+unsafe extern "C" fn klist_next(iter: *mut Iter) -> *mut Node {
     // SAFETY: Guaranteed by the public contract.
     unsafe { iter_move(iter, true) }
 }

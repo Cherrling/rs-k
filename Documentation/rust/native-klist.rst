@@ -20,8 +20,8 @@ Entry points and ownership
 --------------------------
 
 The public klist interfaces keep their existing signatures. With this option
-enabled, the C entry points for node addition, deletion, attachment state, and
-iteration forward to the matching Rust functions.
+enabled, Rust directly defines the GPL-exported symbols for node addition,
+deletion, attachment state, and iteration.
 
 Rust owns:
 
@@ -64,8 +64,8 @@ architecture and lock debugging boundary.
 It calls the active ``klist_del()`` implementation, including the native Rust
 path.
 
-The public C entry points retain the exported ABI. The complete C klist
-algorithm remains compiled in fallback configurations.
+The native build contains no C adapter for the eleven Rust entry points. The
+complete C klist algorithm remains compiled in fallback configurations.
 
 Important invariants
 --------------------
@@ -124,13 +124,13 @@ The unit must pass these checks before integration:
 * Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
   ``git diff --check``.
 
-* Symbol checks that the native C object calls the Rust entry points and that
-  fallback objects reference no Rust klist symbol.
+* Symbol checks that Rust defines the native public entry points and that the
+  fallback objects define the complete C implementation.
 
 Validation results
 ------------------
 
-Validation on 2026-11-17 used parent commit ``9d0d7e2a4ec6``.
+Validation on 2026-11-23 used parent commit ``6fef2466604c``.
 
 ================  ============================================================
 Build             Configuration
@@ -141,34 +141,43 @@ Pure C            ``CONFIG_RUST=n``
 Native KASAN      Native Rust configuration plus ``CONFIG_KASAN=y``
 Native lockdep    Native Rust configuration plus
                   ``CONFIG_PROVE_LOCKING=y``
+Native RT         Native Rust configuration plus ``CONFIG_PREEMPT_RT=y``
 ================  ============================================================
 
-Every configuration used x86_64, ``CONFIG_SMP=y``, ``CONFIG_NR_CPUS=4``,
-``CONFIG_KUNIT=y``, ``CONFIG_RUNTIME_TESTING_MENU=y``, and
+Every configuration used x86_64, LLVM, ``CONFIG_SMP=y``,
+``CONFIG_NR_CPUS=4``, ``CONFIG_KUNIT=y``, and
 ``CONFIG_LIST_KUNIT_TEST=y``.
 
-All ten QEMU runs passed with one and four virtual CPUs. Each run reported
-eleven of eleven KUnit cases passed. The suite covered the original eight
-klist cases plus reverse and supplied-node iteration, dead-node skipping, and
-a concurrent stress case.
+All nine QEMU runs passed all eleven klist cases. Native, fallback, and C-only
+runs used both one and four virtual CPUs. KASAN, lockdep, and RT runs used
+four virtual CPUs. The suite covered head, tail, before, and behind
+insertion, attachment state, immediate and delayed deletion, blocking
+removal, forward and reverse iteration, supplied-node iteration, dead-node
+skipping, owner callbacks, and concurrent traversal.
 
 The concurrent case used two kthreads. Each worker performed 256 unique
 insertions, traversed the complete shared list, and deleted its node. This
 produced 512 concurrent insert, iterate, and delete cycles.
 
-The KASAN run initialized generic KASAN. The KASAN and lockdep logs contained
-no KASAN report, BUG, warning, Oops, lock inversion, recursive locking report,
-or RCU stall.
+The adjacent core regression passed all 39 ``list`` cases and all 18 ``hlist``
+cases on native Rust SMP4.
 
-In the native configuration, ``lib/klist.o`` referenced all eleven
-``rust_klist_*`` entry points and defined the shared
-``klist_wake_waiters()`` boundary. ``rust/kernel.o`` defined all eleven Rust
-symbols. The Rust-fallback and pure C ``lib/klist.o`` objects referenced no
-Rust klist symbol.
+The KASAN run initialized generic KASAN. The lockdep run initialized the lock
+dependency validator. The RT kernel reported ``SMP PREEMPT_RT``. Full KASAN,
+lockdep, and RT boot logs contained no KASAN report, BUG, warning, Oops, lock
+inversion, recursive locking report, kernel panic, or RCU stall.
 
 Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
 ``git diff --check`` passed. Strict checkpatch reported no errors, warnings,
-or checks. Focused Sphinx rendered this page and the updated index.
+or checks. Focused Sphinx rendered this page. Its output contained only two
+cross-reference warnings outside this page, in ``rust/index.rst`` and
+``rust/quick-start.rst``.
+
+The final native ``rust/kernel.o`` defined all eleven public ``klist_*``
+symbols. The native ``lib/klist.o`` defined only ``klist_init()``,
+``klist_remove()``, and ``klist_wake_waiters()``. ``vmlinux`` contained no
+``rust_klist_*`` symbol. The fallback ``lib/klist.o`` defined the complete C
+implementation, and fallback ``rust/kernel.o`` contained no klist symbol.
 
 Review conditions
 -----------------
@@ -187,7 +196,8 @@ Reopen a retained boundary decision if any of these conditions changes:
 
 * Iterator reference transfer or dead-node skipping changes.
 
-* Rust stops controlling insertion, lifecycle transitions, or iteration.
+* Rust stops defining the public insertion, lifecycle transition, attachment,
+  or iteration entry points.
 
 * A fallback object starts to use a Rust klist symbol.
 

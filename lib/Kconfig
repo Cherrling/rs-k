@@ -384,10 +384,12 @@ config RUST_KLIST
 
 	  Rust owns node initialization, list placement, the deleted-node bit,
 	  delayed release, iterator reference transfer, dead-node skipping, and
-	  forward or reverse traversal. The intrusive layouts, spinlocks,
-	  list_head pointer updates, refcount primitives, blocking remove wait,
-	  and task wakeup boundary remain in C. The C fallback retains the
-	  complete klist algorithms.
+	  forward or reverse traversal. Rust directly defines the public
+	  insertion, deletion, attachment state, and iteration symbols. The
+	  intrusive layouts, spinlocks, list_head pointer updates, refcount
+	  primitives, list initialization, blocking remove wait, and task wakeup
+	  boundary remain in C. The C fallback retains the complete klist
+	  algorithms.
 
 	  The native implementation is currently validated only for x86_64.
 	  Other architectures use the C fallback.
