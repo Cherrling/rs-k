@@ -9,7 +9,7 @@
 
 use crate::{
     bindings,
-    ffi::{c_int, c_long, c_uint},
+    ffi::{c_int, c_long, c_uint, c_ulong},
 };
 use core::{mem::MaybeUninit, ptr};
 use macros::export;
@@ -18,6 +18,7 @@ type Completion = bindings::completion;
 type Wait = bindings::swait_queue;
 
 const DONE_MAX: c_uint = c_uint::MAX;
+const MAX_SCHEDULE_TIMEOUT: c_long = c_long::MAX;
 
 /// Reads the completion count with `READ_ONCE()` semantics.
 ///
@@ -251,8 +252,7 @@ unsafe fn wait_common(x: *mut Completion, timeout: c_long, state: c_uint, io_wai
 /// # Safety
 ///
 /// `x` must point to a valid completion.
-#[export]
-unsafe extern "C" fn rust_completion_complete(x: *mut Completion, current_cpu: bool) {
+unsafe fn complete_with_flags(x: *mut Completion, current_cpu: bool) {
     let wake_flags = if current_cpu {
         // SAFETY: The scheduler helper has no additional requirements.
         unsafe { bindings::rust_completion_current_cpu_wake_flags() }
@@ -273,13 +273,35 @@ unsafe extern "C" fn rust_completion_complete(x: *mut Completion, current_cpu: b
     unsafe { unlock_irqrestore(x, flags) };
 }
 
+/// Signals one waiter on the current CPU when possible.
+///
+/// # Safety
+///
+/// `x` must point to a valid completion.
+#[export]
+unsafe extern "C" fn complete_on_current_cpu(x: *mut Completion) {
+    // SAFETY: The caller guarantees that `x` is valid.
+    unsafe { complete_with_flags(x, true) };
+}
+
+/// Signals one waiter.
+///
+/// # Safety
+///
+/// `x` must point to a valid completion.
+#[export]
+unsafe extern "C" fn complete(x: *mut Completion) {
+    // SAFETY: The caller guarantees that `x` is valid.
+    unsafe { complete_with_flags(x, false) };
+}
+
 /// Permanently completes all current and future waiters.
 ///
 /// # Safety
 ///
 /// `x` must point to a valid completion.
 #[export]
-unsafe extern "C" fn rust_completion_complete_all(x: *mut Completion) {
+unsafe extern "C" fn complete_all(x: *mut Completion) {
     // SAFETY: This helper checks the current locking context.
     unsafe { bindings::rust_completion_assert_rt_threaded_ctx() };
     // SAFETY: The caller guarantees that `x` is valid.
@@ -292,41 +314,156 @@ unsafe extern "C" fn rust_completion_complete_all(x: *mut Completion) {
     unsafe { unlock_irqrestore(x, flags) };
 }
 
-/// Waits for a completion and returns the common wait result.
+/// Waits without interruption.
 ///
 /// # Safety
 ///
 /// `x` must point to a valid completion. The caller must permit sleeping.
 #[export]
-unsafe extern "C" fn rust_completion_wait(
-    x: *mut Completion,
-    timeout: c_long,
-    state: c_uint,
-    io_wait: bool,
-) -> c_long {
+#[link_section = ".sched.text"]
+unsafe extern "C" fn wait_for_completion(x: *mut Completion) {
     // SAFETY: The caller guarantees that `x` is valid and sleeping is permitted.
-    unsafe { wait_common(x, timeout, state, io_wait) }
+    unsafe {
+        wait_common(
+            x,
+            MAX_SCHEDULE_TIMEOUT,
+            bindings::TASK_UNINTERRUPTIBLE,
+            false,
+        )
+    };
 }
 
-/// Waits for a completion and converts interruption to an integer result.
+/// Waits without interruption or beyond the specified timeout.
 ///
 /// # Safety
 ///
 /// `x` must point to a valid completion. The caller must permit sleeping.
 #[export]
-unsafe extern "C" fn rust_completion_wait_interruptible(
+#[link_section = ".sched.text"]
+unsafe extern "C" fn wait_for_completion_timeout(x: *mut Completion, timeout: c_ulong) -> c_ulong {
+    // SAFETY: The caller guarantees that `x` is valid and sleeping is permitted.
+    unsafe { wait_common(x, timeout as c_long, bindings::TASK_UNINTERRUPTIBLE, false) as c_ulong }
+}
+
+/// Waits for I/O-accounted completion without interruption.
+///
+/// # Safety
+///
+/// `x` must point to a valid completion. The caller must permit sleeping.
+#[export]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn wait_for_completion_io(x: *mut Completion) {
+    // SAFETY: The caller guarantees that `x` is valid and sleeping is permitted.
+    unsafe {
+        wait_common(
+            x,
+            MAX_SCHEDULE_TIMEOUT,
+            bindings::TASK_UNINTERRUPTIBLE,
+            true,
+        )
+    };
+}
+
+/// Waits for I/O-accounted completion without interruption or beyond the
+/// specified timeout.
+///
+/// # Safety
+///
+/// `x` must point to a valid completion. The caller must permit sleeping.
+#[export]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn wait_for_completion_io_timeout(
+    x: *mut Completion,
+    timeout: c_ulong,
+) -> c_ulong {
+    // SAFETY: The caller guarantees that `x` is valid and sleeping is permitted.
+    unsafe { wait_common(x, timeout as c_long, bindings::TASK_UNINTERRUPTIBLE, true) as c_ulong }
+}
+
+/// Converts a common wait result to the non-timeout wait API contract.
+///
+/// # Safety
+///
+/// `x` must point to a valid completion. The caller must permit sleeping.
+unsafe fn wait_interruptible(
     x: *mut Completion,
     timeout: c_long,
     state: c_uint,
     io_wait: bool,
-) -> c_long {
+) -> c_int {
     // SAFETY: The caller guarantees that `x` is valid and sleeping is permitted.
     let ret = unsafe { wait_common(x, timeout, state, io_wait) };
     if ret == -(bindings::ERESTARTSYS as c_long) {
-        ret
+        ret as c_int
     } else {
         0
     }
+}
+
+/// Waits interruptibly.
+///
+/// # Safety
+///
+/// `x` must point to a valid completion. The caller must permit sleeping.
+#[export]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn wait_for_completion_interruptible(x: *mut Completion) -> c_int {
+    // SAFETY: The caller guarantees that `x` is valid and sleeping is permitted.
+    unsafe { wait_interruptible(x, MAX_SCHEDULE_TIMEOUT, bindings::TASK_INTERRUPTIBLE, false) }
+}
+
+/// Waits interruptibly or until the specified timeout.
+///
+/// # Safety
+///
+/// `x` must point to a valid completion. The caller must permit sleeping.
+#[export]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn wait_for_completion_interruptible_timeout(
+    x: *mut Completion,
+    timeout: c_ulong,
+) -> c_long {
+    // SAFETY: The caller guarantees that `x` is valid and sleeping is permitted.
+    unsafe { wait_common(x, timeout as c_long, bindings::TASK_INTERRUPTIBLE, false) }
+}
+
+/// Waits killably.
+///
+/// # Safety
+///
+/// `x` must point to a valid completion. The caller must permit sleeping.
+#[export]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn wait_for_completion_killable(x: *mut Completion) -> c_int {
+    // SAFETY: The caller guarantees that `x` is valid and sleeping is permitted.
+    unsafe { wait_interruptible(x, MAX_SCHEDULE_TIMEOUT, bindings::TASK_KILLABLE, false) }
+}
+
+/// Waits with an explicit task state.
+///
+/// # Safety
+///
+/// `x` must point to a valid completion. The caller must permit sleeping.
+#[export]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn wait_for_completion_state(x: *mut Completion, state: c_uint) -> c_int {
+    // SAFETY: The caller guarantees that `x` is valid and sleeping is permitted.
+    unsafe { wait_interruptible(x, MAX_SCHEDULE_TIMEOUT, state, false) }
+}
+
+/// Waits killably or until the specified timeout.
+///
+/// # Safety
+///
+/// `x` must point to a valid completion. The caller must permit sleeping.
+#[export]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn wait_for_completion_killable_timeout(
+    x: *mut Completion,
+    timeout: c_ulong,
+) -> c_long {
+    // SAFETY: The caller guarantees that `x` is valid and sleeping is permitted.
+    unsafe { wait_common(x, timeout as c_long, bindings::TASK_KILLABLE, false) }
 }
 
 /// Attempts to consume one completion without blocking.
@@ -335,7 +472,7 @@ unsafe extern "C" fn rust_completion_wait_interruptible(
 ///
 /// `x` must point to a valid completion.
 #[export]
-unsafe extern "C" fn rust_completion_try_wait(x: *mut Completion) -> bool {
+unsafe extern "C" fn try_wait_for_completion(x: *mut Completion) -> bool {
     // SAFETY: The caller guarantees that `x` is valid.
     if unsafe { read_done(x) } == 0 {
         return false;
@@ -362,7 +499,7 @@ unsafe extern "C" fn rust_completion_try_wait(x: *mut Completion) -> bool {
 ///
 /// `x` must point to a valid completion.
 #[export]
-unsafe extern "C" fn rust_completion_done(x: *mut Completion) -> bool {
+unsafe extern "C" fn completion_done(x: *mut Completion) -> bool {
     // SAFETY: The caller guarantees that `x` is valid.
     if unsafe { read_done(x) } == 0 {
         return false;

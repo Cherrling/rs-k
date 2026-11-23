@@ -444,98 +444,22 @@ void rust_completion_assert_rt_threaded_ctx(void)
 	lockdep_assert_RT_in_threaded_ctx();
 }
 
-void complete(struct completion *x)
-{
-	rust_completion_complete(x, false);
-}
+/*
+ * Rust defines the public completion entry points. Keep the historical
+ * non-GPL export records in this object.
+ */
 EXPORT_SYMBOL(complete);
-
-void complete_on_current_cpu(struct completion *x)
-{
-	rust_completion_complete(x, true);
-}
-
-void complete_all(struct completion *x)
-{
-	rust_completion_complete_all(x);
-}
 EXPORT_SYMBOL(complete_all);
-
-void __sched wait_for_completion(struct completion *x)
-{
-	rust_completion_wait(x, MAX_SCHEDULE_TIMEOUT, TASK_UNINTERRUPTIBLE,
-			     false);
-}
 EXPORT_SYMBOL(wait_for_completion);
-
-unsigned long __sched
-wait_for_completion_timeout(struct completion *x, unsigned long timeout)
-{
-	return rust_completion_wait(x, timeout, TASK_UNINTERRUPTIBLE, false);
-}
 EXPORT_SYMBOL(wait_for_completion_timeout);
-
-void __sched wait_for_completion_io(struct completion *x)
-{
-	rust_completion_wait(x, MAX_SCHEDULE_TIMEOUT, TASK_UNINTERRUPTIBLE,
-			     true);
-}
 EXPORT_SYMBOL(wait_for_completion_io);
-
-unsigned long __sched
-wait_for_completion_io_timeout(struct completion *x, unsigned long timeout)
-{
-	return rust_completion_wait(x, timeout, TASK_UNINTERRUPTIBLE, true);
-}
 EXPORT_SYMBOL(wait_for_completion_io_timeout);
-
-int __sched wait_for_completion_interruptible(struct completion *x)
-{
-	return rust_completion_wait_interruptible(x, MAX_SCHEDULE_TIMEOUT,
-						  TASK_INTERRUPTIBLE, false);
-}
 EXPORT_SYMBOL(wait_for_completion_interruptible);
-
-long __sched
-wait_for_completion_interruptible_timeout(struct completion *x,
-					  unsigned long timeout)
-{
-	return rust_completion_wait(x, timeout, TASK_INTERRUPTIBLE, false);
-}
 EXPORT_SYMBOL(wait_for_completion_interruptible_timeout);
-
-int __sched wait_for_completion_killable(struct completion *x)
-{
-	return rust_completion_wait_interruptible(x, MAX_SCHEDULE_TIMEOUT,
-						  TASK_KILLABLE, false);
-}
 EXPORT_SYMBOL(wait_for_completion_killable);
-
-int __sched wait_for_completion_state(struct completion *x, unsigned int state)
-{
-	return rust_completion_wait_interruptible(x, MAX_SCHEDULE_TIMEOUT,
-						  state, false);
-}
 EXPORT_SYMBOL(wait_for_completion_state);
-
-long __sched
-wait_for_completion_killable_timeout(struct completion *x,
-				     unsigned long timeout)
-{
-	return rust_completion_wait(x, timeout, TASK_KILLABLE, false);
-}
 EXPORT_SYMBOL(wait_for_completion_killable_timeout);
-
-bool try_wait_for_completion(struct completion *x)
-{
-	return rust_completion_try_wait(x);
-}
 EXPORT_SYMBOL(try_wait_for_completion);
-
-bool completion_done(struct completion *x)
-{
-	return rust_completion_done(x);
-}
 EXPORT_SYMBOL(completion_done);
 
 #endif /* CONFIG_RUST_COMPLETION */

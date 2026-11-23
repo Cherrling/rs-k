@@ -8,19 +8,10 @@
 
 #include <linux/types.h>
 
-struct completion;
-struct swait_queue;
-
 #ifdef CONFIG_RUST_COMPLETION
 
-void rust_completion_complete(struct completion *x, bool current_cpu);
-void rust_completion_complete_all(struct completion *x);
-long rust_completion_wait(struct completion *x, long timeout,
-			  unsigned int state, bool io_wait);
-long rust_completion_wait_interruptible(struct completion *x, long timeout,
-					unsigned int state, bool io_wait);
-bool rust_completion_try_wait(struct completion *x);
-bool rust_completion_done(struct completion *x);
+struct completion;
+struct swait_queue;
 
 void rust_completion_lock_irqsave(struct completion *x, unsigned long *flags);
 void rust_completion_unlock_irqrestore(struct completion *x,

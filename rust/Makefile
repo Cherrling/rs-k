@@ -596,6 +596,19 @@ rust_non_gpl_exports := \
 	atomic_dec_and_raw_lock \
 	_atomic_dec_and_raw_lock_irqsave \
 	atomic_dec_and_mutex_lock \
+	complete \
+	complete_all \
+	wait_for_completion \
+	wait_for_completion_timeout \
+	wait_for_completion_io \
+	wait_for_completion_io_timeout \
+	wait_for_completion_interruptible \
+	wait_for_completion_interruptible_timeout \
+	wait_for_completion_killable \
+	wait_for_completion_state \
+	wait_for_completion_killable_timeout \
+	try_wait_for_completion \
+	completion_done \
 	__kfifo_in \
 	__kfifo_out_peek \
 	__kfifo_out_linear \
@@ -674,7 +687,8 @@ rust_unexported_symbols := \
 	plist_del \
 	plist_requeue \
 	bitmap_onto \
-	bitmap_fold
+	bitmap_fold \
+	complete_on_current_cpu
 
 rust_exports = $(NM) -p --defined-only $(1) | awk '$$2~/(T|R|D|B)/ && $$3!~/__(pfx|cfi|odr_asan)/ { printf $(2),$$3 }'
 rust_auto_export_skip := $(rust_non_gpl_exports) $(rust_unexported_symbols)

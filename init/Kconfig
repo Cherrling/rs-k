@@ -917,7 +917,8 @@ config RUST_COMPLETION
 
 	  Raw locking, task state changes, scheduler timeouts, signal queries,
 	  and simple wait queue primitives remain in C because they depend on
-	  scheduler and architecture internals.
+	  scheduler and architecture internals. Rust directly defines the public
+	  entry points. C retains the helper bodies and ordinary export records.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

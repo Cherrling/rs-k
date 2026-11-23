@@ -71,6 +71,18 @@ Decrement-and-lock protocols
   retain the complete implementations. All 16 direct-entry KUnit runs and the
   adjacent mutex, rwlock, and lockref regressions passed.
 
+Completion state machine
+  Status: ``migrated``.
+
+  Evidence: :doc:`completion`.
+
+  Rust directly defines the fourteen public completion, timeout,
+  signal-aware, and non-blocking entry points. Rust owns count transitions,
+  waiter loops, timeout and signal results, broadcast saturation, and
+  non-blocking consumption. C retains task, scheduler, signal, raw-lock,
+  simple-wait, and ordinary export boundaries. C fallback configurations
+  retain the complete implementations.
+
 Kobject lifecycle
   Status: ``migrated``.
 
@@ -254,8 +266,8 @@ Public ABI
   ``include/linux/plist.h``, ``include/linux/list_sort.h``,
   ``include/linux/list_lru.h``, ``include/linux/generic-radix-tree.h``,
   ``include/linux/btree.h``, ``include/linux/find.h``,
-  ``include/linux/bitmap.h``, ``include/linux/maple_tree.h``, and
-  ``include/linux/kfifo.h``.
+  ``include/linux/bitmap.h``, ``include/linux/maple_tree.h``,
+  ``include/linux/kfifo.h``, and ``include/linux/completion.h``.
 
   Reason: Existing callers and loadable modules use the stable C ABI.
 
@@ -589,6 +601,62 @@ Decrement-and-lock export metadata
 
   Exit condition: Rust export metadata supports the original non-GPL class
   without C export entries.
+
+Completion layout and initialization
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/completion.h``, ``include/linux/swait.h``, and
+  ``rust/kernel/completion_core.rs``.
+
+  Reason: C and Rust access the same completion count, embedded simple wait
+  queue, wait entry, and inline construction interface.
+
+  Test: Native, fallback, and C-only KUnit runs exercise initialization,
+  reinitialization, stack wait entries, and queued waiter membership.
+
+  Risk: A layout or initialization mismatch can corrupt the count, wait list,
+  or lock state shared by both languages.
+
+  Exit condition: Rust-owned completion and simple wait types replace the
+  shared C layouts and inline construction interface.
+
+Completion primitive helpers
+  Status: ``boundary-retained``.
+
+  Owner: ``kernel/sched/completion.c`` and the Rust bindings.
+
+  Reason: Raw spinlock operations, task state, signal queries, scheduler
+  timeout calls, completion memory-order hooks, simple-wait queue operations,
+  and the PREEMPT_RT lock assertion retain scheduler and architecture
+  contracts.
+
+  Test: Native SMP1/SMP4, KASAN, lockdep, and PREEMPT_RT runs exercise every
+  wait result, FIFO wake, broadcast wake, and concurrent producer path.
+
+  Risk: A primitive mismatch can lose a wakeup, select the wrong timeout or
+  signal result, or leave task state or locks inconsistent.
+
+  Exit condition: Approved Rust task, signal, scheduler, lock, and simple-wait
+  abstractions preserve the complete helper contracts.
+
+Completion export metadata
+  Status: ``boundary-retained``.
+
+  Owner: ``kernel/sched/completion.c`` and ``rust/Makefile``.
+
+  Reason: Thirteen public symbols retain ordinary non-GPL exports, while
+  ``complete_on_current_cpu()`` remains unexported and generated Rust exports
+  use the GPL class.
+
+  Test: ``Module.symvers`` records thirteen ``EXPORT_SYMBOL`` entries, no
+  entry for ``complete_on_current_cpu``, and the generated Rust GPL export
+  header excludes all fourteen names.
+
+  Risk: A duplicate export or class change can expose an internal interface
+  or break module compatibility.
+
+  Exit condition: Rust export metadata supports the original non-GPL and
+  unexported classes without C export records.
 
 Kobject layout and state
   Status: ``boundary-retained``.
@@ -1109,6 +1177,12 @@ The decrement-and-lock boundary is valid only while architecture atomics,
 lock and IRQ primitives, and ordinary export metadata remain named C
 boundaries. Rust defines every public protocol entry and owns every decrement,
 slow-path, and held-lock decision.
+
+The completion boundary is valid only while the shared completion layout,
+inline initialization, task and signal primitives, scheduler timeout calls,
+simple-wait operations, PREEMPT_RT assertion, and export metadata remain named
+C boundaries. Rust defines every public entry and owns every count, wait,
+timeout, signal, wake, and consumption decision.
 
 The kobject boundary is valid only while the shared layout, bitfields,
 diagnostics, final cleanup callback, and non-GPL export metadata remain named
