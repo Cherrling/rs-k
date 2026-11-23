@@ -741,205 +741,41 @@ void bitmap_fold(unsigned long *dst, const unsigned long *orig,
 #error "RUST_BITMAP_OPS currently supports the x86_64 little-endian layout"
 #endif
 
-bool __bitmap_equal(const unsigned long *bitmap1,
-		    const unsigned long *bitmap2, unsigned int bits)
-{
-	return rust_bitmap_equal(bitmap1, bitmap2, bits);
-}
+/*
+ * Rust directly defines the public out-of-line bitmap operations. C retains
+ * ordinary export metadata for the historical public ABI. The Rust exporter
+ * skips these names to avoid duplicate GPL exports.
+ */
 EXPORT_SYMBOL(__bitmap_equal);
-
-bool __bitmap_or_equal(const unsigned long *bitmap1,
-		       const unsigned long *bitmap2,
-		       const unsigned long *bitmap3,
-		       unsigned int bits)
-{
-	return rust_bitmap_or_equal(bitmap1, bitmap2, bitmap3, bits);
-}
 EXPORT_SYMBOL(__bitmap_or_equal);
-
-void __bitmap_complement(unsigned long *dst, const unsigned long *src,
-			 unsigned int bits)
-{
-	rust_bitmap_complement(dst, src, bits);
-}
 EXPORT_SYMBOL(__bitmap_complement);
-
-void __bitmap_shift_right(unsigned long *dst, const unsigned long *src,
-			  unsigned int shift, unsigned int nbits)
-{
-	rust_bitmap_shift_right(dst, src, shift, nbits);
-}
 EXPORT_SYMBOL(__bitmap_shift_right);
-
-void __bitmap_shift_left(unsigned long *dst, const unsigned long *src,
-			 unsigned int shift, unsigned int nbits)
-{
-	rust_bitmap_shift_left(dst, src, shift, nbits);
-}
 EXPORT_SYMBOL(__bitmap_shift_left);
-
-void bitmap_cut(unsigned long *dst, const unsigned long *src,
-		unsigned int first, unsigned int cut, unsigned int nbits)
-{
-	rust_bitmap_cut(dst, src, first, cut, nbits);
-}
 EXPORT_SYMBOL(bitmap_cut);
-
-bool __bitmap_and(unsigned long *dst, const unsigned long *bitmap1,
-		  const unsigned long *bitmap2, unsigned int bits)
-{
-	return rust_bitmap_and(dst, bitmap1, bitmap2, bits);
-}
 EXPORT_SYMBOL(__bitmap_and);
-
-void __bitmap_or(unsigned long *dst, const unsigned long *bitmap1,
-		 const unsigned long *bitmap2, unsigned int bits)
-{
-	rust_bitmap_or(dst, bitmap1, bitmap2, bits);
-}
 EXPORT_SYMBOL(__bitmap_or);
-
-unsigned int __bitmap_weighted_or(unsigned long *dst,
-				  const unsigned long *bitmap1,
-				  const unsigned long *bitmap2,
-				  unsigned int bits)
-{
-	return rust_bitmap_weighted_or(dst, bitmap1, bitmap2, bits);
-}
 EXPORT_SYMBOL(__bitmap_weighted_or);
-
-unsigned int __bitmap_weighted_xor(unsigned long *dst,
-				   const unsigned long *bitmap1,
-				   const unsigned long *bitmap2,
-				   unsigned int bits)
-{
-	return rust_bitmap_weighted_xor(dst, bitmap1, bitmap2, bits);
-}
 EXPORT_SYMBOL(__bitmap_weighted_xor);
-
-void __bitmap_xor(unsigned long *dst, const unsigned long *bitmap1,
-		  const unsigned long *bitmap2, unsigned int bits)
-{
-	rust_bitmap_xor(dst, bitmap1, bitmap2, bits);
-}
 EXPORT_SYMBOL(__bitmap_xor);
-
-bool __bitmap_andnot(unsigned long *dst, const unsigned long *bitmap1,
-		     const unsigned long *bitmap2, unsigned int bits)
-{
-	return rust_bitmap_andnot(dst, bitmap1, bitmap2, bits);
-}
 EXPORT_SYMBOL(__bitmap_andnot);
-
-void __bitmap_replace(unsigned long *dst, const unsigned long *old,
-		      const unsigned long *new, const unsigned long *mask,
-		      unsigned int nbits)
-{
-	rust_bitmap_replace(dst, old, new, mask, nbits);
-}
 EXPORT_SYMBOL(__bitmap_replace);
-
-bool __bitmap_intersects(const unsigned long *bitmap1,
-			 const unsigned long *bitmap2, unsigned int bits)
-{
-	return rust_bitmap_intersects(bitmap1, bitmap2, bits);
-}
 EXPORT_SYMBOL(__bitmap_intersects);
-
-bool __bitmap_subset(const unsigned long *bitmap1,
-		     const unsigned long *bitmap2, unsigned int bits)
-{
-	return rust_bitmap_subset(bitmap1, bitmap2, bits);
-}
 EXPORT_SYMBOL(__bitmap_subset);
-
-unsigned int __bitmap_weight(const unsigned long *bitmap, unsigned int bits)
-{
-	return rust_bitmap_weight(bitmap, bits);
-}
 EXPORT_SYMBOL(__bitmap_weight);
-
-unsigned int __bitmap_weight_and(const unsigned long *bitmap1,
-				 const unsigned long *bitmap2, unsigned int bits)
-{
-	return rust_bitmap_weight_and(bitmap1, bitmap2, bits);
-}
 EXPORT_SYMBOL(__bitmap_weight_and);
-
-unsigned int __bitmap_weight_andnot(const unsigned long *bitmap1,
-				    const unsigned long *bitmap2,
-				    unsigned int bits)
-{
-	return rust_bitmap_weight_andnot(bitmap1, bitmap2, bits);
-}
 EXPORT_SYMBOL(__bitmap_weight_andnot);
-
-void __bitmap_set(unsigned long *map, unsigned int start, int len)
-{
-	rust_bitmap_set(map, start, len);
-}
 EXPORT_SYMBOL(__bitmap_set);
-
-void __bitmap_clear(unsigned long *map, unsigned int start, int len)
-{
-	rust_bitmap_clear(map, start, len);
-}
 EXPORT_SYMBOL(__bitmap_clear);
-
-unsigned long bitmap_find_next_zero_area_off(unsigned long *map,
-					     unsigned long size,
-					     unsigned long start,
-					     unsigned int nr,
-					     unsigned long align_mask,
-					     unsigned long align_offset)
-{
-	return rust_bitmap_find_next_zero_area_off(map, size, start, nr,
-						   align_mask, align_offset);
-}
 EXPORT_SYMBOL(bitmap_find_next_zero_area_off);
-
-void bitmap_remap(unsigned long *dst, const unsigned long *src,
-		  const unsigned long *old, const unsigned long *new,
-		  unsigned int nbits)
-{
-	rust_bitmap_remap(dst, src, old, new, nbits);
-}
 EXPORT_SYMBOL(bitmap_remap);
-
-int bitmap_bitremap(int oldbit, const unsigned long *old,
-		    const unsigned long *new, int bits)
-{
-	return rust_bitmap_bitremap(oldbit, old, new, bits);
-}
 EXPORT_SYMBOL(bitmap_bitremap);
-
-#ifdef CONFIG_NUMA
-void bitmap_onto(unsigned long *dst, const unsigned long *orig,
-		 const unsigned long *relmap, unsigned int bits)
-{
-	rust_bitmap_onto(dst, orig, relmap, bits);
-}
-
-void bitmap_fold(unsigned long *dst, const unsigned long *orig,
-		 unsigned int sz, unsigned int nbits)
-{
-	rust_bitmap_fold(dst, orig, sz, nbits);
-}
-#endif /* CONFIG_NUMA */
-
-void __bitmap_scatter(unsigned long *dst, const unsigned long *src,
-		      const unsigned long *mask, unsigned int nbits)
-{
-	rust_bitmap_scatter(dst, src, mask, nbits);
-}
 EXPORT_SYMBOL(__bitmap_scatter);
-
-void __bitmap_gather(unsigned long *dst, const unsigned long *src,
-		     const unsigned long *mask, unsigned int nbits)
-{
-	rust_bitmap_gather(dst, src, mask, nbits);
-}
 EXPORT_SYMBOL(__bitmap_gather);
+/* Keep the adjacent ABI metadata together because Rust owns both bodies. */
+#define EXPORT_BITMAP_ABI(sym) EXPORT_SYMBOL(sym)
+EXPORT_BITMAP_ABI(bitmap_from_arr32);
+EXPORT_BITMAP_ABI(bitmap_to_arr32);
+#undef EXPORT_BITMAP_ABI
 
 #endif /* CONFIG_RUST_BITMAP_OPS */
 
@@ -1014,11 +850,9 @@ EXPORT_SYMBOL_GPL(devm_bitmap_zalloc);
  *	@buf: array of u32 (in host byte order), the source bitmap
  *	@nbits: number of bits in @bitmap
  */
+#ifndef CONFIG_RUST_BITMAP_OPS
 void bitmap_from_arr32(unsigned long *bitmap, const u32 *buf, unsigned int nbits)
 {
-#ifdef CONFIG_RUST_BITMAP_OPS
-	rust_bitmap_from_arr32(bitmap, buf, nbits);
-#else
 	unsigned int i, halfwords;
 
 	halfwords = DIV_ROUND_UP(nbits, 32);
@@ -1031,7 +865,6 @@ void bitmap_from_arr32(unsigned long *bitmap, const u32 *buf, unsigned int nbits
 	/* Clear tail bits in last word beyond nbits. */
 	if (nbits % BITS_PER_LONG)
 		bitmap[(halfwords - 1) / 2] &= BITMAP_LAST_WORD_MASK(nbits);
-#endif
 }
 EXPORT_SYMBOL(bitmap_from_arr32);
 
@@ -1043,9 +876,6 @@ EXPORT_SYMBOL(bitmap_from_arr32);
  */
 void bitmap_to_arr32(u32 *buf, const unsigned long *bitmap, unsigned int nbits)
 {
-#ifdef CONFIG_RUST_BITMAP_OPS
-	rust_bitmap_to_arr32(buf, bitmap, nbits);
-#else
 	unsigned int i, halfwords;
 
 	halfwords = DIV_ROUND_UP(nbits, 32);
@@ -1058,10 +888,10 @@ void bitmap_to_arr32(u32 *buf, const unsigned long *bitmap, unsigned int nbits)
 	/* Clear tail bits in last element of array beyond nbits. */
 	if (nbits % BITS_PER_LONG)
 		buf[halfwords - 1] &= (u32) (UINT_MAX >> ((-nbits) & 31));
-#endif
 }
 EXPORT_SYMBOL(bitmap_to_arr32);
 #endif
+#endif /* BITS_PER_LONG == 64 */
 
 #if BITS_PER_LONG == 32
 /**
@@ -1117,15 +947,6 @@ void bitmap_to_arr64(u64 *buf, const unsigned long *bitmap, unsigned int nbits)
 }
 EXPORT_SYMBOL(bitmap_to_arr64);
 #elif defined(CONFIG_RUST_BITMAP_OPS)
-void bitmap_from_arr64(unsigned long *bitmap, const u64 *buf, unsigned int nbits)
-{
-	rust_bitmap_from_arr64(bitmap, buf, nbits);
-}
 EXPORT_SYMBOL(bitmap_from_arr64);
-
-void bitmap_to_arr64(u64 *buf, const unsigned long *bitmap, unsigned int nbits)
-{
-	rust_bitmap_to_arr64(buf, bitmap, nbits);
-}
 EXPORT_SYMBOL(bitmap_to_arr64);
 #endif

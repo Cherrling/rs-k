@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
-//! Native implementation of the generic bitmap algorithms.
+//! Native generic bitmap implementation.
 //!
 //! Rust owns word traversal, masks, logical bitmap operations, population
-//! counts, range manipulation, mapping, and array conversion. The C entry
-//! points retain the existing ABI and only forward to these functions.
+//! counts, range manipulation, mapping, and array conversion. Rust directly
+//! defines the public out-of-line bitmap entry points.
 
 use crate::bindings;
 use crate::find_bit;
@@ -137,11 +137,7 @@ unsafe fn position_to_ordinal(addr: *const Word, position: usize, bits: usize) -
 ///
 /// Both inputs must be valid for `bits` bits.
 #[export]
-unsafe extern "C" fn rust_bitmap_equal(
-    bitmap1: *const Word,
-    bitmap2: *const Word,
-    bits: u32,
-) -> bool {
+unsafe extern "C" fn __bitmap_equal(bitmap1: *const Word, bitmap2: *const Word, bits: u32) -> bool {
     let bits = bits as usize;
     let full = bits / BITS;
 
@@ -167,7 +163,7 @@ unsafe extern "C" fn rust_bitmap_equal(
 ///
 /// All inputs must be valid for `bits` bits.
 #[export]
-unsafe extern "C" fn rust_bitmap_or_equal(
+unsafe extern "C" fn __bitmap_or_equal(
     bitmap1: *const Word,
     bitmap2: *const Word,
     bitmap3: *const Word,
@@ -202,7 +198,7 @@ unsafe extern "C" fn rust_bitmap_or_equal(
 ///
 /// Both bitmaps must be valid for `bits` bits.
 #[export]
-unsafe extern "C" fn rust_bitmap_complement(dst: *mut Word, src: *const Word, bits: u32) {
+unsafe extern "C" fn __bitmap_complement(dst: *mut Word, src: *const Word, bits: u32) {
     for index in 0..words(bits as usize) {
         // SAFETY: The loop bound keeps both accesses inside the bitmaps.
         let value = !unsafe { read_word(src, index) };
@@ -217,12 +213,7 @@ unsafe extern "C" fn rust_bitmap_complement(dst: *mut Word, src: *const Word, bi
 ///
 /// Both bitmaps must be valid for `bits` bits.
 #[export]
-unsafe extern "C" fn rust_bitmap_shift_right(
-    dst: *mut Word,
-    src: *const Word,
-    shift: u32,
-    bits: u32,
-) {
+unsafe extern "C" fn __bitmap_shift_right(dst: *mut Word, src: *const Word, shift: u32, bits: u32) {
     let bits = bits as usize;
     let shift = shift as usize;
     let limit = words(bits);
@@ -275,12 +266,7 @@ unsafe extern "C" fn rust_bitmap_shift_right(
 ///
 /// Both bitmaps must be valid for `bits` bits.
 #[export]
-unsafe extern "C" fn rust_bitmap_shift_left(
-    dst: *mut Word,
-    src: *const Word,
-    shift: u32,
-    bits: u32,
-) {
+unsafe extern "C" fn __bitmap_shift_left(dst: *mut Word, src: *const Word, shift: u32, bits: u32) {
     let bits = bits as usize;
     let shift = shift as usize;
     let limit = words(bits);
@@ -321,13 +307,7 @@ unsafe extern "C" fn rust_bitmap_shift_left(
 ///
 /// `dst` and `src` must be valid for `bits` bits. They may overlap.
 #[export]
-unsafe extern "C" fn rust_bitmap_cut(
-    dst: *mut Word,
-    src: *const Word,
-    first: u32,
-    cut: u32,
-    bits: u32,
-) {
+unsafe extern "C" fn bitmap_cut(dst: *mut Word, src: *const Word, first: u32, cut: u32, bits: u32) {
     let bits = bits as usize;
     if bits == 0 {
         return;
@@ -382,7 +362,7 @@ unsafe extern "C" fn rust_bitmap_cut(
 ///
 /// All bitmaps must be valid for `bits` bits.
 #[export]
-unsafe extern "C" fn rust_bitmap_and(
+unsafe extern "C" fn __bitmap_and(
     dst: *mut Word,
     bitmap1: *const Word,
     bitmap2: *const Word,
@@ -411,7 +391,7 @@ unsafe extern "C" fn rust_bitmap_and(
 ///
 /// All bitmaps must be valid for `bits` bits.
 #[export]
-unsafe extern "C" fn rust_bitmap_or(
+unsafe extern "C" fn __bitmap_or(
     dst: *mut Word,
     bitmap1: *const Word,
     bitmap2: *const Word,
@@ -431,7 +411,7 @@ unsafe extern "C" fn rust_bitmap_or(
 ///
 /// All bitmaps must be valid for `bits` bits.
 #[export]
-unsafe extern "C" fn rust_bitmap_xor(
+unsafe extern "C" fn __bitmap_xor(
     dst: *mut Word,
     bitmap1: *const Word,
     bitmap2: *const Word,
@@ -451,7 +431,7 @@ unsafe extern "C" fn rust_bitmap_xor(
 ///
 /// All bitmaps must be valid for `bits` bits.
 #[export]
-unsafe extern "C" fn rust_bitmap_andnot(
+unsafe extern "C" fn __bitmap_andnot(
     dst: *mut Word,
     bitmap1: *const Word,
     bitmap2: *const Word,
@@ -480,7 +460,7 @@ unsafe extern "C" fn rust_bitmap_andnot(
 ///
 /// All bitmaps must be valid for `bits` bits.
 #[export]
-unsafe extern "C" fn rust_bitmap_replace(
+unsafe extern "C" fn __bitmap_replace(
     dst: *mut Word,
     old: *const Word,
     new: *const Word,
@@ -504,7 +484,7 @@ unsafe extern "C" fn rust_bitmap_replace(
 ///
 /// Both inputs must be valid for `bits` bits.
 #[export]
-unsafe extern "C" fn rust_bitmap_intersects(
+unsafe extern "C" fn __bitmap_intersects(
     bitmap1: *const Word,
     bitmap2: *const Word,
     bits: u32,
@@ -531,7 +511,7 @@ unsafe extern "C" fn rust_bitmap_intersects(
 ///
 /// Both inputs must be valid for `bits` bits.
 #[export]
-unsafe extern "C" fn rust_bitmap_subset(
+unsafe extern "C" fn __bitmap_subset(
     bitmap1: *const Word,
     bitmap2: *const Word,
     bits: u32,
@@ -558,7 +538,7 @@ unsafe extern "C" fn rust_bitmap_subset(
 ///
 /// `bitmap` must be valid for `bits` bits.
 #[export]
-unsafe extern "C" fn rust_bitmap_weight(bitmap: *const Word, bits: u32) -> u32 {
+unsafe extern "C" fn __bitmap_weight(bitmap: *const Word, bits: u32) -> u32 {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { weight(bitmap, bits as usize) }
 }
@@ -569,7 +549,7 @@ unsafe extern "C" fn rust_bitmap_weight(bitmap: *const Word, bits: u32) -> u32 {
 ///
 /// Both inputs must be valid for `bits` bits.
 #[export]
-unsafe extern "C" fn rust_bitmap_weight_and(
+unsafe extern "C" fn __bitmap_weight_and(
     bitmap1: *const Word,
     bitmap2: *const Word,
     bits: u32,
@@ -595,7 +575,7 @@ unsafe extern "C" fn rust_bitmap_weight_and(
 ///
 /// Both inputs must be valid for `bits` bits.
 #[export]
-unsafe extern "C" fn rust_bitmap_weight_andnot(
+unsafe extern "C" fn __bitmap_weight_andnot(
     bitmap1: *const Word,
     bitmap2: *const Word,
     bits: u32,
@@ -621,7 +601,7 @@ unsafe extern "C" fn rust_bitmap_weight_andnot(
 ///
 /// All bitmaps must be valid for `bits` bits.
 #[export]
-unsafe extern "C" fn rust_bitmap_weighted_or(
+unsafe extern "C" fn __bitmap_weighted_or(
     dst: *mut Word,
     bitmap1: *const Word,
     bitmap2: *const Word,
@@ -652,7 +632,7 @@ unsafe extern "C" fn rust_bitmap_weighted_or(
 ///
 /// All bitmaps must be valid for `bits` bits.
 #[export]
-unsafe extern "C" fn rust_bitmap_weighted_xor(
+unsafe extern "C" fn __bitmap_weighted_xor(
     dst: *mut Word,
     bitmap1: *const Word,
     bitmap2: *const Word,
@@ -683,7 +663,7 @@ unsafe extern "C" fn rust_bitmap_weighted_xor(
 ///
 /// `map` must be writable for the complete range.
 #[export]
-unsafe extern "C" fn rust_bitmap_set(map: *mut Word, start: u32, len: c_int) {
+unsafe extern "C" fn __bitmap_set(map: *mut Word, start: u32, len: c_int) {
     if len <= 0 {
         return;
     }
@@ -721,7 +701,7 @@ unsafe extern "C" fn rust_bitmap_set(map: *mut Word, start: u32, len: c_int) {
 ///
 /// `map` must be writable for the complete range.
 #[export]
-unsafe extern "C" fn rust_bitmap_clear(map: *mut Word, start: u32, len: c_int) {
+unsafe extern "C" fn __bitmap_clear(map: *mut Word, start: u32, len: c_int) {
     if len <= 0 {
         return;
     }
@@ -757,10 +737,10 @@ unsafe extern "C" fn rust_bitmap_clear(map: *mut Word, start: u32, len: c_int) {
 ///
 /// # Safety
 ///
-/// `map` must be valid for `size` bits.
+/// `map` must be valid for `size` bits. The function does not modify it.
 #[export]
-unsafe extern "C" fn rust_bitmap_find_next_zero_area_off(
-    map: *const Word,
+unsafe extern "C" fn bitmap_find_next_zero_area_off(
+    map: *mut Word,
     size: Word,
     start: Word,
     nr: u32,
@@ -772,7 +752,7 @@ unsafe extern "C" fn rust_bitmap_find_next_zero_area_off(
 
     while cursor < size {
         // SAFETY: The caller guarantees a bitmap of `size` bits.
-        cursor = unsafe { find_bit::find_next_clear(map, size, cursor) };
+        cursor = unsafe { find_bit::find_next_clear(map.cast_const(), size, cursor) };
         if cursor >= size {
             break;
         }
@@ -789,8 +769,9 @@ unsafe extern "C" fn rust_bitmap_find_next_zero_area_off(
 
         let word_start = cursor & !(BITS - 1);
         // SAFETY: `cursor` and `end` are within the logically valid bitmap.
-        let found = unsafe { find_bit::find_last_set(map.add(cursor / BITS), end - word_start) }
-            + word_start;
+        let found = unsafe {
+            find_bit::find_last_set(map.cast_const().add(cursor / BITS), end - word_start)
+        } + word_start;
         if found >= end || found < cursor {
             return cursor as Word;
         }
@@ -807,7 +788,7 @@ unsafe extern "C" fn rust_bitmap_find_next_zero_area_off(
 ///
 /// All bitmaps must be valid for `bits` bits.
 #[export]
-unsafe extern "C" fn rust_bitmap_remap(
+unsafe extern "C" fn bitmap_remap(
     dst: *mut Word,
     src: *const Word,
     old: *const Word,
@@ -860,7 +841,7 @@ unsafe extern "C" fn rust_bitmap_remap(
 ///
 /// Both mapping bitmaps must be valid for `bits` bits.
 #[export]
-unsafe extern "C" fn rust_bitmap_bitremap(
+unsafe extern "C" fn bitmap_bitremap(
     oldbit: c_int,
     old: *const Word,
     new: *const Word,
@@ -891,7 +872,7 @@ unsafe extern "C" fn rust_bitmap_bitremap(
 ///
 /// All bitmaps must be valid for `bits` bits.
 #[export]
-unsafe extern "C" fn rust_bitmap_onto(
+unsafe extern "C" fn bitmap_onto(
     dst: *mut Word,
     orig: *const Word,
     relmap: *const Word,
@@ -933,7 +914,7 @@ unsafe extern "C" fn rust_bitmap_onto(
 ///
 /// Both bitmaps must be valid for `bits` bits.
 #[export]
-unsafe extern "C" fn rust_bitmap_fold(dst: *mut Word, orig: *const Word, size: u32, bits: u32) {
+unsafe extern "C" fn bitmap_fold(dst: *mut Word, orig: *const Word, size: u32, bits: u32) {
     if dst.cast_const() == orig || size == 0 {
         return;
     }
@@ -961,7 +942,7 @@ unsafe extern "C" fn rust_bitmap_fold(dst: *mut Word, orig: *const Word, size: u
 ///
 /// All bitmaps must be valid for `bits` bits.
 #[export]
-unsafe extern "C" fn rust_bitmap_scatter(
+unsafe extern "C" fn __bitmap_scatter(
     dst: *mut Word,
     src: *const Word,
     mask: *const Word,
@@ -996,7 +977,7 @@ unsafe extern "C" fn rust_bitmap_scatter(
 ///
 /// All bitmaps must be valid for `bits` bits.
 #[export]
-unsafe extern "C" fn rust_bitmap_gather(
+unsafe extern "C" fn __bitmap_gather(
     dst: *mut Word,
     src: *const Word,
     mask: *const Word,
@@ -1032,7 +1013,7 @@ unsafe extern "C" fn rust_bitmap_gather(
 /// `bitmap` must be writable for `bits` bits and `buf` must contain
 /// `ceil(bits / 32)` elements.
 #[export]
-unsafe extern "C" fn rust_bitmap_from_arr32(bitmap: *mut Word, buf: *const u32, bits: u32) {
+unsafe extern "C" fn bitmap_from_arr32(bitmap: *mut Word, buf: *const u32, bits: u32) {
     let bits = bits as usize;
     let halfwords = bits.div_ceil(32);
     let mut index = 0;
@@ -1067,7 +1048,7 @@ unsafe extern "C" fn rust_bitmap_from_arr32(bitmap: *mut Word, buf: *const u32, 
 /// `buf` must be writable for `ceil(bits / 32)` elements and `bitmap` must be
 /// valid for `bits` bits.
 #[export]
-unsafe extern "C" fn rust_bitmap_to_arr32(buf: *mut u32, bitmap: *const Word, bits: u32) {
+unsafe extern "C" fn bitmap_to_arr32(buf: *mut u32, bitmap: *const Word, bits: u32) {
     let bits = bits as usize;
     let halfwords = bits.div_ceil(32);
 
@@ -1104,7 +1085,7 @@ unsafe extern "C" fn rust_bitmap_to_arr32(buf: *mut u32, bitmap: *const Word, bi
 /// `bitmap` must be writable for `bits` bits and `buf` must contain
 /// `ceil(bits / 64)` elements.
 #[export]
-unsafe extern "C" fn rust_bitmap_from_arr64(bitmap: *mut Word, buf: *const u64, bits: u32) {
+unsafe extern "C" fn bitmap_from_arr64(bitmap: *mut Word, buf: *const u64, bits: u32) {
     let bits = bits as usize;
     let count = words(bits);
 
@@ -1130,7 +1111,7 @@ unsafe extern "C" fn rust_bitmap_from_arr64(bitmap: *mut Word, buf: *const u64, 
 /// `buf` must be writable for `ceil(bits / 64)` elements and `bitmap` must be
 /// valid for `bits` bits.
 #[export]
-unsafe extern "C" fn rust_bitmap_to_arr64(buf: *mut u64, bitmap: *const Word, bits: u32) {
+unsafe extern "C" fn bitmap_to_arr64(buf: *mut u64, bitmap: *const Word, bits: u32) {
     let bits = bits as usize;
     let count = words(bits);
 

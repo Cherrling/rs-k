@@ -138,6 +138,21 @@ Generic bit searches
   storage layout and the random-number primitive. C fallback configurations
   retain the complete algorithms.
 
+Generic bitmap operations
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-bitmap-ops`.
+
+  Rust directly defines the 31 public out-of-line bitmap operations and owns
+  logical operations, shifts, population counts, range updates, mapping,
+  scatter and gather selection, and array-layout conversion. Twenty-nine
+  functions retain ordinary non-GPL exports, and ``bitmap_onto()`` and
+  ``bitmap_fold()`` remain unexported. The native C object retains only export
+  metadata. C also retains allocation, parsing, formatting, user-copy paths,
+  storage operations, and constant-foldable inline accessors. C fallback
+  configurations retain the complete algorithms. All nine bitmap KUnit runs
+  passed, and native symbol inspection showed all 31 Rust-defined entries.
+
 Generic radix trees
   Status: ``migrated``.
 
@@ -202,8 +217,8 @@ Public ABI
   ``include/linux/rbtree.h``, ``include/linux/rbtree_augmented.h``,
   ``include/linux/plist.h``, ``include/linux/list_sort.h``,
   ``include/linux/list_lru.h``, ``include/linux/generic-radix-tree.h``,
-  ``include/linux/btree.h``, ``include/linux/find.h``, and
-  ``include/linux/kfifo.h``.
+  ``include/linux/btree.h``, ``include/linux/find.h``,
+  ``include/linux/bitmap.h``, and ``include/linux/kfifo.h``.
 
   Reason: Existing callers and loadable modules use the stable C ABI.
 
@@ -235,16 +250,51 @@ Generic bitmap storage and inline interface
   Owner: ``include/linux/bitmap.h`` and ``include/linux/find.h``.
 
   Reason: C callers and Rust share the ``unsigned long`` word layout, inline
-  public names, and range contracts.
+  public names, constant-foldable accessors, and range contracts.
 
-  Test: Native, fallback, and C-only runs exercise first, next, nth, last,
-  clump, and random searches on partial and multiword bitmaps.
+  Test: Native, fallback, and C-only runs exercise out-of-line bitmap
+  operations and inline search accessors on partial and multiword bitmaps.
 
   Risk: A storage or range-contract change can make Rust read the wrong word
   or expose tail bits outside the logical size.
 
   Exit condition: Rust-owned bitmap accessors and inline interfaces replace
   the shared C representation.
+
+Bitmap allocation and device-managed storage
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/bitmap.c``.
+
+  Reason: Bitmap allocation, NUMA placement, release, and device-managed
+  storage depend on allocator and devres contracts.
+
+  Test: Native, fallback, and C-only bitmap tests exercise allocated,
+  zero-initialized, node-selected, and device-managed lifecycles.
+
+  Risk: A lifetime or node-selection mismatch can leak storage or return
+  memory for the wrong NUMA node.
+
+  Exit condition: Rust owns bitmap allocation and device-managed storage with
+  equivalent allocator and devres lifetime rules.
+
+Bitmap parsing and formatting
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/bitmap.c``.
+
+  Reason: String parsing, list parsing, sequence-file formatting, and
+  user-copy parsing depend on parser, printk, seq_file, and user-access
+  interfaces.
+
+  Test: Native, fallback, and C-only tests cover valid and invalid input,
+  formatting, list parsing, and user-copy paths.
+
+  Risk: An ownership or interface mismatch can accept malformed input, report
+  the wrong range, or cross the user-kernel boundary incorrectly.
+
+  Exit condition: Rust owns complete parsers and formatters with equivalent
+  kernel interfaces and error contracts.
 
 Generic bit-search export metadata
   Status: ``boundary-retained``.
@@ -261,6 +311,24 @@ Generic bit-search export metadata
 
   Exit condition: Rust export metadata supports the original non-GPL class
   without C export entries.
+
+Generic bitmap export metadata
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/bitmap.c`` and ``rust/Makefile``.
+
+  Reason: Twenty-nine Rust-defined operations retain ordinary non-GPL
+  exports, while ``bitmap_onto()`` and ``bitmap_fold()`` remain unexported.
+
+  Test: ``vmlinux.symvers`` records twenty-nine ``EXPORT_SYMBOL`` entries, no
+  entry for either unexported function, and the generated Rust GPL export
+  header excludes the twenty-nine exported names.
+
+  Risk: Duplicate exports or a class change can break module loading and
+  binary compatibility.
+
+  Exit condition: Rust export metadata supports the original non-GPL and
+  unexported classes without C export entries.
 
 Random set-bit primitive
   Status: ``boundary-retained``.
@@ -945,6 +1013,12 @@ The generic bit-search boundary is valid only while the shared
 primitive, and ordinary export metadata remain named boundaries. Rust defines
 every public out-of-line search and owns every mask, traversal, count, and
 selection decision.
+
+The generic bitmap boundary is valid only while allocation, parsing,
+formatting, storage operations, constant-foldable inline accessors, and
+ordinary export metadata remain named boundaries. Rust defines every public
+out-of-line bitmap operation and owns every mask, traversal, count, mapping,
+selection, and conversion decision.
 
 The generic radix tree boundary is valid only while the tagged layouts,
 inline container API, atomic publication helpers, allocation primitives, and

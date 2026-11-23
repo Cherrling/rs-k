@@ -626,7 +626,36 @@ rust_non_gpl_exports := \
 	__find_nth_and_andnot_bit \
 	_find_last_bit \
 	find_next_clump8 \
-	find_random_bit
+	find_random_bit \
+	__bitmap_equal \
+	__bitmap_or_equal \
+	__bitmap_complement \
+	__bitmap_shift_right \
+	__bitmap_shift_left \
+	bitmap_cut \
+	__bitmap_and \
+	__bitmap_or \
+	__bitmap_weighted_or \
+	__bitmap_weighted_xor \
+	__bitmap_xor \
+	__bitmap_andnot \
+	__bitmap_replace \
+	__bitmap_intersects \
+	__bitmap_subset \
+	__bitmap_weight \
+	__bitmap_weight_and \
+	__bitmap_weight_andnot \
+	__bitmap_set \
+	__bitmap_clear \
+	bitmap_find_next_zero_area_off \
+	bitmap_remap \
+	bitmap_bitremap \
+	__bitmap_scatter \
+	__bitmap_gather \
+	bitmap_from_arr32 \
+	bitmap_to_arr32 \
+	bitmap_from_arr64 \
+	bitmap_to_arr64
 
 # Rust-defined production symbols that must not receive automatic exports.
 rust_unexported_symbols := \
@@ -637,7 +666,9 @@ rust_unexported_symbols := \
 	list_lru_walk_one_irq \
 	plist_add \
 	plist_del \
-	plist_requeue
+	plist_requeue \
+	bitmap_onto \
+	bitmap_fold
 
 rust_exports = $(NM) -p --defined-only $(1) | awk '$$2~/(T|R|D|B)/ && $$3!~/__(pfx|cfi|odr_asan)/ { printf $(2),$$3 }'
 rust_auto_export_skip := $(rust_non_gpl_exports) $(rust_unexported_symbols)

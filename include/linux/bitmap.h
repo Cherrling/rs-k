@@ -192,84 +192,10 @@ void __bitmap_set(unsigned long *map, unsigned int start, int len);
 void __bitmap_clear(unsigned long *map, unsigned int start, int len);
 
 #ifdef CONFIG_RUST_BITMAP_OPS
-bool rust_bitmap_equal(const unsigned long *bitmap1,
-		       const unsigned long *bitmap2, unsigned int nbits);
-bool rust_bitmap_or_equal(const unsigned long *bitmap1,
-			  const unsigned long *bitmap2,
-			  const unsigned long *bitmap3, unsigned int nbits);
-void rust_bitmap_complement(unsigned long *dst, const unsigned long *src,
-			    unsigned int nbits);
-void rust_bitmap_shift_right(unsigned long *dst, const unsigned long *src,
-			     unsigned int shift, unsigned int nbits);
-void rust_bitmap_shift_left(unsigned long *dst, const unsigned long *src,
-			    unsigned int shift, unsigned int nbits);
-void rust_bitmap_cut(unsigned long *dst, const unsigned long *src,
-		     unsigned int first, unsigned int cut, unsigned int nbits);
-bool rust_bitmap_and(unsigned long *dst, const unsigned long *bitmap1,
-		     const unsigned long *bitmap2, unsigned int nbits);
-void rust_bitmap_or(unsigned long *dst, const unsigned long *bitmap1,
-		    const unsigned long *bitmap2, unsigned int nbits);
-unsigned int rust_bitmap_weighted_or(unsigned long *dst,
-				     const unsigned long *bitmap1,
-				     const unsigned long *bitmap2,
-				     unsigned int nbits);
-unsigned int rust_bitmap_weighted_xor(unsigned long *dst,
-				      const unsigned long *bitmap1,
-				      const unsigned long *bitmap2,
-				      unsigned int nbits);
-void rust_bitmap_xor(unsigned long *dst, const unsigned long *bitmap1,
-		     const unsigned long *bitmap2, unsigned int nbits);
-bool rust_bitmap_andnot(unsigned long *dst, const unsigned long *bitmap1,
-			const unsigned long *bitmap2, unsigned int nbits);
-void rust_bitmap_replace(unsigned long *dst, const unsigned long *old,
-			 const unsigned long *new, const unsigned long *mask,
-			 unsigned int nbits);
-bool rust_bitmap_intersects(const unsigned long *bitmap1,
-			    const unsigned long *bitmap2, unsigned int nbits);
-bool rust_bitmap_subset(const unsigned long *bitmap1,
-			const unsigned long *bitmap2, unsigned int nbits);
-unsigned int rust_bitmap_weight(const unsigned long *bitmap,
-				unsigned int nbits);
-unsigned int rust_bitmap_weight_and(const unsigned long *bitmap1,
-				    const unsigned long *bitmap2,
-				    unsigned int nbits);
-unsigned int rust_bitmap_weight_andnot(const unsigned long *bitmap1,
-				       const unsigned long *bitmap2,
-				       unsigned int nbits);
-void rust_bitmap_set(unsigned long *map, unsigned int start, int len);
-void rust_bitmap_clear(unsigned long *map, unsigned int start, int len);
-unsigned long
-rust_bitmap_find_next_zero_area_off(const unsigned long *map,
-				    unsigned long size,
-				    unsigned long start,
-				    unsigned int nr,
-				    unsigned long align_mask,
-				    unsigned long align_offset);
-void rust_bitmap_remap(unsigned long *dst, const unsigned long *src,
-		       const unsigned long *old, const unsigned long *new,
-		       unsigned int nbits);
-int rust_bitmap_bitremap(int oldbit, const unsigned long *old,
-			 const unsigned long *new, int bits);
-void rust_bitmap_onto(unsigned long *dst, const unsigned long *orig,
-		      const unsigned long *relmap, unsigned int nbits);
-void rust_bitmap_fold(unsigned long *dst, const unsigned long *orig,
-		      unsigned int sz, unsigned int nbits);
-void rust_bitmap_scatter(unsigned long *dst, const unsigned long *src,
-			 const unsigned long *mask, unsigned int nbits);
-void rust_bitmap_gather(unsigned long *dst, const unsigned long *src,
-			const unsigned long *mask, unsigned int nbits);
 void __bitmap_scatter(unsigned long *dst, const unsigned long *src,
 		      const unsigned long *mask, unsigned int nbits);
 void __bitmap_gather(unsigned long *dst, const unsigned long *src,
 		     const unsigned long *mask, unsigned int nbits);
-void rust_bitmap_from_arr32(unsigned long *bitmap, const u32 *buf,
-			    unsigned int nbits);
-void rust_bitmap_to_arr32(u32 *buf, const unsigned long *bitmap,
-			  unsigned int nbits);
-void rust_bitmap_from_arr64(unsigned long *bitmap, const u64 *buf,
-			    unsigned int nbits);
-void rust_bitmap_to_arr64(u64 *buf, const unsigned long *bitmap,
-			  unsigned int nbits);
 #endif /* CONFIG_RUST_BITMAP_OPS */
 
 unsigned long bitmap_find_next_zero_area_off(unsigned long *map,

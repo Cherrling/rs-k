@@ -922,8 +922,9 @@ config RUST_BITMAP_OPS
 	  operations in lib/bitmap.c, including logical operations, shifts,
 	  range updates, population counts, mappings, and array conversions.
 
-	  The exported C entry points remain as ABI adapters. Bitmap allocation,
-	  text parsing, and sequence-file formatting remain in C.
+	  Rust directly defines the public out-of-line bitmap operations. The
+	  ordinary export metadata, bitmap allocation, text parsing, and
+	  sequence-file formatting remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

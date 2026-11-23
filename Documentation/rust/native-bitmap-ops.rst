@@ -7,7 +7,7 @@ Status and scope
 ----------------
 
 The ``CONFIG_RUST_BITMAP_OPS`` option selects an experimental native Rust
-implementation of the computational bitmap operations in ``lib/bitmap.c``.
+implementation of the public out-of-line bitmap operations.
 The option depends on the native Rust bit-search implementation and currently
 supports x86_64.
 
@@ -27,51 +27,36 @@ The word traversal, partial-word masks, logical selection, population counts,
 range construction, mapping iteration, and array layout conversion are Rust
 code.
 
+The original C algorithms remain available when the option is disabled or when
+``CONFIG_RUST`` is disabled.
+
 Entry points and ownership
 --------------------------
 
-The public inline functions retain their existing names. With
-``CONFIG_RUST_BITMAP_OPS`` enabled, the small-constant and aligned-memory fast
-paths in ``include/linux/bitmap.h`` are disabled. Calls enter the existing C
-ABI symbols, and the adapters in ``lib/bitmap.c`` forward directly to Rust.
+Rust directly defines 31 public out-of-line entry points in
+``rust/kernel/bitmap_ops.rs``. These entry points own the production
+algorithms. The public inline functions in ``include/linux/bitmap.h`` retain
+their existing names. With ``CONFIG_RUST_BITMAP_OPS`` enabled, their
+small-constant fast paths are disabled. A public call therefore enters the
+Rust-defined entry point directly.
 
-The production algorithms are in ``rust/kernel/bitmap_ops.rs``. The adapters
-retain the original export classes for the 27 symbols that already had
-out-of-line definitions, including:
+Twenty-nine entry points retain their ordinary non-GPL export class. C
+retains the ``EXPORT_SYMBOL`` metadata in ``lib/bitmap.c``.
+``rust/Makefile`` excludes those names from the automatic Rust GPL exporter.
 
-* ``__bitmap_equal()``
-* ``__bitmap_or_equal()``
-* ``__bitmap_and()``
-* ``__bitmap_or()``
-* ``__bitmap_xor()``
-* ``__bitmap_andnot()``
-* ``__bitmap_replace()``
-* ``__bitmap_intersects()``
-* ``__bitmap_subset()``
-* ``__bitmap_weight()``
-* ``__bitmap_set()``
-* ``__bitmap_clear()``
-* ``bitmap_cut()``
-* ``bitmap_find_next_zero_area_off()``
-* ``bitmap_remap()`` and ``bitmap_bitremap()``
-* ``bitmap_onto()`` and ``bitmap_fold()``
-* ``bitmap_from_arr32()`` and ``bitmap_to_arr32()``
+``bitmap_onto()`` and ``bitmap_fold()`` remain unexported, as in the C
+baseline. ``rust/Makefile`` records both names in the unexported-symbol list.
 
-Four operations are inline-only on x86_64 in the C baseline. The Rust
-configuration creates config-gated out-of-line adapters for these operations:
+Four entry points are inline-only on x86_64 in the C baseline. The Rust
+configuration adds these config-gated out-of-line ABI extensions:
 
 * ``__bitmap_scatter()`` and ``__bitmap_gather()``
 * ``bitmap_from_arr64()`` and ``bitmap_to_arr64()``
 
-The four adapters use ordinary ``EXPORT_SYMBOL`` classes. Modules compiled
-against the public inline interfaces can therefore resolve the calls. These
-are ABI extensions of the experimental configuration, not changes to the
-default C ABI.
-
-The 31 ``rust_bitmap_*`` call targets are also listed as
-``EXPORT_SYMBOL_GPL`` because the current Rust compiler support automatically
-exports unmangled Rust symbols. They remain config-gated implementation
-details and are not stable interfaces.
+Rust defines the four entry points, and C retains their ordinary
+``EXPORT_SYMBOL`` metadata. Modules compiled against the public inline
+interfaces can resolve these calls. They are ABI extensions of the
+experimental configuration, not changes to the default C ABI.
 
 Retained C boundaries
 ---------------------
@@ -121,33 +106,69 @@ The unit must pass these checks before integration:
 * A Rust-enabled x86_64 LLVM build.
 * The dedicated bitmap-operation KUnit suite.
 * The existing bitmap self-test with all checks passing.
-* A Rust-disabled fallback build and the same bitmap self-test.
-* A Rust-enabled x86_64 KASAN build.
-* Rustfmt, Clippy, checkpatch, and ``git diff --check``.
-* Export-class checks for every public adapter.
-* Disassembly checks showing public bitmap wrappers call the C adapters, and
-  the adapters forward to Rust.
+* Rust fallback and C-only builds with the same tests.
+* Native Rust with KASAN, lockdep, and PREEMPT_RT.
+* Rustfmt, Clippy, Rustdoc, kernel-doc, focused Sphinx generation, strict
+  checkpatch, and ``git diff --check``.
+* Symbol checks that Rust defines all 31 public entry points, the native C
+  object defines none of their bodies, and the fallback and C-only objects
+  define the complete implementations.
+* Export checks that the 29 exported names remain ordinary non-GPL symbols,
+  ``bitmap_onto()`` and ``bitmap_fold()`` remain unexported, and the generated
+  Rust GPL export header excludes the 29 exported names.
+* Adjacent native find-bit and generic radix tree regressions.
 
 Measured validation results
 ---------------------------
 
-The final normal x86_64 LLVM build passed. All enabled KUnit tests passed on
-one virtual CPU, four virtual CPUs, and a repeated four-CPU run. Each run
-passed all three ``bitmap_ops`` cases and all seven ``find_bit_rust`` cases.
-Each run also passed all 391,549 checks in the existing bitmap self-test.
+Validation ran on 2026-11-24 with x86_64 LLVM builds and QEMU.
 
-The Rust-disabled C fallback passed all enabled KUnit tests and all 391,544
-checks in the existing bitmap self-test. The image contained no
-``rust_bitmap_*`` production symbols.
+================  ============================================================
+Build             Configuration
+================  ============================================================
+Native SMP1       Native Rust, one virtual CPU
+Native SMP4       Native Rust, four virtual CPUs
+Rust fallback     ``CONFIG_RUST_BITMAP_OPS=n``, one and four virtual CPUs
+Pure C            ``CONFIG_RUST=n``, one and four virtual CPUs
+Native KASAN      Native Rust configuration plus ``CONFIG_KASAN=y``
+Native lockdep    Native Rust configuration plus ``CONFIG_PROVE_LOCKING=y``
+Native RT         Native Rust configuration plus ``CONFIG_PREEMPT_RT=y``
+================  ============================================================
 
-The x86_64 KASAN build passed all three ``bitmap_ops`` cases and all seven
-``find_bit_rust`` cases on four virtual CPUs. The existing bitmap self-test
-passed all 391,549 checks. The boot log contained no KASAN report, BUG, Oops,
-or panic.
+Every configuration used ``CONFIG_SMP=y``, ``CONFIG_NR_CPUS=4``,
+``CONFIG_MODULES=y``, ``CONFIG_KUNIT=y``,
+``CONFIG_BITMAP_OPS_RUST_KUNIT_TEST=y``, and ``CONFIG_TEST_BITMAP=y``. Native
+configurations also used ``CONFIG_RUST=y``, ``CONFIG_RUST_FIND_BIT=y``, and
+``CONFIG_RUST_BITMAP_OPS=y``.
 
-Object-level disassembly showed the public bitmap wrappers select the C ABI
-adapters, and the adapters tail-call the 31 Rust implementations. The 27
-pre-existing exports matched their baseline export classes.
+All six kernel configurations compiled successfully. All nine QEMU runs passed
+all three ``bitmap_ops`` KUnit cases. Native, KASAN, lockdep, and RT runs
+passed all 391,549 bitmap self-test checks. Fallback and C-only runs passed
+all 391,544 checks.
+
+The KASAN run initialized generic KASAN. The lockdep run enabled lock
+dependency tracking and prove-locking. The RT kernel reported an
+``SMP PREEMPT_RT`` build. The logs contained no BUG, warning, KASAN report,
+lock inversion, Oops, panic, or RCU stall.
+
+``rust/kernel.o`` defined all 31 public entry points. The native
+``lib/bitmap.o`` defined none of their bodies and held 29 unresolved
+references. The fallback and C-only objects defined all 27 baseline C
+algorithms. The four config-gated out-of-line paths remain inline or
+configuration-defined in those builds.
+
+``Module.symvers`` recorded 29 ``EXPORT_SYMBOL`` entries for the native
+configuration and 25 for each fallback configuration. ``bitmap_onto()`` and
+``bitmap_fold()`` had no export entry. The generated Rust GPL export header
+excluded all 29 exported names, and no ``rust_bitmap_*`` symbols remained.
+
+Adjacent native SMP4 regressions passed all seven ``find_bit_rust`` cases and
+all ten ``genradix`` cases.
+
+Rustfmt, Clippy, Rustdoc, kernel-doc, strict checkpatch, and
+``git diff --check`` passed. Focused Sphinx generation rendered the updated
+documentation. It reported only the two existing cross-reference warnings in
+``Documentation/rust/index.rst`` and ``Documentation/rust/quick-start.rst``.
 
 Review conditions
 -----------------
@@ -156,7 +177,6 @@ Reopen this boundary decision if any of these conditions changes:
 
 * The bitmap storage type is no longer an array of ``unsigned long``.
 * A supported target uses a different endianness or word size.
-* A C adapter starts to select a result or contain bitmap policy.
 * A public inline wrapper starts to execute a C bitmap algorithm again.
 * Allocation, parser, format, or user-copy ownership becomes part of a
   reusable pure bitmap algorithm.
