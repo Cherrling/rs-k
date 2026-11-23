@@ -583,7 +583,8 @@ rust_non_gpl_exports := \
 	rb_replace_node \
 	rb_replace_node_rcu \
 	rb_next_postorder \
-	rb_first_postorder
+	rb_first_postorder \
+	list_sort
 
 # Rust-defined public symbols that are not exported to modules. The
 # automatic Rust exporter must skip them as well.

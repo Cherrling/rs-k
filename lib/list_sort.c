@@ -250,10 +250,6 @@ EXPORT_SYMBOL(list_sort);
 
 #else
 
-void list_sort(void *priv, struct list_head *head, list_cmp_func_t cmp)
-{
-	rust_list_sort(priv, head, cmp);
-}
 EXPORT_SYMBOL(list_sort);
 
 #endif

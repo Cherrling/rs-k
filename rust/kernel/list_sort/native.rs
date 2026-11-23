@@ -2,8 +2,9 @@
 
 //! Native implementation of the stable bottom-up merge sort used by `list_sort()`.
 //!
-//! The C entry point remains as an ABI adapter. When `CONFIG_RUST_LIST_SORT` is enabled, the
-//! original C algorithm is excluded from the build.
+//! Rust directly defines the public entry point. The merge planning, pending-list state,
+//! comparator calls, and final list restoration execute here when `CONFIG_RUST_LIST_SORT` is
+//! enabled. C retains the non-GPL export metadata.
 
 use crate::bindings;
 use core::{
@@ -229,7 +230,7 @@ unsafe fn sort(private: *mut c_void, head: *mut List, cmp: CompareFn) {
 /// The contracts of `list_sort()` apply. `head` must be a valid initialized list sentinel,
 /// `cmp` must be non-null, and the caller must have exclusive access to every list node.
 #[export]
-unsafe extern "C" fn rust_list_sort(private: *mut c_void, head: *mut List, cmp: CompareFn) {
+unsafe extern "C" fn list_sort(private: *mut c_void, head: *mut List, cmp: CompareFn) {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { sort(private, head, cmp) };
 }

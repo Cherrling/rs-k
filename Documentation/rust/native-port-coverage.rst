@@ -102,6 +102,16 @@ Priority lists
   C retains intrusive layouts, raw list primitives, and diagnostic helpers.
   The functions remain unexported.
 
+List sort
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-list-sort`.
+
+  Rust directly defines ``list_sort()``. It owns stable bottom-up merging,
+  pending-list state, comparator invocation, and restoration of the circular
+  doubly-linked list. The native C object retains only the non-GPL export
+  metadata. C fallback configurations retain the complete algorithm.
+
 Boundary-retained inventory
 ---------------------------
 
@@ -125,8 +135,8 @@ Public ABI
   Owner: The public symbols defined in ``include/linux/llist.h``,
   ``include/linux/klist.h``, ``include/linux/lockref.h``,
   ``include/linux/kobject.h``, ``include/linux/interval_tree.h``,
-  ``include/linux/rbtree.h``, ``include/linux/rbtree_augmented.h``, and
-  ``include/linux/plist.h``.
+  ``include/linux/rbtree.h``, ``include/linux/rbtree_augmented.h``,
+  ``include/linux/plist.h``, and ``include/linux/list_sort.h``.
 
   Reason: Existing callers and loadable modules use the stable C ABI.
 
@@ -475,6 +485,40 @@ Unexported Rust public symbols
   Exit condition: Rust export generation supports per-symbol unexported
   status without the skip list.
 
+List sort layout and comparator ABI
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/list.h`` and ``include/linux/list_sort.h``.
+
+  Reason: C callers share the intrusive ``list_head`` layout and comparator
+  callback ABI with Rust.
+
+  Test: Native, fallback, and C-only KUnit runs check ordering, stability,
+  edge cases, poisoning, and restored list links.
+
+  Risk: A layout or callback change can corrupt list links or invoke the
+  comparator with an invalid calling convention.
+
+  Exit condition: Rust owns the complete intrusive list representation and
+  comparator interface.
+
+List sort export metadata
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/list_sort.c`` and ``rust/Makefile``.
+
+  Reason: ``list_sort()`` retains its historical non-GPL export class while
+  generated Rust exports use the GPL class.
+
+  Test: ``vmlinux.symvers`` records ``EXPORT_SYMBOL(list_sort)`` and the
+  generated Rust GPL export header excludes the symbol.
+
+  Risk: A duplicate export or class change can break module loading and
+  binary compatibility.
+
+  Exit condition: Rust export metadata supports the original non-GPL class
+  without C export entries.
+
 The lock-less list boundary is valid only while the inline producer paths,
 intrusive layouts, and atomic semantics remain shared ABI. A boundary entry
 does not transfer policy, retry decisions, state transitions, or exported
@@ -508,6 +552,11 @@ The priority-list boundary is valid only while the intrusive representation,
 raw list primitives, diagnostics, and unexported ABI policy remain named C
 boundaries. Rust defines every public entry and owns every placement, bucket,
 and requeue decision.
+
+The list sort boundary is valid only while the shared list layout, comparator
+ABI, and historical export metadata remain named boundaries. Rust defines the
+public entry and owns every merge, pending-list, stability, and final-link
+decision.
 
 Pending inventory
 -----------------

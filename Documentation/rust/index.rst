@@ -116,6 +116,7 @@ more details.
     native-btree-traversal
     native-btree-structural
     native-btree-visitors
+    native-list-sort
     native-plist
     native-rbtree
     native-interval-tree
