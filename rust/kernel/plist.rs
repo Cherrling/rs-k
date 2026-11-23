@@ -3,9 +3,9 @@
 //! Native priority-sorted intrusive list operations.
 //!
 //! Rust owns priority placement, same-priority FIFO ordering, bucket-list
-//! maintenance, removal promotion, and requeue decisions. C retains the
-//! intrusive structure layouts, raw list primitives, public ABI adapters, and
-//! debug validation.
+//! maintenance, removal promotion, and requeue decisions. Rust directly defines
+//! the public entry points. C retains the intrusive structure layouts, raw list
+//! primitives, and debug diagnostics.
 
 use crate::{bindings, container_of};
 use core::ptr;
@@ -57,6 +57,39 @@ unsafe fn list_add_tail(entry: *mut List, head: *mut List) {
 unsafe fn list_del_init(entry: *mut List) {
     // SAFETY: The caller guarantees that `entry` is linked.
     unsafe { bindings::rust_plist_list_del_init(entry) }
+}
+
+/// Runs the optional debug validation for a priority-list head.
+///
+/// # Safety
+///
+/// `head` must point to a valid priority-list head.
+#[inline]
+unsafe fn check_head(head: *mut PList) {
+    // SAFETY: The caller guarantees a valid head.
+    unsafe { bindings::rust_plist_check_head(head) };
+}
+
+/// Emits the same warning as `WARN_ON()` when `condition` is true.
+///
+/// # Safety
+///
+/// The caller must satisfy the diagnostic contract for the checked condition.
+#[inline]
+unsafe fn warn_on(condition: bool) {
+    // SAFETY: The caller guarantees that the warning is valid at this point.
+    unsafe { bindings::rust_plist_warn_on(condition) };
+}
+
+/// Emits the same fatal diagnostic as `BUG_ON()` when `condition` is true.
+///
+/// # Safety
+///
+/// The caller must satisfy the diagnostic contract for the checked condition.
+#[inline]
+unsafe fn bug_on(condition: bool) {
+    // SAFETY: The caller guarantees that the fatal check is valid at this point.
+    unsafe { bindings::rust_plist_bug_on(condition) };
 }
 
 /// Returns the serialized node-list member of `node`.
@@ -246,9 +279,15 @@ unsafe fn requeue(node: *mut Node, head: *mut PList) {
 ///
 /// The arguments must satisfy the public priority-list contract.
 #[export]
-unsafe extern "C" fn rust_plist_add(node: *mut Node, head: *mut PList) {
+unsafe extern "C" fn plist_add(node: *mut Node, head: *mut PList) {
     // SAFETY: Guaranteed by the public contract.
-    unsafe { add(node, head) };
+    unsafe {
+        check_head(head);
+        warn_on(!list_empty(ptr::addr_of!((*node).node_list)));
+        warn_on(!list_empty(prio_list(node)));
+        add(node, head);
+        check_head(head);
+    }
 }
 
 /// Implements `plist_del()`.
@@ -257,9 +296,13 @@ unsafe extern "C" fn rust_plist_add(node: *mut Node, head: *mut PList) {
 ///
 /// The arguments must satisfy the public priority-list contract.
 #[export]
-unsafe extern "C" fn rust_plist_del(node: *mut Node, head: *mut PList) {
+unsafe extern "C" fn plist_del(node: *mut Node, head: *mut PList) {
     // SAFETY: Guaranteed by the public contract.
-    unsafe { remove(node, head) };
+    unsafe {
+        check_head(head);
+        remove(node, head);
+        check_head(head);
+    }
 }
 
 /// Implements `plist_requeue()`.
@@ -268,7 +311,13 @@ unsafe extern "C" fn rust_plist_del(node: *mut Node, head: *mut PList) {
 ///
 /// The arguments must satisfy the public priority-list contract.
 #[export]
-unsafe extern "C" fn rust_plist_requeue(node: *mut Node, head: *mut PList) {
+unsafe extern "C" fn plist_requeue(node: *mut Node, head: *mut PList) {
     // SAFETY: Guaranteed by the public contract.
-    unsafe { requeue(node, head) };
+    unsafe {
+        check_head(head);
+        bug_on(list_empty(ptr::addr_of!((*head).node_list)));
+        bug_on(list_empty(ptr::addr_of!((*node).node_list)));
+        requeue(node, head);
+        check_head(head);
+    }
 }

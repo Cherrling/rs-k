@@ -585,8 +585,16 @@ rust_non_gpl_exports := \
 	rb_next_postorder \
 	rb_first_postorder
 
+# Rust-defined public symbols that are not exported to modules. The
+# automatic Rust exporter must skip them as well.
+rust_unexported_symbols := \
+	plist_add \
+	plist_del \
+	plist_requeue
+
 rust_exports = $(NM) -p --defined-only $(1) | awk '$$2~/(T|R|D|B)/ && $$3!~/__(pfx|cfi|odr_asan)/ { printf $(2),$$3 }'
-rust_gpl_exports = $(NM) -p --defined-only $(1) | awk -v skip='$(rust_non_gpl_exports)' 'BEGIN { count = split(skip, symbols); for (i = 1; i <= count; i++) non_gpl[symbols[i]] = 1 } $$2~/(T|R|D|B)/ && $$3!~/__(pfx|cfi|odr_asan)/ && !($$3 in non_gpl) { printf $(2),$$3 }'
+rust_auto_export_skip := $(rust_non_gpl_exports) $(rust_unexported_symbols)
+rust_gpl_exports = $(NM) -p --defined-only $(1) | awk -v skip='$(rust_auto_export_skip)' 'BEGIN { count = split(skip, symbols); for (i = 1; i <= count; i++) skipped[symbols[i]] = 1 } $$2~/(T|R|D|B)/ && $$3!~/__(pfx|cfi|odr_asan)/ && !($$3 in skipped) { printf $(2),$$3 }'
 
 quiet_cmd_exports = EXPORTS $@
       cmd_exports = \

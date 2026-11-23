@@ -15,9 +15,9 @@ void rust_plist_list_add(struct list_head *new, struct list_head *head);
 void rust_plist_list_add_tail(struct list_head *new, struct list_head *head);
 void rust_plist_list_del_init(struct list_head *entry);
 
-void rust_plist_add(struct plist_node *node, struct plist_head *head);
-void rust_plist_del(struct plist_node *node, struct plist_head *head);
-void rust_plist_requeue(struct plist_node *node, struct plist_head *head);
+void rust_plist_check_head(struct plist_head *head);
+void rust_plist_warn_on(bool condition);
+void rust_plist_bug_on(bool condition);
 
 #endif /* CONFIG_RUST_PLIST */
 

@@ -364,11 +364,12 @@ config RUST_PLIST
 	  Use Rust for the production implementation behind plist_add(),
 	  plist_del(), and plist_requeue().
 
-	  Rust owns priority placement, same-priority FIFO ordering,
-	  priority-bucket maintenance, removal promotion, and requeue decisions.
-	  The intrusive plist_head and plist_node layouts, raw linked-list
-	  primitives, public ABI adapters, and debug validation remain in C.
-	  The C fallback retains the complete priority-list algorithms.
+	  Rust directly defines the public entry points. It owns priority
+	  placement, same-priority FIFO ordering, priority-bucket maintenance,
+	  removal promotion, requeue decisions, and the validation sequence. The
+	  intrusive plist_head and plist_node layouts, raw linked-list
+	  primitives, and debug diagnostics remain in C. The C fallback retains
+	  the complete priority-list algorithms.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

@@ -91,6 +91,17 @@ Red-black tree operations
   uses one internal Rust augmented erase bridge. C fallback configurations
   retain the complete algorithms.
 
+Priority lists
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-plist`.
+
+  Rust directly defines ``plist_add()``, ``plist_del()``, and
+  ``plist_requeue()``. It owns priority placement, equal-priority FIFO
+  ordering, bucket promotion, requeue decisions, and the validation sequence.
+  C retains intrusive layouts, raw list primitives, and diagnostic helpers.
+  The functions remain unexported.
+
 Boundary-retained inventory
 ---------------------------
 
@@ -114,7 +125,8 @@ Public ABI
   Owner: The public symbols defined in ``include/linux/llist.h``,
   ``include/linux/klist.h``, ``include/linux/lockref.h``,
   ``include/linux/kobject.h``, ``include/linux/interval_tree.h``,
-  ``include/linux/rbtree.h``, and ``include/linux/rbtree_augmented.h``.
+  ``include/linux/rbtree.h``, ``include/linux/rbtree_augmented.h``, and
+  ``include/linux/plist.h``.
 
   Reason: Existing callers and loadable modules use the stable C ABI.
 
@@ -412,6 +424,57 @@ Augmented red-black erase dispatch
   Exit condition: Rust owns the complete augmented erase interface and no
   internal C-to-Rust bridge remains.
 
+Priority-list layout and list primitives
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/plist.h``, ``include/linux/plist_types.h``, and
+  ``lib/plist.c``.
+
+  Reason: C callers share the intrusive head, node, priority bucket, and
+  common ``list_head`` representation.
+
+  Test: Native, fallback, and C-only KUnit runs check priority order, FIFO
+  order, bucket promotion, requeue, and debug validation.
+
+  Risk: A layout or list primitive change can corrupt bucket links or break
+  list hardening and barriers.
+
+  Exit condition: Rust owns the complete intrusive representation and list
+  primitive contract.
+
+Priority-list diagnostics
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/plist.c`` and ``include/linux/plist-rust.h``.
+
+  Reason: ``WARN_ON()``, ``BUG_ON()``, and the optional full-list validation
+  require kernel diagnostic infrastructure.
+
+  Test: Every native and fallback run enables ``CONFIG_DEBUG_PLIST`` and runs
+  its boot self-test together with the KUnit suite.
+
+  Risk: A changed diagnostic can mask a corrupt bucket or alter the fatal
+  requeue contract.
+
+  Exit condition: Rust diagnostics preserve the warning, fatal, and optional
+  validation behavior with no C diagnostic bridge.
+
+Unexported Rust public symbols
+  Status: ``boundary-retained``.
+
+  Owner: ``rust/Makefile``.
+
+  Reason: Automatic Rust exports are GPL, while the three priority-list
+  functions have no module export.
+
+  Test: ``vmlinux.symvers`` contains no priority-list symbol, and the
+  generated Rust export header excludes all three names.
+
+  Risk: An automatic export can unintentionally expand the module ABI.
+
+  Exit condition: Rust export generation supports per-symbol unexported
+  status without the skip list.
+
 The lock-less list boundary is valid only while the inline producer paths,
 intrusive layouts, and atomic semantics remain shared ABI. A boundary entry
 does not transfer policy, retry decisions, state transitions, or exported
@@ -440,6 +503,11 @@ The red-black tree boundary is valid only while the shared node encoding,
 intrusive layouts, augmented callback interface, internal erase bridge, and
 historical export metadata remain named boundaries. Rust defines every public
 entry and owns every tree mutation and traversal decision.
+
+The priority-list boundary is valid only while the intrusive representation,
+raw list primitives, diagnostics, and unexported ABI policy remain named C
+boundaries. Rust defines every public entry and owns every placement, bucket,
+and requeue decision.
 
 Pending inventory
 -----------------

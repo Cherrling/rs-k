@@ -9,7 +9,8 @@ Status and scope
 The ``CONFIG_RUST_PLIST`` option selects native Rust implementations of
 ``plist_add()``, ``plist_del()``, and ``plist_requeue()``. These functions
 provide the production priority ordering, FIFO ordering, and bucket
-maintenance for the priority-sorted intrusive list.
+maintenance for the priority-sorted intrusive list. Rust directly defines
+all three public production entry points.
 
 Rust owns:
 
@@ -30,16 +31,15 @@ Entry points and ownership
 
 The public ``plist_add()``, ``plist_del()``, and ``plist_requeue()``
 interfaces and their signatures do not change. With this option enabled,
-each C entry point performs the existing debug validation and calls the
-matching Rust production function.
-
-The C entry points retain the existing debug checks around each call.
-``CONFIG_DEBUG_PLIST`` therefore checks the complete priority bucket and
-serialized list before and after each Rust operation.
+Rust directly defines all three symbols and preserves the original debug
+validation sequence.
 
 Rust reads and updates the intrusive ``plist_node`` and ``plist_head``
 objects directly. It controls placement, bucket selection, promotion, and
-requeue behavior.
+requeue behavior. It also decides when to run the head validation, warning
+checks, and fatal requeue checks. ``CONFIG_DEBUG_PLIST`` therefore checks the
+complete priority bucket and serialized list before and after each Rust
+operation.
 
 Retained C boundaries
 ---------------------
@@ -53,8 +53,17 @@ Small C helpers retain ``list_add()``, ``list_add_tail()``,
 linked-list hardening, poisoning, write barriers, and debug rules in the
 common list implementation.
 
-The C entry points retain the public ABI and the complete fallback
-algorithms. Callers continue to serialize all list operations.
+C helpers also retain ``plist_check_head()``, ``WARN_ON()``, and
+``BUG_ON()`` diagnostics. They do not select list placement, promotion, or
+requeue policy.
+
+The three public priority-list functions are not exported to modules. Rust
+normally exports annotated functions as GPL, so ``rust/Makefile`` explicitly
+excludes ``plist_add``, ``plist_del``, and ``plist_requeue`` from automatic
+exports. No export metadata is added in C.
+
+The complete C fallback algorithms remain compiled when the option is
+disabled. Callers continue to serialize all list operations.
 
 Important invariants
 --------------------
@@ -103,54 +112,71 @@ The unit must pass these checks before integration:
 
 * The same tests with ``CONFIG_RUST`` disabled.
 
-* Rust-enabled KASAN and lockdep runs.
+* Rust-enabled KASAN, lockdep, and PREEMPT_RT runs.
 
 * Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
   ``git diff --check``.
 
-* Symbol checks that the enabled C object calls the Rust entry points and
-  that fallback objects contain the complete C paths.
+* Symbol checks that Rust defines all three public entry points, the native C
+  object contains no corresponding function body, the fallback and C-only
+  objects contain the complete C implementation, and no new module exports
+  are created.
 
 Validation results
 ------------------
 
-Validation on 2026-11-17 used parent commit ``7fc9abd192c2``.
+Validation on 2026-11-23 used parent commit ``609bc1c0e71c``.
 
 ================  ============================================================
 Build             Configuration
 ================  ============================================================
-Native Rust       ``CONFIG_RUST=y``, ``CONFIG_RUST_PLIST=y``
-Rust fallback     ``CONFIG_RUST=y``, ``CONFIG_RUST_PLIST=n``
-Pure C            ``CONFIG_RUST=n``
+Native SMP1       Native Rust, one virtual CPU
+Native SMP4       Native Rust, four virtual CPUs
+Rust fallback     ``CONFIG_RUST_PLIST=n``, one and four virtual CPUs
+Pure C            ``CONFIG_RUST=n``, one and four virtual CPUs
 Native KASAN      Native Rust configuration plus ``CONFIG_KASAN=y``
 Native lockdep    Native Rust configuration plus
                   ``CONFIG_PROVE_LOCKING=y``
+Native RT         Native Rust configuration plus ``CONFIG_PREEMPT_RT=y``
 ================  ============================================================
 
-Every configuration also enabled ``CONFIG_SMP=y``,
-``CONFIG_DEBUG_PLIST=y``, ``CONFIG_KUNIT=y``, and
+Every configuration used x86_64, ``CONFIG_SMP=y``, ``CONFIG_NR_CPUS=4``,
+``CONFIG_MODULES=y``, ``CONFIG_DEBUG_KERNEL=y``, ``CONFIG_DEBUG_PLIST=y``,
+``CONFIG_KUNIT=y``, and
 ``CONFIG_PLIST_KUNIT_TEST=y``.
 
-All ten QEMU runs passed with one and four virtual CPUs. Each run reported
-two of two KUnit cases passed. The ordering case covered priority boundaries,
-FIFO order, bucket creation, representative promotion, single-node buckets,
-and requeue. The model case performed 2,000 seeded operations on up to 241
-nodes.
+All nine QEMU runs reported two of two KUnit cases passed. The ordering case
+covered priority boundaries, FIFO order, bucket creation, representative
+promotion, single-node buckets, and requeue. The model case performed 2,000
+seeded operations on up to 241 nodes.
 
 The existing ``CONFIG_DEBUG_PLIST`` self-test completed in every run.
 The KASAN and lockdep logs contained no KASAN report, BUG, warning, Oops,
-lock inversion, recursive locking report, or RCU stall.
+lock inversion, recursive locking report, or RCU stall. The KASAN run
+initialized generic KASAN. The RT kernel reported ``SMP PREEMPT_RT``.
 
-In the native configuration, ``lib/plist.o`` referenced
-``rust_plist_add``, ``rust_plist_del``, and ``rust_plist_requeue``.
-``rust/kernel.o`` defined all three symbols. The Rust-fallback and pure C
-``lib/plist.o`` objects referenced no Rust priority-list symbol.
+The adjacent list regression passed all 39 ``list-kunit-test`` cases, the
+single ``list-private-kunit-test`` case, and both ``list_sort`` cases.
 
-Rustfmt, Clippy, Rustdoc, focused Sphinx generation, and ``git diff --check``
-passed. Strict checkpatch passed after suppressing the generic file-addition
-warning. This patch adds the matching ``MAINTAINERS`` entries for its new
-files. Focused Sphinx rendered this page and its index link. It reported only
-the existing unknown ``kernel-docs`` reference in ``rust/index.rst``.
+In the native configuration, ``rust/kernel.o`` defined ``plist_add()``,
+``plist_del()``, and ``plist_requeue()``. The native ``lib/plist.o`` defined
+no public priority-list function. It retained the list primitives and debug
+helpers ``rust_plist_check_head()``, ``rust_plist_warn_on()``, and
+``rust_plist_bug_on()``.
+
+``vmlinux.symvers`` contained no entry for the three functions. The generated
+Rust GPL export header also excluded them. The Rust-fallback and pure C
+``lib/plist.o`` objects defined all three public functions, and the fallback
+Rust kernel object contained no public priority-list symbol.
+
+Rustfmt, Clippy, and Rustdoc passed. Strict checkpatch reported one
+``AVOID_BUG`` warning for ``rust_plist_bug_on()``. The helper must preserve
+the fatal ``BUG_ON()`` behavior of invalid requeue calls because the lock and
+list disposition is undefined after the invariant fails. With that
+intentional warning ignored, checkpatch reported no errors, warnings, or
+checks. Focused Sphinx generation and ``git diff --check`` passed.
+Focused Sphinx generation emitted only the existing unknown ``kernel-docs``
+document and ``getting_llvm`` label warnings.
 
 Review conditions
 -----------------
@@ -169,3 +195,5 @@ Reopen a retained boundary decision if any of these conditions changes:
   requeue policy.
 
 * A fallback object starts to use a Rust priority-list symbol.
+
+* The public functions gain a module export class.
