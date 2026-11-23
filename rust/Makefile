@@ -699,7 +699,11 @@ rust_unexported_symbols := \
 	irq_work_queue_on \
 	irq_work_single \
 	irq_work_tick \
-	rust_irq_work_run_lazy
+	rust_irq_work_run_lazy \
+	__handle_irq_event_percpu \
+	__irq_wake_thread \
+	handle_irq_event \
+	handle_irq_event_percpu
 
 rust_exports = $(NM) -p --defined-only $(1) | awk '$$2~/(T|R|D|B)/ && $$3!~/__(pfx|cfi|odr_asan)/ { printf $(2),$$3 }'
 rust_auto_export_skip := $(rust_non_gpl_exports) $(rust_unexported_symbols)

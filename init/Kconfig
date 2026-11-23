@@ -1947,9 +1947,9 @@ config RUST_IRQ_EVENT
 	depends on RUST
 	default y
 	help
-	  Use Rust for per-CPU IRQ action traversal, handler result
-	  aggregation, threaded wake policy, and IRQ event lifecycle
-	  transitions.
+	  Rust directly defines the production IRQ event entry points and
+	  owns per-CPU action traversal, handler result aggregation, threaded
+	  wake policy, and IRQ event lifecycle transitions.
 
 	  C helpers retain action fields and links, handler invocation with
 	  tracing and duration diagnostics, atomic thread flags, descriptor

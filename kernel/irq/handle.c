@@ -59,11 +59,9 @@ static void warn_no_thread(unsigned int irq, struct irqaction *action)
 	       "but no thread function available.", irq, action->name);
 }
 
+#ifndef CONFIG_RUST_IRQ_EVENT
 void __irq_wake_thread(struct irq_desc *desc, struct irqaction *action)
 {
-#ifdef CONFIG_RUST_IRQ_EVENT
-	rust_irq_event_wake_thread(desc, action);
-#else
 	/*
 	 * In case the thread crashed and was killed we just pretend that
 	 * we handled the interrupt. The hardirq handler has disabled the
@@ -146,8 +144,8 @@ void __irq_wake_thread(struct irq_desc *desc, struct irqaction *action)
 	 * the RUN flag before it goes to sleep in wait_for_interrupt().
 	 */
 	wake_up_state(action->thread, TASK_INTERRUPTIBLE);
-#endif /* CONFIG_RUST_IRQ_EVENT */
 }
+#endif /* !CONFIG_RUST_IRQ_EVENT */
 
 static DEFINE_STATIC_KEY_FALSE(irqhandler_duration_check_enabled);
 static u64 irqhandler_duration_threshold_ns __ro_after_init;
@@ -322,11 +320,9 @@ void rust_irq_event_finish(struct irq_desc *desc)
 }
 #endif /* CONFIG_RUST_IRQ_EVENT */
 
+#ifndef CONFIG_RUST_IRQ_EVENT
 irqreturn_t __handle_irq_event_percpu(struct irq_desc *desc)
 {
-#ifdef CONFIG_RUST_IRQ_EVENT
-	return (irqreturn_t)rust_irq_event_dispatch(desc);
-#else
 	irqreturn_t retval = IRQ_NONE;
 	unsigned int irq = desc->irq_data.irq;
 	struct irqaction *action;
@@ -380,14 +376,10 @@ irqreturn_t __handle_irq_event_percpu(struct irq_desc *desc)
 	}
 
 	return retval;
-#endif /* CONFIG_RUST_IRQ_EVENT */
 }
 
 irqreturn_t handle_irq_event_percpu(struct irq_desc *desc)
 {
-#ifdef CONFIG_RUST_IRQ_EVENT
-	return (irqreturn_t)rust_irq_event_percpu(desc);
-#else
 	irqreturn_t retval;
 
 	retval = __handle_irq_event_percpu(desc);
@@ -397,14 +389,10 @@ irqreturn_t handle_irq_event_percpu(struct irq_desc *desc)
 	if (!irq_settings_no_debug(desc))
 		note_interrupt(desc, retval);
 	return retval;
-#endif /* CONFIG_RUST_IRQ_EVENT */
 }
 
 irqreturn_t handle_irq_event(struct irq_desc *desc)
 {
-#ifdef CONFIG_RUST_IRQ_EVENT
-	return (irqreturn_t)rust_irq_event_handle(desc);
-#else
 	irqreturn_t ret;
 
 	desc->istate &= ~IRQS_PENDING;
@@ -416,8 +404,8 @@ irqreturn_t handle_irq_event(struct irq_desc *desc)
 	raw_spin_lock(&desc->lock);
 	irqd_clear(&desc->irq_data, IRQD_IRQ_INPROGRESS);
 	return ret;
-#endif /* CONFIG_RUST_IRQ_EVENT */
 }
+#endif /* !CONFIG_RUST_IRQ_EVENT */
 
 #ifdef CONFIG_GENERIC_IRQ_MULTI_HANDLER
 int __init set_handle_irq(void (*handle_irq)(struct pt_regs *))

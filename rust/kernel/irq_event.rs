@@ -11,7 +11,6 @@
 //! and scheduler wake primitives.
 
 use crate::{bindings, ffi::c_uint};
-use macros::export;
 
 type Action = bindings::irqaction;
 type Desc = bindings::irq_desc;
@@ -130,8 +129,8 @@ unsafe fn percpu(desc: *mut Desc) -> EventResult {
 /// # Safety
 ///
 /// `desc` must remain live. The caller must provide the [`dispatch`] context.
-#[export]
-unsafe extern "C" fn rust_irq_event_dispatch(desc: *mut Desc) -> EventResult {
+#[no_mangle]
+unsafe extern "C" fn __handle_irq_event_percpu(desc: *mut Desc) -> EventResult {
     // SAFETY: The caller provides the dispatch contract.
     unsafe { dispatch(desc) }
 }
@@ -141,8 +140,8 @@ unsafe extern "C" fn rust_irq_event_dispatch(desc: *mut Desc) -> EventResult {
 /// # Safety
 ///
 /// `desc` must remain live. The caller must provide the [`dispatch`] context.
-#[export]
-unsafe extern "C" fn rust_irq_event_percpu(desc: *mut Desc) -> EventResult {
+#[no_mangle]
+unsafe extern "C" fn handle_irq_event_percpu(desc: *mut Desc) -> EventResult {
     // SAFETY: The caller provides the per-CPU event contract.
     unsafe { percpu(desc) }
 }
@@ -156,8 +155,8 @@ unsafe extern "C" fn rust_irq_event_percpu(desc: *mut Desc) -> EventResult {
 ///
 /// `desc` must remain live. The caller must hold `desc->lock` and have
 /// interrupts disabled.
-#[export]
-unsafe extern "C" fn rust_irq_event_handle(desc: *mut Desc) -> EventResult {
+#[no_mangle]
+unsafe extern "C" fn handle_irq_event(desc: *mut Desc) -> EventResult {
     // SAFETY: The caller guarantees descriptor lock and interrupt state.
     unsafe { bindings::rust_irq_event_begin(desc) };
     // SAFETY: The caller guarantees the descriptor lock is held.
@@ -178,8 +177,8 @@ unsafe extern "C" fn rust_irq_event_handle(desc: *mut Desc) -> EventResult {
 /// `desc` and `action` must remain live. `action->thread` must identify a
 /// valid handler thread. The caller must provide the hard-interrupt
 /// serialization required by the IRQ thread state machine.
-#[export]
-unsafe extern "C" fn rust_irq_event_wake_thread(desc: *mut Desc, action: *mut Action) {
+#[no_mangle]
+unsafe extern "C" fn __irq_wake_thread(desc: *mut Desc, action: *mut Action) {
     // SAFETY: The caller provides the wake contract.
     unsafe { wake_thread(desc, action) };
 }

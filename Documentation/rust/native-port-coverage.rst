@@ -111,6 +111,21 @@ IRQ work execution
   public entries and the PREEMPT_RT lazy-worker bridge remain unexported. C
   fallback configurations retain the complete implementations.
 
+IRQ event dispatch
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-irq-event`.
+
+  Rust directly defines the four internal per-CPU dispatch, descriptor
+  lifecycle, and threaded-wake entry points. Rust owns action traversal,
+  handler result aggregation, exact wake-result matching, duplicate wake
+  suppression, oneshot and active-count updates, and pending/in-progress
+  transitions. C retains descriptor and action layouts, handler invocation
+  with tracing and duration diagnostics, lock and interrupt transitions,
+  thread flags, scheduler wakeup, randomness, and spurious accounting. All
+  four entries remain unexported. C fallback configurations retain the
+  complete implementations.
+
 Kobject lifecycle
   Status: ``migrated``.
 
@@ -784,6 +799,63 @@ IRQ work export policy
   Exit condition: Rust export generation supports the original GPL and
   unexported classes without C export records or the skip list.
 
+IRQ descriptor, action, and handler ABI
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/irq.h``, ``include/linux/irqdesc.h``,
+  ``kernel/irq/internals.h``, and ``rust/kernel/irq_event.rs``.
+
+  Reason: C and Rust share descriptor state, intrusive action lists, action
+  flags, handler and thread callbacks, return values, and thread-state fields.
+
+  Test: Native, fallback, and C-only IRQ KUnit runs exercise action traversal,
+  result aggregation, threaded wakeup, duplicate suppression, and descriptor
+  lifecycle transitions on the shared layouts.
+
+  Risk: A layout, callback, or return-value mismatch can dispatch the wrong
+  action, corrupt descriptor state, or lose a threaded wakeup.
+
+  Exit condition: Rust-owned descriptor and action types replace the shared
+  IRQ subsystem representation and callback interface.
+
+IRQ event primitive helpers
+  Status: ``boundary-retained``.
+
+  Owner: ``kernel/irq/handle.c``, tracing and diagnostics infrastructure, and
+  the Rust bindings.
+
+  Reason: Handler tracing, duration diagnostics, descriptor locking,
+  interrupt-state changes, thread flags, scheduler wakeup, randomness, and
+  spurious-interrupt accounting retain scheduler, tracing, and architecture
+  contracts.
+
+  Test: Native SMP1/SMP4, KASAN, lockdep, and PREEMPT_RT runs exercise
+  hardware callbacks, threaded wakeup, oneshot accounting, unknown results,
+  and spurious-interrupt paths.
+
+  Risk: A helper mismatch can invoke a handler in the wrong context, miss a
+  trace or diagnostic, or leave descriptor and thread state inconsistent.
+
+  Exit condition: Approved Rust tracing, locking, interrupt, thread, wake,
+  randomness, and accounting abstractions preserve the helper contracts.
+
+IRQ event unexported entry policy
+  Status: ``boundary-retained``.
+
+  Owner: ``rust/Makefile`` and ``kernel/irq/internals.h``.
+
+  Reason: The four production entries are internal kernel interfaces with no
+  module export. Automatic Rust exports are GPL by default.
+
+  Test: All six ``Module.symvers`` files omit the four names, and the generated
+  Rust export header excludes them.
+
+  Risk: An automatic export can unintentionally expose internal IRQ dispatch
+  entries to modules.
+
+  Exit condition: Rust export generation supports internal unexported entry
+  points without the skip list.
+
 Kobject layout and state
   Status: ``boundary-retained``.
 
@@ -1322,6 +1394,13 @@ per-CPU lists, interrupt delivery, hotplug and PREEMPT_RT worker lifecycle,
 diagnostics, low-level synchronization primitives, and export policy remain
 named C boundaries. Rust defines every public entry and owns every claim,
 queue, state, drain, dispatch, tick, and synchronization decision.
+
+The IRQ event boundary is valid only while the shared descriptor and action
+layouts, handler callback ABI, tracing and duration helpers, interrupt and
+descriptor locking, thread flags, scheduler wakeup, randomness, spurious
+accounting, and unexported entry policy remain named C boundaries. Rust
+defines every production entry and owns every traversal, result, wake,
+oneshot, active-count, and lifecycle decision.
 
 The kobject boundary is valid only while the shared layout, bitfields,
 diagnostics, final cleanup callback, and non-GPL export metadata remain named

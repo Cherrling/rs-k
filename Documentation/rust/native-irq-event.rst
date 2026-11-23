@@ -6,9 +6,9 @@ Native Rust IRQ event dispatch
 Status and scope
 ----------------
 
-The ``CONFIG_RUST_IRQ_EVENT`` option selects native Rust for the production
-per-CPU IRQ event state machine. The public IRQ management API and descriptor
-layout remain unchanged.
+Rust directly defines the production IRQ event entry points when
+``CONFIG_RUST_IRQ_EVENT`` is enabled. The public IRQ management API and
+descriptor layout remain unchanged.
 
 Rust owns action traversal, handler result aggregation, threaded wake policy,
 duplicate wake suppression, oneshot and active-count transitions, and the
@@ -18,6 +18,10 @@ The complete C implementation remains available when the option is disabled.
 
 Ownership
 ---------
+
+Rust directly defines all four internal production entry points:
+``__handle_irq_event_percpu()``, ``handle_irq_event_percpu()``,
+``handle_irq_event()``, and ``__irq_wake_thread()``. They remain unexported.
 
 Rust owns:
 
@@ -50,6 +54,8 @@ C helpers retain:
 
 The C helpers do not choose wake policy, suppress duplicate wakeups, aggregate
 handler results, or order the event lifecycle.
+
+The complete C implementation remains available when the option is disabled.
 
 Important invariants
 --------------------
@@ -98,7 +104,8 @@ The unit must pass these checks before integration:
 * Native Rust with KASAN.
 * Native Rust with lockdep and prove-locking.
 * Native Rust with PREEMPT_RT.
-* Symbol and disassembly checks for all production Rust entry points.
+* Symbol checks showing Rust defines all four production entry points and the
+  native C object defines none. The four entries remain unexported.
 * Existing IRQ resend and core Rust regression suites.
 * Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
   ``git diff --check``.
@@ -106,12 +113,13 @@ The unit must pass these checks before integration:
 Validation results
 ------------------
 
-The native, Rust fallback, C-only, KASAN, lockdep, and PREEMPT_RT kernels all
-booted on one and four CPUs. Each run executed all 19 IRQ test cases. The SMP1
-runs reported 18 passes, one CPU-hotplug skip, and no failures. The SMP4 runs
-reported 19 passes and no failures.
+Eighteen final x86_64 IRQ KUnit boots passed. Native passed 28 cases in four
+SMP4 runs and 27 cases with one expected CPU-hotplug skip in two SMP1 runs.
+Rust fallback, C-only, KASAN, lockdep, and PREEMPT_RT each passed 28 cases on
+SMP4 and 27 cases with the same expected skip on SMP1. The native image also
+ran with the optional memory-lifetime test suite enabled.
 
-The native image also passed the existing core regression suites:
+The adjacent native SMP4 regression runs passed:
 
 * ``irq_work``: seven tests.
 * ``rcuwait``: eight tests.
@@ -120,29 +128,21 @@ The native image also passed the existing core regression suites:
 * ``mm_lifetime``: six tests.
 * ``task_work``: six tests.
 
-Native, KASAN, lockdep, and PREEMPT_RT symbol tables contain
-``rust_irq_event_dispatch``, ``rust_irq_event_handle``,
-``rust_irq_event_percpu``, and ``rust_irq_event_wake_thread``. The Rust
-fallback and C-only symbol tables contain none of these symbols.
+A scan of all runtime logs found no failing KUnit case, BUG, WARNING, Oops,
+panic, RCU stall, KASAN report, or lockdep report. The no-thread-function test
+emitted its expected diagnostic. The spurious-interrupt tests emitted their
+expected bad-interrupt stack traces.
 
-Disassembly shows direct jumps from these production C entry points:
+The native, KASAN, lockdep, and PREEMPT_RT ``rust/kernel.o`` objects define all
+four production entry points, while their ``kernel/irq/handle.o`` objects
+define none. The fallback and C-only ``kernel/irq/handle.o`` objects define all
+four, while the fallback Rust object defines none. All six ``Module.symvers``
+files and generated Rust export headers exclude the four entries. No build
+contains the old ``rust_irq_event_*`` adapters.
 
-* ``__handle_irq_event_percpu()`` to ``rust_irq_event_dispatch``.
-* ``handle_irq_event_percpu()`` to ``rust_irq_event_percpu``.
-* ``handle_irq_event()`` to ``rust_irq_event_handle``.
-* ``__irq_wake_thread()`` to ``rust_irq_event_wake_thread``.
-
-The source passed ``rustfmtcheck``, a full kernel build with ``CLIPPY=1``,
-Rustdoc, focused Sphinx generation, strict checkpatch, and the
-``git diff --check`` check. Strict checkpatch reported no findings after the
-reviewed ``FILE_PATH_CHANGES`` check. Focused Sphinx reported the existing
-missing ``kernel-docs`` document and undefined ``getting_llvm`` label warnings.
-
-The no-thread-function test intentionally emits one
-``IRQ_WAKE_THREAD``-without-thread diagnostic. The QEMU logs contain no KUnit
-failure, BUG, unexpected WARNING, Oops, panic, KASAN report, lockdep report,
-or RCU stall. The KASAN and lockdep builds emitted the existing Maple Tree
-objtool ``noreturn`` note.
+Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
+``git diff --check`` passed. Focused Sphinx reported the existing missing
+``kernel-docs`` document and undefined ``getting_llvm`` label warnings.
 
 Review conditions
 -----------------

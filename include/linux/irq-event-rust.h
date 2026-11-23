@@ -13,13 +13,6 @@ struct irqaction;
 
 #ifdef CONFIG_RUST_IRQ_EVENT
 
-/* Rust-owned production event state machine. */
-u32 rust_irq_event_dispatch(struct irq_desc *desc);
-u32 rust_irq_event_percpu(struct irq_desc *desc);
-u32 rust_irq_event_handle(struct irq_desc *desc);
-void rust_irq_event_wake_thread(struct irq_desc *desc,
-				struct irqaction *action);
-
 /* C helpers for action access, callbacks, diagnostics, and wake primitives. */
 struct irqaction *rust_irq_event_first_action(struct irq_desc *desc);
 struct irqaction *rust_irq_event_next_action(struct irqaction *action);
