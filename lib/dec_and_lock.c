@@ -88,11 +88,9 @@ void rust_dec_and_lock_mutex_unlock(struct mutex *lock)
  * because the spin-lock and the decrement must be
  * "atomic".
  */
+#ifndef CONFIG_RUST_DEC_AND_LOCK
 int atomic_dec_and_lock(atomic_t *atomic, spinlock_t *lock)
 {
-#ifdef CONFIG_RUST_DEC_AND_LOCK
-	return rust_dec_and_lock(atomic, lock);
-#else
 	/* Subtract 1 from counter unless that drops it to 0 (ie. it was 1) */
 	if (atomic_add_unless(atomic, -1, 1))
 		return 0;
@@ -103,17 +101,14 @@ int atomic_dec_and_lock(atomic_t *atomic, spinlock_t *lock)
 		return 1;
 	spin_unlock(lock);
 	return 0;
-#endif /* CONFIG_RUST_DEC_AND_LOCK */
 }
-
+#endif /* CONFIG_RUST_DEC_AND_LOCK */
 EXPORT_SYMBOL(atomic_dec_and_lock);
 
+#ifndef CONFIG_RUST_DEC_AND_LOCK
 int _atomic_dec_and_lock_irqsave(atomic_t *atomic, spinlock_t *lock,
 				 unsigned long *flags)
 {
-#ifdef CONFIG_RUST_DEC_AND_LOCK
-	return rust_dec_and_lock_irqsave(atomic, lock, flags);
-#else
 	/* Subtract 1 from counter unless that drops it to 0 (ie. it was 1) */
 	if (atomic_add_unless(atomic, -1, 1))
 		return 0;
@@ -124,15 +119,13 @@ int _atomic_dec_and_lock_irqsave(atomic_t *atomic, spinlock_t *lock,
 		return 1;
 	spin_unlock_irqrestore(lock, *flags);
 	return 0;
-#endif /* CONFIG_RUST_DEC_AND_LOCK */
 }
+#endif /* CONFIG_RUST_DEC_AND_LOCK */
 EXPORT_SYMBOL(_atomic_dec_and_lock_irqsave);
 
+#ifndef CONFIG_RUST_DEC_AND_LOCK
 int atomic_dec_and_raw_lock(atomic_t *atomic, raw_spinlock_t *lock)
 {
-#ifdef CONFIG_RUST_DEC_AND_LOCK
-	return rust_dec_and_raw_lock(atomic, lock);
-#else
 	/* Subtract 1 from counter unless that drops it to 0 (ie. it was 1) */
 	if (atomic_add_unless(atomic, -1, 1))
 		return 0;
@@ -143,16 +136,14 @@ int atomic_dec_and_raw_lock(atomic_t *atomic, raw_spinlock_t *lock)
 		return 1;
 	raw_spin_unlock(lock);
 	return 0;
-#endif /* CONFIG_RUST_DEC_AND_LOCK */
 }
+#endif /* CONFIG_RUST_DEC_AND_LOCK */
 EXPORT_SYMBOL(atomic_dec_and_raw_lock);
 
+#ifndef CONFIG_RUST_DEC_AND_LOCK
 int _atomic_dec_and_raw_lock_irqsave(atomic_t *atomic, raw_spinlock_t *lock,
 				     unsigned long *flags)
 {
-#ifdef CONFIG_RUST_DEC_AND_LOCK
-	return rust_dec_and_raw_lock_irqsave(atomic, lock, flags);
-#else
 	/* Subtract 1 from counter unless that drops it to 0 (ie. it was 1) */
 	if (atomic_add_unless(atomic, -1, 1))
 		return 0;
@@ -163,6 +154,6 @@ int _atomic_dec_and_raw_lock_irqsave(atomic_t *atomic, raw_spinlock_t *lock,
 		return 1;
 	raw_spin_unlock_irqrestore(lock, *flags);
 	return 0;
-#endif /* CONFIG_RUST_DEC_AND_LOCK */
 }
+#endif /* CONFIG_RUST_DEC_AND_LOCK */
 EXPORT_SYMBOL(_atomic_dec_and_raw_lock_irqsave);

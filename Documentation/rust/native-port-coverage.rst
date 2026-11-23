@@ -59,6 +59,18 @@ Lockref operations
   layout, initialization, architecture compare-exchange, and spinlock
   helpers.
 
+Decrement-and-lock protocols
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-dec-and-lock`.
+
+  Rust directly defines the five public spinlock, IRQ-save, raw-lock, and
+  mutex variants. Rust owns the fast decrement, lock-backed slow path, second
+  decrement, and held-lock result. C retains architecture atomics, lock and
+  IRQ primitives, and ordinary export metadata. C fallback configurations
+  retain the complete implementations. All 16 direct-entry KUnit runs and the
+  adjacent mutex, rwlock, and lockref regressions passed.
+
 Kobject lifecycle
   Status: ``migrated``.
 
@@ -539,6 +551,41 @@ Lockref export metadata
   ``EXPORT_SYMBOL`` and the native object defines no lockref function body.
 
   Risk: Duplicate exports or a class change can break module compatibility.
+
+  Exit condition: Rust export metadata supports the original non-GPL class
+  without C export entries.
+
+Decrement-and-lock primitive helpers
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/dec_and_lock.c`` and ``rust/helpers`` bindings.
+
+  Reason: Architecture atomics, spinlocks, raw spinlocks, mutexes, and IRQ
+  state operations retain their existing architecture and lock-debug
+  contracts.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT runs exercise
+  every protocol variant and concurrent final-transition selection.
+
+  Risk: A primitive mismatch can lose the unique zero transition, leave a
+  lock held, or restore the wrong interrupt state.
+
+  Exit condition: Rust-owned atomic, lock, mutex, and interrupt abstractions
+  preserve the complete primitive contracts.
+
+Decrement-and-lock export metadata
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/dec_and_lock.c``, ``kernel/locking/mutex.c``, and
+  ``rust/Makefile``.
+
+  Reason: All five public symbols retain ordinary non-GPL exports while
+  generated Rust exports use the GPL class.
+
+  Test: ``Module.symvers`` records five ``EXPORT_SYMBOL`` entries, and the
+  generated Rust GPL export header excludes all five names.
+
+  Risk: A duplicate export or class change can break module compatibility.
 
   Exit condition: Rust export metadata supports the original non-GPL class
   without C export entries.
@@ -1057,6 +1104,11 @@ attachment, or traversal policy.
 The lockref boundary is valid only while initialization, the packed layout,
 architecture operations, and non-GPL export metadata remain shared C
 boundaries. Rust owns every reference transition and fallback decision.
+
+The decrement-and-lock boundary is valid only while architecture atomics,
+lock and IRQ primitives, and ordinary export metadata remain named C
+boundaries. Rust defines every public protocol entry and owns every decrement,
+slow-path, and held-lock decision.
 
 The kobject boundary is valid only while the shared layout, bitfields,
 diagnostics, final cleanup callback, and non-GPL export metadata remain named

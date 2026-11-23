@@ -13,14 +13,6 @@ struct mutex;
 
 #ifdef CONFIG_RUST_DEC_AND_LOCK
 
-int rust_dec_and_lock(atomic_t *atomic, spinlock_t *lock);
-int rust_dec_and_lock_irqsave(atomic_t *atomic, spinlock_t *lock,
-			      unsigned long *flags);
-int rust_dec_and_raw_lock(atomic_t *atomic, raw_spinlock_t *lock);
-int rust_dec_and_raw_lock_irqsave(atomic_t *atomic, raw_spinlock_t *lock,
-				  unsigned long *flags);
-int rust_dec_and_mutex_lock(atomic_t *atomic, struct mutex *lock);
-
 int rust_dec_and_lock_atomic_add_unless(atomic_t *atomic);
 bool rust_dec_and_lock_atomic_dec_and_test(atomic_t *atomic);
 

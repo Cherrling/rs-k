@@ -755,7 +755,8 @@ config RUST_DEC_AND_LOCK
 	  Rust owns the fast decrement, the lock-backed slow path, the second
 	  decrement, and the decision to return with the lock held. C retains
 	  the architecture atomic operations, lock and IRQ primitives, and
-	  public ABI adapters.
+	  ordinary export metadata. Rust directly defines the public entry
+	  points.
 
 	  The complete C implementations remain available when this option is
 	  disabled.

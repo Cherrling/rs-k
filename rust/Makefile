@@ -591,6 +591,11 @@ rust_non_gpl_exports := \
 	__genradix_iter_peek_prev \
 	__genradix_prealloc \
 	__genradix_free \
+	atomic_dec_and_lock \
+	_atomic_dec_and_lock_irqsave \
+	atomic_dec_and_raw_lock \
+	_atomic_dec_and_raw_lock_irqsave \
+	atomic_dec_and_mutex_lock \
 	__kfifo_in \
 	__kfifo_out_peek \
 	__kfifo_out_linear \

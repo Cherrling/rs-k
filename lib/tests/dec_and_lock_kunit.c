@@ -66,7 +66,15 @@ static void dec_and_lock_test_spinlock_irqsave(struct kunit *test)
 	KUNIT_EXPECT_TRUE(test, dec_and_lock_test_spin_held(&lock));
 	irq_disabled = irqs_disabled();
 	spin_unlock_irqrestore(&lock, flags);
+#ifdef CONFIG_PREEMPT_RT
+	/*
+	 * PREEMPT_RT regular spinlocks sleep and therefore do not disable
+	 * interrupts in the irqsave variant.
+	 */
+	KUNIT_EXPECT_EQ(test, flags, 0UL);
+#else
 	KUNIT_EXPECT_TRUE(test, irq_disabled);
+#endif
 }
 
 static void dec_and_lock_test_raw_spinlock(struct kunit *test)
@@ -107,6 +115,15 @@ static void dec_and_lock_test_raw_spinlock_irqsave(struct kunit *test)
 	KUNIT_EXPECT_TRUE(test, irq_disabled);
 }
 
+static struct task_struct *dec_and_lock_test_mutex_owner(struct mutex *lock)
+{
+#ifdef CONFIG_PREEMPT_RT
+	return rt_mutex_owner(&lock->rtmutex);
+#else
+	return (struct task_struct *)mutex_get_owner(lock);
+#endif
+}
+
 static void dec_and_lock_test_mutex(struct kunit *test)
 {
 	atomic_t count = ATOMIC_INIT(2);
@@ -120,7 +137,7 @@ static void dec_and_lock_test_mutex(struct kunit *test)
 	KUNIT_EXPECT_TRUE(test, atomic_dec_and_mutex_lock(&count, &lock));
 	KUNIT_EXPECT_EQ(test, atomic_read(&count), 0);
 	KUNIT_EXPECT_TRUE(test, mutex_is_locked(&lock));
-	KUNIT_EXPECT_PTR_EQ(test, (void *)mutex_get_owner(&lock), current);
+	KUNIT_EXPECT_PTR_EQ(test, dec_and_lock_test_mutex_owner(&lock), current);
 	mutex_unlock(&lock);
 }
 

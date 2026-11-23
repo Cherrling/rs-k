@@ -1358,11 +1358,9 @@ __weak void arch_contended_release_trace_unreg(void) { }
  *
  * return true and hold lock if we dec to 0, return false otherwise
  */
+#ifndef CONFIG_RUST_DEC_AND_LOCK
 int atomic_dec_and_mutex_lock(atomic_t *cnt, struct mutex *lock)
 {
-#ifdef CONFIG_RUST_DEC_AND_LOCK
-	return rust_dec_and_mutex_lock(cnt, lock);
-#else
 	/* dec if we can't possibly hit 0 */
 	if (atomic_add_unless(cnt, -1, 1))
 		return 0;
@@ -1375,6 +1373,6 @@ int atomic_dec_and_mutex_lock(atomic_t *cnt, struct mutex *lock)
 	}
 	/* we hit 0, and we hold the lock */
 	return 1;
-#endif /* CONFIG_RUST_DEC_AND_LOCK */
 }
+#endif /* CONFIG_RUST_DEC_AND_LOCK */
 EXPORT_SYMBOL(atomic_dec_and_mutex_lock);

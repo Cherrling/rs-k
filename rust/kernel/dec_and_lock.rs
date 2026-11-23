@@ -46,7 +46,7 @@ unsafe fn decrement_and_test(atomic: *mut Atomic) -> bool {
 /// `atomic` and `lock` must point to valid storage. The caller must hold a
 /// reference for the decrement.
 #[export]
-unsafe extern "C" fn rust_dec_and_lock(atomic: *mut Atomic, lock: *mut Spinlock) -> c_int {
+unsafe extern "C" fn atomic_dec_and_lock(atomic: *mut Atomic, lock: *mut Spinlock) -> c_int {
     // SAFETY: The caller guarantees valid atomic storage.
     if unsafe { decrement_unless_one(atomic) } {
         return 0;
@@ -64,15 +64,17 @@ unsafe extern "C" fn rust_dec_and_lock(atomic: *mut Atomic, lock: *mut Spinlock)
     0
 }
 
-/// Decrements a count and returns with a spinlock held and IRQs disabled when
-/// the count reaches zero.
+/// Decrements a count and returns with a spinlock held when it reaches zero.
+///
+/// The lock helper also saves the interrupt state selected by the spinlock
+/// implementation. PREEMPT_RT regular spinlocks preserve interrupts.
 ///
 /// # Safety
 ///
 /// `atomic`, `lock`, and `flags` must point to valid storage. The caller must
 /// hold a reference for the decrement.
 #[export]
-unsafe extern "C" fn rust_dec_and_lock_irqsave(
+unsafe extern "C" fn _atomic_dec_and_lock_irqsave(
     atomic: *mut Atomic,
     lock: *mut Spinlock,
     flags: *mut usize,
@@ -101,7 +103,7 @@ unsafe extern "C" fn rust_dec_and_lock_irqsave(
 /// `atomic` and `lock` must point to valid storage. The caller must hold a
 /// reference for the decrement.
 #[export]
-unsafe extern "C" fn rust_dec_and_raw_lock(atomic: *mut Atomic, lock: *mut RawSpinlock) -> c_int {
+unsafe extern "C" fn atomic_dec_and_raw_lock(atomic: *mut Atomic, lock: *mut RawSpinlock) -> c_int {
     // SAFETY: The caller guarantees valid atomic storage.
     if unsafe { decrement_unless_one(atomic) } {
         return 0;
@@ -119,15 +121,15 @@ unsafe extern "C" fn rust_dec_and_raw_lock(atomic: *mut Atomic, lock: *mut RawSp
     0
 }
 
-/// Decrements a count and returns with a raw spinlock held and IRQs disabled
-/// when the count reaches zero.
+/// Decrements a count and returns with a raw spinlock held and hard IRQs
+/// disabled when the count reaches zero.
 ///
 /// # Safety
 ///
 /// `atomic`, `lock`, and `flags` must point to valid storage. The caller must
 /// hold a reference for the decrement.
 #[export]
-unsafe extern "C" fn rust_dec_and_raw_lock_irqsave(
+unsafe extern "C" fn _atomic_dec_and_raw_lock_irqsave(
     atomic: *mut Atomic,
     lock: *mut RawSpinlock,
     flags: *mut usize,
@@ -156,7 +158,7 @@ unsafe extern "C" fn rust_dec_and_raw_lock_irqsave(
 /// `atomic` and `lock` must point to valid storage. The caller must hold a
 /// reference for the decrement.
 #[export]
-unsafe extern "C" fn rust_dec_and_mutex_lock(atomic: *mut Atomic, lock: *mut Mutex) -> c_int {
+unsafe extern "C" fn atomic_dec_and_mutex_lock(atomic: *mut Atomic, lock: *mut Mutex) -> c_int {
     // SAFETY: The caller guarantees valid atomic storage.
     if unsafe { decrement_unless_one(atomic) } {
         return 0;
