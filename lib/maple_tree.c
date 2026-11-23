@@ -5114,11 +5114,9 @@ next_slot:
  *
  * Return: the entry at the location or %NULL.
  */
+#ifndef CONFIG_RUST_MAPLE_TREE_WALK
 void *mas_walk(struct ma_state *mas)
 {
-#ifdef CONFIG_RUST_MAPLE_TREE_WALK
-	return rust_mas_walk(mas);
-#else
 	void *entry;
 
 	mas_may_init_lock_check(mas);
@@ -5143,9 +5141,9 @@ retry:
 	}
 
 	return entry;
-#endif /* CONFIG_RUST_MAPLE_TREE_WALK */
 }
 EXPORT_SYMBOL_GPL(mas_walk);
+#endif /* CONFIG_RUST_MAPLE_TREE_WALK */
 
 static inline bool mas_rewind_node(struct ma_state *mas)
 {

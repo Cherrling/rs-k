@@ -165,6 +165,18 @@ Maple Tree loads
   the complete load traversal. All 16 load KUnit runs and complete Maple Tree
   self-tests passed.
 
+Maple Tree stateful walks
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-maple-tree-walk`.
+
+  Rust directly defines ``mas_walk()`` and owns state normalization, pivot
+  descent, range metadata transitions, dead-node restart, and single-entry
+  results. C retains node encoding and layout, protected slot access,
+  traversal metadata, and lockdep helpers. C fallback configurations retain
+  the complete stateful walk. All 16 walk KUnit runs and complete Maple Tree
+  self-tests passed.
+
 Generic radix trees
   Status: ``migrated``.
 
@@ -361,6 +373,25 @@ Maple Tree node layout and protected access
 
   Exit condition: Rust owns the Maple node representation and equivalent
   protected-access contract.
+
+Maple Tree traversal metadata and lockdep
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/maple_tree.c``, ``include/linux/maple_tree_rust.h``, and
+  ``rust/kernel/maple_tree_core.rs``.
+
+  Reason: The node data end, protected slot access, lockdep initialization,
+  and RCU bookkeeping depend on the shared Maple metadata layout.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT runs exercise
+  empty, direct-root, range metadata, zero-entry, maximum-index, and concurrent
+  RCU paths.
+
+  Risk: A metadata or initialization mismatch can report the wrong range or
+  hide an invalid lock or RCU access.
+
+  Exit condition: Rust owns equivalent Maple metadata decoding and lockdep
+  initialization.
 
 Maple Tree load diagnostics and metadata
   Status: ``boundary-retained``.
@@ -1074,6 +1105,11 @@ The Maple Tree load boundary is valid only while encoded roots, node layouts,
 protected slot access, lockdep diagnostics, tracing, and ordinary export
 metadata remain named C boundaries. Rust defines the public load entry and
 owns every root, pivot, restart, and RCU lifetime decision.
+
+The Maple Tree walk boundary is valid only while encoded nodes, traversal
+metadata, protected access, and lockdep helpers remain named C boundaries.
+Rust defines the public walk entry and owns every state normalization, range,
+restart, and result transition.
 
 The generic radix tree boundary is valid only while the tagged layouts,
 inline container API, atomic publication helpers, allocation primitives, and

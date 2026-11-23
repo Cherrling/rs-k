@@ -31,8 +31,6 @@ void rust_maple_tree_pool_set_nomem(struct ma_state *mas);
 #if IS_ENABLED(CONFIG_RUST_MAPLE_TREE_LOAD) || \
 	IS_ENABLED(CONFIG_RUST_MAPLE_TREE_WALK)
 
-void *rust_mas_walk(struct ma_state *mas);
-
 void rust_maple_tree_init_lock_check(struct ma_state *mas);
 void rust_maple_tree_may_init_lock_check(struct ma_state *mas);
 void *rust_maple_tree_root(struct ma_state *mas);

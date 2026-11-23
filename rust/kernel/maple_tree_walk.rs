@@ -64,10 +64,10 @@ pub(crate) unsafe fn walk(mas: *mut MaState) -> *mut c_void {
 ///
 /// # Safety
 ///
-/// The C caller must provide a valid Maple state and the required RCU or tree
+/// The caller must provide a valid Maple state and the required RCU or tree
 /// lock protection.
 #[export]
-unsafe extern "C" fn rust_mas_walk(mas: *mut MaState) -> *mut c_void {
+unsafe extern "C" fn mas_walk(mas: *mut MaState) -> *mut c_void {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { walk(mas) }
 }

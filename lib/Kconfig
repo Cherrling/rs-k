@@ -447,9 +447,8 @@ config RUST_MAPLE_TREE_WALK
 	  behind mas_walk().
 
 	  Maple node encoding, node layout, protected slot access, lockdep
-	  checks, and traversal metadata remain in C. The exported C entry
-	  point remains as an ABI adapter. The C fallback retains the complete
-	  stateful walk.
+	  checks, and traversal metadata remain in C. Rust directly defines the
+	  public entry point. The C fallback retains the complete stateful walk.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
