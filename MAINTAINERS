@@ -24164,7 +24164,6 @@ F:	include/linux/irq-spurious-rust.h
 F:	include/linux/irq-resend-rust.h
 F:	include/linux/irq-work-rust.h
 F:	include/linux/itimer-rust.h
-F:	include/linux/kfifo-rust.h
 F:	include/linux/kobject-rust.h
 F:	include/linux/kref-rust.h
 F:	include/linux/klist-rust.h

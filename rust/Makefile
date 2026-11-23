@@ -590,7 +590,27 @@ rust_non_gpl_exports := \
 	__genradix_iter_peek \
 	__genradix_iter_peek_prev \
 	__genradix_prealloc \
-	__genradix_free
+	__genradix_free \
+	__kfifo_in \
+	__kfifo_out_peek \
+	__kfifo_out_linear \
+	__kfifo_out \
+	__kfifo_from_user \
+	__kfifo_to_user \
+	__kfifo_dma_in_prepare \
+	__kfifo_dma_out_prepare \
+	__kfifo_max_r \
+	__kfifo_len_r \
+	__kfifo_in_r \
+	__kfifo_out_peek_r \
+	__kfifo_out_linear_r \
+	__kfifo_out_r \
+	__kfifo_skip_r \
+	__kfifo_from_user_r \
+	__kfifo_to_user_r \
+	__kfifo_dma_in_prepare_r \
+	__kfifo_dma_in_finish_r \
+	__kfifo_dma_out_prepare_r
 
 # Rust-defined production symbols that must not receive automatic exports.
 rust_unexported_symbols := \

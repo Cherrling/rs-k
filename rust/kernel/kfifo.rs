@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
-//! Native implementation of the generic kernel FIFO algorithms.
+//! Native generic kernel FIFO implementation.
 //!
-//! Rust owns ring-buffer copying, wrap-around calculations, record framing,
-//! linear range selection, user-copy orchestration, DMA segment preparation,
-//! and index advancement. C retains allocation and the low-level `uaccess`,
-//! memory-barrier, and scatterlist mutation boundaries.
+//! Rust directly defines the twenty public out-of-line FIFO entry points. It
+//! owns ring-buffer copying, wrap-around calculations, record framing, linear
+//! range selection, user-copy orchestration, DMA segment preparation, and
+//! index advancement. C retains allocation, initialization, export metadata,
+//! and the low-level `uaccess`, memory-barrier, and scatterlist mutation
+//! boundaries.
 
 use crate::bindings;
 use core::cmp;
@@ -419,7 +421,7 @@ fn record_max(recsize: usize) -> c_uint {
 ///
 /// `fifo` must be initialized, and `buf` must contain `len` elements.
 #[export]
-unsafe extern "C" fn rust_kfifo_in(fifo: *mut Fifo, buf: *const c_void, len: c_uint) -> c_uint {
+unsafe extern "C" fn __kfifo_in(fifo: *mut Fifo, buf: *const c_void, len: c_uint) -> c_uint {
     // SAFETY: The function contract requires an initialized FIFO.
     let ring = unsafe { Ring::from_fifo(fifo) };
     let len = cmp::min(len, ring.unused());
@@ -438,7 +440,7 @@ unsafe extern "C" fn rust_kfifo_in(fifo: *mut Fifo, buf: *const c_void, len: c_u
 ///
 /// `fifo` must be initialized, and `buf` must hold `len` elements.
 #[export]
-unsafe extern "C" fn rust_kfifo_out_peek(fifo: *mut Fifo, buf: *mut c_void, len: c_uint) -> c_uint {
+unsafe extern "C" fn __kfifo_out_peek(fifo: *mut Fifo, buf: *mut c_void, len: c_uint) -> c_uint {
     // SAFETY: The function contract requires an initialized FIFO.
     let ring = unsafe { Ring::from_fifo(fifo) };
     let len = cmp::min(len, ring.available());
@@ -455,11 +457,7 @@ unsafe extern "C" fn rust_kfifo_out_peek(fifo: *mut Fifo, buf: *mut c_void, len:
 ///
 /// `fifo` must be initialized. If non-NULL, `tail` must be writable.
 #[export]
-unsafe extern "C" fn rust_kfifo_out_linear(
-    fifo: *mut Fifo,
-    tail: *mut c_uint,
-    n: c_uint,
-) -> c_uint {
+unsafe extern "C" fn __kfifo_out_linear(fifo: *mut Fifo, tail: *mut c_uint, n: c_uint) -> c_uint {
     // SAFETY: The function contract requires an initialized FIFO.
     let ring = unsafe { Ring::from_fifo(fifo) };
     let off = ring.out_index & ring.mask;
@@ -481,7 +479,7 @@ unsafe extern "C" fn rust_kfifo_out_linear(
 ///
 /// `fifo` must be initialized, and `buf` must hold `len` elements.
 #[export]
-unsafe extern "C" fn rust_kfifo_out(fifo: *mut Fifo, buf: *mut c_void, len: c_uint) -> c_uint {
+unsafe extern "C" fn __kfifo_out(fifo: *mut Fifo, buf: *mut c_void, len: c_uint) -> c_uint {
     // SAFETY: The function contract requires an initialized FIFO.
     let ring = unsafe { Ring::from_fifo(fifo) };
     let len = cmp::min(len, ring.available());
@@ -500,7 +498,7 @@ unsafe extern "C" fn rust_kfifo_out(fifo: *mut Fifo, buf: *mut c_void, len: c_ui
 ///
 /// All pointers and user ranges must be valid for the requested operation.
 #[export]
-unsafe extern "C" fn rust_kfifo_from_user(
+unsafe extern "C" fn __kfifo_from_user(
     fifo: *mut Fifo,
     from: *const c_void,
     len: usize,
@@ -540,7 +538,7 @@ unsafe extern "C" fn rust_kfifo_from_user(
 ///
 /// All pointers and user ranges must be valid for the requested operation.
 #[export]
-unsafe extern "C" fn rust_kfifo_to_user(
+unsafe extern "C" fn __kfifo_to_user(
     fifo: *mut Fifo,
     to: *mut c_void,
     len: usize,
@@ -580,7 +578,7 @@ unsafe extern "C" fn rust_kfifo_to_user(
 ///
 /// `fifo` and `sgl` must be valid, and `sgl` must have enough entries.
 #[export]
-unsafe extern "C" fn rust_kfifo_dma_in_prepare(
+unsafe extern "C" fn __kfifo_dma_in_prepare(
     fifo: *mut Fifo,
     sgl: *mut Scatterlist,
     nents: c_int,
@@ -602,7 +600,7 @@ unsafe extern "C" fn rust_kfifo_dma_in_prepare(
 ///
 /// `fifo` and `sgl` must be valid, and `sgl` must have enough entries.
 #[export]
-unsafe extern "C" fn rust_kfifo_dma_out_prepare(
+unsafe extern "C" fn __kfifo_dma_out_prepare(
     fifo: *mut Fifo,
     sgl: *mut Scatterlist,
     nents: c_int,
@@ -624,7 +622,7 @@ unsafe extern "C" fn rust_kfifo_dma_out_prepare(
 ///
 /// The C ABI has no additional pointer preconditions.
 #[export]
-unsafe extern "C" fn rust_kfifo_max_r(len: c_uint, recsize: usize) -> c_uint {
+unsafe extern "C" fn __kfifo_max_r(len: c_uint, recsize: usize) -> c_uint {
     cmp::min(len, record_max(recsize))
 }
 
@@ -634,7 +632,7 @@ unsafe extern "C" fn rust_kfifo_max_r(len: c_uint, recsize: usize) -> c_uint {
 ///
 /// `fifo` must contain a record, and `recsize` must be one or two.
 #[export]
-unsafe extern "C" fn rust_kfifo_len_r(fifo: *mut Fifo, recsize: usize) -> c_uint {
+unsafe extern "C" fn __kfifo_len_r(fifo: *mut Fifo, recsize: usize) -> c_uint {
     // SAFETY: The function contract requires an initialized FIFO.
     let ring = unsafe { Ring::from_fifo(fifo) };
     // SAFETY: The function contract requires a complete next record and a
@@ -648,7 +646,7 @@ unsafe extern "C" fn rust_kfifo_len_r(fifo: *mut Fifo, recsize: usize) -> c_uint
 ///
 /// `fifo` must be initialized, and `buf` must contain `len` bytes.
 #[export]
-unsafe extern "C" fn rust_kfifo_in_r(
+unsafe extern "C" fn __kfifo_in_r(
     fifo: *mut Fifo,
     buf: *const c_void,
     len: c_uint,
@@ -683,7 +681,7 @@ unsafe extern "C" fn rust_kfifo_in_r(
 ///
 /// `fifo` must be initialized, and `buf` must hold `len` bytes.
 #[export]
-unsafe extern "C" fn rust_kfifo_out_peek_r(
+unsafe extern "C" fn __kfifo_out_peek_r(
     fifo: *mut Fifo,
     buf: *mut c_void,
     len: c_uint,
@@ -712,7 +710,7 @@ unsafe extern "C" fn rust_kfifo_out_peek_r(
 ///
 /// `fifo` must be initialized. If non-NULL, `tail` must be writable.
 #[export]
-unsafe extern "C" fn rust_kfifo_out_linear_r(
+unsafe extern "C" fn __kfifo_out_linear_r(
     fifo: *mut Fifo,
     tail: *mut c_uint,
     n: c_uint,
@@ -742,7 +740,7 @@ unsafe extern "C" fn rust_kfifo_out_linear_r(
 ///
 /// `fifo` must be initialized, and `buf` must hold `len` bytes.
 #[export]
-unsafe extern "C" fn rust_kfifo_out_r(
+unsafe extern "C" fn __kfifo_out_r(
     fifo: *mut Fifo,
     buf: *mut c_void,
     len: c_uint,
@@ -779,7 +777,7 @@ unsafe extern "C" fn rust_kfifo_out_r(
 ///
 /// `fifo` must contain a record, and `recsize` must be one or two.
 #[export]
-unsafe extern "C" fn rust_kfifo_skip_r(fifo: *mut Fifo, recsize: usize) {
+unsafe extern "C" fn __kfifo_skip_r(fifo: *mut Fifo, recsize: usize) {
     // SAFETY: The function contract requires an initialized FIFO.
     let ring = unsafe { Ring::from_fifo(fifo) };
     // SAFETY: The function contract requires a complete next record and a
@@ -804,7 +802,7 @@ unsafe extern "C" fn rust_kfifo_skip_r(fifo: *mut Fifo, recsize: usize) {
 ///
 /// All pointers and user ranges must be valid for the requested operation.
 #[export]
-unsafe extern "C" fn rust_kfifo_from_user_r(
+unsafe extern "C" fn __kfifo_from_user_r(
     fifo: *mut Fifo,
     from: *const c_void,
     len: usize,
@@ -861,7 +859,7 @@ unsafe extern "C" fn rust_kfifo_from_user_r(
 ///
 /// All pointers and user ranges must be valid for the requested operation.
 #[export]
-unsafe extern "C" fn rust_kfifo_to_user_r(
+unsafe extern "C" fn __kfifo_to_user_r(
     fifo: *mut Fifo,
     to: *mut c_void,
     len: usize,
@@ -918,7 +916,7 @@ unsafe extern "C" fn rust_kfifo_to_user_r(
 /// `fifo` and `sgl` must be valid, `nents` must be non-zero, and `sgl` must
 /// have enough entries.
 #[export]
-unsafe extern "C" fn rust_kfifo_dma_in_prepare_r(
+unsafe extern "C" fn __kfifo_dma_in_prepare_r(
     fifo: *mut Fifo,
     sgl: *mut Scatterlist,
     nents: c_int,
@@ -958,7 +956,7 @@ unsafe extern "C" fn rust_kfifo_dma_in_prepare_r(
 ///
 /// `fifo` must be initialized and have space for the completed record.
 #[export]
-unsafe extern "C" fn rust_kfifo_dma_in_finish_r(fifo: *mut Fifo, len: c_uint, recsize: usize) {
+unsafe extern "C" fn __kfifo_dma_in_finish_r(fifo: *mut Fifo, len: c_uint, recsize: usize) {
     // SAFETY: The function contract requires an initialized FIFO.
     let ring = unsafe { Ring::from_fifo(fifo) };
     let len = cmp::min(len, record_max(recsize));
@@ -983,7 +981,7 @@ unsafe extern "C" fn rust_kfifo_dma_in_finish_r(fifo: *mut Fifo, len: c_uint, re
 /// `fifo` and `sgl` must be valid, `nents` must be non-zero, and `sgl` must
 /// have enough entries.
 #[export]
-unsafe extern "C" fn rust_kfifo_dma_out_prepare_r(
+unsafe extern "C" fn __kfifo_dma_out_prepare_r(
     fifo: *mut Fifo,
     sgl: *mut Scatterlist,
     nents: c_int,

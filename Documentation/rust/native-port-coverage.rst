@@ -152,6 +152,18 @@ B+Tree operations
   and release, lifecycle initialization, and geometry objects. C fallback
   configurations retain the complete algorithms.
 
+Kernel FIFO operations
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-kfifo`.
+
+  Rust directly defines the twenty public out-of-line FIFO entry points and
+  owns ring copying, wrap-around, record framing, user-copy accounting, DMA
+  segment preparation, and index commitment. The native C object retains
+  allocation, initialization, user-access and barrier helpers, scatterlist
+  mutation, and ordinary non-GPL export metadata. C fallback configurations
+  retain the complete algorithms.
+
 Boundary-retained inventory
 ---------------------------
 
@@ -177,8 +189,8 @@ Public ABI
   ``include/linux/kobject.h``, ``include/linux/interval_tree.h``,
   ``include/linux/rbtree.h``, ``include/linux/rbtree_augmented.h``,
   ``include/linux/plist.h``, ``include/linux/list_sort.h``,
-  ``include/linux/list_lru.h``, ``include/linux/generic-radix-tree.h``, and
-  ``include/linux/btree.h``.
+  ``include/linux/list_lru.h``, ``include/linux/generic-radix-tree.h``,
+  ``include/linux/btree.h``, and ``include/linux/kfifo.h``.
 
   Reason: Existing callers and loadable modules use the stable C ABI.
 
@@ -752,6 +764,74 @@ B+Tree typed visitor callbacks
   Exit condition: Rust directly supplies compatible typed visitor interfaces
   for every public key width.
 
+Kernel FIFO layout and inline API
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/kfifo.h``.
+
+  Reason: C and Rust access the same index, mask, element-size, storage
+  pointer, scatterlist, and record-prefix layout through the inline API.
+
+  Test: Native, fallback, and C-only KUnit runs exercise in-place and pointer
+  FIFOs, wrap-around, element scaling, records, user copies, and DMA ranges.
+
+  Risk: A layout or inline-contract change can make Rust use the wrong range
+  or publish an index before the corresponding data is visible.
+
+  Exit condition: Rust-owned FIFO and inline container interfaces replace the
+  shared C representation.
+
+Kernel FIFO allocation and initialization
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/kfifo.c``.
+
+  Reason: Buffer allocation, NUMA-node placement, devres release, and
+  caller-provided storage lifetime retain kernel allocator contracts.
+
+  Test: Every configuration checks allocated and caller-provided FIFO setup,
+  invalid sizes, element sizes, release, and reuse.
+
+  Risk: An allocation or reset mismatch can leak storage or leave stale
+  indices visible to Rust.
+
+  Exit condition: Rust owns FIFO allocation and initialization with
+  equivalent device-managed storage and lifetime behavior.
+
+Kernel FIFO copy and scatterlist helpers
+  Status: ``boundary-retained``.
+
+  Owner: The architecture user-access layer, ``smp_wmb()``, and
+  ``rust/helpers/scatterlist.c``.
+
+  Reason: User copies, publication barriers, and scatterlist mutation remain
+  architecture and kernel-helper boundaries.
+
+  Test: Native, fallback, and C-only KUnit runs cover partial user copies,
+  wrap splitting, DMA segment creation, and mapped-address preservation.
+
+  Risk: A missing barrier or helper mismatch can expose partial records or
+  corrupt DMA metadata.
+
+  Exit condition: Rust-owned equivalents preserve the architecture ordering,
+  user-access, and scatterlist contracts.
+
+Kernel FIFO export metadata
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/kfifo.c`` and ``rust/Makefile``.
+
+  Reason: All twenty out-of-line symbols retain ordinary non-GPL exports while
+  generated Rust exports use the GPL class.
+
+  Test: ``vmlinux.symvers`` records twenty ``EXPORT_SYMBOL`` entries, and the
+  generated Rust GPL export header excludes all twenty names.
+
+  Risk: A duplicate export or class change can break module compatibility.
+
+  Exit condition: Rust export metadata supports the original non-GPL class
+  without C export entries.
+
 The lock-less list boundary is valid only while the inline producer paths,
 intrusive layouts, and atomic semantics remain shared ABI. A boundary entry
 does not transfer policy, retry decisions, state transitions, or exported
@@ -808,6 +888,11 @@ mempool allocation primitives, typed visitor callbacks, geometry objects, and
 lifecycle functions remain named C boundaries. Rust defines every public
 algorithm entry and owns every traversal, update, structural, merge, visitor,
 and reclamation decision.
+
+The kernel FIFO boundary is valid only while the FIFO layout, allocation and
+initialization, user-access and barrier helpers, scatterlist mutation, and
+ordinary export metadata remain named C boundaries. Rust defines every public
+out-of-line entry and owns every copy, framing, segment, and index decision.
 
 Pending inventory
 -----------------

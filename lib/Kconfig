@@ -932,13 +932,13 @@ config RUST_KFIFO
 	depends on RUST && X86_64
 	default y
 	help
-	  Use Rust for the production ring-buffer algorithms in lib/kfifo.c,
-	  including wrap-around, record framing, user-copy orchestration,
-	  scatterlist preparation, and index advancement.
+	  Use Rust for the production out-of-line FIFO algorithms, including
+	  ring-buffer copying, wrap-around, record framing, user-copy
+	  orchestration, scatterlist preparation, and index advancement.
 
-	  Allocation, low-level user access, memory barriers, and scatterlist
-	  mutation remain in C. The exported entry points remain as ABI
-	  adapters.
+	  Rust directly defines the twenty public entry points. Allocation,
+	  initialization, low-level user access, memory barriers, scatterlist
+	  mutation, and ordinary export metadata remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

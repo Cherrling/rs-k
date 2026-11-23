@@ -93,7 +93,6 @@
 #include <linux/jiffies.h>
 #include <linux/jump_label.h>
 #include <linux/kfifo.h>
-#include <linux/kfifo-rust.h>
 #include <linux/kobject.h>
 #include <linux/kobject-rust.h>
 #include <linux/kref.h>

@@ -9,7 +9,6 @@
 #include <linux/err.h>
 #include <linux/export.h>
 #include <linux/kfifo.h>
-#include <linux/kfifo-rust.h>
 #include <linux/log2.h>
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
@@ -602,145 +601,30 @@ EXPORT_SYMBOL(__kfifo_dma_out_prepare_r);
 
 #else /* CONFIG_RUST_KFIFO */
 
-unsigned int __kfifo_in(struct __kfifo *fifo, const void *buf, unsigned int len)
-{
-	return rust_kfifo_in(fifo, buf, len);
-}
+/*
+ * Rust directly defines the public out-of-line entry points. C retains
+ * ordinary export metadata for the historical public ABI. The Rust exporter
+ * skips these names to avoid duplicate GPL exports.
+ */
 EXPORT_SYMBOL(__kfifo_in);
-
-unsigned int __kfifo_out_peek(struct __kfifo *fifo, void *buf, unsigned int len)
-{
-	return rust_kfifo_out_peek(fifo, buf, len);
-}
 EXPORT_SYMBOL(__kfifo_out_peek);
-
-unsigned int __kfifo_out_linear(struct __kfifo *fifo, unsigned int *tail,
-				unsigned int n)
-{
-	return rust_kfifo_out_linear(fifo, tail, n);
-}
 EXPORT_SYMBOL(__kfifo_out_linear);
-
-unsigned int __kfifo_out(struct __kfifo *fifo, void *buf, unsigned int len)
-{
-	return rust_kfifo_out(fifo, buf, len);
-}
 EXPORT_SYMBOL(__kfifo_out);
-
-int __kfifo_from_user(struct __kfifo *fifo, const void __user *from,
-		      unsigned long len, unsigned int *copied)
-{
-	return rust_kfifo_from_user(fifo, from, len, copied);
-}
 EXPORT_SYMBOL(__kfifo_from_user);
-
-int __kfifo_to_user(struct __kfifo *fifo, void __user *to, unsigned long len,
-		    unsigned int *copied)
-{
-	return rust_kfifo_to_user(fifo, to, len, copied);
-}
 EXPORT_SYMBOL(__kfifo_to_user);
-
-unsigned int __kfifo_dma_in_prepare(struct __kfifo *fifo,
-				    struct scatterlist *sgl, int nents,
-				    unsigned int len, dma_addr_t dma)
-{
-	return rust_kfifo_dma_in_prepare(fifo, sgl, nents, len, dma);
-}
 EXPORT_SYMBOL(__kfifo_dma_in_prepare);
-
-unsigned int __kfifo_dma_out_prepare(struct __kfifo *fifo,
-				     struct scatterlist *sgl, int nents,
-				     unsigned int len, dma_addr_t dma)
-{
-	return rust_kfifo_dma_out_prepare(fifo, sgl, nents, len, dma);
-}
 EXPORT_SYMBOL(__kfifo_dma_out_prepare);
-
-unsigned int __kfifo_max_r(unsigned int len, size_t recsize)
-{
-	return rust_kfifo_max_r(len, recsize);
-}
 EXPORT_SYMBOL(__kfifo_max_r);
-
-unsigned int __kfifo_len_r(struct __kfifo *fifo, size_t recsize)
-{
-	return rust_kfifo_len_r(fifo, recsize);
-}
 EXPORT_SYMBOL(__kfifo_len_r);
-
-unsigned int __kfifo_in_r(struct __kfifo *fifo, const void *buf,
-			  unsigned int len, size_t recsize)
-{
-	return rust_kfifo_in_r(fifo, buf, len, recsize);
-}
 EXPORT_SYMBOL(__kfifo_in_r);
-
-unsigned int __kfifo_out_peek_r(struct __kfifo *fifo, void *buf,
-				unsigned int len, size_t recsize)
-{
-	return rust_kfifo_out_peek_r(fifo, buf, len, recsize);
-}
 EXPORT_SYMBOL(__kfifo_out_peek_r);
-
-unsigned int __kfifo_out_linear_r(struct __kfifo *fifo, unsigned int *tail,
-				  unsigned int n, size_t recsize)
-{
-	return rust_kfifo_out_linear_r(fifo, tail, n, recsize);
-}
 EXPORT_SYMBOL(__kfifo_out_linear_r);
-
-unsigned int __kfifo_out_r(struct __kfifo *fifo, void *buf, unsigned int len,
-			   size_t recsize)
-{
-	return rust_kfifo_out_r(fifo, buf, len, recsize);
-}
 EXPORT_SYMBOL(__kfifo_out_r);
-
-void __kfifo_skip_r(struct __kfifo *fifo, size_t recsize)
-{
-	rust_kfifo_skip_r(fifo, recsize);
-}
 EXPORT_SYMBOL(__kfifo_skip_r);
-
-int __kfifo_from_user_r(struct __kfifo *fifo, const void __user *from,
-			unsigned long len, unsigned int *copied, size_t recsize)
-{
-	return rust_kfifo_from_user_r(fifo, from, len, copied, recsize);
-}
 EXPORT_SYMBOL(__kfifo_from_user_r);
-
-int __kfifo_to_user_r(struct __kfifo *fifo, void __user *to, unsigned long len,
-		      unsigned int *copied, size_t recsize)
-{
-	return rust_kfifo_to_user_r(fifo, to, len, copied, recsize);
-}
 EXPORT_SYMBOL(__kfifo_to_user_r);
-
-unsigned int __kfifo_dma_in_prepare_r(struct __kfifo *fifo,
-				      struct scatterlist *sgl, int nents,
-				      unsigned int len, size_t recsize,
-				      dma_addr_t dma)
-{
-	return rust_kfifo_dma_in_prepare_r(fifo, sgl, nents, len, recsize, dma);
-}
 EXPORT_SYMBOL(__kfifo_dma_in_prepare_r);
-
-void __kfifo_dma_in_finish_r(struct __kfifo *fifo, unsigned int len,
-			     size_t recsize)
-{
-	rust_kfifo_dma_in_finish_r(fifo, len, recsize);
-}
 EXPORT_SYMBOL(__kfifo_dma_in_finish_r);
-
-unsigned int __kfifo_dma_out_prepare_r(struct __kfifo *fifo,
-				       struct scatterlist *sgl, int nents,
-				       unsigned int len, size_t recsize,
-				       dma_addr_t dma)
-{
-	return rust_kfifo_dma_out_prepare_r(fifo, sgl, nents, len, recsize,
-					    dma);
-}
 EXPORT_SYMBOL(__kfifo_dma_out_prepare_r);
 
 #endif /* CONFIG_RUST_KFIFO */
