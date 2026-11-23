@@ -80,6 +80,17 @@ Interval tree operations
   only the intrusive link and cached augmented erase helpers. C fallback
   configurations retain the complete interval tree algorithms.
 
+Red-black tree operations
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-rbtree`.
+
+  Rust defines the eleven public GPL and non-GPL symbols for insertion,
+  removal, augmented callbacks, traversal, replacement, and linked-tree
+  maintenance. The native C object retains only non-GPL export metadata and
+  uses one internal Rust augmented erase bridge. C fallback configurations
+  retain the complete algorithms.
+
 Boundary-retained inventory
 ---------------------------
 
@@ -102,7 +113,8 @@ Public ABI
 
   Owner: The public symbols defined in ``include/linux/llist.h``,
   ``include/linux/klist.h``, ``include/linux/lockref.h``,
-  ``include/linux/kobject.h``, and ``include/linux/interval_tree.h``.
+  ``include/linux/kobject.h``, ``include/linux/interval_tree.h``,
+  ``include/linux/rbtree.h``, and ``include/linux/rbtree_augmented.h``.
 
   Reason: Existing callers and loadable modules use the stable C ABI.
 
@@ -346,6 +358,60 @@ Augmented red-black tree helpers
   Exit condition: Rust owns complete intrusive interval tree integration
   without C link or erase callbacks.
 
+Red-black tree layout and color encoding
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/rbtree_types.h`` and ``include/linux/rbtree.h``.
+
+  Reason: C and Rust access the same intrusive node, cached root, linked-node,
+  parent pointer, and color fields.
+
+  Test: Native, fallback, and C-only KUnit runs check color invariants,
+  black-height, traversal order, linked order, augmentation, and replacement.
+
+  Risk: A layout or parent-color encoding change can corrupt both the tree and
+  lockless lookup assumptions.
+
+  Exit condition: A Rust-owned tree and node representation replaces the
+  shared C layouts.
+
+Red-black tree export metadata
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/rbtree.c`` and ``rust/Makefile``.
+
+  Reason: Ten historical symbols use non-GPL exports while
+  ``rb_erase_linked()`` and the internal augmented erase bridge use GPL
+  exports.
+
+  Test: ``vmlinux.symvers`` records the ten non-GPL exports and two GPL
+  exports, and the generated Rust GPL header excludes the ten historical
+  non-GPL names.
+
+  Risk: A duplicate export or class change can break module loading and binary
+  compatibility.
+
+  Exit condition: Rust export metadata supports all original export classes
+  without C metadata.
+
+Augmented red-black erase dispatch
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/rbtree_augmented.h`` and
+  ``rust/kernel/rbtree/native.rs``.
+
+  Reason: The inline augmented erase interface coordinates callback
+  propagation, node replacement, and rebalancing as one operation.
+
+  Test: Native, fallback, and C-only KUnit runs exercise augmented insertion,
+  removal, and rotations.
+
+  Risk: A callback or rebalance mismatch can corrupt subtree aggregates or
+  detach the wrong child.
+
+  Exit condition: Rust owns the complete augmented erase interface and no
+  internal C-to-Rust bridge remains.
+
 The lock-less list boundary is valid only while the inline producer paths,
 intrusive layouts, and atomic semantics remain shared ABI. A boundary entry
 does not transfer policy, retry decisions, state transitions, or exported
@@ -369,6 +435,11 @@ The interval tree boundary is valid only while the intrusive node, cached
 red-black tree layout, augmented callback interface, and two narrow C helpers
 remain shared infrastructure. Rust defines every public entry and owns start
 ordering, overlap policy, subtree maximum updates, and span transitions.
+
+The red-black tree boundary is valid only while the shared node encoding,
+intrusive layouts, augmented callback interface, internal erase bridge, and
+historical export metadata remain named boundaries. Rust defines every public
+entry and owns every tree mutation and traversal decision.
 
 Pending inventory
 -----------------

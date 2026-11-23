@@ -2,9 +2,8 @@
 
 //! Native implementation of the intrusive red-black tree operations.
 //!
-//! The C entry points in `lib/rbtree.c` are retained as ABI adapters so existing callers keep the
-//! same exported symbols. All tree traversal and rebalancing execute here when
-//! `CONFIG_RUST_RBTREE` is enabled.
+//! Rust directly defines the public entry points so existing callers keep the same exported
+//! symbols. All tree traversal and rebalancing execute here when `CONFIG_RUST_RBTREE` is enabled.
 
 use crate::bindings;
 use core::ptr;
@@ -642,7 +641,7 @@ unsafe fn erase_inner(node: *mut Node, root: *mut Root, callbacks: *const Callba
 /// `node` must already be linked into `root` with `rb_link_node()`, and callers must serialize
 /// modifications to the tree as required by the existing C API.
 #[export]
-unsafe extern "C" fn rust_rb_insert_color(node: *mut Node, root: *mut Root) {
+unsafe extern "C" fn rb_insert_color(node: *mut Node, root: *mut Root) {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { insert(node, root, None) };
 }
@@ -654,7 +653,7 @@ unsafe extern "C" fn rust_rb_insert_color(node: *mut Node, root: *mut Root) {
 /// The contracts of `rb_insert_augmented()` apply. `augment_rotate` must be callable for nodes in
 /// this tree.
 #[export]
-unsafe extern "C" fn rust_rb_insert_augmented(
+unsafe extern "C" fn __rb_insert_augmented(
     node: *mut Node,
     root: *mut Root,
     augment_rotate: RotateFn,
@@ -669,7 +668,7 @@ unsafe extern "C" fn rust_rb_insert_augmented(
 ///
 /// The contracts of `__rb_erase_color()` apply.
 #[export]
-unsafe extern "C" fn rust_rb_erase_color(
+unsafe extern "C" fn __rb_erase_color(
     parent: *mut Node,
     root: *mut Root,
     augment_rotate: RotateFn,
@@ -684,7 +683,7 @@ unsafe extern "C" fn rust_rb_erase_color(
 ///
 /// The contracts of `rb_erase()` apply.
 #[export]
-unsafe extern "C" fn rust_rb_erase(node: *mut Node, root: *mut Root) {
+unsafe extern "C" fn rb_erase(node: *mut Node, root: *mut Root) {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { erase_inner(node, root, ptr::null()) };
 }
@@ -710,7 +709,7 @@ unsafe extern "C" fn rust_rb_erase_augmented(
 ///
 /// The contracts of `rb_erase_linked()` apply.
 #[export]
-unsafe extern "C" fn rust_rb_erase_linked(node: *mut NodeLinked, root: *mut RootLinked) -> bool {
+unsafe extern "C" fn rb_erase_linked(node: *mut NodeLinked, root: *mut RootLinked) -> bool {
     // SAFETY: The caller guarantees both pointers are valid.
     unsafe {
         if (*node).prev.is_null() {
@@ -742,7 +741,7 @@ unsafe extern "C" fn rust_rb_erase_linked(node: *mut NodeLinked, root: *mut Root
 ///
 /// `node` must point to a valid node or an empty node.
 #[export]
-unsafe extern "C" fn rust_rb_next(node: *const Node) -> *mut Node {
+unsafe extern "C" fn rb_next(node: *const Node) -> *mut Node {
     let mut node = node;
     // SAFETY: Guaranteed by this function's contract.
     if unsafe { (*node).__rb_parent_color == node as usize } {
@@ -781,7 +780,7 @@ unsafe extern "C" fn rust_rb_next(node: *const Node) -> *mut Node {
 ///
 /// `node` must point to a valid node or an empty node.
 #[export]
-unsafe extern "C" fn rust_rb_prev(node: *const Node) -> *mut Node {
+unsafe extern "C" fn rb_prev(node: *const Node) -> *mut Node {
     let mut node = node;
     // SAFETY: Guaranteed by this function's contract.
     if unsafe { (*node).__rb_parent_color == node as usize } {
@@ -820,7 +819,7 @@ unsafe extern "C" fn rust_rb_prev(node: *const Node) -> *mut Node {
 ///
 /// The contracts of `rb_replace_node()` apply.
 #[export]
-unsafe extern "C" fn rust_rb_replace_node(victim: *mut Node, new: *mut Node, root: *mut Root) {
+unsafe extern "C" fn rb_replace_node(victim: *mut Node, new: *mut Node, root: *mut Root) {
     // SAFETY: Guaranteed by this function's contract.
     unsafe {
         let parent = parent_node(victim);
@@ -841,7 +840,7 @@ unsafe extern "C" fn rust_rb_replace_node(victim: *mut Node, new: *mut Node, roo
 ///
 /// The contracts of `rb_replace_node_rcu()` apply.
 #[export]
-unsafe extern "C" fn rust_rb_replace_node_rcu(victim: *mut Node, new: *mut Node, root: *mut Root) {
+unsafe extern "C" fn rb_replace_node_rcu(victim: *mut Node, new: *mut Node, root: *mut Root) {
     // SAFETY: Guaranteed by this function's contract.
     unsafe {
         let parent = parent_node(victim);
@@ -885,7 +884,7 @@ unsafe fn left_deepest(node: *const Node) -> *mut Node {
 ///
 /// `node` must be null or point to a valid node.
 #[export]
-unsafe extern "C" fn rust_rb_next_postorder(node: *const Node) -> *mut Node {
+unsafe extern "C" fn rb_next_postorder(node: *const Node) -> *mut Node {
     if node.is_null() {
         return ptr::null_mut();
     }
@@ -913,7 +912,7 @@ unsafe extern "C" fn rust_rb_next_postorder(node: *const Node) -> *mut Node {
 ///
 /// `root` must point to a valid tree root.
 #[export]
-unsafe extern "C" fn rust_rb_first_postorder(root: *const Root) -> *mut Node {
+unsafe extern "C" fn rb_first_postorder(root: *const Root) -> *mut Node {
     // SAFETY: Guaranteed by this function's contract.
     let node = unsafe { (*root).rb_node };
     if node.is_null() {

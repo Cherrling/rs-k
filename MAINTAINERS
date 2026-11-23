@@ -24141,6 +24141,7 @@ F:	Documentation/rust/native-list-lru.rst
 F:	Documentation/rust/native-llist.rst
 F:	Documentation/rust/native-plist.rst
 F:	Documentation/rust/native-port-coverage.rst
+F:	Documentation/rust/native-rbtree.rst
 F:	Documentation/rust/native-rcuwait.rst
 F:	Documentation/rust/native-task-work.rst
 F:	include/linux/btree-rust.h

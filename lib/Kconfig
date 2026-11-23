@@ -845,8 +845,11 @@ config RUST_RBTREE
 	default y
 	help
 	  Use Rust for the core red-black tree operations in lib/rbtree.c.
-	  The existing C entry points remain as ABI adapters, but the tree
-	  algorithms execute in Rust.
+	  Rust directly defines the public red-black tree entry points. It owns
+	  insertion, removal, augmented callbacks, traversal, replacement, and
+	  linked-tree maintenance. C retains the intrusive layouts, the
+	  non-GPL export metadata, and the internal augmented erase bridge. The
+	  C fallback retains the complete algorithms.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -1320,12 +1323,12 @@ config RUST_XARRAY_TRY_SPLIT
 	  If unsure, say Y.
 
 config RBTREE_RUST_KUNIT_TEST
-	bool "KUnit tests for the Rust rbtree implementation"
-	depends on RUST_RBTREE && KUNIT
+	bool "KUnit tests for red-black tree implementations"
+	depends on KUNIT
 	default KUNIT_ALL_TESTS
 	help
-	  This option enables KUnit tests for the C ABI adapters and the
-	  Rust implementation of the core red-black tree operations.
+	  This option enables KUnit tests for the active red-black tree
+	  implementation.
 
 	  These tests are only for development and testing, not for regular
 	  kernel use cases.

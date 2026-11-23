@@ -117,6 +117,7 @@ more details.
     native-btree-structural
     native-btree-visitors
     native-plist
+    native-rbtree
     native-interval-tree
     native-kref
     native-dec-and-lock
