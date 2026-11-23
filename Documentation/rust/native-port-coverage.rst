@@ -59,6 +59,17 @@ Lockref operations
   layout, initialization, architecture compare-exchange, and spinlock
   helpers.
 
+Kobject lifecycle
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-kobject`.
+
+  Rust defines the four public ``kobject_*`` symbols for typed
+  initialization, reference acquisition, conditional acquisition, and final
+  reference dispatch. The native C object retains only their non-GPL export
+  metadata. C also retains bitfield accessors, diagnostics, the release
+  callback bridge, and final cleanup.
+
 Boundary-retained inventory
 ---------------------------
 
@@ -80,7 +91,8 @@ Public ABI
   Status: ``boundary-retained``.
 
   Owner: The public symbols defined in ``include/linux/llist.h``,
-  ``include/linux/klist.h``, and ``include/linux/lockref.h``.
+  ``include/linux/klist.h``, ``include/linux/lockref.h``, and
+  ``include/linux/kobject.h``.
 
   Reason: Existing callers and loadable modules use the stable C ABI.
 
@@ -221,6 +233,75 @@ Lockref export metadata
   Exit condition: Rust export metadata supports the original non-GPL class
   without C export entries.
 
+Kobject layout and state
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/kobject.h``.
+
+  Reason: C callers and retained sysfs and kset paths share the intrusive
+  layout, registration bitfields, delayed-work member, and type pointer.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT runs exercise
+  initialization, reinitialization, and final cleanup.
+
+  Risk: A layout or state mismatch can corrupt registration state or release
+  a live object.
+
+  Exit condition: A Rust-owned kobject type and safe state interface replace
+  direct C field access.
+
+Kobject diagnostics
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/kobject.c``.
+
+  Reason: Invalid-pointer, missing-type, reinitialization, and uninitialized
+  reference diagnostics use kernel log and stack tracing facilities shared
+  with C callers.
+
+  Test: The invalid-initialization KUnit case runs in native, fallback, and
+  C-only configurations.
+
+  Risk: A diagnostic mismatch can hide a recoverable initialization error or
+  change historical behavior.
+
+  Exit condition: Rust diagnostics preserve the formatting, stack trace, and
+  recoverability contracts.
+
+Kobject release bridge
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/kobject.c`` and ``include/linux/kobject-rust.h``.
+
+  Reason: Rust dispatches the final reference through
+  ``rust_kobject_release()``. C then owns delayed work, ktype release,
+  parent-reference removal, name cleanup, and sysfs cleanup.
+
+  Test: Final-reference KUnit cases pass under native SMP1/SMP4, KASAN,
+  lockdep, and PREEMPT_RT.
+
+  Risk: A callback mismatch can skip cleanup, double release an object, or
+  break the delayed-release path.
+
+  Exit condition: Rust owns the complete cleanup and delayed-release
+  lifecycle with equivalent workqueue and callback primitives.
+
+Kobject export metadata
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/kobject.c``.
+
+  Reason: The four public lifecycle operations retain a non-GPL export class
+  while generated Rust exports use the GPL class.
+
+  Test: ``vmlinux.symvers`` records all four public symbols as
+  ``EXPORT_SYMBOL``, and the generated Rust GPL export header excludes them.
+
+  Risk: Duplicate exports or a class change can break module compatibility.
+
+  Exit condition: Rust export metadata supports the original non-GPL class
+  without C export entries.
+
 The lock-less list boundary is valid only while the inline producer paths,
 intrusive layouts, and atomic semantics remain shared ABI. A boundary entry
 does not transfer policy, retry decisions, state transitions, or exported
@@ -235,6 +316,11 @@ The lockref boundary is valid only while initialization, the packed layout,
 architecture operations, and non-GPL export metadata remain shared C
 boundaries. Rust owns every reference transition and fallback decision.
 
+The kobject boundary is valid only while the shared layout, bitfields,
+diagnostics, final cleanup callback, and non-GPL export metadata remain named
+C boundaries. Rust defines every public lifecycle entry and owns every
+initialization and reference decision.
+
 Pending inventory
 -----------------
 
@@ -246,10 +332,11 @@ Direct-entry audit
 
   Replace C ABI adapters with Rust-defined public entry points unit by unit.
 
-Core object lifecycles
+Remaining core object lifecycles
   Status: ``pending``.
 
-  Complete the direct-entry and ownership review.
+  Complete the direct-entry and ownership review for object types beyond
+  kobject.
 
 Lock and wait lifecycles
   Status: ``pending``.

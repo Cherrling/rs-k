@@ -368,6 +368,7 @@ int kobject_set_name(struct kobject *kobj, const char *fmt, ...)
 }
 EXPORT_SYMBOL(kobject_set_name);
 
+#ifndef CONFIG_RUST_KOBJECT
 /**
  * kobject_init() - Initialize a kobject structure.
  * @kobj: pointer to the kobject to initialize
@@ -382,9 +383,6 @@ EXPORT_SYMBOL(kobject_set_name);
  */
 void kobject_init(struct kobject *kobj, const struct kobj_type *ktype)
 {
-#ifdef CONFIG_RUST_KOBJECT
-	rust_kobject_init(kobj, ktype);
-#else
 	char *err_str;
 
 	if (!kobj) {
@@ -409,8 +407,8 @@ void kobject_init(struct kobject *kobj, const struct kobj_type *ktype)
 error:
 	pr_err("kobject (%p): %s\n", kobj, err_str);
 	dump_stack_lvl(KERN_ERR);
-#endif /* CONFIG_RUST_KOBJECT */
 }
+#endif /* !CONFIG_RUST_KOBJECT */
 EXPORT_SYMBOL(kobject_init);
 
 static __printf(3, 0) int kobject_add_varg(struct kobject *kobj,
@@ -683,15 +681,13 @@ void kobject_del(struct kobject *kobj)
 }
 EXPORT_SYMBOL(kobject_del);
 
+#ifndef CONFIG_RUST_KOBJECT
 /**
  * kobject_get() - Increment refcount for object.
  * @kobj: object.
  */
 struct kobject *kobject_get(struct kobject *kobj)
 {
-#ifdef CONFIG_RUST_KOBJECT
-	return rust_kobject_get(kobj);
-#else
 	if (kobj) {
 		if (!kobj->state_initialized)
 			WARN(1, KERN_WARNING
@@ -700,22 +696,20 @@ struct kobject *kobject_get(struct kobject *kobj)
 		kref_get(&kobj->kref);
 	}
 	return kobj;
-#endif /* CONFIG_RUST_KOBJECT */
 }
+#endif /* !CONFIG_RUST_KOBJECT */
 EXPORT_SYMBOL(kobject_get);
 
+#ifndef CONFIG_RUST_KOBJECT
 struct kobject * __must_check kobject_get_unless_zero(struct kobject *kobj)
 {
-#ifdef CONFIG_RUST_KOBJECT
-	return rust_kobject_get_unless_zero(kobj);
-#else
 	if (!kobj)
 		return NULL;
 	if (!kref_get_unless_zero(&kobj->kref))
 		kobj = NULL;
 	return kobj;
-#endif /* CONFIG_RUST_KOBJECT */
 }
+#endif /* !CONFIG_RUST_KOBJECT */
 EXPORT_SYMBOL(kobject_get_unless_zero);
 
 /*
@@ -783,6 +777,14 @@ static void kobject_release(struct kref *kref)
 #endif
 }
 
+#ifdef CONFIG_RUST_KOBJECT
+void rust_kobject_release(struct kref *kref)
+{
+	kobject_release(kref);
+}
+#endif /* CONFIG_RUST_KOBJECT */
+
+#ifndef CONFIG_RUST_KOBJECT
 /**
  * kobject_put() - Decrement refcount for object.
  * @kobj: object.
@@ -791,9 +793,6 @@ static void kobject_release(struct kref *kref)
  */
 void kobject_put(struct kobject *kobj)
 {
-#ifdef CONFIG_RUST_KOBJECT
-	rust_kobject_put(kobj, kobject_release);
-#else
 	if (kobj) {
 		if (!kobj->state_initialized)
 			WARN(1, KERN_WARNING
@@ -801,8 +800,8 @@ void kobject_put(struct kobject *kobj)
 			     kobject_name(kobj), kobj);
 		kref_put(&kobj->kref, kobject_release);
 	}
-#endif /* CONFIG_RUST_KOBJECT */
 }
+#endif /* !CONFIG_RUST_KOBJECT */
 EXPORT_SYMBOL(kobject_put);
 
 static void dynamic_kobj_release(struct kobject *kobj)

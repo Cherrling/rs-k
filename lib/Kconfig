@@ -784,9 +784,10 @@ config RUST_KOBJECT
 	  Use Rust for the production kobject initialization state, reference
 	  acquisition, conditional acquisition, and final-reference dispatch.
 
-	  Rust calls the native kref lifecycle directly. C retains kobject
-	  bitfield accessors, diagnostics, sysfs and kset operations, and the
-	  final cleanup callback.
+	  Rust directly defines the public kobject lifecycle functions. C
+	  retains their non-GPL export metadata, bitfield accessors,
+	  diagnostics, sysfs and kset operations, and the final cleanup
+	  callback.
 
 	  The complete C kobject initialization and reference implementation
 	  remains available when this option is disabled.

@@ -101,6 +101,33 @@ static void kobject_test_internal_init(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, kref_read(&kset->kobj.kref), 0U);
 }
 
+static void kobject_test_invalid_init(struct kunit *test)
+{
+	struct kobject_test_object *object;
+
+	object = kunit_kzalloc(test, sizeof(*object), GFP_KERNEL);
+	KUNIT_ASSERT_NOT_NULL(test, object);
+
+	kobject_init(NULL, &kobject_test_type);
+	KUNIT_EXPECT_FALSE(test, object->kobj.state_initialized);
+
+	kobject_init(&object->kobj, NULL);
+	KUNIT_EXPECT_FALSE(test, object->kobj.state_initialized);
+
+	kobject_test_init_object(object);
+	KUNIT_EXPECT_TRUE(test, object->kobj.state_initialized);
+	KUNIT_EXPECT_EQ(test, kref_read(&object->kobj.kref), 1U);
+
+	kobject_init(&object->kobj, &kobject_test_type);
+	KUNIT_EXPECT_TRUE(test, object->kobj.state_initialized);
+	KUNIT_EXPECT_PTR_EQ(test, object->kobj.ktype, &kobject_test_type);
+	KUNIT_EXPECT_EQ(test, kref_read(&object->kobj.kref), 1U);
+
+	kobject_put(&object->kobj);
+	KUNIT_EXPECT_TRUE(test, kobject_test_wait_for_release(object, 1));
+	KUNIT_EXPECT_EQ(test, kref_read(&object->kobj.kref), 0U);
+}
+
 struct kobject_test_worker {
 	struct kobject *kobj;
 	atomic_t *ready;
@@ -203,6 +230,7 @@ cleanup:
 static struct kunit_case kobject_test_cases[] = {
 	KUNIT_CASE(kobject_test_lifecycle),
 	KUNIT_CASE(kobject_test_internal_init),
+	KUNIT_CASE(kobject_test_invalid_init),
 	KUNIT_CASE(kobject_test_concurrent),
 	{}
 };
