@@ -70,6 +70,16 @@ Kobject lifecycle
   metadata. C also retains bitfield accessors, diagnostics, the release
   callback bridge, and final cleanup.
 
+Interval tree operations
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-interval-tree`.
+
+  Rust defines the eight public GPL symbols for insertion, removal, subtree
+  search, overlap iteration, and span iteration. The native C object retains
+  only the intrusive link and cached augmented erase helpers. C fallback
+  configurations retain the complete interval tree algorithms.
+
 Boundary-retained inventory
 ---------------------------
 
@@ -91,8 +101,8 @@ Public ABI
   Status: ``boundary-retained``.
 
   Owner: The public symbols defined in ``include/linux/llist.h``,
-  ``include/linux/klist.h``, ``include/linux/lockref.h``, and
-  ``include/linux/kobject.h``.
+  ``include/linux/klist.h``, ``include/linux/lockref.h``,
+  ``include/linux/kobject.h``, and ``include/linux/interval_tree.h``.
 
   Reason: Existing callers and loadable modules use the stable C ABI.
 
@@ -302,6 +312,40 @@ Kobject export metadata
   Exit condition: Rust export metadata supports the original non-GPL class
   without C export entries.
 
+Interval tree layout and iterator state
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/interval_tree.h``.
+
+  Reason: C callers share the intrusive interval node, cached red-black root,
+  augmented subtree endpoint, and used or hole span iterator layout.
+
+  Test: Native, fallback, and C-only KUnit runs exercise ordering, subtree
+  maxima, overlap traversal, and the complete span state machine.
+
+  Risk: A layout or endpoint-type change can invalidate direct Rust access or
+  alter inclusive range behavior.
+
+  Exit condition: A Rust-owned interval tree type and iterator API replace the
+  shared C layouts.
+
+Augmented red-black tree helpers
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/interval_tree.c`` and ``include/linux/interval-tree-rust.h``.
+
+  Reason: Intrusive node linking, cached-leftmost insertion, and cached
+  augmented erase depend on shared red-black tree layouts and callbacks.
+
+  Test: Interval tree KUnit runs cover every public entry, and the adjacent
+  Rust red-black tree suite passes four of four cases.
+
+  Risk: A callback or rotation mismatch can corrupt subtree maxima or cached
+  tree state during insertion or removal.
+
+  Exit condition: Rust owns complete intrusive interval tree integration
+  without C link or erase callbacks.
+
 The lock-less list boundary is valid only while the inline producer paths,
 intrusive layouts, and atomic semantics remain shared ABI. A boundary entry
 does not transfer policy, retry decisions, state transitions, or exported
@@ -320,6 +364,11 @@ The kobject boundary is valid only while the shared layout, bitfields,
 diagnostics, final cleanup callback, and non-GPL export metadata remain named
 C boundaries. Rust defines every public lifecycle entry and owns every
 initialization and reference decision.
+
+The interval tree boundary is valid only while the intrusive node, cached
+red-black tree layout, augmented callback interface, and two narrow C helpers
+remain shared infrastructure. Rust defines every public entry and owns start
+ordering, overlap policy, subtree maximum updates, and span transitions.
 
 Pending inventory
 -----------------

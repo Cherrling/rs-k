@@ -43,44 +43,6 @@ void rust_interval_tree_erase(struct interval_tree_node *node,
 				  &interval_tree_rust_augment);
 }
 
-void interval_tree_insert(struct interval_tree_node *node,
-			  struct rb_root_cached *root)
-{
-	rust_interval_tree_insert(node, root);
-}
-EXPORT_SYMBOL_GPL(interval_tree_insert);
-
-void interval_tree_remove(struct interval_tree_node *node,
-			  struct rb_root_cached *root)
-{
-	rust_interval_tree_remove(node, root);
-}
-EXPORT_SYMBOL_GPL(interval_tree_remove);
-
-struct interval_tree_node *
-interval_tree_subtree_search(struct interval_tree_node *node,
-			     unsigned long start, unsigned long last)
-{
-	return rust_interval_tree_subtree_search(node, start, last);
-}
-EXPORT_SYMBOL_GPL(interval_tree_subtree_search);
-
-struct interval_tree_node *
-interval_tree_iter_first(struct rb_root_cached *root,
-			 unsigned long start, unsigned long last)
-{
-	return rust_interval_tree_iter_first(root, start, last);
-}
-EXPORT_SYMBOL_GPL(interval_tree_iter_first);
-
-struct interval_tree_node *
-interval_tree_iter_next(struct interval_tree_node *node,
-			unsigned long start, unsigned long last)
-{
-	return rust_interval_tree_iter_next(node, start, last);
-}
-EXPORT_SYMBOL_GPL(interval_tree_iter_next);
-
 #endif /* CONFIG_RUST_INTERVAL_TREE */
 
 #ifdef CONFIG_INTERVAL_TREE_SPAN_ITER
@@ -218,30 +180,6 @@ void interval_tree_span_iter_advance(struct interval_tree_span_iter *iter,
 	else
 		interval_tree_span_iter_first(iter, itree, new_index,
 					      iter->last_index);
-}
-EXPORT_SYMBOL_GPL(interval_tree_span_iter_advance);
-#else
-void interval_tree_span_iter_first(struct interval_tree_span_iter *iter,
-				   struct rb_root_cached *itree,
-				   unsigned long first_index,
-				   unsigned long last_index)
-{
-	rust_interval_tree_span_iter_first(iter, itree, first_index,
-					   last_index);
-}
-EXPORT_SYMBOL_GPL(interval_tree_span_iter_first);
-
-void interval_tree_span_iter_next(struct interval_tree_span_iter *iter)
-{
-	rust_interval_tree_span_iter_next(iter);
-}
-EXPORT_SYMBOL_GPL(interval_tree_span_iter_next);
-
-void interval_tree_span_iter_advance(struct interval_tree_span_iter *iter,
-				     struct rb_root_cached *itree,
-				     unsigned long new_index)
-{
-	rust_interval_tree_span_iter_advance(iter, itree, new_index);
 }
 EXPORT_SYMBOL_GPL(interval_tree_span_iter_advance);
 #endif /* CONFIG_RUST_INTERVAL_TREE */

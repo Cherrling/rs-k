@@ -2,8 +2,9 @@
 
 //! Native interval tree operations.
 //!
-//! Rust owns interval insertion, augmented-subtree maintenance, interval
-//! search, overlap iteration, and used or hole span iteration. C retains the
+//! Rust directly defines the public interval tree entry points. It owns
+//! interval insertion, augmented-subtree maintenance, interval search,
+//! overlap iteration, and used or hole span iteration. C retains the
 //! intrusive layouts and the narrow augmented-rbtree primitives.
 
 use crate::{bindings, container_of};
@@ -323,7 +324,7 @@ unsafe fn span_iter_next_gap(iter: *mut SpanIter) {
 ///
 /// The arguments must satisfy the public interval-tree contract.
 #[export]
-unsafe extern "C" fn rust_interval_tree_insert(node: *mut Node, root: *mut Root) {
+unsafe extern "C" fn interval_tree_insert(node: *mut Node, root: *mut Root) {
     // SAFETY: Guaranteed by the public contract.
     unsafe { insert(node, root) };
 }
@@ -334,7 +335,7 @@ unsafe extern "C" fn rust_interval_tree_insert(node: *mut Node, root: *mut Root)
 ///
 /// The arguments must satisfy the public interval-tree contract.
 #[export]
-unsafe extern "C" fn rust_interval_tree_remove(node: *mut Node, root: *mut Root) {
+unsafe extern "C" fn interval_tree_remove(node: *mut Node, root: *mut Root) {
     // SAFETY: Guaranteed by the public contract.
     unsafe { remove(node, root) };
 }
@@ -345,7 +346,7 @@ unsafe extern "C" fn rust_interval_tree_remove(node: *mut Node, root: *mut Root)
 ///
 /// The arguments must satisfy the public interval-tree contract.
 #[export]
-unsafe extern "C" fn rust_interval_tree_subtree_search(
+unsafe extern "C" fn interval_tree_subtree_search(
     node: *mut Node,
     start: Endpoint,
     last: Endpoint,
@@ -360,7 +361,7 @@ unsafe extern "C" fn rust_interval_tree_subtree_search(
 ///
 /// The arguments must satisfy the public interval-tree contract.
 #[export]
-unsafe extern "C" fn rust_interval_tree_iter_first(
+unsafe extern "C" fn interval_tree_iter_first(
     root: *mut Root,
     start: Endpoint,
     last: Endpoint,
@@ -375,7 +376,7 @@ unsafe extern "C" fn rust_interval_tree_iter_first(
 ///
 /// The arguments must satisfy the public interval-tree contract.
 #[export]
-unsafe extern "C" fn rust_interval_tree_iter_next(
+unsafe extern "C" fn interval_tree_iter_next(
     node: *mut Node,
     start: Endpoint,
     last: Endpoint,
@@ -391,7 +392,7 @@ unsafe extern "C" fn rust_interval_tree_iter_next(
 /// The arguments must satisfy the public span iterator contract.
 #[cfg(CONFIG_INTERVAL_TREE_SPAN_ITER)]
 #[export]
-unsafe extern "C" fn rust_interval_tree_span_iter_first(
+unsafe extern "C" fn interval_tree_span_iter_first(
     iter: *mut SpanIter,
     tree: *mut Root,
     first: Endpoint,
@@ -454,7 +455,7 @@ unsafe extern "C" fn rust_interval_tree_span_iter_first(
 /// `iter` must be a live span iterator created by the public interface.
 #[cfg(CONFIG_INTERVAL_TREE_SPAN_ITER)]
 #[export]
-unsafe extern "C" fn rust_interval_tree_span_iter_next(iter: *mut SpanIter) {
+unsafe extern "C" fn interval_tree_span_iter_next(iter: *mut SpanIter) {
     // SAFETY: The caller guarantees a valid iterator.
     if unsafe { (*iter).nodes[0] }.is_null() && unsafe { (*iter).nodes[1] }.is_null() {
         // SAFETY: The iterator field is writable.
@@ -512,7 +513,7 @@ unsafe extern "C" fn rust_interval_tree_span_iter_next(iter: *mut SpanIter) {
 /// the iterator is live.
 #[cfg(CONFIG_INTERVAL_TREE_SPAN_ITER)]
 #[export]
-unsafe extern "C" fn rust_interval_tree_span_iter_advance(
+unsafe extern "C" fn interval_tree_span_iter_advance(
     iter: *mut SpanIter,
     tree: *mut Root,
     index: Endpoint,
@@ -542,11 +543,11 @@ unsafe extern "C" fn rust_interval_tree_span_iter_advance(
     // SAFETY: The caller guarantees valid objects.
     if index == unsafe { span_last(iter).wrapping_add(1) } {
         // SAFETY: Advancing an iterator is safe under the public contract.
-        unsafe { rust_interval_tree_span_iter_next(iter) };
+        unsafe { interval_tree_span_iter_next(iter) };
     } else {
         // SAFETY: The iterator query end is valid.
         unsafe {
-            rust_interval_tree_span_iter_first(iter, tree, index, (*iter).last_index);
+            interval_tree_span_iter_first(iter, tree, index, (*iter).last_index);
         }
     }
 }

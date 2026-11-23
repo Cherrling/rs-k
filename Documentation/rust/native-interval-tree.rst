@@ -8,7 +8,8 @@ Status and scope
 
 The ``CONFIG_RUST_INTERVAL_TREE`` option selects native Rust implementations
 of interval insertion, augmented subtree maintenance, overlap search,
-overlap iteration, and used or hole span iteration.
+overlap iteration, and used or hole span iteration. Rust directly defines
+the eight public production entry points.
 
 The option depends on x86_64. Other architectures use the complete C fallback
 until their Rust builds and KUnit runs have passed the same validation gate.
@@ -21,9 +22,11 @@ Entry points and ownership
 
 The public ``interval_tree_insert()``, ``interval_tree_remove()``,
 ``interval_tree_subtree_search()``, ``interval_tree_iter_first()``,
-``interval_tree_iter_next()``, and span iterator interfaces keep their
-existing signatures. With this option enabled, the C entry points forward to
-the matching Rust functions.
+``interval_tree_iter_next()``, ``interval_tree_span_iter_first()``,
+``interval_tree_span_iter_next()``, and
+``interval_tree_span_iter_advance()`` interfaces keep their existing
+signatures and GPL export class. With this option enabled, Rust directly
+defines all eight functions.
 
 Rust owns:
 
@@ -54,14 +57,16 @@ The ``interval_tree_node``, ``rb_node``, ``rb_root_cached``, and
 ``interval_tree_span_iter`` layouts remain in C. These layouts are shared by
 MMU notifier, KVM, memory failure, IOMMU, and other kernel users.
 
-Small C helpers retain ``rb_link_node()``, cached-leftmost insertion, and
-cached augmented erase. The common augmented red-black tree callbacks and
-rotation primitives remain at their existing boundary. With
-``CONFIG_RUST_RBTREE`` enabled, the common insertion, erase, and color
-rebalancing algorithms run in Rust.
+The native ``lib/interval_tree.o`` defines no public interval tree entry
+point. It retains only ``rust_interval_tree_link_insert()`` for intrusive
+node linking and cached-leftmost insertion, and ``rust_interval_tree_erase()``
+for cached augmented erase. The augmented callbacks and rotation primitives
+remain at their existing shared boundary. With ``CONFIG_RUST_RBTREE``
+enabled, the common insertion, erase, and color rebalancing algorithms run
+in Rust.
 
-The public C entry points retain the exported ABI. The complete C interval
-tree implementation remains compiled in fallback configurations.
+The complete C interval tree implementation remains compiled in Rust
+fallback and C-only configurations.
 
 Important invariants
 --------------------
@@ -110,33 +115,41 @@ The unit must pass these checks before integration:
 
 * Rust-enabled KASAN and lockdep runs.
 
+* Rust-enabled PREEMPT_RT with four virtual CPUs.
+
+* The adjacent Rust red-black tree KUnit suite.
+
 * Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
   ``git diff --check``.
 
-* Symbol checks that the native C object calls the Rust entry points and that
-  fallback objects reference no Rust interval tree symbol.
+* Symbol checks that Rust defines all eight public entry points, the native C
+  object contains no corresponding function body, the fallback and C-only
+  objects contain the complete C implementation, and the GPL export class is
+  unchanged.
 
 Validation results
 ------------------
 
-Validation on 2026-11-17 used parent commit ``8dfaebd1fa04``.
+Validation on 2026-11-23 used parent commit ``18e51565a5a2``.
 
 ================  ============================================================
 Build             Configuration
 ================  ============================================================
-Native Rust       ``CONFIG_RUST=y``, ``CONFIG_RUST_INTERVAL_TREE=y``
-Rust fallback     ``CONFIG_RUST=y``, ``CONFIG_RUST_INTERVAL_TREE=n``
-Pure C            ``CONFIG_RUST=n``
+Native SMP1       Native Rust, one virtual CPU
+Native SMP4       Native Rust, four virtual CPUs
+Rust fallback     ``CONFIG_RUST_INTERVAL_TREE=n``, one and four virtual CPUs
+Pure C            ``CONFIG_RUST=n``, one and four virtual CPUs
 Native KASAN      Native Rust configuration plus ``CONFIG_KASAN=y``
 Native lockdep    Native Rust configuration plus
                   ``CONFIG_PROVE_LOCKING=y``
+Native RT         Native Rust configuration plus ``CONFIG_PREEMPT_RT=y``
 ================  ============================================================
 
 Every configuration used x86_64, ``CONFIG_SMP=y``, ``CONFIG_NR_CPUS=4``,
-``CONFIG_KUNIT=y``, and ``CONFIG_INTERVAL_TREE_RUST_KUNIT_TEST=y``.
+``CONFIG_MODULES=y``, ``CONFIG_KUNIT=y``, and
+``CONFIG_INTERVAL_TREE_RUST_KUNIT_TEST=y``.
 
-All ten QEMU runs passed with one and four virtual CPUs. Each run reported
-three of three KUnit cases passed.
+All nine QEMU runs reported three of three KUnit cases passed.
 
 The ordered case inserted nine intervals and checked red-black tree and
 augmentation invariants after every insertion and removal. The span case
@@ -146,18 +159,28 @@ nodes and compared every overlap query with the complete model.
 
 The KASAN run initialized generic KASAN. The KASAN and lockdep logs contained
 no KASAN report, BUG, warning, Oops, lock inversion, recursive locking report,
-or RCU stall.
+or RCU stall. The lockdep run initialized expanded lock dependency state. The
+RT kernel reported ``SMP PREEMPT_RT``.
 
-In the native configuration, ``lib/interval_tree.o`` referenced all eight
-``rust_interval_tree_*`` entry points. ``rust/kernel.o`` defined all eight
-symbols. The Rust-fallback and pure C ``lib/interval_tree.o`` objects
-referenced no Rust interval tree symbol.
+The adjacent Rust red-black tree suite passed all four cases. The same
+regression image also passed all three interval tree cases.
+
+In the native configuration, ``rust/kernel.o`` defined all eight public
+``interval_tree_*`` symbols. The native ``lib/interval_tree.o`` defined only
+``rust_interval_tree_link_insert()`` and ``rust_interval_tree_erase()``, and
+it referenced ``rust_rb_erase_augmented()``. It defined no public interval
+tree function body.
+
+``vmlinux.symvers`` recorded all eight public symbols as
+``EXPORT_SYMBOL_GPL``. The generated Rust GPL export header contained the same
+eight symbols. The Rust-fallback and pure C ``lib/interval_tree.o`` objects
+defined the complete C algorithms, and the fallback Rust kernel object
+contained no public interval tree symbol.
 
 Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
 ``git diff --check`` passed. Strict checkpatch reported no errors, warnings,
-or checks. Focused Sphinx rendered this page and the updated index. It
-reported only the existing unknown ``kernel-docs`` document and
-``getting_llvm`` label references.
+or checks. Focused Sphinx generation emitted only the existing unknown
+``kernel-docs`` document and ``getting_llvm`` label warnings.
 
 Review conditions
 -----------------
@@ -179,5 +202,7 @@ Reopen a retained boundary decision if any of these conditions changes:
 * Rust stops controlling ordering, search, overlap iteration, or span state.
 
 * A fallback object starts to use a Rust interval tree symbol.
+
+* Rust-generated GPL export classification changes.
 
 * A second architecture passes the complete validation gate.

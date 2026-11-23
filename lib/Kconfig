@@ -861,10 +861,11 @@ config RUST_INTERVAL_TREE
 	  augmented-subtree maintenance, overlap search, iteration, and span
 	  iteration algorithms.
 
-	  Rust owns the interval ordering, subtree maximum updates, overlap
-	  decisions, and used or hole span state machine. The intrusive node
-	  layout and augmented red-black tree primitives remain in C. The C
-	  fallback retains the complete interval tree algorithms.
+	  Rust directly defines the public interval-tree functions. It owns the
+	  interval ordering, subtree maximum updates, overlap decisions, and
+	  used or hole span state machine. The intrusive node layout and
+	  augmented red-black tree primitives remain in C. The C fallback
+	  retains the complete interval tree algorithms.
 
 	  The native implementation is currently validated only for x86_64.
 	  Other architectures use the C fallback.
