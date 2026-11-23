@@ -228,6 +228,12 @@ void rust_irq_work_assert_run_context(void)
 	BUG_ON(!irqs_disabled() && !IS_ENABLED(CONFIG_PREEMPT_RT));
 }
 
+void rust_irq_work_sync_checks(void)
+{
+	lockdep_assert_irqs_enabled();
+	might_sleep();
+}
+
 #else /* CONFIG_RUST_IRQ_WORK */
 
 /*
@@ -278,12 +284,10 @@ static void __irq_work_queue_local(struct irq_work *work)
 
 #endif /* CONFIG_RUST_IRQ_WORK */
 
+#ifndef CONFIG_RUST_IRQ_WORK
 /* Enqueue the irq work @work on the current CPU */
 bool irq_work_queue(struct irq_work *work)
 {
-#ifdef CONFIG_RUST_IRQ_WORK
-	return rust_irq_work_queue(work);
-#else
 	/* Only queue if not already pending */
 	if (!irq_work_claim(work))
 		return false;
@@ -294,7 +298,6 @@ bool irq_work_queue(struct irq_work *work)
 	preempt_enable();
 
 	return true;
-#endif
 }
 EXPORT_SYMBOL_GPL(irq_work_queue);
 
@@ -306,9 +309,6 @@ EXPORT_SYMBOL_GPL(irq_work_queue);
  */
 bool irq_work_queue_on(struct irq_work *work, int cpu)
 {
-#ifdef CONFIG_RUST_IRQ_WORK
-	return rust_irq_work_queue_on(work, cpu);
-#else
 #ifndef CONFIG_SMP
 	return irq_work_queue(work);
 
@@ -352,14 +352,10 @@ out:
 
 	return true;
 #endif /* CONFIG_SMP */
-#endif /* CONFIG_RUST_IRQ_WORK */
 }
 
 bool irq_work_needs_cpu(void)
 {
-#ifdef CONFIG_RUST_IRQ_WORK
-	return rust_irq_work_needs_cpu();
-#else
 	struct llist_head *raised, *lazy;
 
 	raised = this_cpu_ptr(&raised_list);
@@ -373,14 +369,10 @@ bool irq_work_needs_cpu(void)
 	WARN_ON_ONCE(cpu_is_offline(smp_processor_id()));
 
 	return true;
-#endif
 }
 
 void irq_work_single(void *arg)
 {
-#ifdef CONFIG_RUST_IRQ_WORK
-	rust_irq_work_single(arg);
-#else
 	struct irq_work *work = arg;
 	int flags;
 
@@ -411,10 +403,8 @@ void irq_work_single(void *arg)
 	if ((IS_ENABLED(CONFIG_PREEMPT_RT) && !irq_work_is_hard(work)) ||
 	    !arch_irq_work_has_interrupt())
 		rcuwait_wake_up(&work->irqwait);
-#endif
 }
 
-#ifndef CONFIG_RUST_IRQ_WORK
 static void irq_work_run_list(struct llist_head *list)
 {
 	struct irq_work *work, *tmp;
@@ -434,7 +424,6 @@ static void irq_work_run_list(struct llist_head *list)
 	llist_for_each_entry_safe(work, tmp, llnode, node.llist)
 		irq_work_single(work);
 }
-#endif
 
 /*
  * hotplug calls this through:
@@ -442,23 +431,16 @@ static void irq_work_run_list(struct llist_head *list)
  */
 void irq_work_run(void)
 {
-#ifdef CONFIG_RUST_IRQ_WORK
-	rust_irq_work_run();
-#else
 	irq_work_run_list(this_cpu_ptr(&raised_list));
 	if (!IS_ENABLED(CONFIG_PREEMPT_RT))
 		irq_work_run_list(this_cpu_ptr(&lazy_list));
 	else
 		wake_irq_workd();
-#endif
 }
 EXPORT_SYMBOL_GPL(irq_work_run);
 
 void irq_work_tick(void)
 {
-#ifdef CONFIG_RUST_IRQ_WORK
-	rust_irq_work_tick();
-#else
 	struct llist_head *raised = this_cpu_ptr(&raised_list);
 
 	if (!llist_empty(raised) && !arch_irq_work_has_interrupt())
@@ -468,7 +450,6 @@ void irq_work_tick(void)
 		irq_work_run_list(this_cpu_ptr(&lazy_list));
 	else
 		wake_irq_workd();
-#endif
 }
 
 /*
@@ -480,9 +461,6 @@ void irq_work_sync(struct irq_work *work)
 	lockdep_assert_irqs_enabled();
 	might_sleep();
 
-#ifdef CONFIG_RUST_IRQ_WORK
-	rust_irq_work_sync(work);
-#else
 	if ((IS_ENABLED(CONFIG_PREEMPT_RT) && !irq_work_is_hard(work)) ||
 	    !arch_irq_work_has_interrupt()) {
 		rcuwait_wait_event(&work->irqwait, !irq_work_is_busy(work),
@@ -498,9 +476,9 @@ void irq_work_sync(struct irq_work *work)
 
 	while (irq_work_is_busy(work))
 		cpu_relax();
-#endif
 }
 EXPORT_SYMBOL_GPL(irq_work_sync);
+#endif /* !CONFIG_RUST_IRQ_WORK */
 
 static void run_irq_workd(unsigned int cpu)
 {

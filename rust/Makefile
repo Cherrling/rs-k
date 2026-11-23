@@ -694,7 +694,12 @@ rust_unexported_symbols := \
 	task_work_cancel_func \
 	task_work_cancel_match \
 	task_work_run \
-	rust_task_work_test_run_task
+	rust_task_work_test_run_task \
+	irq_work_needs_cpu \
+	irq_work_queue_on \
+	irq_work_single \
+	irq_work_tick \
+	rust_irq_work_run_lazy
 
 rust_exports = $(NM) -p --defined-only $(1) | awk '$$2~/(T|R|D|B)/ && $$3!~/__(pfx|cfi|odr_asan)/ { printf $(2),$$3 }'
 rust_auto_export_skip := $(rust_non_gpl_exports) $(rust_unexported_symbols)

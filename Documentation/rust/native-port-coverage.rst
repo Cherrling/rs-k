@@ -96,6 +96,21 @@ Task work queues
   entries remain unexported. C fallback configurations retain the complete
   implementations.
 
+IRQ work execution
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-irq-work`.
+
+  Rust directly defines the seven public queue, tick, single-item, drain,
+  needs-CPU, and synchronization entries. Rust owns claim and duplicate
+  suppression, local and remote queue policy, PENDING and BUSY transitions,
+  lockless-list draining, reentrant callbacks, timer-tick processing, and fast
+  and slow synchronization decisions. C retains per-CPU storage, delivery and
+  worker plumbing, context diagnostics, low-level primitives, and export
+  metadata. The three historical GPL exports remain unchanged. The other four
+  public entries and the PREEMPT_RT lazy-worker bridge remain unexported. C
+  fallback configurations retain the complete implementations.
+
 Kobject lifecycle
   Status: ``migrated``.
 
@@ -280,8 +295,8 @@ Public ABI
   ``include/linux/list_lru.h``, ``include/linux/generic-radix-tree.h``,
   ``include/linux/btree.h``, ``include/linux/find.h``,
   ``include/linux/bitmap.h``, ``include/linux/maple_tree.h``,
-  ``include/linux/kfifo.h``, ``include/linux/completion.h``, and
-  ``include/linux/task_work.h``.
+  ``include/linux/kfifo.h``, ``include/linux/completion.h``,
+  ``include/linux/task_work.h``, and ``include/linux/irq_work.h``.
 
   Reason: Existing callers and loadable modules use the stable C ABI.
 
@@ -709,6 +724,65 @@ Task work primitive helpers
 
   Exit condition: Approved Rust task, lock, atomic, notification, and
   scheduler abstractions preserve the complete helper contracts.
+
+IRQ work layout and callback ABI
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/irq_work.h``,
+  ``include/linux/irq_work_types.h``, and ``rust/kernel/irq_work.rs``.
+
+  Reason: C and Rust share the IRQ work flags, intrusive lockless-list node,
+  callback pointer, wait object, initialization helpers, and callback calling
+  convention.
+
+  Test: Native, fallback, and C-only KUnit runs exercise claim, duplicate
+  suppression, reentrant callbacks, and state transitions on the shared
+  layout.
+
+  Risk: A layout or callback mismatch can corrupt queue links, lose a
+  callback, or clear the wrong state bit.
+
+  Exit condition: Rust-owned IRQ work and callback types replace the shared
+  representation and callback interface.
+
+IRQ work delivery and worker boundaries
+  Status: ``boundary-retained``.
+
+  Owner: ``kernel/irq_work.c``, architecture IRQ entry code, and the Rust
+  bindings.
+
+  Reason: Per-CPU raised and lazy lists, preemption and current-CPU access,
+  IPI and call-single delivery, hotplug, the PREEMPT_RT worker lifecycle,
+  KASAN, lockdep, synchronization context checks, barriers, RCU, ``rcuwait``,
+  and CPU relax operations retain architecture and scheduler contracts.
+
+  Test: Native SMP1/SMP4, KASAN, lockdep, and PREEMPT_RT runs exercise local,
+  remote, lazy, reentrant, contended-sync, and concurrent-producer paths.
+
+  Risk: A delivery or lifetime mismatch can execute work on the wrong CPU,
+  miss a wakeup, or access an item after release.
+
+  Exit condition: Approved Rust per-CPU, interrupt-delivery, worker, atomic,
+  diagnostic, and wait abstractions preserve the complete contracts.
+
+IRQ work export policy
+  Status: ``boundary-retained``.
+
+  Owner: ``rust/Makefile`` and ``kernel/irq_work.c``.
+
+  Reason: ``irq_work_queue()``, ``irq_work_run()``, and ``irq_work_sync()``
+  retain their historical GPL exports. The other four public entries and the
+  internal ``rust_irq_work_run_lazy()`` bridge have no module export.
+
+  Test: ``Module.symvers`` records only the three GPL entries in native
+  builds, and the generated Rust GPL export header excludes the five
+  unexported names.
+
+  Risk: An automatic export can expand the module ABI or expose an internal
+  PREEMPT_RT bridge.
+
+  Exit condition: Rust export generation supports the original GPL and
+  unexported classes without C export records or the skip list.
 
 Kobject layout and state
   Status: ``boundary-retained``.
@@ -1242,6 +1316,12 @@ callback layout, task PI lock, atomic primitives, notification flags,
 diagnostics, IRQ work, scheduler progress, and unexported symbol policy remain
 named C boundaries. Rust defines every public entry and owns every enqueue,
 cancellation, detachment, dispatch, exit, and reentrant-drain decision.
+
+The IRQ work boundary is valid only while the shared work and callback layout,
+per-CPU lists, interrupt delivery, hotplug and PREEMPT_RT worker lifecycle,
+diagnostics, low-level synchronization primitives, and export policy remain
+named C boundaries. Rust defines every public entry and owns every claim,
+queue, state, drain, dispatch, tick, and synchronization decision.
 
 The kobject boundary is valid only while the shared layout, bitfields,
 diagnostics, final cleanup callback, and non-GPL export metadata remain named

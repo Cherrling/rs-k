@@ -206,7 +206,7 @@ unsafe fn queue_local(work: *mut Work) {
 /// `work` must point to valid storage that remains allocated until the
 /// callback finishes.
 #[export]
-unsafe extern "C" fn rust_irq_work_queue(work: *mut Work) -> bool {
+unsafe extern "C" fn irq_work_queue(work: *mut Work) -> bool {
     // SAFETY: The caller guarantees that `work` is valid.
     if !unsafe { claim(work) } {
         return false;
@@ -292,12 +292,12 @@ unsafe fn queue_on_smp(work: *mut Work, cpu: c_int) -> bool {
 /// `work` must point to valid storage that remains allocated until the
 /// callback finishes.
 #[export]
-unsafe extern "C" fn rust_irq_work_queue_on(work: *mut Work, cpu: c_int) -> bool {
+unsafe extern "C" fn irq_work_queue_on(work: *mut Work, cpu: c_int) -> bool {
     #[cfg(not(CONFIG_SMP))]
     {
         let _ = cpu;
         // SAFETY: The caller provides the same contract for the local queue.
-        unsafe { rust_irq_work_queue(work) }
+        unsafe { irq_work_queue(work) }
     }
 
     #[cfg(CONFIG_SMP)]
@@ -314,7 +314,7 @@ unsafe extern "C" fn rust_irq_work_queue_on(work: *mut Work, cpu: c_int) -> bool
 /// The caller must not migrate during the per-CPU list checks. The caller must
 /// also provide the context required by the IRQ work entry point.
 #[export]
-unsafe extern "C" fn rust_irq_work_needs_cpu() -> bool {
+unsafe extern "C" fn irq_work_needs_cpu() -> bool {
     // SAFETY: The caller must not migrate during these per-CPU accesses.
     let raised = unsafe { current_list(false) };
     // SAFETY: The caller must not migrate during these per-CPU accesses.
@@ -379,7 +379,7 @@ unsafe fn run_one(work: *mut Work) {
 ///
 /// `arg` must point to a claimed, detached, valid IRQ work item.
 #[export]
-unsafe extern "C" fn rust_irq_work_single(arg: *mut c_void) {
+unsafe extern "C" fn irq_work_single(arg: *mut c_void) {
     // SAFETY: The call-single queue supplies a valid IRQ work pointer.
     unsafe { run_one(arg.cast::<Work>()) };
 }
@@ -441,7 +441,7 @@ unsafe fn wake_thread() {
 /// The caller must run on the current CPU with migration disabled. The caller
 /// must provide the IRQ work interrupt or hotplug flush context.
 #[export]
-unsafe extern "C" fn rust_irq_work_run() {
+unsafe extern "C" fn irq_work_run() {
     // SAFETY: The caller is the IRQ work interrupt or hotplug flush path.
     let raised = unsafe { current_list(false) };
     // SAFETY: `raised` is the current CPU's list.
@@ -465,7 +465,7 @@ unsafe extern "C" fn rust_irq_work_run() {
 /// The caller must run in timer-tick context on the current CPU with migration
 /// disabled.
 #[export]
-unsafe extern "C" fn rust_irq_work_tick() {
+unsafe extern "C" fn irq_work_tick() {
     // SAFETY: The timer tick runs without CPU migration.
     let raised = unsafe { current_list(false) };
     // SAFETY: `raised` is the current CPU's list.
@@ -509,7 +509,10 @@ unsafe extern "C" fn rust_irq_work_run_lazy() {
 ///
 /// `work` must point to valid storage whose final release follows this call.
 #[export]
-unsafe extern "C" fn rust_irq_work_sync(work: *mut Work) {
+unsafe extern "C" fn irq_work_sync(work: *mut Work) {
+    // SAFETY: This helper only runs the required context assertions.
+    unsafe { bindings::rust_irq_work_sync_checks() };
+
     // SAFETY: The caller guarantees that `work` is valid.
     let remote_lazy = cfg!(CONFIG_PREEMPT_RT) && unsafe { load_flags(work) } & HARD_IRQ == 0;
     // SAFETY: This helper reports a static architecture property.

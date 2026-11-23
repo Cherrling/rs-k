@@ -1927,9 +1927,10 @@ config RUST_IRQ_WORK
 	depends on RUST && IRQ_WORK
 	default y
 	help
-	  Use Rust for the production irq_work claim, duplicate-suppression,
-	  local and remote queue policy, callback state transitions, list
-	  draining, and synchronization decisions.
+	  Rust directly defines the public irq_work entry points and owns
+	  claim, duplicate-suppression, local and remote queue policy,
+	  callback state transitions, list draining, and synchronization
+	  decisions.
 
 	  C helpers retain per-CPU list storage, preemption, IPI delivery,
 	  hotplug and RT thread plumbing, KASAN, lockdep, architecture IRQ

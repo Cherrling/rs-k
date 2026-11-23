@@ -10,13 +10,6 @@
 
 #ifdef CONFIG_RUST_IRQ_WORK
 
-bool rust_irq_work_queue(struct irq_work *work);
-bool rust_irq_work_queue_on(struct irq_work *work, int cpu);
-bool rust_irq_work_needs_cpu(void);
-void rust_irq_work_single(void *arg);
-void rust_irq_work_run(void);
-void rust_irq_work_tick(void);
-void rust_irq_work_sync(struct irq_work *work);
 void rust_irq_work_run_lazy(void);
 
 atomic_t *rust_irq_work_flags(struct irq_work *work);
@@ -52,6 +45,7 @@ void rust_irq_work_rcuwait_wake(struct irq_work *work);
 void rust_irq_work_sync_rcu(void);
 void rust_irq_work_cpu_relax(void);
 void rust_irq_work_assert_run_context(void);
+void rust_irq_work_sync_checks(void);
 
 #endif /* CONFIG_RUST_IRQ_WORK */
 
