@@ -24141,6 +24141,7 @@ F:	Documentation/rust/native-kobject.rst
 F:	Documentation/rust/native-list-lru.rst
 F:	Documentation/rust/native-list-sort.rst
 F:	Documentation/rust/native-llist.rst
+F:	Documentation/rust/native-percpu-refcount.rst
 F:	Documentation/rust/native-plist.rst
 F:	Documentation/rust/native-port-coverage.rst
 F:	Documentation/rust/native-rbtree.rst
@@ -24169,6 +24170,7 @@ F:	include/linux/klist-rust.h
 F:	include/linux/list_lru-rust.h
 F:	include/linux/lockref-rust.h
 F:	include/linux/mutex-rust.h
+F:	include/linux/percpu-refcount-rust.h
 F:	include/linux/pid-allocation-rust.h
 F:	include/linux/pid-association-rust.h
 F:	include/linux/pid-number-rust.h
@@ -24215,6 +24217,7 @@ F:	lib/klist.c
 F:	lib/kobject.c
 F:	lib/llist.c
 F:	lib/lockref.c
+F:	lib/percpu-refcount.c
 F:	lib/refcount.c
 F:	lib/rcuwait.c
 F:	lib/tests/kobject_kunit.c
@@ -24246,6 +24249,7 @@ F:	lib/tests/test_itimer.c
 F:	lib/tests/test_mm_lifetime.c
 F:	lib/tests/test_completion.c
 F:	lib/tests/test_mutex.c
+F:	lib/tests/test_percpu_refcount.c
 F:	lib/tests/test_pid_allocation.c
 F:	lib/tests/test_pid_association.c
 F:	lib/tests/test_pid_number.c
@@ -24290,6 +24294,7 @@ F:	rust/kernel/klist.rs
 F:	rust/kernel/llist.rs
 F:	rust/kernel/list_lru.rs
 F:	rust/kernel/lockref.rs
+F:	rust/kernel/percpu_refcount.rs
 F:	rust/kernel/rcuwait.rs
 F:	rust/kernel/task_work.rs
 F:	samples/rust/

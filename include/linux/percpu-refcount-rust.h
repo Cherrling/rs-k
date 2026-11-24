@@ -10,19 +10,6 @@
 
 #ifdef CONFIG_RUST_PERCPU_REFCOUNT
 
-int rust_percpu_ref_init(struct percpu_ref *ref, percpu_ref_func_t *release,
-			 unsigned int flags, gfp_t gfp);
-void rust_percpu_ref_exit(struct percpu_ref *ref);
-void rust_percpu_ref_switch_to_atomic(struct percpu_ref *ref,
-				      percpu_ref_func_t *confirm_switch);
-void rust_percpu_ref_switch_to_atomic_sync(struct percpu_ref *ref);
-void rust_percpu_ref_switch_to_percpu(struct percpu_ref *ref);
-void rust_percpu_ref_kill_and_confirm(struct percpu_ref *ref,
-				      percpu_ref_func_t *confirm_kill);
-void rust_percpu_ref_resurrect(struct percpu_ref *ref);
-void rust_percpu_ref_reinit(struct percpu_ref *ref);
-bool rust_percpu_ref_is_zero(struct percpu_ref *ref);
-
 int rust_percpu_ref_alloc_percpu(struct percpu_ref *ref, gfp_t gfp);
 struct percpu_ref_data *rust_percpu_ref_alloc_data(gfp_t gfp);
 void rust_percpu_ref_free_percpu(unsigned long percpu);

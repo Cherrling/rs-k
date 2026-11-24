@@ -62,6 +62,19 @@ Reference counting
   original ordinary export classes. C fallback configurations retain the
   complete implementation.
 
+Per-CPU reference lifecycle
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-percpu-refcount`.
+
+  Rust directly defines the nine public initialization, mode-switch, kill,
+  exit, zero-test, reinitialization, and resurrection entry points. Rust owns
+  every mode transition, initial count, RCU confirmation, release, and
+  resurrection decision. C retains the shared layout and flags, inline
+  get/put fast paths, allocation, locking, RCU, per-CPU, atomic, and
+  diagnostic helpers. C fallback configurations retain the complete
+  lifecycle.
+
 Lockref operations
   Status: ``migrated``.
 
@@ -749,6 +762,42 @@ Refcount export metadata
 
   Exit condition: Rust export metadata supports the ordinary class without C
   export records.
+
+Per-CPU reference layout and flags
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/percpu-refcount.h``.
+
+  Reason: C and Rust share the encoded per-CPU pointer, mode and dead flags,
+  backing data object, count bias, callback ABI, and embedded RCU head.
+
+  Test: Six configurations pass the seven-case lifecycle suite on SMP1 and
+  SMP4, including concurrent mode switching.
+
+  Risk: A flag, bias, layout, or callback mismatch can leak references, free
+  live storage, or expose a partially switched counter.
+
+  Exit condition: Rust owns an equivalent reference type, flag encoding, and
+  callback layout.
+
+Per-CPU reference fast paths and lifecycle helpers
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/percpu-refcount.h`` and ``lib/percpu-refcount.c``.
+
+  Reason: Lockless get, put, and live-tryget paths remain inline C. C also
+  retains per-CPU and backing allocation, switch locking and waiting, RCU
+  queueing, release-store publication, counter collection, and diagnostics.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT exercise
+  both mode-switch directions, RCU confirmation, reinitialization,
+  resurrection, and concurrent switching.
+
+  Risk: A missing barrier, lock, or reference can lose the final release or
+  retain a stale per-CPU mode.
+
+  Exit condition: Approved Rust abstractions cover the complete per-CPU,
+  atomic, RCU, locking, and diagnostic contract.
 
 Lockref layout and initialization
   Status: ``boundary-retained``.
@@ -1778,6 +1827,13 @@ saturation encoding, architecture atomics and barriers, lock primitives,
 warning sites, and ordinary export metadata remain named C boundaries. Rust
 defines every public entry and owns every transition, limit, saturation,
 conditional-lock, and held-lock decision.
+
+The per-CPU reference boundary is valid only while the shared layout and
+flags, inline get/put paths, allocation, switch locking, RCU queueing,
+per-CPU collection, atomic operations, diagnostics, and callback ABI remain
+named C boundaries. Rust defines every public lifecycle entry and owns every
+initialization, switch, confirmation, release, reinitialization, and
+resurrection decision.
 
 The lockref boundary is valid only while initialization, the packed layout,
 architecture operations, and non-GPL export metadata remain shared C

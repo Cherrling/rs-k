@@ -10,7 +10,10 @@ The ``CONFIG_RUST_PERCPU_REFCOUNT`` option selects an experimental native
 Rust implementation of the ``percpu_ref()`` lifecycle.  The migration excludes
 device drivers and does not change any caller-facing API.
 
-The Rust code owns these state transitions:
+Rust directly defines all nine production lifecycle entry points. The
+complete C lifecycle remains available when the option is disabled.
+
+Rust owns these state transitions:
 
 * Initialization, including the initial reference and flags.
 * Switching between per-CPU and atomic counting.
@@ -18,15 +21,24 @@ The Rust code owns these state transitions:
 * Exit and backing allocation release.
 * Reinitialization and resurrection.
 
-The C implementation remains the fallback when the option is disabled.
-
 Entry points and state ownership
 --------------------------------
 
-The exported ``percpu_ref_*()`` functions remain C ABI adapters.  When the
-option is enabled, each adapter has a 9-byte jump to the corresponding
-``rust_percpu_ref_*()`` function.  The original C lifecycle state machine is
-compiled out.
+The production entry points are:
+
+* ``percpu_ref_init()``
+* ``percpu_ref_exit()``
+* ``percpu_ref_switch_to_atomic()``
+* ``percpu_ref_switch_to_atomic_sync()``
+* ``percpu_ref_switch_to_percpu()``
+* ``percpu_ref_kill_and_confirm()``
+* ``percpu_ref_is_zero()``
+* ``percpu_ref_reinit()``
+* ``percpu_ref_resurrect()``
+
+These functions retain their names, signatures, and GPL export class. Rust
+directly defines each function. In the native configuration, the original C
+lifecycle state machine and its public wrappers are absent from the build.
 
 The Rust state machine uses the existing ``struct percpu_ref`` and
 ``struct percpu_ref_data`` layouts.  It keeps the existing global switch lock,
@@ -36,8 +48,10 @@ call the original C lifecycle functions.
 Retained C boundary
 -------------------
 
-The following operations stay in C because they directly use architecture or
-kernel primitives:
+The native ``lib/percpu-refcount.o`` object contains only primitive helpers.
+It defines none of the nine public lifecycle functions. The following
+operations stay in C because they directly use architecture or kernel
+primitives:
 
 * ``percpu_ref_get()``, ``percpu_ref_put()``, and ``percpu_ref_tryget_live()``
   stay inline in ``include/linux/percpu-refcount.h``.  These are lockless,
@@ -50,8 +64,9 @@ kernel primitives:
 * Thin helpers register RCU callbacks and recover the enclosing data object.
 * Thin helpers report existing warning and underflow diagnostics.
 
-These helpers do not decide lifecycle transitions.  The Rust module reads their
-results and implements the state machine.
+These helpers do not decide lifecycle transitions. The Rust module reads their
+results and implements the state machine, including asynchronous RCU
+confirmation and final-release ordering.
 
 Important invariants
 --------------------
@@ -66,25 +81,67 @@ The temporary reference acquired during an atomic switch is dropped only after
 confirmation.  After the confirmation callback runs, new
 ``percpu_ref_tryget_live()`` calls must fail.
 
-Validation record
------------------
+Validation gate
+---------------
 
-The x86_64 validation used three configurations:
+The migration unit must pass these checks before integration:
 
-* Rust lifecycle enabled.
-* Rust lifecycle disabled, with the original C lifecycle and the same tests.
-* Rust lifecycle enabled with generic, inline KASAN.
+* Native Rust, Rust fallback, and C-only x86_64 builds.
+* One-vCPU and four-vCPU runs for every build configuration.
+* Generic inline KASAN, lockdep, and PREEMPT_RT builds and boots.
+* Initialization in per-CPU, atomic, and dead modes.
+* Both mode-switch directions and synchronous confirmation.
+* Kill confirmation, final release, reinitialization, and resurrection.
+* Post-confirmation rejection by ``percpu_ref_tryget_live()``.
+* Concurrent mode switching with four workers.
+* Symbol ownership checks for all nine public entry points.
+* Module builds and an external module ABI test for the GPL exports.
+* Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
+  ``git diff --check``.
 
-The test suite covers basic references, both mode-switch directions, initial
+Validation results
+------------------
+
+Validation on 2026-11-24 used base commit ``1be8db2dbb31``. Six x86_64
+configurations were built: native Rust, Rust fallback, C-only, generic inline
+KASAN, lockdep, and PREEMPT_RT. Native, fallback, C-only, lockdep, and
+PREEMPT_RT used GCC 16.2. KASAN used Clang 21.1.8 and LLD. Each configuration
+passed one SMP1 boot and one SMP4 boot with seven of seven cases. The 12 boots
+executed 84 cases without a failure.
+
+KASAN initialized generic KernelAddressSanitizer. The lockdep image enabled
+``PROVE_LOCKING``, ``DEBUG_LOCK_ALLOC``, ``LOCKDEP``, ``DEBUG_SPINLOCK``, and
+``DEBUG_LIST``. The PREEMPT_RT image reported ``PREEMPT_RT`` in its kernel
+banner. The logs contain no ``WARNING``, ``BUG``, Oops, failed test, kernel
+panic, KASAN report, lockdep complaint, or RCU stall.
+
+The seven cases cover basic references, both mode-switch directions, initial
 atomic state, synchronous confirmation, reinitialization, resurrection,
 post-confirmation ``tryget_live`` rejection, and concurrent mode switching.
-Every configuration passed all 7 tests.  The Rust KUnit runs used 1 vCPU and
-three consecutive 4 vCPU runs.  The C fallback and KASAN runs used 4 vCPUs.
 
-The validation logs contained no ``BUG``, ``Oops``, KASAN report, warning,
-underflow report, or panic.  Every public lifecycle entry point was a 9-byte
-ABI jump, and the corresponding Rust production symbols were present.
-Rustfmt, Clippy, checkpatch, and ``git diff --check`` passed.
+The native SMP4 image also passed adjacent suites: ``refcount`` with seven
+cases, ``dec_and_lock`` with six, ``kref`` with four, ``kobject`` with four,
+and ``lockref`` with four. All 25 cases passed.
+
+In native, ``rust/kernel.o`` defines all nine public entry points. The native
+``lib/percpu-refcount.o`` contains only the retained primitive helpers and
+none of the nine public function bodies. The generated Rust export header and
+``vmlinux.symvers`` record exactly nine ``EXPORT_SYMBOL_GPL`` entries.
+No internal ``rust_percpu_ref_*`` production name remains.
+
+The fallback and C-only images define the complete C lifecycle in
+``lib/percpu-refcount.o``. Their Rust kernel objects contain no public
+``percpu_ref_*`` definition.
+
+Native, fallback, and C-only module builds passed modpost. A temporary
+external module referenced all nine GPL exports and linked successfully
+against each configuration.
+
+Rustfmt, Clippy, Rustdoc, focused Sphinx generation, and
+``git diff --check`` passed. Sphinx emitted only the existing
+``kernel-docs`` and ``getting_llvm`` cross-directory warnings. Strict
+checkpatch reported no errors, warnings, or checks after targeted ignores
+for ``EXPORT_SYMBOL`` and function-argument placement.
 
 Review conditions
 -----------------

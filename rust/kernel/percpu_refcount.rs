@@ -9,7 +9,6 @@
 
 use crate::{bindings, ffi::c_long, ffi::c_ulong};
 use core::{ffi::c_int, ffi::c_uint, ptr};
-use macros::export;
 
 type Ref = bindings::percpu_ref;
 type Data = bindings::percpu_ref_data;
@@ -329,8 +328,8 @@ unsafe fn switch_mode_locked(ref_: *mut Ref, confirm: Callback) {
 ///
 /// `ref_` must point to uninitialized storage suitable for a `percpu_ref`.
 /// `release` must satisfy the contract documented by `percpu_ref_init()`.
-#[export]
-unsafe extern "C" fn rust_percpu_ref_init(
+#[no_mangle]
+unsafe extern "C" fn percpu_ref_init(
     ref_: *mut Ref,
     release: Callback,
     flags: c_uint,
@@ -397,8 +396,8 @@ unsafe extern "C" fn rust_percpu_ref_init(
 /// # Safety
 ///
 /// The caller must ensure the reference is no longer in active use.
-#[export]
-unsafe extern "C" fn rust_percpu_ref_exit(ref_: *mut Ref) {
+#[no_mangle]
+unsafe extern "C" fn percpu_ref_exit(ref_: *mut Ref) {
     // SAFETY: The caller guarantees that `ref_` is initialized and inactive.
     unsafe { exit_inner(ref_) };
     // SAFETY: The caller guarantees that `ref_` is initialized.
@@ -431,8 +430,8 @@ unsafe extern "C" fn rust_percpu_ref_exit(ref_: *mut Ref) {
 /// # Safety
 ///
 /// `ref_` must be between successful initialization and exit.
-#[export]
-unsafe extern "C" fn rust_percpu_ref_switch_to_atomic(ref_: *mut Ref, confirm: Callback) {
+#[no_mangle]
+unsafe extern "C" fn percpu_ref_switch_to_atomic(ref_: *mut Ref, confirm: Callback) {
     // SAFETY: The public API contract guarantees a live initialized `ref_`.
     let _lock = unsafe { SwitchLock::acquire() };
     // SAFETY: The caller holds the switch lock and `ref_` is live.
@@ -448,10 +447,10 @@ unsafe extern "C" fn rust_percpu_ref_switch_to_atomic(ref_: *mut Ref, confirm: C
 /// # Safety
 ///
 /// `ref_` must be between successful initialization and exit.
-#[export]
-unsafe extern "C" fn rust_percpu_ref_switch_to_atomic_sync(ref_: *mut Ref) {
+#[no_mangle]
+unsafe extern "C" fn percpu_ref_switch_to_atomic_sync(ref_: *mut Ref) {
     // SAFETY: This forwards the caller's live-reference contract.
-    unsafe { rust_percpu_ref_switch_to_atomic(ref_, None) };
+    unsafe { percpu_ref_switch_to_atomic(ref_, None) };
     // SAFETY: The caller guarantees that no concurrent switch changes state.
     unsafe { bindings::rust_percpu_ref_wait_unlocked(ref_) };
 }
@@ -461,8 +460,8 @@ unsafe extern "C" fn rust_percpu_ref_switch_to_atomic_sync(ref_: *mut Ref) {
 /// # Safety
 ///
 /// `ref_` must be between successful initialization and exit.
-#[export]
-unsafe extern "C" fn rust_percpu_ref_switch_to_percpu(ref_: *mut Ref) {
+#[no_mangle]
+unsafe extern "C" fn percpu_ref_switch_to_percpu(ref_: *mut Ref) {
     // SAFETY: The public API contract guarantees a live initialized `ref_`.
     let _lock = unsafe { SwitchLock::acquire() };
     // SAFETY: The caller holds the switch lock and `ref_` is live.
@@ -478,8 +477,8 @@ unsafe extern "C" fn rust_percpu_ref_switch_to_percpu(ref_: *mut Ref) {
 /// # Safety
 ///
 /// `ref_` must be between successful initialization and exit.
-#[export]
-unsafe extern "C" fn rust_percpu_ref_kill_and_confirm(ref_: *mut Ref, confirm_kill: Callback) {
+#[no_mangle]
+unsafe extern "C" fn percpu_ref_kill_and_confirm(ref_: *mut Ref, confirm_kill: Callback) {
     // SAFETY: The public API contract guarantees a live initialized `ref_`.
     let _lock = unsafe { SwitchLock::acquire() };
     // SAFETY: `ref_` is live under the switch lock.
@@ -499,8 +498,8 @@ unsafe extern "C" fn rust_percpu_ref_kill_and_confirm(ref_: *mut Ref, confirm_ki
 /// # Safety
 ///
 /// `ref_` must be between successful initialization and exit.
-#[export]
-unsafe extern "C" fn rust_percpu_ref_is_zero(ref_: *mut Ref) -> bool {
+#[no_mangle]
+unsafe extern "C" fn percpu_ref_is_zero(ref_: *mut Ref) -> bool {
     let mut percpu = 0;
     // SAFETY: The public API contract guarantees a live initialized `ref_`.
     if unsafe { bindings::rust_percpu_ref_read_is_percpu(ref_, &mut percpu) } {
@@ -527,14 +526,14 @@ unsafe extern "C" fn rust_percpu_ref_is_zero(ref_: *mut Ref) -> bool {
 /// # Safety
 ///
 /// `ref_` must have reached zero but must not have exited.
-#[export]
-unsafe extern "C" fn rust_percpu_ref_reinit(ref_: *mut Ref) {
+#[no_mangle]
+unsafe extern "C" fn percpu_ref_reinit(ref_: *mut Ref) {
     // SAFETY: The public API contract guarantees that `ref_` is live.
-    let zero = unsafe { rust_percpu_ref_is_zero(ref_) };
+    let zero = unsafe { percpu_ref_is_zero(ref_) };
     // SAFETY: The zero check above is the warning condition.
     unsafe { bindings::rust_percpu_ref_warn_reinit_not_zero(!zero) };
     // SAFETY: Resurrect applies the remaining state transition.
-    unsafe { rust_percpu_ref_resurrect(ref_) };
+    unsafe { percpu_ref_resurrect(ref_) };
 }
 
 /// Resurrects a dead reference.
@@ -542,8 +541,8 @@ unsafe extern "C" fn rust_percpu_ref_reinit(ref_: *mut Ref) {
 /// # Safety
 ///
 /// `ref_` must be dead and must not have exited.
-#[export]
-unsafe extern "C" fn rust_percpu_ref_resurrect(ref_: *mut Ref) {
+#[no_mangle]
+unsafe extern "C" fn percpu_ref_resurrect(ref_: *mut Ref) {
     // SAFETY: The public API contract guarantees a live initialized `ref_`.
     let _lock = unsafe { SwitchLock::acquire() };
     // SAFETY: `ref_` is live under the switch lock.
