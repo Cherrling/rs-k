@@ -1068,15 +1068,15 @@ config RUST_SCHED_RESCHED_CURR
 	depends on RUST
 	default y
 	help
-	  Use Rust for the production current-task reschedule request state
-	  machine. Rust promotes a lazy reschedule request for an idle task,
+	  Use Rust to directly define the production current-task reschedule
+	  entry points. Rust promotes a lazy reschedule request for an idle task,
 	  suppresses duplicate requests, emits the scheduler trace, selects
-	  local or remote delivery, and orders the atomic thread-flag, preemption,
-	  reschedule IPI, and idle-polling paths.
+	  local or remote delivery, and orders the atomic thread-flag,
+	  preemption, reschedule IPI, and idle-polling paths.
 
 	  Task and runqueue locking, thread-flag bit operations, preemption-count
-	  updates, tracepoints, IPI delivery, and public scheduler ABI adapters
-	  remain in C.
+	  updates, tracepoints, IPI delivery, lazy-preemption mode queries, and
+	  unrelated scheduler ABI adapters remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -1086,13 +1086,12 @@ config RUST_SCHED_RESCHED_CPU
 	depends on RUST
 	default y
 	help
-	  Use Rust for the production per-CPU reschedule request decision.
-	  Rust requests current-task rescheduling only when the target CPU is
-	  online or is the current CPU.
+	  Use Rust to directly define the production per-CPU reschedule entry
+	  point. Rust acquires the target runqueue lock and requests current-task
+	  rescheduling only when the target CPU is online or is the current CPU.
 
-	  CPU-to-runqueue mapping, CPU-online and current-CPU queries, runqueue
-	  locking, reschedule delivery, and public scheduler ABI adapters remain
-	  in C.
+	  CPU-to-runqueue mapping, CPU-online and current-CPU queries, raw
+	  runqueue lock primitives, and reschedule delivery remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

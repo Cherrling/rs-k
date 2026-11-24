@@ -535,6 +535,25 @@ CPU-priority scheduler state machine and entry points
   and off-stack cpumask boots passed all applicable cases, including three
   consecutive native four-vCPU runs.
 
+Scheduler reschedule request entries
+  Status: ``migrated``.
+
+  Evidence: :doc:`sched`.
+
+  Rust directly defines ``resched_curr()``, ``resched_curr_lazy()``, and
+  ``resched_cpu()``. Rust owns idle-task lazy-request promotion, duplicate
+  request suppression, local or remote delivery ordering, per-CPU
+  online-or-current eligibility, runqueue lock and interrupt-state ordering,
+  and conditional current-task rescheduling. C retains CPU-to-runqueue
+  mapping, raw runqueue lock primitives, CPU state queries, the
+  lazy-preemption mode query, tracepoints, thread flags, preemption count,
+  IPI delivery, and idle wake tracing.
+
+  Test: Fourteen native, current-task-only, per-CPU-only, fallback, C-only,
+  KASAN, lockdep, and PREEMPT_RT scheduler boots passed all applicable cases.
+  Three consecutive native four-vCPU runs passed all 37 cases. Native and
+  fallback hrtimer regressions passed all 25 cases.
+
 Boundary-retained inventory
 ---------------------------
 
@@ -704,6 +723,29 @@ CPU-priority scheduler shared entry boundary
   Exit condition: Rust owns compatible cpumasks, atomic and barrier
   primitives, scheduler locking, initialization, diagnostics, and lifecycle
   operations without shared C helper entries.
+
+Scheduler reschedule primitive boundary
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/sched-rust.h``, ``kernel/sched/core.c``,
+  ``rust/kernel/sched_core.rs``, and the scheduler primitive helpers.
+
+  Reason: Rust owns the reschedule request entries, but CPU-to-runqueue
+  mapping, raw runqueue locking, interrupt-state restoration,
+  lazy-preemption mode selection, thread-flag updates, tracepoints,
+  preemption count, and IPI delivery depend on scheduler, architecture, and
+  tracing internals.
+
+  Test: Native, current-task-only, per-CPU-only, fallback, C-only, KASAN,
+  lockdep, and PREEMPT_RT boots exercise each cross-option link and retained
+  primitive.
+
+  Risk: Incorrect lock, interrupt-state, current-CPU, or thread-flag ordering
+  can lose a reschedule request or send it to the wrong execution context.
+
+  Exit condition: Rust owns compatible runqueue locking, CPU state queries,
+  lazy-preemption mode selection, thread flags, tracing, preemption count,
+  and IPI delivery without shared C helper entries.
 
 Mutex scheduler, tracing, and locking-debug boundary
   Status: ``boundary-retained``.

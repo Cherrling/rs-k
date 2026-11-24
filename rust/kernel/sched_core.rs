@@ -9,7 +9,8 @@
 //! decisions. C retains task and runqueue locking, warning delivery,
 //! scheduling-class implementations, class ordering anchors, cpumask
 //! operations, CPU eligibility queries, fallback placement, and fatal
-//! scheduler invariant reporting.
+//! scheduler invariant reporting. Rust directly defines the current-task and
+//! per-CPU reschedule request entry points.
 
 use crate::bindings;
 #[cfg(any(
@@ -28,7 +29,8 @@ use crate::ffi::c_int;
 #[cfg(any(
     CONFIG_RUST_SCHED_TTWU_ACTIVATE,
     CONFIG_RUST_SCHED_WAKE_PREEMPT,
-    CONFIG_RUST_SCHED_RESCHED_CURR
+    CONFIG_RUST_SCHED_RESCHED_CURR,
+    CONFIG_RUST_SCHED_RESCHED_CPU
 ))]
 use crate::ffi::c_ulong;
 #[cfg(any(
@@ -2062,7 +2064,7 @@ unsafe fn resched_curr_locked(rq: *mut Rq, tif: c_int) {
     }
 }
 
-/// Implements the production current-task reschedule request entry point.
+/// Requests rescheduling of the current task on a runqueue.
 ///
 /// # Safety
 ///
@@ -2070,7 +2072,32 @@ unsafe fn resched_curr_locked(rq: *mut Rq, tif: c_int) {
 /// runqueue lock.
 #[cfg(CONFIG_RUST_SCHED_RESCHED_CURR)]
 #[export]
-unsafe extern "C" fn rust_sched_resched_curr(rq: *mut Rq, tif: c_int) {
+unsafe extern "C" fn resched_curr(rq: *mut Rq) {
+    // SAFETY: The caller holds the runqueue lock.
+    #[cfg(CONFIG_LOCKDEP)]
+    unsafe {
+        bindings::rust_helper_sched_resched_assert_locked(rq)
+    };
+    // SAFETY: The caller satisfies the exported entry-point contract.
+    unsafe { resched_curr_locked(rq, bindings::TIF_NEED_RESCHED as c_int) };
+}
+
+/// Requests lazy rescheduling of the current task on a runqueue.
+///
+/// # Safety
+///
+/// `rq` and its current task must remain live. The caller must hold the
+/// runqueue lock.
+#[cfg(CONFIG_RUST_SCHED_RESCHED_CURR)]
+#[export]
+unsafe extern "C" fn resched_curr_lazy(rq: *mut Rq) {
+    // SAFETY: The caller holds the runqueue lock.
+    #[cfg(CONFIG_LOCKDEP)]
+    unsafe {
+        bindings::rust_helper_sched_resched_assert_locked(rq)
+    };
+    // SAFETY: The runqueue lock disables migration and preemption.
+    let tif = unsafe { bindings::rust_helper_sched_resched_lazy_tif() };
     // SAFETY: The caller satisfies the exported entry-point contract.
     unsafe { resched_curr_locked(rq, tif) };
 }
@@ -2124,17 +2151,28 @@ unsafe fn resched_cpu_locked(rq: *mut Rq, cpu: c_int) {
     }
 }
 
-/// Implements the production per-CPU reschedule request entry point.
+/// Requests rescheduling of a CPU after acquiring its runqueue lock.
 ///
 /// # Safety
 ///
-/// `rq` must remain live, must belong to `cpu`, and the caller must hold its
-/// runqueue lock.
+/// `cpu` must be a valid CPU index.
 #[cfg(CONFIG_RUST_SCHED_RESCHED_CPU)]
 #[export]
-unsafe extern "C" fn rust_sched_resched_cpu(rq: *mut Rq, cpu: c_int) {
-    // SAFETY: The caller satisfies the exported entry-point contract.
+unsafe extern "C" fn resched_cpu(cpu: c_int) {
+    // SAFETY: The caller provides a valid CPU index.
+    let rq = unsafe { bindings::rust_helper_sched_resched_rq(cpu) };
+    // SAFETY: The runqueue is live and the helper disables interrupts.
+    let flags = unsafe { bindings::rust_helper_sched_resched_lock(rq) };
+    // SAFETY: The helper acquired the target runqueue lock.
+    #[cfg(CONFIG_LOCKDEP)]
+    unsafe {
+        bindings::rust_helper_sched_resched_assert_locked(rq)
+    };
+    // SAFETY: The helper acquired the target runqueue lock.
     unsafe { resched_cpu_locked(rq, cpu) };
+    // SAFETY: The helper releases the lock acquired above with the matching
+    // interrupt state.
+    unsafe { bindings::rust_helper_sched_resched_unlock(rq, flags) };
 }
 
 /// Selects whether a per-CPU reschedule request is required for KUnit.

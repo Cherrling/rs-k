@@ -12,6 +12,19 @@ struct sched_class;
 
 void resched_curr(struct rq *rq);
 
+#ifdef CONFIG_RUST_SCHED_RESCHED_CURR
+void resched_curr_lazy(struct rq *rq);
+#endif
+
+#ifdef CONFIG_RUST_SCHED_RESCHED_CPU
+void resched_cpu(int cpu);
+#endif
+
+#if (defined(CONFIG_RUST_SCHED_RESCHED_CURR) || \
+	defined(CONFIG_RUST_SCHED_RESCHED_CPU)) && defined(CONFIG_LOCKDEP)
+void rust_helper_sched_resched_assert_locked(struct rq *rq);
+#endif
+
 #if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
 	defined(CONFIG_RUST_SCHED_RQ_TRANSITION) || \
 	defined(CONFIG_RUST_SCHED_WAKE_PREEMPT)
@@ -79,8 +92,7 @@ void rust_helper_sched_resched_set_preempt(void);
 bool rust_helper_sched_resched_set_remote(struct task_struct *task, int tif);
 void rust_helper_sched_resched_send_ipi(int cpu);
 void rust_helper_sched_resched_trace_wake_idle(int cpu);
-
-void rust_sched_resched_curr(struct rq *rq, int tif);
+int rust_helper_sched_resched_lazy_tif(void);
 
 #ifdef CONFIG_KUNIT
 int rust_sched_resched_tif_select(bool idle, int tif);
@@ -95,8 +107,9 @@ unsigned int rust_sched_resched_remote_select(bool atomic_set, int tif);
 
 bool rust_helper_sched_resched_cpu_online(int cpu);
 int rust_helper_sched_resched_cpu_current(void);
-
-void rust_sched_resched_cpu(struct rq *rq, int cpu);
+struct rq *rust_helper_sched_resched_rq(int cpu);
+unsigned long rust_helper_sched_resched_lock(struct rq *rq);
+void rust_helper_sched_resched_unlock(struct rq *rq, unsigned long flags);
 
 #ifdef CONFIG_KUNIT
 bool rust_sched_resched_cpu_select(bool cpu_online, bool cpu_local);

@@ -1414,15 +1414,12 @@ void __trace_set_need_resched(struct task_struct *curr, int tif)
 }
 EXPORT_SYMBOL_GPL(__trace_set_need_resched);
 
+#ifndef CONFIG_RUST_SCHED_RESCHED_CURR
 void resched_curr(struct rq *rq)
 {
-#ifdef CONFIG_RUST_SCHED_RESCHED_CURR
-	lockdep_assert_rq_held(rq);
-	rust_sched_resched_curr(rq, TIF_NEED_RESCHED);
-#else
 	__resched_curr(rq, TIF_NEED_RESCHED);
-#endif
 }
+#endif
 
 #ifdef CONFIG_PREEMPT_DYNAMIC
 static DEFINE_STATIC_KEY_FALSE(sk_dynamic_preempt_lazy);
@@ -1480,17 +1477,27 @@ void rust_helper_sched_resched_trace_wake_idle(int cpu)
 {
 	trace_sched_wake_idle_without_ipi(cpu);
 }
+
+int rust_helper_sched_resched_lazy_tif(void)
+{
+	return get_lazy_tif_bit();
+}
 #endif
 
+#if (defined(CONFIG_RUST_SCHED_RESCHED_CURR) || \
+	defined(CONFIG_RUST_SCHED_RESCHED_CPU)) && defined(CONFIG_LOCKDEP)
+void rust_helper_sched_resched_assert_locked(struct rq *rq)
+{
+	lockdep_assert_rq_held(rq);
+}
+#endif
+
+#ifndef CONFIG_RUST_SCHED_RESCHED_CURR
 void resched_curr_lazy(struct rq *rq)
 {
-#ifdef CONFIG_RUST_SCHED_RESCHED_CURR
-	lockdep_assert_rq_held(rq);
-	rust_sched_resched_curr(rq, get_lazy_tif_bit());
-#else
 	__resched_curr(rq, get_lazy_tif_bit());
-#endif
 }
+#endif
 
 #ifdef CONFIG_RUST_SCHED_RESCHED_CPU
 bool rust_helper_sched_resched_cpu_online(int cpu)
@@ -1502,22 +1509,38 @@ int rust_helper_sched_resched_cpu_current(void)
 {
 	return smp_processor_id();
 }
+
+struct rq *rust_helper_sched_resched_rq(int cpu)
+{
+	return cpu_rq(cpu);
+}
+
+unsigned long rust_helper_sched_resched_lock(struct rq *rq)
+{
+	unsigned long flags;
+
+	raw_spin_rq_lock_irqsave(rq, flags);
+	return flags;
+}
+
+void rust_helper_sched_resched_unlock(struct rq *rq, unsigned long flags)
+{
+	raw_spin_rq_unlock_irqrestore(rq, flags);
+}
 #endif
 
+#ifndef CONFIG_RUST_SCHED_RESCHED_CPU
 void resched_cpu(int cpu)
 {
 	struct rq *rq = cpu_rq(cpu);
 	unsigned long flags;
 
 	raw_spin_rq_lock_irqsave(rq, flags);
-#ifdef CONFIG_RUST_SCHED_RESCHED_CPU
-	rust_sched_resched_cpu(rq, cpu);
-#else
 	if (cpu_online(cpu) || cpu == smp_processor_id())
 		resched_curr(rq);
-#endif
 	raw_spin_rq_unlock_irqrestore(rq, flags);
 }
+#endif
 
 #ifdef CONFIG_NO_HZ_COMMON
 /*

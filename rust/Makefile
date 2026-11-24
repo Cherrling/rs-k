@@ -803,6 +803,9 @@ rust_unexported_symbols := \
 	cpupri_find \
 	cpupri_find_fitness \
 	cpupri_set \
+	resched_curr \
+	resched_curr_lazy \
+	resched_cpu \
 	irq_work_needs_cpu \
 	irq_work_queue_on \
 	irq_work_single \
