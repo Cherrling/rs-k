@@ -18,6 +18,7 @@ use crate::bindings;
     CONFIG_RUST_SCHED_WAKE_PREEMPT,
     CONFIG_RUST_SCHED_RESCHED_CURR,
     CONFIG_RUST_SCHED_RESCHED_CPU,
+    CONFIG_RUST_SCHED_WAKE_IF_IDLE,
     CONFIG_RUST_SCHED_SELECT_TASK_RQ,
     CONFIG_RUST_SCHED_RQ_OPS,
     CONFIG_RUST_SCHED_PREV_BALANCE,
@@ -88,7 +89,8 @@ type Rq = bindings::rq;
 #[cfg(any(
     CONFIG_RUST_SCHED_PREV_BALANCE,
     CONFIG_RUST_SCHED_PICK_NEXT_TASK,
-    CONFIG_RUST_SCHED_CORE_PICK_TASK
+    CONFIG_RUST_SCHED_CORE_PICK_TASK,
+    CONFIG_RUST_SCHED_WAKE_IF_IDLE
 ))]
 type RqFlags = bindings::rq_flags;
 #[cfg(CONFIG_RUST_SCHED_SELECT_TASK_RQ)]
@@ -2230,28 +2232,36 @@ unsafe fn wake_if_idle_locked(rq: *mut Rq) {
     }
 }
 
-/// Runs the initial idle-CPU wakeup gate.
+/// Wakes an idle CPU if the target runqueue remains idle.
 ///
 /// # Safety
 ///
-/// `rq` must remain live and the caller must hold the RCU read lock.
+/// `cpu` must be a valid CPU index.
 #[cfg(CONFIG_RUST_SCHED_WAKE_IF_IDLE)]
 #[export]
-unsafe extern "C" fn rust_sched_wake_if_idle_needs_lock(rq: *mut Rq) -> bool {
-    // SAFETY: The caller satisfies the exported entry-point contract.
-    unsafe { wake_if_idle_needs_lock(rq) }
-}
-
-/// Runs the runqueue-locked idle-CPU wakeup recheck.
-///
-/// # Safety
-///
-/// `rq` must remain live and the caller must hold its runqueue lock.
-#[cfg(CONFIG_RUST_SCHED_WAKE_IF_IDLE)]
-#[export]
-unsafe extern "C" fn rust_sched_wake_if_idle_locked(rq: *mut Rq) {
-    // SAFETY: The caller satisfies the exported entry-point contract.
-    unsafe { wake_if_idle_locked(rq) };
+unsafe extern "C" fn wake_up_if_idle(cpu: c_int) {
+    // SAFETY: The caller provides a valid CPU index.
+    let rq = unsafe { bindings::rust_helper_sched_wake_if_idle_rq(cpu) };
+    // SAFETY: The matching helper releases the RCU read lock on every path.
+    unsafe { bindings::rust_helper_sched_wake_if_idle_rcu_read_lock() };
+    // SAFETY: The RCU read lock protects the first current-task check.
+    if unsafe { wake_if_idle_needs_lock(rq) } {
+        let mut rf = core::mem::MaybeUninit::<RqFlags>::uninit();
+        // SAFETY: The helper initializes `rf` and acquires the runqueue lock.
+        unsafe { bindings::rust_helper_sched_wake_if_idle_lock(rq, rf.as_mut_ptr()) };
+        // SAFETY: The runqueue lock is held.
+        #[cfg(CONFIG_LOCKDEP)]
+        unsafe {
+            bindings::rust_helper_sched_resched_assert_locked(rq)
+        };
+        // SAFETY: The runqueue lock protects the locked recheck.
+        unsafe { wake_if_idle_locked(rq) };
+        // SAFETY: The matching helper releases the runqueue lock with the
+        // saved interrupt state.
+        unsafe { bindings::rust_helper_sched_wake_if_idle_unlock(rq, rf.as_mut_ptr()) };
+    }
+    // SAFETY: This matches the read lock acquired above.
+    unsafe { bindings::rust_helper_sched_wake_if_idle_rcu_read_unlock() };
 }
 
 /// Selects the idle-CPU wakeup actions for KUnit.

@@ -1101,12 +1101,14 @@ config RUST_SCHED_WAKE_IF_IDLE
 	depends on RUST
 	default y
 	help
-	  Use Rust for the production idle CPU wakeup state machine. Rust
-	  checks whether the current task is idle, rechecks under the target
-	  runqueue lock, and requests rescheduling when both checks succeed.
+	  Use Rust to directly define the production idle CPU wakeup entry
+	  point. Rust checks whether the current task is idle, acquires the
+	  target runqueue lock, rechecks under the lock, and requests
+	  rescheduling when both checks succeed.
 
-	  RCU read protection, runqueue locking, current-task dereference,
-	  reschedule delivery, and public scheduler ABI adapters remain in C.
+	  RCU read protection, runqueue locking, CPU-to-runqueue mapping,
+	  current-task dereference, lockdep assertions, and reschedule delivery
+	  remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

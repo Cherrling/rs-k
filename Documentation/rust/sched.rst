@@ -19,8 +19,9 @@ The ``CONFIG_RUST_SCHED_RESCHED_CURR`` option selects direct Rust definitions
 of ``resched_curr()`` and ``resched_curr_lazy()``. The
 ``CONFIG_RUST_SCHED_RESCHED_CPU`` option selects a direct Rust definition of
 ``resched_cpu()``.
-The ``CONFIG_RUST_SCHED_WAKE_IF_IDLE`` option selects Rust for the production
-idle CPU wakeup decision and locked recheck.
+The ``CONFIG_RUST_SCHED_WAKE_IF_IDLE`` option selects a direct Rust definition
+of ``wake_up_if_idle()``. Rust owns the idle CPU wakeup decision, lock ordering,
+and locked recheck.
 The ``CONFIG_RUST_SCHED_SELECT_TASK_RQ`` option selects a direct Rust
 definition of ``select_task_rq()``. Rust owns task CPU selection routing,
 scheduling-class callback dispatch, selected-CPU flag publication, eligibility
@@ -153,8 +154,9 @@ The Rust-to-C calls are:
   delivery used by the current-task reschedule request path.
 * The CPU-online and current-CPU queries used by the per-CPU reschedule
   request path.
-* The RCU dereference of ``struct rq.curr`` used by the idle CPU wakeup
-  first-check path.
+* The CPU-to-runqueue mapping, RCU read protection, RCU current-task
+  dereference, runqueue lock and interrupt-state ownership, and lockdep
+  assertion used by the idle CPU wakeup path.
 * Wakeup tracepoint emission used by both wake paths.
 * The ``cpumask_any()``, ``is_cpu_allowed()``, ``task_cpu()``, and
   ``select_fallback_rq()`` operations used by task CPU selection.
@@ -191,8 +193,6 @@ The remaining C-to-Rust production entries are:
 * ``rust_sched_ttwu_runnable_locked()``.
 * ``rust_sched_ttwu_activate_locked()``.
 * ``rust_sched_wakeup_preempt()``.
-* ``rust_sched_wake_if_idle_needs_lock()``.
-* ``rust_sched_wake_if_idle_locked()``.
 * ``rust_sched_enqueue_task_locked()``.
 * ``rust_sched_dequeue_task_locked()``.
 * ``rust_sched_class_put_prev_task()``.
@@ -274,12 +274,12 @@ only for an online target or the current CPU, and releases the lock with the
 saved interrupt state. Narrow C helpers perform the mapping, raw lock, online
 query, and current-CPU query.
 
-For the idle CPU wakeup entry, C holds the RCU read lock and calls Rust for the
-first idle-task check. Rust calls a narrow C helper for the RCU dereference and
-checks ``PF_IDLE``. The C caller acquires the runqueue lock with interrupts
-disabled only when the first check succeeds. Rust then rechecks the current
-task under the runqueue lock and calls ``resched_curr()`` only when both checks
-see an idle task.
+For the idle CPU wakeup entry, Rust directly defines ``wake_up_if_idle()``.
+Rust maps the CPU to its runqueue, holds the RCU read lock, performs the first
+idle-task check, and acquires the runqueue lock with interrupts disabled only
+when the first check succeeds. Rust rechecks the current task under the
+runqueue lock, calls ``resched_curr()`` only when both checks see an idle task,
+and releases the runqueue and RCU locks in order.
 
 For the blocking entry, C validates that the task runqueue lock is held and
 passes the task state to Rust. Rust classifies the state and calls the bitfield,
@@ -349,6 +349,12 @@ policy, ``task_cpu()`` supplies the current CPU to fallback placement, and
 when each primitive runs and owns the returned CPU. The scheduling-class
 ``select_task_rq`` implementations remain in C. A narrow C helper preserves
 the task pi-lock held assertion when lockdep is enabled.
+
+The idle CPU wakeup path retains CPU-to-runqueue mapping, RCU read protection,
+the RCU current-task dereference, runqueue lock pin and unpin, interrupt-state
+save and restore, the runqueue-held assertion, and reschedule delivery in C.
+Rust owns the direct entry, the RCU and runqueue lock ordering, both idle
+checks, and the conditional ``resched_curr()`` call.
 
 The runqueue-operation path retains the runqueue lock and its assertion,
 scheduling-class queue implementations, utilization-clamp accounting,
@@ -617,12 +623,13 @@ Real wakeup cases cover current-task rejection, waking a stopped kernel
 thread, waking a queued runnable task, waking a ``SCHED_FIFO`` task to invoke
 its scheduling-class callback, real activation and deactivation traffic with
 both the Rust and C implementations, and an idle CPU wake request against the
-current CPU to execute the Rust first-check entry. The same real traffic enters
-the Rust runqueue enqueue and dequeue entries. Every real context switch and
-scheduler task-selection transition enters the Rust scheduler-class transition
-entries. Scheduling attempts that take the general class scan also enter the
-Rust previous-task balance pass. Real scheduling traffic enters the Rust
-next-task selection entry for every non-core scheduling pick.
+current CPU to execute the Rust ``wake_up_if_idle()`` entry. The same real
+traffic enters the Rust runqueue enqueue and dequeue entries. Every real
+context switch and scheduler task-selection transition enters the Rust
+scheduler-class transition entries. Scheduling attempts that take the general
+class scan also enter the Rust previous-task balance pass. Real scheduling
+traffic enters the Rust next-task selection entry for every non-core
+scheduling pick.
 On an SMT machine, the core-scheduling path case creates a core-scheduling
 cookie and schedules real tasks while the Rust core-pick entry is active.
 
@@ -1432,58 +1439,42 @@ The full configuration passed Rustfmt, Clippy, strict checkpatch, and
 contained the three Rust entries, the narrow C helpers, no KUnit selector
 symbol, and no unresolved symbol.
 
-The idle CPU wakeup ownership unit was validated on 2026-11-13 with x86_64
-``LLVM=1`` builds and QEMU 11.1.3. Each configuration passed three consecutive
-four-vCPU runs for the applicable scheduler and hrtimer suites.
+The idle CPU wakeup direct-entry unit was validated on 2026-11-24 with x86_64
+``LLVM=1`` builds and QEMU 11.1.3. Twelve primary scheduler boots, one KASAN
+confirmation boot, and two hrtimer regression boots passed:
 
-.. list-table::
-   :header-rows: 1
-   :widths: 45 25 25
+* The one-vCPU native, fallback, and C-only runs passed 35, 33, and 2 cases.
+  They skipped 2, 2, and 1 cases that require multiple CPUs.
+* Three consecutive four-vCPU native runs each passed all 37 cases.
+* The four-vCPU idle-wakeup-only run passed all 5 applicable cases.
+* The four-vCPU fallback and C-only runs passed all 35 and 3 applicable cases.
+* The four-vCPU KASAN run passed all 37 cases twice. The lockdep and
+  PREEMPT_RT runs each passed all 37 cases.
+* Four-vCPU native and fallback hrtimer regression runs each passed all 25
+  cases.
+* No run reported a ``BUG``, warning, KASAN report, lock dependency diagnosis,
+  Oops, panic, or atomic-scheduling violation.
 
-   * - Configuration
-     - Scheduler cases
-     - hrtimer cases
-   * - Full Rust
-     - 26
-     - 25
-   * - C fallback
-     - 24
-     - 25
-   * - Idle-wakeup only
-     - 5
-     - 25
-   * - PREEMPT_RT
-     - 26
-     - 25
-   * - KASAN
-     - 26
-     - 25
-   * - lockdep
-     - 26
-     - 25
+Native ``rust/kernel.o`` defines ``wake_up_if_idle()``. Native
+``kernel/sched/core.o`` no longer defines the entry. The fallback and C-only
+``kernel/sched/core.o`` objects define it, and their Rust objects do not. No
+old ``rust_sched_wake_if_idle_needs_lock`` or
+``rust_sched_wake_if_idle_locked`` symbol remains.
 
-Rust owns the first idle check, the decision to acquire the runqueue lock,
-the locked recheck, and the conditional ``resched_curr()`` call. C retains the
-public ``wake_up_if_idle()`` entry, RCU read protection, the RCU dereference of
-``struct rq.curr``, runqueue lock and IRQ-state ownership, and the reschedule
-delivery ABI.
+Rust owns the entry, RCU read-lock lifetime, CPU-to-runqueue lookup, first idle
+check, conditional runqueue lock, locked recheck, conditional
+``resched_curr()`` call, and lock release order. C retains the RCU and
+runqueue lock primitives, current-task dereference, lockdep assertion, and
+reschedule delivery.
 
 The action table covers a non-idle first check, a successful first check with
 a non-idle locked recheck, and a successful first check with an idle locked
-recheck. A real four-vCPU case calls ``wake_up_if_idle()`` for the current CPU
-and executes the Rust first-check entry. The idle-wakeup-only build confirms
-that this path does not depend on another Rust scheduler option.
+recheck. A real four-vCPU case calls the Rust ``wake_up_if_idle()`` entry for
+the current CPU. The idle-wakeup-only build confirms that this path does not
+depend on another Rust scheduler option.
 
-One initial lockdep hrtimer run emitted a transient warning from
-``rust_hrtimer_callback_exit()`` after scheduler case 23. The trace entered
-only the hrtimer interrupt path. Three immediate reruns and twenty additional
-lockdep hrtimer runs passed without warnings. A ten-run control on the
-previous ``rs`` lockdep image also passed without warnings. Continue to track
-the hrtimer callback-running warning as a separate timing-sensitive issue.
-
-The KASAN test configuration used ``CONFIG_FRAME_WARN=4096`` because an
-unrelated ``fs/coredump.o`` call frame exceeded the default 2048-byte limit.
-The changed scheduler and Rust objects built without KASAN diagnostics.
+One initial KASAN run emitted a post-test clocksource watchdog timeout. An
+immediate rerun completed without that timeout or any KASAN diagnostic.
 
 The task CPU selection direct-entry unit was validated on 2026-11-24 with
 x86_64 ``LLVM=1`` builds and QEMU 11.1.3. Twelve scheduler boots and two

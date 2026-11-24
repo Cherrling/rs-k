@@ -21,7 +21,8 @@ void resched_cpu(int cpu);
 #endif
 
 #if (defined(CONFIG_RUST_SCHED_RESCHED_CURR) || \
-	defined(CONFIG_RUST_SCHED_RESCHED_CPU)) && defined(CONFIG_LOCKDEP)
+	defined(CONFIG_RUST_SCHED_RESCHED_CPU) || \
+	defined(CONFIG_RUST_SCHED_WAKE_IF_IDLE)) && defined(CONFIG_LOCKDEP)
 void rust_helper_sched_resched_assert_locked(struct rq *rq);
 #endif
 
@@ -123,9 +124,11 @@ bool rust_sched_resched_cpu_select(bool cpu_online, bool cpu_local);
 #define RUST_SCHED_WAKE_IF_IDLE_RESCHED		0x02
 
 struct task_struct *rust_helper_sched_wake_if_idle_curr(struct rq *rq);
-
-bool rust_sched_wake_if_idle_needs_lock(struct rq *rq);
-void rust_sched_wake_if_idle_locked(struct rq *rq);
+struct rq *rust_helper_sched_wake_if_idle_rq(int cpu);
+void rust_helper_sched_wake_if_idle_rcu_read_lock(void);
+void rust_helper_sched_wake_if_idle_rcu_read_unlock(void);
+void rust_helper_sched_wake_if_idle_lock(struct rq *rq, struct rq_flags *rf);
+void rust_helper_sched_wake_if_idle_unlock(struct rq *rq, struct rq_flags *rf);
 
 #ifdef CONFIG_KUNIT
 unsigned int rust_sched_wake_if_idle_select(bool curr_idle,

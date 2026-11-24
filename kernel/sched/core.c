@@ -1485,7 +1485,8 @@ int rust_helper_sched_resched_lazy_tif(void)
 #endif
 
 #if (defined(CONFIG_RUST_SCHED_RESCHED_CURR) || \
-	defined(CONFIG_RUST_SCHED_RESCHED_CPU)) && defined(CONFIG_LOCKDEP)
+	defined(CONFIG_RUST_SCHED_RESCHED_CPU) || \
+	defined(CONFIG_RUST_SCHED_WAKE_IF_IDLE)) && defined(CONFIG_LOCKDEP)
 void rust_helper_sched_resched_assert_locked(struct rq *rq)
 {
 	lockdep_assert_rq_held(rq);
@@ -4504,28 +4505,46 @@ struct task_struct *rust_helper_sched_wake_if_idle_curr(struct rq *rq)
 {
 	return rcu_dereference(rq->curr);
 }
+
+struct rq *rust_helper_sched_wake_if_idle_rq(int cpu)
+{
+	return cpu_rq(cpu);
+}
+
+void rust_helper_sched_wake_if_idle_rcu_read_lock(void)
+{
+	rcu_read_lock();
+}
+
+void rust_helper_sched_wake_if_idle_rcu_read_unlock(void)
+{
+	rcu_read_unlock();
+}
+
+void rust_helper_sched_wake_if_idle_lock(struct rq *rq, struct rq_flags *rf)
+{
+	rq_lock_irqsave(rq, rf);
+}
+
+void rust_helper_sched_wake_if_idle_unlock(struct rq *rq, struct rq_flags *rf)
+{
+	rq_unlock_irqrestore(rq, rf);
+}
 #endif
 
+#ifndef CONFIG_RUST_SCHED_WAKE_IF_IDLE
 void wake_up_if_idle(int cpu)
 {
 	struct rq *rq = cpu_rq(cpu);
 
 	guard(rcu)();
-#ifdef CONFIG_RUST_SCHED_WAKE_IF_IDLE
-	if (rust_sched_wake_if_idle_needs_lock(rq)) {
-		guard(rq_lock_irqsave)(rq);
-
-		lockdep_assert_rq_held(rq);
-		rust_sched_wake_if_idle_locked(rq);
-	}
-#else
 	if (is_idle_task(rcu_dereference(rq->curr))) {
 		guard(rq_lock_irqsave)(rq);
 		if (is_idle_task(rq->curr))
 			resched_curr(rq);
 	}
-#endif
 }
+#endif
 
 bool cpus_equal_capacity(int this_cpu, int that_cpu)
 {

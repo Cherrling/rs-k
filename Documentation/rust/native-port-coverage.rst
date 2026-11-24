@@ -572,6 +572,23 @@ Scheduler task CPU selection entry
   consecutive native four-vCPU runs passed all 37 cases. Native and fallback
   hrtimer regressions passed all 25 cases.
 
+Scheduler idle CPU wakeup entry
+  Status: ``migrated``.
+
+  Evidence: :doc:`sched`.
+
+  Rust directly defines ``wake_up_if_idle()``. Rust owns CPU-to-runqueue
+  lookup, the RCU read-lock lifetime, first idle check, conditional runqueue
+  lock, locked recheck, conditional rescheduling, and lock release order. C
+  retains the RCU read primitive, RCU current-task dereference, runqueue lock
+  pin and unpin, interrupt-state save and restore, lockdep assertion, and
+  reschedule delivery.
+
+  Test: Twelve native, idle-wakeup-only, fallback, C-only, lockdep, and
+  PREEMPT_RT scheduler boots passed all applicable cases. Two KASAN boots
+  passed all 37 cases. Three consecutive native four-vCPU runs passed all 37
+  cases. Native and fallback hrtimer regressions passed all 25 cases.
+
 Boundary-retained inventory
 ---------------------------
 
@@ -785,6 +802,27 @@ Scheduler task CPU selection primitive boundary
 
   Exit condition: Rust owns compatible affinity-mask, CPU-state, fallback,
   scheduling-class, and lockdep contracts without shared C helper entries.
+
+Scheduler idle CPU wakeup primitive boundary
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/sched-rust.h``, ``kernel/sched/core.c``,
+  ``rust/kernel/sched_core.rs``, and the scheduler CPU and locking primitives.
+
+  Reason: Rust owns the wakeup entry, but CPU-to-runqueue mapping, RCU read
+  protection and dereference, runqueue lock pinning, interrupt-state restore,
+  lockdep validation, and reschedule delivery depend on scheduler, RCU, and
+  architecture internals.
+
+  Test: Native, idle-wakeup-only, fallback, C-only, KASAN, lockdep, and
+  PREEMPT_RT boots exercise the direct entry and every retained primitive.
+
+  Risk: Incorrect RCU or runqueue lock ordering can inspect a stale current
+  task, lose the reschedule request, or restore the wrong interrupt state.
+
+  Exit condition: Rust owns compatible RCU, CPU mapping, runqueue pinning,
+  interrupt-state, lockdep, and reschedule contracts without shared C helper
+  entries.
 
 Mutex scheduler, tracing, and locking-debug boundary
   Status: ``boundary-retained``.
