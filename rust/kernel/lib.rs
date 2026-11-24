@@ -83,6 +83,8 @@ pub mod device;
 pub mod device_id;
 pub mod devres;
 pub mod dma;
+#[cfg(CONFIG_RUST_DMAPOOL)]
+mod dmapool;
 pub mod driver;
 #[cfg(CONFIG_DRM = "y")]
 pub mod drm;

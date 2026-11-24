@@ -25,6 +25,7 @@ obj-$(CONFIG_ITIMER_KUNIT_TEST) += test_itimer.o
 obj-$(CONFIG_HRTIMER_KUNIT_TEST) += test_hrtimer_core.o
 obj-$(CONFIG_SCHED_WAKE_KUNIT_TEST) += test_sched_wake.o
 obj-$(CONFIG_MM_LIFETIME_KUNIT_TEST) += test_mm_lifetime.o
+obj-$(CONFIG_DMAPOOL_KUNIT_TEST) += test_dmapool.o
 obj-$(CONFIG_COPY_MM_KUNIT_TEST) += test_copy_mm.o
 obj-$(CONFIG_EXIT_MMAP_KUNIT_TEST) += test_exit_mmap.o
 obj-$(CONFIG_VMA_UNMAP_KUNIT_TEST) += test_vma_unmap.o

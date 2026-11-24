@@ -124,6 +124,7 @@ more details.
     native-kref
     native-dec-and-lock
     native-klist
+    native-dmapool
     native-llist
     native-kobject
     native-list-lru

@@ -49,6 +49,28 @@ Klist entry operations
   attachment state, and iteration. The native C file retains list
   initialization, blocking removal, and the shared wakeup callback.
 
+DMA coherent pool state machine
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-dmapool`.
+
+  Rust directly defines ``dma_pool_create_node()``, ``dma_pool_destroy()``,
+  ``dma_pool_alloc()``, ``dma_pool_free()``, ``dmam_pool_create()``, and
+  ``dmam_pool_destroy()``. Rust owns validation, alignment and boundary
+  arithmetic, page and block state, free-list ordering, busy handling, and
+  managed-device release policy. The native C object retains only the shared
+  layout access, coherent DMA allocation, mutex and spinlock primitives,
+  sysfs and diagnostics, device-resource primitives, and ordinary export
+  metadata. C fallback and C-only configurations retain the complete
+  implementation.
+
+  Test: All nine native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT
+  boot runs passed 6 of 6 cases. Native, fallback, and C-only each ran at one
+  and four virtual CPUs. The four-worker concurrent case completed 4000
+  allocation and release cycles. Adjacent root and platform device-resource
+  suites passed 10 of 10 cases, and the existing timing module completed
+  module post-processing.
+
 Reference counting
   Status: ``migrated``.
 
@@ -704,6 +726,7 @@ Public ABI
   ``include/linux/task_work.h``, ``include/linux/irq_work.h``,
   ``include/linux/timerqueue.h``, ``include/linux/hrtimer.h``,
   ``include/linux/itimer-rust.h``, ``include/linux/cpupri.h``,
+  ``include/linux/dmapool.h``, ``include/linux/dmapool-rust.h``,
   ``include/linux/mutex.h``,
   ``include/linux/ww_mutex.h``, and ``include/linux/rwsem.h``.
 
@@ -1201,6 +1224,56 @@ Klist primitive helpers
 
   Exit condition: Approved Rust list, lock, and refcount abstractions cover the
   complete helper contract.
+
+DMA pool shared layout
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/dmapool-rust.h``.
+
+  Reason: C and Rust share the pool, page, and block layouts, intrusive list
+  links, spinlock, counters, and embedded name.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and RT runs exercise the same
+  field access.
+
+  Risk: A layout change can invalidate a Rust field offset or counter type.
+
+  Exit condition: All consumers use a Rust-owned pool layout and the shared C
+  structure is no longer part of the interface.
+
+DMA pool allocation and lock helpers
+  Status: ``boundary-retained``.
+
+  Owner: ``mm/dmapool.c``.
+
+  Reason: Coherent DMA allocation, mutex and spinlock operations, sysfs
+  attributes, and diagnostic formatting remain C kernel primitives.
+
+  Test: Native KUnit, KASAN, lockdep, and RT runs exercise page allocation,
+  lock ordering, sysfs creation and removal, and normal diagnostics.
+
+  Risk: A lock or DMA primitive contract change can misorder publication or
+  change interrupt-state restoration.
+
+  Exit condition: Approved Rust DMA, locking, sysfs, and diagnostic
+  abstractions preserve the complete helper contract.
+
+DMA pool device-resource lifecycle
+  Status: ``boundary-retained``.
+
+  Owner: ``mm/dmapool.c``.
+
+  Reason: Managed pool release uses the existing device-resource allocation,
+  match, release, and warning path.
+
+  Test: The managed pool KUnit case and adjacent root and platform
+  device-resource suites run in native, fallback, and C-only configurations.
+
+  Risk: A device-resource lifecycle change can release a pool twice or leave
+  one registered after device teardown.
+
+  Exit condition: Rust owns the complete device-resource slot and release
+  lifecycle.
 
 Refcount layout and saturation encoding
   Status: ``boundary-retained``.

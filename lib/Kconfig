@@ -850,6 +850,29 @@ config RUST_LIST_LRU
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_DMAPOOL
+	bool "Rust implementation of DMA pool allocation"
+	depends on RUST && X86_64 && HAS_DMA
+	default y
+	help
+	  Use Rust for the production DMA coherent pool lifecycle, block
+	  allocation, block release, and managed-device lifecycle.
+
+	  Rust directly defines the public DMA pool entry points. It owns
+	  argument validation, boundary and alignment arithmetic, page and
+	  block transitions, free-list ordering, busy-pool handling, and devres
+	  lifecycle policy. C retains the shared pool, page, and block layouts,
+	  mutex and spinlock primitives, coherent DMA allocation, sysfs and
+	  diagnostic delivery, device-resource primitives, and original
+	  non-GPL export metadata.
+
+	  The complete C DMA pool allocator remains available when this option
+	  is disabled. The native implementation is currently validated only
+	  for x86_64.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_RBTREE
 	bool "Rust implementation of red-black tree operations"
 	depends on RUST

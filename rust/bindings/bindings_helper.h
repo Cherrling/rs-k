@@ -65,6 +65,7 @@
 #include <linux/dma-direction.h>
 #include <linux/dma-mapping.h>
 #include <linux/dma-resv.h>
+#include <linux/dmapool-rust.h>
 #include <linux/dup-mmap-rust.h>
 #include <linux/dup-task-struct-rust.h>
 #include <linux/errname.h>

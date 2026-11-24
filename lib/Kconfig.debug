@@ -2598,6 +2598,20 @@ config MM_LIFETIME_KUNIT_TEST
 
 	  If unsure, say N.
 
+config DMAPOOL_KUNIT_TEST
+	bool "KUnit test for DMA coherent pools" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y && HAS_DMA
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for DMA pool creation validation,
+	  aligned and bounded block allocation, page growth, managed-device
+	  release, and concurrent allocation and free operations.
+
+	  The same tests run with either the C implementation or the native
+	  Rust implementation selected.
+
+	  If unsure, say N.
+
 config COPY_MM_KUNIT_TEST
 	bool "KUnit test for address-space copying" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y && MMU

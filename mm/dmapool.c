@@ -22,6 +22,7 @@
 #include <linux/device.h>
 #include <linux/dma-mapping.h>
 #include <linux/dmapool.h>
+#include <linux/dmapool-rust.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
 #include <linux/export.h>
@@ -39,33 +40,6 @@
 #ifdef CONFIG_SLUB_DEBUG_ON
 #define DMAPOOL_DEBUG 1
 #endif
-
-struct dma_block {
-	struct dma_block *next_block;
-	dma_addr_t dma;
-};
-
-struct dma_pool {		/* the pool */
-	struct list_head page_list;
-	spinlock_t lock;
-	struct dma_block *next_block;
-	size_t nr_blocks;
-	size_t nr_active;
-	size_t nr_pages;
-	struct device *dev;
-	unsigned int size;
-	unsigned int allocation;
-	unsigned int boundary;
-	int node;
-	char name[32];
-	struct list_head pools;
-};
-
-struct dma_page {		/* cacheable header for 'allocation' bytes */
-	struct list_head page_list;
-	void *vaddr;
-	dma_addr_t dma;
-};
 
 static DEFINE_MUTEX(pools_lock);
 static DEFINE_MUTEX(pools_reg_lock);
@@ -179,6 +153,178 @@ static void pool_init_page(struct dma_pool *pool, struct dma_page *page)
 }
 #endif
 
+#ifdef CONFIG_RUST_DMAPOOL
+void rust_dmapool_reg_lock(void)
+{
+	mutex_lock(&pools_reg_lock);
+}
+
+void rust_dmapool_reg_unlock(void)
+{
+	mutex_unlock(&pools_reg_lock);
+}
+
+void rust_dmapool_pools_lock(void)
+{
+	mutex_lock(&pools_lock);
+}
+
+void rust_dmapool_pools_unlock(void)
+{
+	mutex_unlock(&pools_lock);
+}
+
+bool rust_dmapool_dev_has_no_pools(struct device *dev)
+{
+	return list_empty(&dev->dma_pools);
+}
+
+void rust_dmapool_add_pool(struct dma_pool *pool)
+{
+	list_add(&pool->pools, &pool->dev->dma_pools);
+}
+
+void rust_dmapool_del_pool(struct dma_pool *pool)
+{
+	list_del(&pool->pools);
+}
+
+int rust_dmapool_create_pools_attr(struct device *dev)
+{
+	return device_create_file(dev, &dev_attr_pools);
+}
+
+void rust_dmapool_remove_pools_attr(struct device *dev)
+{
+	device_remove_file(dev, &dev_attr_pools);
+}
+
+struct dma_pool *rust_dmapool_alloc_pool_struct(int node)
+{
+	return kzalloc_node(sizeof(struct dma_pool), GFP_KERNEL, node);
+}
+
+void rust_dmapool_free_pool_struct(struct dma_pool *pool)
+{
+	kfree(pool);
+}
+
+void rust_dmapool_init_pool(struct dma_pool *pool)
+{
+	INIT_LIST_HEAD(&pool->page_list);
+	spin_lock_init(&pool->lock);
+	INIT_LIST_HEAD(&pool->pools);
+}
+
+void rust_dmapool_set_pool_name(struct dma_pool *pool, const char *name)
+{
+	strscpy(pool->name, name, sizeof(pool->name));
+}
+
+struct dma_page *rust_dmapool_alloc_page(struct dma_pool *pool, gfp_t flags)
+{
+	struct dma_page *page;
+
+	page = kmalloc_node(sizeof(*page), flags, pool->node);
+	if (!page)
+		return NULL;
+
+	page->vaddr = dma_alloc_coherent(pool->dev, pool->allocation,
+					 &page->dma, flags);
+	if (!page->vaddr) {
+		kfree(page);
+		return NULL;
+	}
+
+	return page;
+}
+
+void rust_dmapool_free_page(struct dma_pool *pool, struct dma_page *page)
+{
+	dma_free_coherent(pool->dev, pool->allocation, page->vaddr, page->dma);
+}
+
+void rust_dmapool_free_page_struct(struct dma_page *page)
+{
+	kfree(page);
+}
+
+void rust_dmapool_add_page(struct dma_pool *pool, struct dma_page *page)
+{
+	list_add(&page->page_list, &pool->page_list);
+}
+
+void rust_dmapool_del_page(struct dma_page *page)
+{
+	list_del(&page->page_list);
+}
+
+struct dma_page *rust_dmapool_first_page(struct dma_pool *pool)
+{
+	if (list_empty(&pool->page_list))
+		return NULL;
+
+	return list_first_entry(&pool->page_list, struct dma_page, page_list);
+}
+
+struct dma_page *rust_dmapool_next_page(struct dma_pool *pool,
+					struct dma_page *page)
+{
+	if (page->page_list.next == &pool->page_list)
+		return NULL;
+
+	return list_next_entry(page, page_list);
+}
+
+unsigned long rust_dmapool_lock(struct dma_pool *pool)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&pool->lock, flags);
+	return flags;
+}
+
+void rust_dmapool_unlock(struct dma_pool *pool, unsigned long flags)
+{
+	spin_unlock_irqrestore(&pool->lock, flags);
+}
+
+void rust_dmapool_might_alloc(gfp_t flags)
+{
+	might_alloc(flags);
+}
+
+void rust_dmapool_check_block(struct dma_pool *pool,
+			      struct dma_block *block, gfp_t flags)
+{
+	pool_check_block(pool, block, flags);
+}
+
+void rust_dmapool_poison_page(struct dma_pool *pool, struct dma_page *page)
+{
+	pool_init_page(pool, page);
+}
+
+bool rust_dmapool_block_error(struct dma_pool *pool, void *vaddr,
+			      dma_addr_t dma)
+{
+	return pool_block_err(pool, vaddr, dma);
+}
+
+void rust_dmapool_report_busy(struct dma_pool *pool)
+{
+	dev_err(pool->dev, "dma_pool_destroy %s busy\n", pool->name);
+}
+
+void rust_dmapool_zero_block(struct dma_pool *pool, struct dma_block *block,
+			     gfp_t flags)
+{
+	if (want_init_on_alloc(flags))
+		memset(block, 0, pool->size);
+}
+#endif /* CONFIG_RUST_DMAPOOL */
+
+#ifndef CONFIG_RUST_DMAPOOL
 static struct dma_block *pool_block_pop(struct dma_pool *pool)
 {
 	struct dma_block *block = pool->next_block;
@@ -463,6 +609,23 @@ void dma_pool_free(struct dma_pool *pool, void *vaddr, dma_addr_t dma)
 	spin_unlock_irqrestore(&pool->lock, flags);
 }
 EXPORT_SYMBOL(dma_pool_free);
+#else /* CONFIG_RUST_DMAPOOL */
+
+/*
+ * Rust directly defines the public pool entry points. C retains ordinary
+ * export metadata for the historical public ABI. The Rust exporter skips
+ * these names to avoid duplicate GPL exports.
+ */
+#define EXPORT_DMAPOOL_ABI(sym) EXPORT_SYMBOL(sym)
+EXPORT_DMAPOOL_ABI(dma_pool_create_node);
+EXPORT_DMAPOOL_ABI(dma_pool_destroy);
+EXPORT_DMAPOOL_ABI(dma_pool_alloc);
+EXPORT_DMAPOOL_ABI(dma_pool_free);
+EXPORT_DMAPOOL_ABI(dmam_pool_create);
+EXPORT_DMAPOOL_ABI(dmam_pool_destroy);
+#undef EXPORT_DMAPOOL_ABI
+
+#endif /* CONFIG_RUST_DMAPOOL */
 
 /*
  * Managed DMA pool
@@ -479,6 +642,34 @@ static int dmam_pool_match(struct device *dev, void *res, void *match_data)
 	return *(struct dma_pool **)res == match_data;
 }
 
+#ifdef CONFIG_RUST_DMAPOOL
+void *rust_dmapool_devres_alloc(void)
+{
+	return devres_alloc(dmam_pool_release, sizeof(struct dma_pool *),
+			    GFP_KERNEL);
+}
+
+void rust_dmapool_devres_add(struct device *dev, void *res)
+{
+	devres_add(dev, res);
+}
+
+void rust_dmapool_devres_free(void *res)
+{
+	devres_free(res);
+}
+
+int rust_dmapool_devres_release(struct device *dev, struct dma_pool *pool)
+{
+	int ret;
+
+	ret = devres_release(dev, dmam_pool_release, dmam_pool_match, pool);
+	WARN_ON(ret);
+	return ret;
+}
+#endif
+
+#ifndef CONFIG_RUST_DMAPOOL
 /**
  * dmam_pool_create - Managed dma_pool_create()
  * @name: name of pool, for diagnostics
@@ -525,3 +716,4 @@ void dmam_pool_destroy(struct dma_pool *pool)
 	WARN_ON(devres_release(dev, dmam_pool_release, dmam_pool_match, pool));
 }
 EXPORT_SYMBOL(dmam_pool_destroy);
+#endif /* !CONFIG_RUST_DMAPOOL */

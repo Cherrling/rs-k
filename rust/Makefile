@@ -814,6 +814,12 @@ rust_unexported_symbols := \
 	set_next_task \
 	put_prev_set_next_task \
 	prev_balance \
+	dma_pool_create_node \
+	dma_pool_destroy \
+	dma_pool_alloc \
+	dma_pool_free \
+	dmam_pool_create \
+	dmam_pool_destroy \
 	activate_task \
 	deactivate_task \
 	irq_work_needs_cpu \
