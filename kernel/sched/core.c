@@ -6669,11 +6669,9 @@ static inline void schedule_debug(struct task_struct *prev, bool preempt)
 	schedstat_inc(this_rq()->sched_count);
 }
 
+#ifndef CONFIG_RUST_SCHED_PREV_BALANCE
 static void prev_balance(struct rq *rq, struct rq_flags *rf)
 {
-#ifdef CONFIG_RUST_SCHED_PREV_BALANCE
-	rust_sched_prev_balance(rq, rf);
-#else
 	const struct sched_class *start_class = rq->donor->sched_class;
 	const struct sched_class *class;
 
@@ -6689,8 +6687,8 @@ static void prev_balance(struct rq *rq, struct rq_flags *rf)
 		if (class->balance && class->balance(rq, rf))
 			break;
 	}
-#endif
 }
+#endif
 
 #if defined(CONFIG_RUST_SCHED_PICK_NEXT_TASK) || \
 	defined(CONFIG_RUST_SCHED_CORE_PICK_TASK)
@@ -6723,16 +6721,19 @@ struct task_struct *rust_helper_sched_pick_task_idle(struct rq *rq,
 	return pick_task_idle(rq, rf);
 }
 
-void rust_helper_sched_pick_prev_balance(struct rq *rq, struct rq_flags *rf)
-{
-	prev_balance(rq, rf);
-}
-
 void rust_helper_sched_pick_transition(struct rq *rq,
 				       struct task_struct *prev,
 				       struct task_struct *next)
 {
 	put_prev_set_next_task(rq, prev, next);
+}
+#endif
+
+#if defined(CONFIG_RUST_SCHED_PICK_NEXT_TASK) && \
+	!defined(CONFIG_RUST_SCHED_PREV_BALANCE)
+void rust_helper_sched_pick_prev_balance(struct rq *rq, struct rq_flags *rf)
+{
+	prev_balance(rq, rf);
 }
 #endif
 

@@ -629,6 +629,26 @@ Scheduler class transition entries
   Real scheduler traffic entered all three direct entries. Native and fallback
   hrtimer regressions passed all 25 cases.
 
+Scheduler previous-task balance entry
+  Status: ``migrated``.
+
+  Evidence: :doc:`sched`.
+
+  Rust directly defines ``prev_balance()``. Rust owns the active
+  scheduling-class traversal, balance callback lookup and ordering, sched_ext
+  skip decision, callback invocation, and stop decision. The Rust next-task
+  path calls the same balance state machine directly. C retains the runqueue
+  lock, scheduling-class balance callback implementations, class anchors,
+  class size, sched_ext static-key query, and the fallback definition.
+
+  Test: The native four-vCPU scheduler suite passed 37 cases in three
+  consecutive runs. The C balance fallback, previous-balance-only, and C-only
+  configurations passed 36, 5, and 3 applicable cases. KASAN, lockdep, and
+  PREEMPT_RT passed all 37 cases, and a previous-balance-only lockdep run
+  passed all 5 cases. Native and fallback hrtimer regressions passed all 25
+  cases. The production symbol table defines ``prev_balance`` in Rust, omits
+  the old adapter and its exports, and has no unresolved reference.
+
 Scheduler task runqueue transition entries
   Status: ``migrated``.
 

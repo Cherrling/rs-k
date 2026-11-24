@@ -413,7 +413,7 @@ unsigned int rust_sched_next_active_plan_select(unsigned int scx_state,
 #define RUST_SCHED_BALANCE_CALL			0x01
 #define RUST_SCHED_BALANCE_STOP			0x02
 
-void rust_sched_prev_balance(struct rq *rq, struct rq_flags *rf);
+void prev_balance(struct rq *rq, struct rq_flags *rf);
 
 #ifdef CONFIG_KUNIT
 unsigned int rust_sched_prev_balance_plan_select(bool has_callback,
@@ -433,8 +433,10 @@ struct task_struct *rust_helper_sched_pick_task_fair(struct rq *rq,
 						     struct rq_flags *rf);
 struct task_struct *rust_helper_sched_pick_task_idle(struct rq *rq,
 						     struct rq_flags *rf);
+#ifndef CONFIG_RUST_SCHED_PREV_BALANCE
 void rust_helper_sched_pick_prev_balance(struct rq *rq,
 					 struct rq_flags *rf);
+#endif
 void rust_helper_sched_pick_transition(struct rq *rq,
 				       struct task_struct *prev,
 				       struct task_struct *next);

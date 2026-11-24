@@ -34,9 +34,11 @@ definitions of ``put_prev_task()``, ``set_next_task()``, and
 ``put_prev_set_next_task()``. Rust owns the donor check, deferred
 scheduling-server transfer, same-task short circuit, callback lookup, and
 callback order.
-The ``CONFIG_RUST_SCHED_PREV_BALANCE`` option selects Rust for the production
-previous-task balance pass, active scheduling-class traversal, class balance
-callback dispatch, and stop decision.
+The ``CONFIG_RUST_SCHED_PREV_BALANCE`` option selects a direct Rust definition
+of ``prev_balance()``. Rust owns active scheduling-class traversal, class
+balance callback dispatch and ordering, sched_ext skip decisions, and the stop
+decision. The Rust next-task selection path calls the same balance state
+machine directly.
 The ``CONFIG_RUST_SCHED_PICK_NEXT_TASK`` option selects Rust for the production
 next-task selection path, fair-class fast path, active-class scan, retry
 decision, class callback dispatch, and final class transition.
@@ -127,7 +129,8 @@ adapters remain in C. Runqueue queue operations, scheduling-class
 implementations, wake, select-task-runqueue, put-prev, and set-next callbacks,
 and lock pin primitives also remain in C.
 Scheduling-class balance implementations, ordering anchors, the scheduling
-class size, and sched_ext static-key queries also remain in C.
+class size, sched_ext static-key queries, and the previous-task balance
+fallback also remain in C.
 Scheduling-class pick implementations, class anchors, the class size, the
 retry sentinel, generated runqueue field offsets, task transition helpers, and
 fatal scheduler invariant reporting also remain in C.
@@ -177,9 +180,8 @@ The Rust-to-C calls are:
   size, the sched_ext static-key state, and scheduling-class balance callback
   implementations reached through indirect calls from Rust.
 * The highest and lowest scheduling-class anchors, the fair and idle pick
-  functions, the retry-task sentinel, the previous-balance adapter, the
-  selected-task transition helper, and fatal invariant reporting used by
-  next-task selection.
+  functions, the retry-task sentinel, the selected-task transition helper,
+  and fatal invariant reporting used by next-task selection.
 * The highest and lowest scheduling-class anchors, the fair and optional
   sched_ext anchors, the class size, the sched_ext static-key state, the
   retry-task sentinel, and scheduling-class ``pick_task`` implementations used
@@ -203,7 +205,7 @@ The remaining C-to-Rust production entries are:
 * ``put_prev_task()``.
 * ``set_next_task()``.
 * ``put_prev_set_next_task()``.
-* ``rust_sched_prev_balance()``.
+* ``prev_balance()``.
 * ``rust_sched_pick_next_task()``.
 * ``rust_sched_core_pick_task()``.
 * ``rust_sched_block_task_locked()``.
@@ -237,20 +239,23 @@ set-next callbacks, and invokes them in order. The warning text,
 scheduling-class callback implementations, and fallback definitions used when
 the Rust option is disabled remain in C.
 
-For the previous-task balance pass, the caller holds the runqueue lock across
-the complete Rust call. Rust reads the donor class, obtains fixed class
-anchors and the scheduling-class size from C, traverses active classes by byte
-offset, queries the current sched_ext static-key state, invokes each optional
-balance callback, and stops at the first non-zero result. The balance callback
-implementations remain in C.
+For the previous-task balance pass, Rust directly defines ``prev_balance()``.
+The caller holds the runqueue lock across the complete Rust call. Rust reads
+the donor class, obtains fixed class anchors and the scheduling-class size from
+C, traverses active classes by byte offset, queries the current sched_ext
+static-key state, invokes each optional balance callback, and stops at the
+first non-zero result. The balance callback implementations and fallback
+definition used when the Rust option is disabled remain in C.
 
 For next-task selection, the caller holds the runqueue lock across the
 complete Rust call. Rust clears the deferred scheduling-server pointer, checks
 the sched_ext state, performs the fair-only fast path, invokes the previous
-balance pass on a restart, scans active classes with ``pick_task`` callbacks,
-and transitions to the selected task. C supplies the runqueue field offsets,
-class anchors, retry sentinel, fair and idle pick implementations, transition
-helper, and fatal invariant report.
+balance state machine directly on a restart when the Rust balance option is
+enabled, scans active classes with ``pick_task`` callbacks, and transitions to
+the selected task. When the Rust balance option is disabled, Rust calls a
+narrow C fallback helper. C supplies the runqueue field offsets, class anchors,
+retry sentinel, fair and idle pick implementations, transition helper, and
+fatal invariant report.
 
 For core-scheduling task picking, the caller holds the runqueue lock across the
 complete Rust call. Rust clears ``rq->dl_server``, reads the fixed class
@@ -1596,50 +1601,56 @@ expected missing-root-filesystem panic without a scheduler ``BUG``, warning,
 KASAN report, lock dependency diagnosis, Oops, or unexpected panic. Rustfmt,
 strict checkpatch, and ``git diff --check`` passed.
 
-The previous-task balance ownership unit was validated on 2026-11-13 with
-x86_64 ``LLVM=1`` builds and QEMU 11.1.3. Each configuration passed three
-consecutive four-vCPU runs for the applicable scheduler and hrtimer suites.
+The previous-task balance ownership unit was validated on 2026-11-25 with
+x86_64 ``LLVM=1`` builds and QEMU 11.1.3. The full-Rust configuration passed
+three consecutive four-vCPU scheduler boots. The remaining focused
+configurations passed one applicable scheduler boot. Native and C balance
+fallback hrtimer regressions passed all 25 cases.
 
 .. list-table::
    :header-rows: 1
-   :widths: 45 25 25
+   :widths: 70 30
 
    * - Configuration
      - Scheduler cases
-     - hrtimer cases
    * - Full Rust
-     - 35
-     - 25
+     - 37
    * - C balance fallback
-     - 33
-     - 25
+     - 36
    * - Previous-balance only
      - 5
-     - 25
+   * - C only
+     - 3
    * - PREEMPT_RT
-     - 35
-     - 25
+     - 37
    * - KASAN
-     - 35
-     - 25
+     - 37
    * - lockdep
-     - 35
-     - 25
+     - 37
+   * - Previous-balance only with lockdep
+     - 5
 
 The previous-task balance action table covers absent, non-stopping, and
 stopping callbacks. The active-class action table covers a regular transition,
 the switched-all fair-class skip, the disabled sched_ext-class skip, and an
 enabled sched_ext transition.
 
-The no-KUnit production configuration enabled all thirteen scheduler Rust
+The no-KUnit production configuration enabled all fourteen scheduler Rust
 options and built with ``CLIPPY=1``. Its symbol table contains
-``rust_sched_prev_balance()`` and the fair-class, idle-class,
-sched_ext-class, class-size, and sched_ext-state C helpers. It contains
-neither previous-balance KUnit selector and no unresolved symbol. Disassembly
-shows the donor-class load, the C-provided byte stride, the idle-class
-termination check, the optional callback load, the indirect call, and the
-non-zero stop branch. The production image booted to the expected
-missing-root-filesystem panic without another scheduler diagnostic.
+``prev_balance()``, the fair and idle pick helpers, the retry sentinel, the
+transition helper, both class anchors, and the class-size, sched_ext-class,
+and sched_ext-state helpers. It contains no previous-balance KUnit selectors
+and no unresolved symbol. The automatic Rust GPL export table omits
+``prev_balance``. The C scheduler-core object contains neither a definition
+nor a reference for the balance entry because the Rust next-task path calls
+the internal Rust state machine directly.
+
+Disassembly shows that ``prev_balance()`` enters the shared Rust state
+machine. The state machine obtains the class anchors and byte stride, loads
+the donor class, checks the idle-class termination condition, queries the
+sched_ext state, loads each optional balance callback, performs the indirect
+call, and stops on a non-zero result. The production image booted to the
+expected missing-root-filesystem panic without another scheduler diagnostic.
 
 An additional production image enabled ``SCHED_CLASS_EXT`` with BPF JIT and
 BTF. Its symbol table contains the real ``ext_sched_class`` anchor and no
@@ -1648,9 +1659,11 @@ scheduler diagnostic. The sched_ext static key is disabled during this boot,
 so active-class traversal must skip the real sched_ext slot and continue to
 the idle anchor.
 
-The next-task selection ownership unit was validated on 2026-11-13 with
+The earlier next-task selection ownership unit was validated on 2026-11-13 with
 x86_64 ``LLVM=1`` builds and QEMU 11.1.3. Each configuration passed three
 consecutive four-vCPU runs for the applicable scheduler and hrtimer suites.
+The current direct balance restart path is covered by the previous-task
+balance validation above.
 
 .. list-table::
    :header-rows: 1
@@ -1689,10 +1702,10 @@ for every non-core scheduling pick.
 The no-KUnit production configuration enabled all fourteen scheduler Rust
 options and built with ``CLIPPY=1``. Its symbol table contains
 ``rust_sched_pick_next_task()``, the fair and idle pick helpers, the retry
-sentinel, the previous-balance adapter, the transition helper, the highest and
-lowest class anchors, and the class-size, sched_ext-class, and sched_ext-state
-helpers. It contains none of the three next-task KUnit selectors and no
-unresolved symbol.
+sentinel, the direct previous-balance state machine, the transition helper,
+the highest and lowest class anchors, and the class-size, sched_ext-class, and
+sched_ext-state helpers. It contains none of the three next-task KUnit
+selectors and no unresolved symbol.
 
 Disassembly shows the deferred-server clear, sched_ext gate, donor-class and
 fair-class comparison, runnable-count check, fair and idle fallback, previous

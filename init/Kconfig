@@ -1249,12 +1249,15 @@ config RUST_SCHED_PREV_BALANCE
 	depends on RUST
 	default y
 	help
-	  Use Rust for the production previous-task balance pass before task
-	  selection. Rust owns the active scheduling-class traversal, balance
-	  callback lookup, callback order, and stop decision.
+	  Use Rust to directly define the production previous-task balance
+	  entry point. Rust owns the active scheduling-class traversal,
+	  balance callback lookup and direct invocation, callback order,
+	  sched_ext skip state, and stop decision. The Rust next-task
+	  selection path calls the same balance state machine directly.
 
 	  The scheduling-class balance implementations, class ordering anchors,
-	  and sched_ext static-key queries remain in C.
+	  class size, sched_ext static-key queries, and fallback definition
+	  remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

@@ -1596,14 +1596,14 @@ unsafe fn prev_balance_locked(rq: *mut Rq, rf: *mut RqFlags) {
     }
 }
 
-/// Implements the production previous-task balance pass.
+/// Runs the production previous-task balance pass.
 ///
 /// # Safety
 ///
 /// `rq` and `rf` must remain live and the caller must hold the runqueue lock.
 #[cfg(CONFIG_RUST_SCHED_PREV_BALANCE)]
 #[export]
-unsafe extern "C" fn rust_sched_prev_balance(rq: *mut Rq, rf: *mut RqFlags) {
+unsafe extern "C" fn prev_balance(rq: *mut Rq, rf: *mut RqFlags) {
     // SAFETY: The caller satisfies the exported entry-point contract.
     unsafe { prev_balance_locked(rq, rf) };
 }
@@ -1836,8 +1836,16 @@ unsafe fn pick_next_task_locked(rq: *mut Rq, rf: *mut RqFlags) -> *mut Task {
     }
 
     'restart: loop {
+        #[cfg(CONFIG_RUST_SCHED_PREV_BALANCE)]
         // SAFETY: The caller holds the runqueue lock across the balance pass.
-        unsafe { bindings::rust_helper_sched_pick_prev_balance(rq, rf) };
+        unsafe {
+            prev_balance_locked(rq, rf)
+        };
+        #[cfg(not(CONFIG_RUST_SCHED_PREV_BALANCE))]
+        // SAFETY: The caller holds the runqueue lock across the balance pass.
+        unsafe {
+            bindings::rust_helper_sched_pick_prev_balance(rq, rf)
+        };
         let mut class = highest_class;
 
         while class != lowest_class {
