@@ -554,6 +554,24 @@ Scheduler reschedule request entries
   Three consecutive native four-vCPU runs passed all 37 cases. Native and
   fallback hrtimer regressions passed all 25 cases.
 
+Scheduler task CPU selection entry
+  Status: ``migrated``.
+
+  Evidence: :doc:`sched`.
+
+  Rust directly defines ``select_task_rq()``. Rust owns the affinity-count and
+  migration-state routing decision, scheduling-class callback dispatch,
+  selected-CPU wake-flag publication, CPU eligibility check, fallback
+  decision, and returned CPU. C retains the task and CPU locking contract,
+  cpumask selection, CPU eligibility and current-CPU queries, fallback
+  placement, scheduling-class callback implementations, and the lockdep
+  assertion helper.
+
+  Test: Twelve native, task-selection-only, fallback, C-only, KASAN, lockdep,
+  and PREEMPT_RT scheduler boots passed all applicable cases. Three
+  consecutive native four-vCPU runs passed all 37 cases. Native and fallback
+  hrtimer regressions passed all 25 cases.
+
 Boundary-retained inventory
 ---------------------------
 
@@ -746,6 +764,27 @@ Scheduler reschedule primitive boundary
   Exit condition: Rust owns compatible runqueue locking, CPU state queries,
   lazy-preemption mode selection, thread flags, tracing, preemption count,
   and IPI delivery without shared C helper entries.
+
+Scheduler task CPU selection primitive boundary
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/sched-rust.h``, ``kernel/sched/core.c``,
+  ``rust/kernel/sched_core.rs``, and the scheduler placement primitives.
+
+  Reason: Rust owns the placement entry, but the task pi-lock assertion,
+  affinity-mask selection, CPU-hotplug and task-type eligibility,
+  current-CPU query, fallback placement, and scheduling-class implementations
+  depend on scheduler and CPU-hotplug internals.
+
+  Test: Native, task-selection-only, fallback, C-only, KASAN, lockdep, and
+  PREEMPT_RT boots exercise the direct entry and retained primitives.
+
+  Risk: Incorrect affinity, eligibility, fallback, lock, or wake-flag
+  ordering can place a task on a forbidden CPU or lose the selected-runqueue
+  state.
+
+  Exit condition: Rust owns compatible affinity-mask, CPU-state, fallback,
+  scheduling-class, and lockdep contracts without shared C helper entries.
 
 Mutex scheduler, tracing, and locking-debug boundary
   Status: ``boundary-retained``.

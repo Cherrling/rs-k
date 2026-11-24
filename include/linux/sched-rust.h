@@ -146,6 +146,8 @@ unsigned int rust_sched_wake_if_idle_select(bool curr_idle,
 #define RUST_SCHED_SELECT_TASK_RQ_CLASS		0x01
 #define RUST_SCHED_SELECT_TASK_RQ_SINGLE	0x02
 
+int select_task_rq(struct task_struct *task, int cpu, int *wake_flags);
+
 int rust_helper_sched_select_task_rq_cpumask_any(const struct cpumask *mask);
 bool rust_helper_sched_select_task_rq_cpu_allowed(struct task_struct *task,
 						  int cpu);
@@ -153,8 +155,9 @@ int rust_helper_sched_select_task_rq_task_cpu(const struct task_struct *task);
 int rust_helper_sched_select_task_rq_fallback(int cpu,
 					      struct task_struct *task);
 
-int rust_sched_select_task_rq(struct task_struct *task, int cpu,
-			      int *wake_flags);
+#ifdef CONFIG_LOCKDEP
+void rust_helper_sched_select_task_rq_assert_locked(struct task_struct *task);
+#endif
 
 #ifdef CONFIG_KUNIT
 typedef int (*rust_sched_select_task_rq_fn)(struct task_struct *task, int cpu,

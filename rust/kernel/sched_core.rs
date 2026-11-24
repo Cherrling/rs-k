@@ -946,11 +946,12 @@ unsafe fn select_task_rq_with_callback(
 /// `wake_flags` must point to writable storage.
 #[cfg(CONFIG_RUST_SCHED_SELECT_TASK_RQ)]
 #[export]
-unsafe extern "C" fn rust_sched_select_task_rq(
-    task: *mut Task,
-    cpu: c_int,
-    wake_flags: *mut c_int,
-) -> c_int {
+unsafe extern "C" fn select_task_rq(task: *mut Task, cpu: c_int, wake_flags: *mut c_int) -> c_int {
+    // SAFETY: The caller holds the task pi lock.
+    #[cfg(CONFIG_LOCKDEP)]
+    unsafe {
+        bindings::rust_helper_sched_select_task_rq_assert_locked(task)
+    };
     // SAFETY: The caller satisfies the task pi-lock contract.
     let path = unsafe { select_task_rq_path_for_task(task) };
     let callback = if path == SELECT_TASK_RQ_CLASS {

@@ -4080,8 +4080,16 @@ int rust_helper_sched_select_task_rq_fallback(int cpu, struct task_struct *task)
 {
 	return select_fallback_rq(cpu, task);
 }
+
+#ifdef CONFIG_LOCKDEP
+void rust_helper_sched_select_task_rq_assert_locked(struct task_struct *task)
+{
+	lockdep_assert_held(&task->pi_lock);
+}
+#endif
 #endif
 
+#ifndef CONFIG_RUST_SCHED_SELECT_TASK_RQ
 /*
  * The caller (fork, wakeup) owns p->pi_lock, ->cpus_ptr is stable.
  */
@@ -4090,9 +4098,6 @@ int select_task_rq(struct task_struct *p, int cpu, int *wake_flags)
 {
 	lockdep_assert_held(&p->pi_lock);
 
-#ifdef CONFIG_RUST_SCHED_SELECT_TASK_RQ
-	return rust_sched_select_task_rq(p, cpu, wake_flags);
-#else
 	if (p->nr_cpus_allowed > 1 && !is_migration_disabled(p)) {
 		cpu = p->sched_class->select_task_rq(p, cpu, *wake_flags);
 		*wake_flags |= WF_RQ_SELECTED;
@@ -4114,8 +4119,8 @@ int select_task_rq(struct task_struct *p, int cpu, int *wake_flags)
 		cpu = select_fallback_rq(task_cpu(p), p);
 
 	return cpu;
-#endif
 }
+#endif
 
 void sched_set_stop_task(int cpu, struct task_struct *stop)
 {
