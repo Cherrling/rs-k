@@ -130,7 +130,7 @@ The unit must pass these checks before integration:
 Validation results
 ------------------
 
-Validation on 2026-11-23 used parent commit ``6fef2466604c``.
+Validation on 2026-11-24 used parent commit ``6fef2466604c``.
 
 ================  ============================================================
 Build             Configuration
@@ -173,11 +173,16 @@ or checks. Focused Sphinx rendered this page. Its output contained only two
 cross-reference warnings outside this page, in ``rust/index.rst`` and
 ``rust/quick-start.rst``.
 
+The six ``Module.symvers`` files each contained the eleven public klist
+symbols. Every entry used ``EXPORT_SYMBOL_GPL``.
+
 The final native ``rust/kernel.o`` defined all eleven public ``klist_*``
 symbols. The native ``lib/klist.o`` defined only ``klist_init()``,
-``klist_remove()``, and ``klist_wake_waiters()``. ``vmlinux`` contained no
-``rust_klist_*`` symbol. The fallback ``lib/klist.o`` defined the complete C
-implementation, and fallback ``rust/kernel.o`` contained no klist symbol.
+``klist_remove()``, and ``klist_wake_waiters()``, and referenced only
+``klist_del()`` among those symbols. ``vmlinux`` contained no
+``rust_klist_*`` symbol. The fallback and C-only ``lib/klist.o`` objects
+defined the complete C implementation. The fallback ``rust/kernel.o``
+contained no klist symbol.
 
 Review conditions
 -----------------
