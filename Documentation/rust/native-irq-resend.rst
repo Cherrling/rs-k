@@ -6,9 +6,9 @@ Native Rust IRQ resend
 Status and scope
 ----------------
 
-The ``CONFIG_RUST_IRQ_RESEND`` option selects native Rust for the production
-IRQ resend state machine when ``CONFIG_HARDIRQS_SW_RESEND`` is enabled. The
-public IRQ management API and descriptor layout remain unchanged.
+Rust directly defines the production IRQ resend entry points when
+``CONFIG_RUST_IRQ_RESEND`` is enabled. The public IRQ management API and
+descriptor layout remain unchanged.
 
 Rust owns level, replay, and pending decisions, hardware retrigger fallback,
 nested parent selection, software queue insertion policy, tasklet drain
@@ -18,6 +18,10 @@ The complete C implementation remains available when the option is disabled.
 
 Ownership
 ---------
+
+Rust directly defines all four internal production entry points:
+``check_irq_resend()``, ``clear_irq_resend()``, ``irq_resend_init()``, and
+the ``resend_irqs()`` tasklet callback. They remain unexported.
 
 Rust owns:
 
@@ -88,22 +92,21 @@ The unit must pass these checks before integration:
 * Native Rust with KASAN.
 * Native Rust with lockdep and prove-locking.
 * Native Rust with PREEMPT_RT.
-* Symbol and disassembly checks for the production Rust entry points.
+* Symbol checks showing Rust defines all four production entry points and the
+  native C object defines none. The four entries remain unexported.
 * Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
   ``git diff --check``.
 
 Validation results
 ------------------
 
-The implementation passed the complete matrix with clang 21.1.8, LLD 21.1.8,
-Rust 1.97.1, and QEMU.
+Eighteen final x86_64 IRQ KUnit boots passed. Native passed 28 cases in four
+SMP4 runs and 27 cases with one expected CPU-hotplug skip in two SMP1 runs.
+Rust fallback, C-only, KASAN, lockdep, and PREEMPT_RT each passed 28 cases on
+SMP4 and 27 cases with the same expected skip on SMP1. Three of the four KASAN
+runs used four CPUs. The suite includes nine IRQ resend cases.
 
-The native, Rust fallback, C-only, KASAN, lockdep, and PREEMPT_RT kernels all
-booted on one and four CPUs. Each run executed all 14 IRQ test cases. The SMP1
-runs reported 13 passes, one CPU-hotplug skip, and no failures. The SMP4 runs
-reported 14 passes and no failures.
-
-The final native image also passed the existing core regression suites:
+The native image also passed the adjacent core regression suites:
 
 * ``irq_work``: seven tests.
 * ``rcuwait``: eight tests.
@@ -112,26 +115,23 @@ The final native image also passed the existing core regression suites:
 * ``mm_lifetime``: six tests.
 * ``task_work``: six tests.
 
-Native, KASAN, lockdep, and PREEMPT_RT symbol tables contain
-``rust_irq_resend_check``, ``rust_irq_resend_clear``,
-``rust_irq_resend_init``, and ``rust_irq_resend_tasklet``. The fallback and
-pure C symbol tables contain none of these symbols. Disassembly shows that the
-native ``check_irq_resend()`` wrapper jumps directly to
-``rust_irq_resend_check``.
+A scan of all runtime logs found no failing KUnit case, BUG, WARNING, Oops,
+panic, RCU stall, KASAN report, or lockdep report. The event tests emitted
+their expected no-thread, bogus-result, misroute, and stuck-IRQ diagnostics.
 
-The final source passed ``rustfmtcheck``, a full kernel build with
-``CLIPPY=1``, Rustdoc, focused Sphinx generation, strict checkpatch, and
-``git diff --check``. Strict checkpatch reported no findings after the
-reviewed ``FILE_PATH_CHANGES`` check, because ``MAINTAINERS`` covers all new
-files. Focused Sphinx reported two existing cross-reference warnings because
-the build includes only the Rust directory. The warnings reference the missing
-``kernel-docs`` document and the undefined ``getting_llvm`` label. Neither
-warning references this unit.
+The native, KASAN, lockdep, and PREEMPT_RT ``rust/kernel.o`` objects define all
+four production entry points, while their ``kernel/irq/resend.o`` objects
+define none. The fallback and C-only ``kernel/irq/resend.o`` objects define all
+four, including a local tasklet callback, while the fallback Rust object
+defines none. All six ``Module.symvers`` files and generated Rust export
+headers exclude the four entries. No build contains the old
+``rust_irq_resend_*`` adapters.
 
-The final QEMU logs contain no KUnit failure, BUG, WARNING, Oops, panic, KASAN
-report, lockdep report, or RCU stall. The KASAN and lockdep builds emitted one
-existing Maple Tree objtool ``noreturn`` note. That note does not reference
-this unit.
+Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
+``git diff --check`` passed. Focused Sphinx reported two existing
+cross-reference warnings because the build includes only the Rust directory.
+The warnings reference the missing ``kernel-docs`` document and the undefined
+``getting_llvm`` label. Neither warning references this unit.
 
 Review conditions
 -----------------

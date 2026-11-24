@@ -13,12 +13,6 @@ struct tasklet_struct;
 
 #ifdef CONFIG_RUST_IRQ_RESEND
 
-/* Rust-owned production state machine. */
-int rust_irq_resend_check(struct irq_desc *desc, bool inject);
-void rust_irq_resend_clear(struct irq_desc *desc);
-void rust_irq_resend_init(struct irq_desc *desc);
-void rust_irq_resend_tasklet(struct tasklet_struct *unused);
-
 /* C helpers for descriptor fields, locks, queues, and hardware callbacks. */
 bool rust_irq_resend_is_level(struct irq_desc *desc);
 bool rust_irq_resend_is_nested(struct irq_desc *desc);

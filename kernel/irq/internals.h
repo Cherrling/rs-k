@@ -135,6 +135,9 @@ irqreturn_t handle_irq_event(struct irq_desc *desc);
 int check_irq_resend(struct irq_desc *desc, bool inject);
 void clear_irq_resend(struct irq_desc *desc);
 void irq_resend_init(struct irq_desc *desc);
+#ifdef CONFIG_RUST_IRQ_RESEND
+void resend_irqs(struct tasklet_struct *unused);
+#endif
 #if defined(CONFIG_IRQ_KUNIT_TEST) && defined(CONFIG_HARDIRQS_SW_RESEND)
 void irq_resend_test_pause(void);
 void irq_resend_test_resume(void);

@@ -1966,10 +1966,10 @@ config RUST_IRQ_RESEND
 	depends on RUST && HARDIRQS_SW_RESEND
 	default y
 	help
-	  Use Rust for the production IRQ resend state machine. This includes
-	  level, replay, and pending decisions, hardware retrigger fallback,
-	  nested parent selection, software queue insertion policy, tasklet
-	  drain ordering, and resend state transitions.
+	  Rust directly defines the production IRQ resend entry points. Rust
+	  owns level, replay, and pending decisions, hardware retrigger
+	  fallback, nested parent selection, software queue insertion policy,
+	  tasklet drain ordering, and resend state transitions.
 
 	  C helpers retain descriptor field access, the raw resend lock, hlist
 	  operations, tasklet scheduling, irqchip callbacks, and flow-handler

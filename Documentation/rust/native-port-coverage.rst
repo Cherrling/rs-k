@@ -126,6 +126,20 @@ IRQ event dispatch
   four entries remain unexported. C fallback configurations retain the
   complete implementations.
 
+IRQ resend state machine
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-irq-resend`.
+
+  Rust directly defines the four internal check, clear, initialization, and
+  tasklet-drain entry points. Rust owns level, replay, and pending decisions,
+  hardware retrigger fallback, nested parent selection, software queue
+  insertion, duplicate suppression, tasklet drain order, and replay-state
+  transitions. C retains descriptor fields, the raw resend lock, hlist
+  operations, tasklet storage and scheduling, irqchip callbacks, IRQ-number
+  lookup, and flow-handler invocation. All four entries remain unexported. C
+  fallback configurations retain the complete implementations.
+
 Kobject lifecycle
   Status: ``migrated``.
 
@@ -856,6 +870,63 @@ IRQ event unexported entry policy
   Exit condition: Rust export generation supports internal unexported entry
   points without the skip list.
 
+IRQ resend descriptor and queue ABI
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/irq.h``, ``kernel/irq/internals.h``, and
+  ``rust/kernel/irq_resend.rs``.
+
+  Reason: C and Rust share descriptor state, the embedded resend hlist node,
+  the global resend queue, the raw queue lock, tasklet storage, and flow
+  handler callback ABI.
+
+  Test: Native, fallback, and C-only IRQ KUnit runs cover level retirement,
+  replay exclusion, hardware and hierarchy retrigger, nested-parent
+  deduplication, software drain order, injection, and rejected resend paths.
+
+  Risk: A layout, lock, queue, or callback mismatch can lose a resend, enqueue
+  one descriptor twice, or dispatch the wrong flow handler.
+
+  Exit condition: Rust-owned descriptor, queue, tasklet, and callback
+  representations replace the shared IRQ subsystem interfaces.
+
+IRQ resend primitive helpers
+  Status: ``boundary-retained``.
+
+  Owner: ``kernel/irq/resend.c``, irqchip callbacks, and the Rust bindings.
+
+  Reason: Descriptor field access, raw lock transitions, hlist operations,
+  tasklet scheduling, irqchip retrigger callbacks, IRQ-number lookup, and
+  flow-handler invocation retain architecture, interrupt, and scheduler
+  contracts.
+
+  Test: Native SMP1/SMP4, KASAN, lockdep, and PREEMPT_RT runs exercise
+  interrupt-disabled drain, hardware retrigger, software fallback, and
+  nested-parent paths.
+
+  Risk: A helper mismatch can call a flow handler in the wrong context, break
+  queue serialization, or misreport hardware retrigger success.
+
+  Exit condition: Approved Rust interrupt, lock, hlist, tasklet, irqchip, and
+  callback abstractions preserve the helper contracts.
+
+IRQ resend unexported entry policy
+  Status: ``boundary-retained``.
+
+  Owner: ``rust/Makefile`` and ``kernel/irq/internals.h``.
+
+  Reason: The four production entries are internal kernel interfaces with no
+  module export. Automatic Rust exports are GPL by default.
+
+  Test: All six ``Module.symvers`` files omit the four names, and the generated
+  Rust export headers exclude them.
+
+  Risk: An automatic export can unintentionally expose internal resend
+  entries to modules.
+
+  Exit condition: Rust export generation supports internal unexported entry
+  points without the skip list.
+
 Kobject layout and state
   Status: ``boundary-retained``.
 
@@ -1401,6 +1472,12 @@ descriptor locking, thread flags, scheduler wakeup, randomness, spurious
 accounting, and unexported entry policy remain named C boundaries. Rust
 defines every production entry and owns every traversal, result, wake,
 oneshot, active-count, and lifecycle decision.
+
+The IRQ resend boundary is valid only while the shared descriptor and resend
+queue layouts, raw lock, hlist operations, tasklet storage and scheduling,
+irqchip callbacks, flow-handler invocation, and unexported entry policy remain
+named C boundaries. Rust defines every production entry and owns every level,
+replay, pending, retrigger, nesting, deduplication, and drain-order decision.
 
 The kobject boundary is valid only while the shared layout, bitfields,
 diagnostics, final cleanup callback, and non-GPL export metadata remain named

@@ -13,7 +13,6 @@ use crate::{
     bindings,
     ffi::{c_int, c_uint},
 };
-use macros::export;
 
 type Desc = bindings::irq_desc;
 
@@ -91,8 +90,8 @@ unsafe fn retrigger(desc: *mut Desc) -> c_int {
 ///
 /// `desc` must point to a live IRQ descriptor. The caller must disable
 /// interrupts and hold `desc->lock`.
-#[export]
-unsafe extern "C" fn rust_irq_resend_check(desc: *mut Desc, inject: bool) -> c_int {
+#[no_mangle]
+unsafe extern "C" fn check_irq_resend(desc: *mut Desc, inject: bool) -> c_int {
     // Level interrupts are resent by hardware while the line remains active.
     // SAFETY: The caller guarantees a live descriptor.
     if unsafe { bindings::rust_irq_resend_is_level(desc) } {
@@ -134,8 +133,8 @@ unsafe extern "C" fn rust_irq_resend_check(desc: *mut Desc, inject: bool) -> c_i
 /// # Safety
 ///
 /// `desc` must point to a live IRQ descriptor.
-#[export]
-unsafe extern "C" fn rust_irq_resend_clear(desc: *mut Desc) {
+#[no_mangle]
+unsafe extern "C" fn clear_irq_resend(desc: *mut Desc) {
     // SAFETY: The caller guarantees a live descriptor.
     unsafe { bindings::rust_irq_resend_lock() };
     // SAFETY: The caller guarantees a live descriptor and the lock is held.
@@ -149,8 +148,8 @@ unsafe extern "C" fn rust_irq_resend_clear(desc: *mut Desc) {
 /// # Safety
 ///
 /// `desc` must point to valid, writable IRQ descriptor storage.
-#[export]
-unsafe extern "C" fn rust_irq_resend_init(desc: *mut Desc) {
+#[no_mangle]
+unsafe extern "C" fn irq_resend_init(desc: *mut Desc) {
     // SAFETY: The caller guarantees writable descriptor storage.
     unsafe { bindings::rust_irq_resend_init_node(desc) };
 }
@@ -164,8 +163,8 @@ unsafe extern "C" fn rust_irq_resend_init(desc: *mut Desc) {
 ///
 /// This function must run from the resend tasklet. Every queued descriptor
 /// must remain live until it is removed.
-#[export]
-unsafe extern "C" fn rust_irq_resend_tasklet(_unused: *mut bindings::tasklet_struct) {
+#[no_mangle]
+unsafe extern "C" fn resend_irqs(_unused: *mut bindings::tasklet_struct) {
     // SAFETY: This is the only consumer of the software resend queue.
     unsafe { bindings::rust_irq_resend_lock_irq() };
     loop {

@@ -28,7 +28,7 @@ static DEFINE_RAW_SPINLOCK(irq_resend_lock);
 
 #ifdef CONFIG_RUST_IRQ_RESEND
 /* Tasklet to run the Rust-owned software resend state machine: */
-static DECLARE_TASKLET(resend_tasklet, rust_irq_resend_tasklet);
+static DECLARE_TASKLET(resend_tasklet, resend_irqs);
 #else
 /*
  * Run software resends of IRQ's
@@ -229,11 +229,7 @@ void irq_resend_test_resume(void)
 
 void irq_resend_test_drain(void)
 {
-#ifdef CONFIG_RUST_IRQ_RESEND
-	rust_irq_resend_tasklet(NULL);
-#else
 	resend_irqs(NULL);
-#endif
 }
 #endif /* CONFIG_IRQ_KUNIT_TEST && CONFIG_HARDIRQS_SW_RESEND */
 
@@ -248,11 +244,10 @@ static int irq_sw_resend(struct irq_desc *desc)
 
 #endif /* CONFIG_HARDIRQS_SW_RESEND */
 
+#ifndef CONFIG_RUST_IRQ_RESEND
 void clear_irq_resend(struct irq_desc *desc)
 {
-#ifdef CONFIG_RUST_IRQ_RESEND
-	rust_irq_resend_clear(desc);
-#elif defined(CONFIG_HARDIRQS_SW_RESEND)
+#ifdef CONFIG_HARDIRQS_SW_RESEND
 	guard(raw_spinlock)(&irq_resend_lock);
 	hlist_del_init(&desc->resend_node);
 #endif
@@ -260,12 +255,11 @@ void clear_irq_resend(struct irq_desc *desc)
 
 void irq_resend_init(struct irq_desc *desc)
 {
-#ifdef CONFIG_RUST_IRQ_RESEND
-	rust_irq_resend_init(desc);
-#elif defined(CONFIG_HARDIRQS_SW_RESEND)
+#ifdef CONFIG_HARDIRQS_SW_RESEND
 	INIT_HLIST_NODE(&desc->resend_node);
 #endif
 }
+#endif /* !CONFIG_RUST_IRQ_RESEND */
 
 #ifndef CONFIG_RUST_IRQ_RESEND
 static int try_retrigger(struct irq_desc *desc)
@@ -281,6 +275,7 @@ static int try_retrigger(struct irq_desc *desc)
 }
 #endif /* !CONFIG_RUST_IRQ_RESEND */
 
+#ifndef CONFIG_RUST_IRQ_RESEND
 /*
  * IRQ resend
  *
@@ -288,9 +283,6 @@ static int try_retrigger(struct irq_desc *desc)
  */
 int check_irq_resend(struct irq_desc *desc, bool inject)
 {
-#ifdef CONFIG_RUST_IRQ_RESEND
-	return rust_irq_resend_check(desc, inject);
-#else
 	int err = 0;
 
 	/*
@@ -318,8 +310,8 @@ int check_irq_resend(struct irq_desc *desc, bool inject)
 	if (!err)
 		desc->istate |= IRQS_REPLAY;
 	return err;
-#endif /* CONFIG_RUST_IRQ_RESEND */
 }
+#endif /* !CONFIG_RUST_IRQ_RESEND */
 
 #ifdef CONFIG_GENERIC_IRQ_INJECTION
 /**
