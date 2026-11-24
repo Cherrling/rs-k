@@ -485,6 +485,24 @@ Timer queue operations
   linked-chain insertion. C retains the intrusive timer queue layout, inline
   accessors, red-black tree primitives, and the complete fallback.
 
+High-resolution timer state machine and public entries
+  Status: ``migrated``.
+
+  Evidence: :doc:`hrtimer`.
+
+  Rust directly defines thirteen ordinary GPL entry points for setup, callback
+  update, active and remaining queries, clock sampling, startup, sleeper
+  lifecycle, cancellation, and forwarding. It also defines the unexported
+  next-event, interrupt, queue-run, and deferred-rearm entries. With debug
+  objects Rust defines ``destroy_hrtimer_on_stack()``, and on PREEMPT_RT it
+  defines ``hrtimer_cancel_wait_running()``. Rust owns every startup, enqueue,
+  expiry, interrupt, rearm, migration, cancellation, forwarding, and sleeper
+  decision. The native C object does not define these entry points. C retains
+  the shared timer layouts, raw locks, debug objects, tracepoints, time
+  sampling, opaque clock event fields, task state, callback invocation, and
+  timekeeping bridges. C fallback configurations retain the complete
+  implementation.
+
 Boundary-retained inventory
 ---------------------------
 
@@ -517,7 +535,8 @@ Public ABI
   ``include/linux/bitmap.h``, ``include/linux/maple_tree.h``,
   ``include/linux/kfifo.h``, ``include/linux/completion.h``,
   ``include/linux/task_work.h``, ``include/linux/irq_work.h``,
-  ``include/linux/timerqueue.h``, ``include/linux/mutex.h``,
+  ``include/linux/timerqueue.h``, ``include/linux/hrtimer.h``,
+  ``include/linux/mutex.h``,
   ``include/linux/ww_mutex.h``, and ``include/linux/rwsem.h``.
 
   Reason: Existing callers and loadable modules use the stable C ABI.
@@ -579,6 +598,32 @@ Timer queue tree primitives
 
   Exit condition: Rust owns compatible timer queue tree primitives without a
   shared C call boundary.
+
+High-resolution timer shared entry boundary
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/hrtimer.h``, ``include/linux/hrtimer_types.h``,
+  ``include/linux/hrtimer_bases.h``, ``include/linux/hrtimer-rust.h``,
+  ``kernel/time/hrtimer.c``, and ``rust/helpers``.
+
+  Reason: C and Rust share timer layouts, raw CPU and timer base locks,
+  debug-object state, tracepoints, time sampling, task state, callback
+  invocation, opaque clock event device fields, and timekeeping, sleep,
+  resume, and CPU hotplug bridges. The ``hrtimer_resolution`` data export also
+  remains in C.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, debug-object, and
+  PREEMPT_RT builds cover all entry-point configurations. SMP1 and SMP4 KUnit
+  runs exercise setup, startup, expiration, interrupt, rearm, migration,
+  cancellation, forwarding, and sleeper state. Native, fallback, and C-only
+  external GPL modules link all ordinary exports.
+
+  Risk: A layout, lock, tracepoint, clock sample, task-state, or opaque device
+  mismatch can corrupt queue state or deadlock a timer interrupt.
+
+  Exit condition: Rust owns compatible timer types, locks, diagnostics, clock
+  event access, task integration, and timekeeping bridges without shared C
+  entry trampolines.
 
 Mutex scheduler, tracing, and locking-debug boundary
   Status: ``boundary-retained``.
@@ -2263,6 +2308,14 @@ inline accessors, red-black tree primitives, and caller serialization remain
 named C boundaries. Rust defines every out-of-line public entry and owns every
 ordered search, link, cached-root, deletion, successor, and linked-chain
 decision.
+
+The high-resolution timer boundary is valid only while the shared timer
+layouts, raw locks, debug objects, tracepoints, time sampling, opaque clock
+event fields, task state, callback invocation, and timekeeping bridges remain
+named C boundaries. Rust defines every ordinary public entry and the internal
+interrupt, queue, next-event, and deferred-rearm entries. Rust owns every
+startup, queue, expiry, interrupt, rearm, migration, cancellation, forwarding,
+and sleeper decision.
 
 The kobject boundary is valid only while the shared layout, bitfields,
 diagnostics, final cleanup callback, and non-GPL export metadata remain named

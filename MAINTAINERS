@@ -24223,6 +24223,7 @@ F:	kernel/locking/rwsem.c
 F:	kernel/locking/semaphore.c
 F:	kernel/sched/wait.c
 F:	kernel/sched/wait_bit.c
+F:	kernel/time/hrtimer.c
 F:	lib/dec_and_lock.c
 F:	lib/kref.c
 F:	lib/klist.c

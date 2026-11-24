@@ -852,7 +852,55 @@ rust_unexported_symbols := \
 	rust_mutex_current \
 	rust_mutex_warn_bad_trylock_flags \
 	rust_mutex_warn_bad_unlock \
-	rust_mutex_force_handoff
+	rust_mutex_force_handoff \
+	rust_hrtimer_active \
+	rust_hrtimer_active_select \
+	rust_hrtimer_callback_enter \
+	rust_hrtimer_callback_exit \
+	rust_hrtimer_cancel \
+	rust_hrtimer_check_user_timer \
+	rust_hrtimer_clock_base_next_expired \
+	rust_hrtimer_enqueue \
+	rust_hrtimer_force_reprogram \
+	rust_hrtimer_force_reprogram_select \
+	rust_hrtimer_forward \
+	rust_hrtimer_get_next_event \
+	rust_hrtimer_interrupt \
+	rust_hrtimer_interrupt_advance \
+	rust_hrtimer_interrupt_hang_expiry \
+	rust_hrtimer_interrupt_select \
+	rust_hrtimer_interrupt_softirq_due \
+	rust_hrtimer_keep_base \
+	rust_hrtimer_prefer_local_select \
+	rust_hrtimer_prepare_expiry \
+	rust_hrtimer_rearm_deferred_locked \
+	rust_hrtimer_rearm_deferred_select \
+	rust_hrtimer_rearm_pending \
+	rust_hrtimer_remove \
+	rust_hrtimer_reprogram \
+	rust_hrtimer_reprogram_device \
+	rust_hrtimer_requeue_same_base \
+	rust_hrtimer_run_queues \
+	rust_hrtimer_setup \
+	rust_hrtimer_setup_select \
+	rust_hrtimer_start_range_ns \
+	rust_hrtimer_start_reprogram_select \
+	rust_hrtimer_suitable_target \
+	rust_hrtimer_switch_base \
+	rust_hrtimer_switch_base_to \
+	rust_hrtimer_target_base \
+	rust_hrtimer_target_base_select \
+	rust_hrtimer_try_to_cancel \
+	rust_hrtimer_try_to_cancel_locked \
+	rust_hrtimer_update_needs_ipi \
+	rust_hrtimer_update_next_event \
+	rust_hrtimer_user_expiry_select \
+	hrtimer_interrupt \
+	hrtimer_run_queues \
+	__hrtimer_rearm_deferred \
+	hrtimer_get_next_event \
+	hrtimer_next_event_without \
+	hrtimer_cancel_wait_running
 
 rust_exports = $(NM) -p --defined-only $(1) | awk '$$2~/(T|R|D|B)/ && $$3!~/__(pfx|cfi|odr_asan)/ { printf $(2),$$3 }'
 rust_auto_export_skip := $(rust_non_gpl_exports) $(rust_unexported_symbols)

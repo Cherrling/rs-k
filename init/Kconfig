@@ -2333,7 +2333,8 @@ config RUST_HRTIMER
 	  transition for high-resolution timers.
 
 	  CPU base locking, clock event reprogramming, debug object tracking,
-	  tracepoints, callback execution, and public ABI adapters remain in C.
+	  tracepoints, and callback execution remain in C. The complete C
+	  entry-point fallback remains available.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -2349,9 +2350,9 @@ config RUST_HRTIMER_SETUP
 	  base, clears the timer, initializes its queue node, and installs the
 	  callback.
 
-	  Debug object tracking, tracepoints, missing-callback diagnostics,
-	  clock ID diagnostics, the current CPU base lookup, and public ABI
-	  adapters remain in C.
+	  Debug object tracking, tracepoints, missing-callback diagnostics, and
+	  the current CPU base lookup remain in C. The complete C entry-point
+	  fallback remains available.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -2367,7 +2368,8 @@ config RUST_HRTIMER_ACTIVE
 
 	  The READ_ONCE accesses and seqcount acquire/retry primitives remain
 	  in narrow C helpers because they preserve the kernel memory model
-	  and the raw lock ordering contract.
+	  and the raw lock ordering contract. The complete C entry-point
+	  fallback remains available.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -2382,7 +2384,8 @@ config RUST_HRTIMER_ENQUEUE
 	  linked timer insertion, and first-expiry cache updates.
 
 	  CPU base locking, debug object tracking, tracepoints, clock event
-	  reprogramming, callback execution, and public ABI adapters remain in C.
+	  reprogramming, and callback execution remain in C. The complete C
+	  entry-point fallback remains available.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -2397,8 +2400,9 @@ config RUST_HRTIMER_CALLBACK
 	  publication, queue removal, automatic restart, and running-state
 	  clearing.
 
-	  CPU base locking, callback execution, tracepoints, lockdep context
-	  tracking, and public ABI adapters remain in C.
+	  CPU base locking, callback execution, tracepoints, and lockdep context
+	  tracking remain in C. The complete C entry-point fallback remains
+	  available.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -2414,8 +2418,9 @@ config RUST_HRTIMER_RUN_QUEUES
 	  and per-base timer loop.
 
 	  Callback invocation, CPU base locking, lock dropping and reacquisition,
-	  tracepoints, lockdep context tracking, softirq waiter synchronization,
-	  and public ABI adapters remain in C.
+	  tracepoints, lockdep context tracking, and softirq waiter
+	  synchronization remain in C. The complete C entry-point fallback
+	  remains available.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -2431,8 +2436,8 @@ config RUST_HRTIMER_INTERRUPT
 	  hang-delay accounting, and immediate or deferred rearm selection.
 
 	  Clock sampling and offset updates, clock event programming, CPU base
-	  locking, callback execution, tracing, and public ABI adapters remain
-	  in C.
+	  locking, callback execution, and tracing remain in C. The complete C
+	  entry-point fallback remains available.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -2448,9 +2453,10 @@ config RUST_HRTIMER_REARM
 	  pending state, applies the hang delay, and selects immediate or
 	  deferred clock event programming.
 
-	  Current CPU lookup, CPU base locking, thread-work flag publication
-	  and clearing, clock sampling, clock offset updates, hardware clock
-	  event programming, tracing, and public ABI adapters remain in C.
+	  Current CPU lookup, CPU base locking, thread-work flag publication and
+	  clearing, clock sampling, clock offset updates, hardware clock event
+	  programming, and tracing remain in C. The complete C entry-point
+	  fallback remains available.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -2467,8 +2473,8 @@ config RUST_HRTIMER_START
 	  selection.
 
 	  Timer base locking, debug initialization checks, current CPU lookup,
-	  clock sampling, async remote reprogramming, tracepoints, lockdep,
-	  and public ABI adapters remain in C.
+	  clock sampling, async remote reprogramming, tracepoints, and lockdep
+	  remain in C. The complete C entry-point fallback remains available.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -2484,8 +2490,9 @@ config RUST_HRTIMER_USER_EXPIRY
 	  timer, samples the current time only when required, and removes an
 	  already expired timer.
 
-	  Timer base locking, debug object hooks, tracepoints, clock event
-	  reprogramming, and public ABI adapters remain in C.
+	  Timer base locking, debug object hooks, tracepoints, and clock event
+	  reprogramming remain in C. The complete C entry-point fallback remains
+	  available.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -2499,7 +2506,8 @@ config RUST_HRTIMER_BASE_SELECTION
 	  remote clock base can meet a timer's high-resolution deadline.
 
 	  Target CPU selection, migration-base locking, CPU hotplug state
-	  tracking, remote reprogramming, and public ABI adapters remain in C.
+	  tracking, and remote reprogramming remain in C. The complete C
+	  entry-point fallback remains available.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -2513,8 +2521,8 @@ config RUST_HRTIMER_TARGET_BASE
 	  a timer.  Rust handles offline bases, pinned timers, and NOHZ timer
 	  migration.
 
-	  CPU masks, housekeeping policy, per-CPU base lookup, and public ABI
-	  adapters remain in C.
+	  CPU masks, housekeeping policy, and per-CPU base lookup remain in C.
+	  The complete C entry-point fallback remains available.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -2529,9 +2537,10 @@ config RUST_HRTIMER_KEEP_BASE
 	  policy, first and pinned timer retention, NOHZ housekeeping checks,
 	  stopped-tick handling, and rescheduling checks.
 
-	  The migration static branch, housekeeping CPU query, stopped-tick state,
-	  rescheduling state, and public ABI adapters remain in C. Non-SMP and
-	  non-NOHZ configurations keep their trivial local-base decision in C.
+	  The migration static branch, housekeeping CPU query, stopped-tick
+	  state, and rescheduling state remain in C. Non-SMP and non-NOHZ
+	  configurations keep their trivial local-base decision in C. The
+	  complete C entry-point fallback remains available.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -2546,8 +2555,9 @@ config RUST_HRTIMER_BASE_MIGRATION
 	  pinning, retries when a remote target cannot meet the deadline, and
 	  commits or rolls back the migration state.
 
-	  Raw CPU base locking, per-CPU address calculation, migration-base
-	  publication, and public ABI adapters remain in C.
+	  Raw CPU base locking, per-CPU address calculation, and migration-base
+	  publication remain in C. The complete C entry-point fallback remains
+	  available.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -2561,8 +2571,8 @@ config RUST_HRTIMER_NEXT_EVENT
 	  bases.  Rust maintains the next timer pointers and returns the
 	  earliest normalized expiry.
 
-	  CPU base locking, clock event reprogramming, softirq execution, and
-	  public ABI adapters remain in C.
+	  CPU base locking, clock event reprogramming, and softirq execution
+	  remain in C. The complete C entry-point fallback remains available.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -2575,9 +2585,9 @@ config RUST_HRTIMER_UPDATE_NEXT_EVENT
 	  Use Rust to combine hard and soft next events, update the cached
 	  softirq expiry, and select the event used for reprogramming.
 
-	  CPU base locking, next-event searches, clock event reprogramming,
-	  softirq execution, and public ABI adapters remain in C or the lower
-	  Rust next-event unit.
+	  CPU base locking, clock event reprogramming, and softirq execution
+	  remain in C. The lower next-event state machine follows its own
+	  configuration. The complete C entry-point fallback remains available.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -2591,8 +2601,8 @@ config RUST_HRTIMER_UPDATE_NEEDS_IPI
 	  change requires a remote CPU to reevaluate its high-resolution timers.
 
 	  Clock offset updates, CPU base locking, deferred rearm execution, IPI
-	  delivery, clock event reprogramming, and public ABI adapters remain
-	  in C.
+	  delivery, and clock event reprogramming remain in C. The complete C
+	  entry-point fallback remains available.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -2607,7 +2617,8 @@ config RUST_HRTIMER_REPROGRAM
 	  clock event reprogramming.
 
 	  Negative-expiry warnings, clock event programming, CPU base locking,
-	  tracing, callback execution, and public ABI adapters remain in C.
+	  tracing, and callback execution remain in C. The complete C
+	  entry-point fallback remains available.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -2623,8 +2634,9 @@ config RUST_HRTIMER_FORCE_REPROGRAM
 	  checks high-resolution mode and hang state, and selects whether the
 	  clock event device needs programming.
 
-	  CPU base locking, next-event queue traversal, clock event tracing,
-	  hardware programming, and public ABI adapters remain in C.
+	  CPU base locking, next-event queue traversal, clock event tracing, and
+	  hardware programming remain in C. The complete C entry-point fallback
+	  remains available.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -2640,7 +2652,8 @@ config RUST_HRTIMER_CANCEL
 
 	  CPU base locking, debug hooks, tracepoints, clock event
 	  reprogramming, callback execution, and the callback-running wait
-	  primitive remain in C.
+	  primitive remain in C. The complete C entry-point fallback remains
+	  available.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -2656,8 +2669,8 @@ config RUST_HRTIMER_TRY_TO_CANCEL
 	  requests tracepoint delivery for a removed timer, and releases the
 	  lock.
 
-	  CPU base lock acquisition and release, tracepoint delivery, and the
-	  public ABI adapter remain in C.
+	  CPU base lock acquisition and release, and tracepoint delivery remain
+	  in C. The complete C entry-point fallback remains available.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -2671,8 +2684,9 @@ config RUST_HRTIMER_CANCEL_WAIT
 	  requests a cancellation attempt and waits for a running callback
 	  before retrying.
 
-	  CPU base locking, the PREEMPT_RT expiry-lock wait primitive,
-	  tracepoints, and the public ABI adapter remain in C.
+	  CPU base locking, the PREEMPT_RT expiry-lock wait primitive, and
+	  tracepoints remain in C. The complete C entry-point fallback remains
+	  available.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -2686,7 +2700,50 @@ config RUST_HRTIMER_FORWARD
 	  performed by hrtimer_forward().
 
 	  Resolution clamping, checked ktime division, saturated expiry update,
-	  queue-state warnings, and the public ABI adapter remain in C.
+	  and queue-state warnings remain in C. The complete C entry-point
+	  fallback remains available.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
+config RUST_HRTIMER_ENTRY
+	bool "Rust implementation of hrtimer core entry points"
+	depends on RUST_HRTIMER && HIGH_RES_TIMERS && SMP && NO_HZ_COMMON
+	depends on RUST_HRTIMER_SETUP
+	depends on RUST_HRTIMER_ACTIVE
+	depends on RUST_HRTIMER_ENQUEUE
+	depends on RUST_HRTIMER_CALLBACK
+	depends on RUST_HRTIMER_RUN_QUEUES
+	depends on RUST_HRTIMER_INTERRUPT
+	depends on RUST_HRTIMER_REARM
+	depends on RUST_HRTIMER_START
+	depends on RUST_HRTIMER_USER_EXPIRY
+	depends on RUST_HRTIMER_BASE_SELECTION
+	depends on RUST_HRTIMER_TARGET_BASE
+	depends on RUST_HRTIMER_KEEP_BASE
+	depends on RUST_HRTIMER_BASE_MIGRATION
+	depends on RUST_HRTIMER_NEXT_EVENT
+	depends on RUST_HRTIMER_UPDATE_NEXT_EVENT
+	depends on RUST_HRTIMER_UPDATE_NEEDS_IPI
+	depends on RUST_HRTIMER_REPROGRAM
+	depends on RUST_HRTIMER_FORCE_REPROGRAM
+	depends on RUST_HRTIMER_CANCEL
+	depends on RUST_HRTIMER_TRY_TO_CANCEL
+	depends on RUST_HRTIMER_CANCEL_WAIT
+	depends on RUST_HRTIMER_FORWARD
+	default y
+	help
+	  Use Rust for the production hrtimer core entry points. Rust directly
+	  defines initialization, setup, active and remaining queries, startup,
+	  expiry forwarding, cancellation, next-event inspection, interrupt
+	  processing, queue processing, deferred rearm, callback updates, and
+	  sleeper helpers.
+
+	  CPU base locking, debug objects, tracepoints, clock sampling, clock
+	  event programming, callback execution, task state, and the timekeeping,
+	  sleep, resume, and CPU hotplug bridges remain in C. The complete C
+	  entry-point implementation remains available when this option is
+	  disabled.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

@@ -47,6 +47,10 @@ type ClockBase = bindings::hrtimer_clock_base;
 type CpuBase = bindings::hrtimer_cpu_base;
 type TimerLinkedNode = bindings::timerqueue_linked_node;
 type RbNodeLinked = bindings::rb_node_linked;
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+type BaseLock = bindings::hrtimer_base_lock;
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+type CpuBaseLock = bindings::hrtimer_cpu_base_lock;
 
 #[cfg(any(CONFIG_RUST_HRTIMER_NEXT_EVENT, CONFIG_RUST_HRTIMER_RUN_QUEUES))]
 const HRTIMER_ACTIVE_MASK_SHIFT: u32 = bindings::hrtimer_base_type_HRTIMER_BASE_MONOTONIC_SOFT;
@@ -54,6 +58,87 @@ const HRTIMER_ACTIVE_MASK_SHIFT: u32 = bindings::hrtimer_base_type_HRTIMER_BASE_
 const HRTIMER_ACTIVE_HARD: u32 = (1_u32 << HRTIMER_ACTIVE_MASK_SHIFT) - 1;
 #[cfg(any(CONFIG_RUST_HRTIMER_NEXT_EVENT, CONFIG_RUST_HRTIMER_RUN_QUEUES))]
 const HRTIMER_ACTIVE_SOFT: u32 = HRTIMER_ACTIVE_HARD << HRTIMER_ACTIVE_MASK_SHIFT;
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+const HRTIMER_ACTIVE_ALL: u32 = HRTIMER_ACTIVE_HARD | HRTIMER_ACTIVE_SOFT;
+
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+/// Acquires the current lock for a timer base.
+///
+/// # Safety
+///
+/// `timer` must be initialized and remain live. The caller must not already
+/// hold the selected timer base lock.
+unsafe fn lock_timer_base(timer: *const Hrtimer) -> BaseLock {
+    let mut lock = core::mem::MaybeUninit::<BaseLock>::uninit();
+    // SAFETY: The helper initializes the context and returns with the lock
+    // held for the current timer base.
+    unsafe { bindings::rust_helper_hrtimer_timer_base_lock(timer, lock.as_mut_ptr()) };
+    // SAFETY: The helper initialized every field.
+    unsafe { lock.assume_init() }
+}
+
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+/// Releases a timer base lock.
+///
+/// # Safety
+///
+/// `lock` must come from a matching `lock_timer_base()` call on this CPU.
+unsafe fn unlock_timer_base(lock: &BaseLock) {
+    // SAFETY: The context was initialized by the matching lock helper.
+    unsafe { bindings::rust_helper_hrtimer_timer_base_unlock(lock) };
+}
+
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+/// Acquires a CPU timer base lock.
+///
+/// # Safety
+///
+/// `cpu_base` must be initialized and remain live. The caller must not already
+/// hold its lock.
+unsafe fn lock_cpu_base(cpu_base: *mut CpuBase) -> CpuBaseLock {
+    let mut lock = core::mem::MaybeUninit::<CpuBaseLock>::uninit();
+    // SAFETY: The helper initializes the context and returns with the CPU base
+    // lock held.
+    unsafe { bindings::rust_helper_hrtimer_cpu_base_lock(cpu_base, lock.as_mut_ptr()) };
+    // SAFETY: The helper initialized every field.
+    unsafe { lock.assume_init() }
+}
+
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+/// Releases a CPU timer base lock.
+///
+/// # Safety
+///
+/// `lock` must come from a matching `lock_cpu_base()` call on this CPU.
+unsafe fn unlock_cpu_base(lock: &CpuBaseLock) {
+    // SAFETY: The context was initialized by the matching lock helper.
+    unsafe { bindings::rust_helper_hrtimer_cpu_base_unlock(lock) };
+}
+
+#[cfg(all(CONFIG_RUST_HRTIMER_ENTRY, CONFIG_HRTIMER_REARM_DEFERRED))]
+/// Acquires a CPU timer base lock without changing interrupt state.
+///
+/// # Safety
+///
+/// `cpu_base` must be the live current CPU base. The caller must not already
+/// hold its lock or depend on an interrupt enable change.
+unsafe fn lock_cpu_base_noirq(cpu_base: *mut CpuBase) {
+    // SAFETY: The caller guarantees that the current CPU base is live and its
+    // interrupt state remains unchanged.
+    unsafe { bindings::rust_helper_hrtimer_cpu_base_lock_noirq(cpu_base) };
+}
+
+#[cfg(all(CONFIG_RUST_HRTIMER_ENTRY, CONFIG_HRTIMER_REARM_DEFERRED))]
+/// Releases a CPU timer base lock without changing interrupt state.
+///
+/// # Safety
+///
+/// `cpu_base` must identify the base locked by the matching
+/// `lock_cpu_base_noirq()` call.
+unsafe fn unlock_cpu_base_noirq(cpu_base: *mut CpuBase) {
+    // SAFETY: The caller holds the lock acquired by the matching helper.
+    unsafe { bindings::rust_helper_hrtimer_cpu_base_unlock_noirq(cpu_base) };
+}
 
 #[cfg(all(CONFIG_KUNIT, CONFIG_RUST_HRTIMER_SETUP))]
 const SETUP_SOFT: u32 = 1 << 0;
@@ -237,6 +322,92 @@ unsafe extern "C" fn rust_hrtimer_setup(
     }
 }
 
+/// Initializes a timer and installs its callback.
+///
+/// # Safety
+///
+/// `timer` must point to writable storage for an inactive timer.
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+#[export]
+unsafe extern "C" fn hrtimer_setup(
+    timer: *mut Hrtimer,
+    function: Option<unsafe extern "C" fn(*mut Hrtimer) -> bindings::hrtimer_restart>,
+    clock_id: bindings::clockid_t,
+    mode: bindings::hrtimer_mode,
+) {
+    // SAFETY: The caller supplies writable, inactive timer storage.
+    unsafe { bindings::rust_helper_hrtimer_debug_setup(timer, clock_id, mode) };
+    if function.is_none() {
+        // SAFETY: This helper only emits the existing diagnostic.
+        unsafe { bindings::rust_helper_hrtimer_warn_missing_callback() };
+    }
+    // SAFETY: The helper returns the live current-CPU timer base.
+    let cpu_base = unsafe { bindings::rust_helper_hrtimer_this_cpu_base() };
+    // SAFETY: The caller supplies writable, inactive timer storage.
+    unsafe { rust_hrtimer_setup(timer, function, clock_id, mode, cpu_base) };
+}
+
+/// Initializes an on-stack timer and installs its callback.
+///
+/// # Safety
+///
+/// `timer` must point to writable on-stack storage for an inactive timer.
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+#[export]
+unsafe extern "C" fn hrtimer_setup_on_stack(
+    timer: *mut Hrtimer,
+    function: Option<unsafe extern "C" fn(*mut Hrtimer) -> bindings::hrtimer_restart>,
+    clock_id: bindings::clockid_t,
+    mode: bindings::hrtimer_mode,
+) {
+    // SAFETY: The caller supplies writable on-stack timer storage.
+    unsafe { bindings::rust_helper_hrtimer_debug_setup_on_stack(timer, clock_id, mode) };
+    if function.is_none() {
+        // SAFETY: This helper only emits the existing diagnostic.
+        unsafe { bindings::rust_helper_hrtimer_warn_missing_callback() };
+    }
+    // SAFETY: The helper returns the live current-CPU timer base.
+    let cpu_base = unsafe { bindings::rust_helper_hrtimer_this_cpu_base() };
+    // SAFETY: The caller supplies writable, inactive timer storage.
+    unsafe { rust_hrtimer_setup(timer, function, clock_id, mode, cpu_base) };
+}
+
+/// Updates the timer callback when the timer is not queued.
+///
+/// # Safety
+///
+/// `timer` must remain live for the duration of the call.
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+#[export]
+unsafe extern "C" fn hrtimer_update_function(
+    timer: *mut Hrtimer,
+    function: Option<unsafe extern "C" fn(*mut Hrtimer) -> bindings::hrtimer_restart>,
+) {
+    #[cfg(CONFIG_PROVE_LOCKING)]
+    {
+        // SAFETY: The helper acquires the timer's current base lock.
+        let lock = unsafe { lock_timer_base(timer) };
+        // SAFETY: The caller guarantees that the timer remains live and the
+        // base lock is held.
+        let invalid =
+            unsafe { bindings::rust_helper_hrtimer_update_function_check(timer, function) };
+        if !invalid {
+            // SAFETY: The caller guarantees that the timer remains live and
+            // the base lock is held.
+            unsafe { (*timer).function = function };
+        }
+        // SAFETY: The context came from the matching lock helper.
+        unsafe { unlock_timer_base(&lock) };
+    }
+
+    #[cfg(not(CONFIG_PROVE_LOCKING))]
+    // SAFETY: The caller guarantees that the timer remains live and is not
+    // concurrently queued.
+    unsafe {
+        (*timer).function = function
+    };
+}
+
 /// Result of one lockless active-state snapshot.
 #[cfg(CONFIG_RUST_HRTIMER_ACTIVE)]
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -294,6 +465,18 @@ unsafe extern "C" fn rust_hrtimer_active(timer: *const Hrtimer) -> bool {
             return false;
         }
     }
+}
+
+/// Reports whether a timer is queued, running, or being migrated.
+///
+/// # Safety
+///
+/// `timer` must remain live for the duration of the call.
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+#[export]
+unsafe extern "C" fn hrtimer_active(timer: *const Hrtimer) -> bool {
+    // SAFETY: The caller guarantees that the timer remains live.
+    unsafe { rust_hrtimer_active(timer) }
 }
 
 /// Returns the timer queue entry that owns a linked-tree node.
@@ -849,6 +1032,161 @@ unsafe extern "C" fn rust_hrtimer_start_range_ns(
             START_REPROGRAM_NONE
         }
     }
+}
+
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+/// Reprograms the clock event after a timer-base update.
+///
+/// # Safety
+///
+/// `timer` must be initialized and remain live. The caller must hold the
+/// selected timer base lock, and the current CPU base must be live.
+unsafe fn reprogram_timer(timer: *mut Hrtimer, reprogram: bool) {
+    // SAFETY: The caller guarantees that the timer and current CPU base are
+    // live and the selected timer base lock is held.
+    let expires = unsafe { (*timer).node.expires };
+    if expires < 0 {
+        // SAFETY: This helper only emits the existing diagnostic.
+        unsafe { bindings::rust_helper_hrtimer_warn_negative_expiry(expires) };
+    }
+
+    // SAFETY: The helper returns the live current CPU base.
+    let cpu_base = unsafe { bindings::rust_helper_hrtimer_this_cpu_base() };
+    let mut program_device = false;
+    // SAFETY: The caller holds the timer base lock.
+    let expires = unsafe {
+        rust_hrtimer_reprogram(
+            timer,
+            cpu_base,
+            reprogram,
+            ptr::addr_of_mut!(program_device),
+        )
+    };
+    if program_device {
+        // SAFETY: Rust selected a clock event update while the current CPU
+        // base lock was held.
+        unsafe { rust_hrtimer_reprogram_device(cpu_base, expires) };
+    }
+}
+
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+/// Forces a clock event reprogram after a timer-base update.
+///
+/// # Safety
+///
+/// `timer` must be initialized and remain live. The caller must hold the
+/// selected timer base lock.
+unsafe fn force_reprogram_timer(timer: *mut Hrtimer) {
+    // SAFETY: The caller guarantees that the timer is live and its selected
+    // base lock is held.
+    let cpu_base = unsafe { (*(*timer).base).cpu_base };
+    // SAFETY: The caller holds the selected CPU base lock.
+    unsafe { rust_hrtimer_force_reprogram(cpu_base, true) };
+}
+
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+/// Applies the selected timer-start reprogramming action.
+///
+/// # Safety
+///
+/// `timer` must be initialized and remain live. The caller must hold the
+/// selected timer base lock.
+unsafe fn apply_start_action(timer: *mut Hrtimer, action: i32) {
+    match action {
+        START_REPROGRAM => {
+            // SAFETY: The caller holds the selected timer base lock.
+            unsafe { reprogram_timer(timer, true) };
+        }
+        START_REPROGRAM_FORCE => {
+            // SAFETY: The caller holds the selected timer base lock.
+            unsafe { force_reprogram_timer(timer) };
+        }
+        START_REPROGRAM_NONE => {}
+        _ => {}
+    }
+}
+
+/// Starts or restarts an hrtimer.
+///
+/// # Safety
+///
+/// `timer` must remain live for the duration of the call.
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+#[export]
+unsafe extern "C" fn hrtimer_start_range_ns(
+    timer: *mut Hrtimer,
+    tim: bindings::ktime_t,
+    delta_ns: u64,
+    mode: bindings::hrtimer_mode,
+) {
+    // SAFETY: The caller guarantees that the timer remains live.
+    unsafe { bindings::rust_helper_hrtimer_debug_assert_init(timer) };
+    // SAFETY: The helper acquires the timer's current base lock.
+    let mut lock = unsafe { lock_timer_base(timer) };
+    // SAFETY: The caller guarantees that the timer remains live and locked.
+    unsafe { bindings::rust_helper_hrtimer_warn_start_mode(timer, mode) };
+    // SAFETY: The caller guarantees that the timer remains live and locked.
+    let action = unsafe { rust_hrtimer_start_range_ns(timer, tim, delta_ns, mode, lock.base) };
+    // SAFETY: The caller guarantees that the timer remains live.
+    lock.base = unsafe { (*timer).base };
+    // SAFETY: The selected base lock is held after startup.
+    unsafe { apply_start_action(timer, action) };
+    // SAFETY: The context still owns the selected timer base lock.
+    unsafe { unlock_timer_base(&lock) };
+}
+
+/// Starts or restarts a user-controlled hrtimer.
+///
+/// # Safety
+///
+/// `timer` must remain live for the duration of the call.
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+#[export]
+unsafe extern "C" fn hrtimer_start_range_ns_user(
+    timer: *mut Hrtimer,
+    tim: bindings::ktime_t,
+    delta_ns: u64,
+    mode: bindings::hrtimer_mode,
+) -> bool {
+    // SAFETY: The caller guarantees that the timer remains live.
+    unsafe { bindings::rust_helper_hrtimer_debug_assert_init(timer) };
+    // SAFETY: The helper acquires the timer's current base lock.
+    let mut lock = unsafe { lock_timer_base(timer) };
+    // SAFETY: The caller guarantees that the timer remains live and locked.
+    unsafe { bindings::rust_helper_hrtimer_warn_start_mode(timer, mode) };
+    // SAFETY: The caller guarantees that the timer remains live and locked.
+    let action = unsafe { rust_hrtimer_start_range_ns(timer, tim, delta_ns, mode, lock.base) };
+    // SAFETY: The caller guarantees that the timer remains live.
+    lock.base = unsafe { (*timer).base };
+
+    let mut queued = true;
+    match action {
+        START_REPROGRAM => {
+            // SAFETY: The caller holds the selected timer base lock.
+            queued = unsafe { rust_hrtimer_check_user_timer(timer) };
+            if queued {
+                // SAFETY: The caller holds the selected timer base lock.
+                unsafe { reprogram_timer(timer, true) };
+            }
+        }
+        START_REPROGRAM_FORCE => {
+            // SAFETY: The caller holds the selected timer base lock.
+            queued = unsafe { rust_hrtimer_check_user_timer(timer) };
+            // SAFETY: The caller holds the selected timer base lock.
+            unsafe { force_reprogram_timer(timer) };
+        }
+        START_REPROGRAM_NONE => {}
+        _ => {}
+    }
+
+    if !queued {
+        // SAFETY: The caller guarantees that the timer remains live and
+        // locked.
+        unsafe { bindings::rust_helper_hrtimer_trace_start_expired(timer) };
+    }
+    // SAFETY: The context still owns the selected timer base lock.
+    unsafe { unlock_timer_base(&lock) };
+    queued
 }
 
 /// Runs expiry preparation with explicit test inputs.
@@ -1439,8 +1777,14 @@ unsafe fn select_deferred_rearm_expiry(cpu_base: *mut CpuBase) -> bindings::ktim
     if unsafe { (*cpu_base).deferred_needs_update } {
         // SAFETY: The caller holds the CPU base lock.
         unsafe { bindings::rust_helper_hrtimer_interrupt_update_base(cpu_base) };
+        #[cfg(CONFIG_RUST_HRTIMER_UPDATE_NEXT_EVENT)]
         // SAFETY: The caller holds the CPU base lock.
-        unsafe { bindings::rust_helper_hrtimer_interrupt_update_next_event(cpu_base) }
+        let expires = unsafe { rust_hrtimer_update_next_event(cpu_base) };
+        #[cfg(not(CONFIG_RUST_HRTIMER_UPDATE_NEXT_EVENT))]
+        // SAFETY: The caller holds the CPU base lock.
+        let expires =
+            unsafe { bindings::rust_helper_hrtimer_interrupt_update_next_event(cpu_base) };
+        expires
     } else {
         // SAFETY: The caller holds the CPU base lock.
         unsafe { (*cpu_base).deferred_expires_next }
@@ -1535,10 +1879,14 @@ unsafe extern "C" fn rust_hrtimer_interrupt(cpu_base: *mut CpuBase, flags: usize
         }
 
         // SAFETY: Queue execution preserves the CPU base lock protocol.
-        unsafe { bindings::rust_helper_hrtimer_interrupt_run_queues(cpu_base, now, flags) };
+        unsafe { rust_hrtimer_run_queues(cpu_base, now, flags, HRTIMER_ACTIVE_HARD) };
 
         // SAFETY: Queue execution returns with the CPU base lock held.
         now = unsafe { bindings::rust_helper_hrtimer_interrupt_update_base(cpu_base) };
+        #[cfg(CONFIG_RUST_HRTIMER_UPDATE_NEXT_EVENT)]
+        // SAFETY: The caller holds the CPU base lock.
+        let expires_next = unsafe { rust_hrtimer_update_next_event(cpu_base) };
+        #[cfg(not(CONFIG_RUST_HRTIMER_UPDATE_NEXT_EVENT))]
         // SAFETY: The caller holds the CPU base lock.
         let expires_next =
             unsafe { bindings::rust_helper_hrtimer_interrupt_update_next_event(cpu_base) };
@@ -1847,6 +2195,10 @@ unsafe extern "C" fn rust_hrtimer_reprogram_device(
 #[cfg(CONFIG_RUST_HRTIMER_FORCE_REPROGRAM)]
 #[export]
 unsafe extern "C" fn rust_hrtimer_force_reprogram(cpu_base: *mut CpuBase, skip_equal: bool) {
+    #[cfg(CONFIG_RUST_HRTIMER_UPDATE_NEXT_EVENT)]
+    // SAFETY: The caller holds the CPU base lock.
+    let expires_next = unsafe { rust_hrtimer_update_next_event(cpu_base) };
+    #[cfg(not(CONFIG_RUST_HRTIMER_UPDATE_NEXT_EVENT))]
     // SAFETY: The caller holds the CPU base lock.
     let expires_next =
         unsafe { bindings::rust_helper_hrtimer_force_reprogram_next_event(cpu_base) };
@@ -2411,6 +2763,18 @@ unsafe extern "C" fn rust_hrtimer_try_to_cancel(timer: *mut Hrtimer) -> i32 {
     result
 }
 
+/// Attempts to cancel a timer.
+///
+/// # Safety
+///
+/// `timer` must remain live for the duration of the call.
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+#[export]
+unsafe extern "C" fn hrtimer_try_to_cancel(timer: *mut Hrtimer) -> i32 {
+    // SAFETY: The caller guarantees that the timer remains live.
+    unsafe { rust_hrtimer_try_to_cancel(timer) }
+}
+
 /// Advances an inactive timer past a reference time.
 ///
 /// This implements the production overrun and expiry calculation in
@@ -2469,6 +2833,23 @@ unsafe extern "C" fn rust_hrtimer_forward(
     overruns
 }
 
+/// Advances an inactive timer past a reference time.
+///
+/// # Safety
+///
+/// `timer` must be a live timer, and the caller must provide the serialization
+/// required by `hrtimer_forward()`.
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+#[export]
+unsafe extern "C" fn hrtimer_forward(
+    timer: *mut Hrtimer,
+    now: bindings::ktime_t,
+    interval: bindings::ktime_t,
+) -> u64 {
+    // SAFETY: The caller satisfies the forwarding requirements.
+    unsafe { rust_hrtimer_forward(timer, now, interval) }
+}
+
 /// Cancels a timer and waits for a running callback to finish.
 ///
 /// This implements the production retry loop in `hrtimer_cancel()`.
@@ -2480,6 +2861,10 @@ unsafe extern "C" fn rust_hrtimer_forward(
 #[export]
 unsafe extern "C" fn rust_hrtimer_cancel(timer: *mut Hrtimer) -> i32 {
     loop {
+        #[cfg(CONFIG_RUST_HRTIMER_TRY_TO_CANCEL)]
+        // SAFETY: The caller guarantees that the timer remains live.
+        let result = unsafe { rust_hrtimer_try_to_cancel(timer) };
+        #[cfg(not(CONFIG_RUST_HRTIMER_TRY_TO_CANCEL))]
         // SAFETY: The caller guarantees that the timer is live.
         let result = unsafe { bindings::rust_helper_hrtimer_try_to_cancel(timer) };
         if result >= 0 {
@@ -2490,4 +2875,390 @@ unsafe extern "C" fn rust_hrtimer_cancel(timer: *mut Hrtimer) -> i32 {
         // performs the context-specific wait for the running callback.
         unsafe { bindings::rust_helper_hrtimer_cancel_wait_running(timer) };
     }
+}
+
+/// Cancels a timer and waits for a running callback to finish.
+///
+/// # Safety
+///
+/// `timer` must be a live timer for the duration of this call.
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+#[export]
+unsafe extern "C" fn hrtimer_cancel(timer: *mut Hrtimer) -> i32 {
+    // SAFETY: The caller guarantees that the timer remains live.
+    unsafe { rust_hrtimer_cancel(timer) }
+}
+
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+fn callback_time(clock_id: bindings::clockid_t) -> bindings::ktime_t {
+    match clock_id as u32 {
+        // SAFETY: These helpers sample the requested timekeeping clock.
+        bindings::CLOCK_MONOTONIC => unsafe { bindings::ktime_get() },
+        // SAFETY: These helpers sample the requested timekeeping clock.
+        bindings::CLOCK_REALTIME => unsafe { bindings::ktime_get_real() },
+        // SAFETY: These helpers sample the requested timekeeping clock.
+        bindings::CLOCK_BOOTTIME => unsafe { bindings::ktime_get_boottime() },
+        // SAFETY: These helpers sample the requested timekeeping clock.
+        bindings::CLOCK_TAI => unsafe { bindings::ktime_get_clocktai() },
+        _ => {
+            // SAFETY: This helper emits the existing diagnostic.
+            unsafe { bindings::rust_helper_hrtimer_setup_invalid_clockid(clock_id) };
+            // SAFETY: MONOTONIC is the documented fallback clock.
+            unsafe { bindings::ktime_get() }
+        }
+    }
+}
+
+/// Returns the current time for the timer's clock base.
+///
+/// # Safety
+///
+/// `timer` must remain live for the duration of the call.
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+#[export]
+unsafe extern "C" fn hrtimer_cb_get_time(timer: *const Hrtimer) -> bindings::ktime_t {
+    // SAFETY: The caller guarantees that the timer and base remain live.
+    let base = unsafe { (*timer).base };
+    // SAFETY: The caller guarantees that the clock base remains live.
+    let clock_id = unsafe { (*base).clockid };
+    callback_time(clock_id)
+}
+
+/// Returns the remaining time for a timer.
+///
+/// # Safety
+///
+/// `timer` must remain live for the duration of the call.
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+#[export]
+unsafe extern "C" fn __hrtimer_get_remaining(
+    timer: *const Hrtimer,
+    adjust: bool,
+) -> bindings::ktime_t {
+    // SAFETY: The helper acquires the timer's current base lock.
+    let lock = unsafe { lock_timer_base(timer) };
+    // SAFETY: The caller guarantees that the timer remains live and locked.
+    let clock_id = unsafe { (*(*timer).base).clockid };
+    let now = callback_time(clock_id);
+    // SAFETY: The caller guarantees that the timer remains live.
+    let remaining = unsafe { (*timer).node.expires }.wrapping_sub(now);
+    // SAFETY: The caller guarantees that the timer remains live and locked.
+    let remaining = if cfg!(CONFIG_TIME_LOW_RES) && adjust && unsafe { (*timer).is_rel } {
+        // SAFETY: The timekeeping core initializes this read-mostly value.
+        remaining.wrapping_sub(i64::from(unsafe { bindings::hrtimer_resolution }))
+    } else {
+        remaining
+    };
+
+    // SAFETY: The context came from the matching lock helper.
+    unsafe { unlock_timer_base(&lock) };
+    remaining
+}
+
+/// Returns the next local CPU timer expiry for low-resolution mode.
+///
+/// # Safety
+///
+/// The function must run with interrupts disabled on the current CPU.
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+#[export]
+unsafe extern "C" fn hrtimer_get_next_event() -> bindings::ktime_t {
+    // SAFETY: The helper returns the live current-CPU timer base.
+    let cpu_base = unsafe { bindings::rust_helper_hrtimer_this_cpu_base() };
+    // SAFETY: The caller keeps local timer initialization stable.
+    if unsafe { bindings::rust_helper_hrtimer_hres_active(cpu_base) } {
+        return bindings::ktime_t::MAX;
+    }
+
+    // SAFETY: The helper acquires the timer CPU base lock.
+    let lock = unsafe { lock_cpu_base(cpu_base) };
+    // SAFETY: The caller holds the CPU base lock.
+    let expires = unsafe { rust_hrtimer_get_next_event(cpu_base, HRTIMER_ACTIVE_ALL) };
+    // SAFETY: The context came from the matching lock helper.
+    unsafe { unlock_cpu_base(&lock) };
+    expires
+}
+
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+/// Finds the next expiry while excluding one timer.
+///
+/// # Safety
+///
+/// `cpu_base` must be initialized and remain live with its lock held.
+/// `exclude` must point to a live timer in one of its clock bases.
+unsafe fn next_event_without(
+    cpu_base: *mut CpuBase,
+    exclude: *const Hrtimer,
+    active_mask: u32,
+    mut expires_next: bindings::ktime_t,
+) -> bindings::ktime_t {
+    // SAFETY: The caller holds the CPU base lock.
+    let active = unsafe { (*cpu_base).active_bases } & active_mask;
+
+    for index in 0..bindings::hrtimer_base_type_HRTIMER_MAX_CLOCK_BASES as usize {
+        if active & (1_u32 << index) == 0 {
+            continue;
+        }
+
+        // SAFETY: The active bit identifies a live clock base.
+        let base = unsafe { ptr::addr_of_mut!((*cpu_base).clock_base[index]) };
+        // SAFETY: The caller holds the CPU base lock.
+        let mut expires = unsafe { (*base).expires_next }.wrapping_sub(unsafe { (*base).offset });
+        if expires >= expires_next {
+            continue;
+        }
+
+        // SAFETY: The active base contains a nonempty linked timer queue.
+        let mut node = unsafe { (*base).active.rb_root.rb_leftmost };
+        // SAFETY: The caller guarantees that the excluded timer remains live.
+        let exclude_node = unsafe { ptr::addr_of!((*exclude).node) };
+        // SAFETY: A nonempty linked tree has a live leftmost node.
+        let timer_node = unsafe { timer_linked_node(node) };
+        if timer_node.cast_const() == exclude_node {
+            // SAFETY: The leftmost node is live.
+            node = unsafe { (*node).next };
+            if node.is_null() {
+                continue;
+            }
+            // SAFETY: The successor is a live linked timer node.
+            let timer_node = unsafe { timer_linked_node(node) };
+            // SAFETY: The successor belongs to a live timer.
+            expires = unsafe { (*timer_node).expires.wrapping_sub((*base).offset) };
+            if expires >= expires_next {
+                continue;
+            }
+        }
+
+        expires_next = expires;
+    }
+
+    expires_next.max(0)
+}
+
+/// Returns the next local CPU timer expiry while excluding one timer.
+///
+/// # Safety
+///
+/// `exclude` must remain live for the duration of the call.
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+#[export]
+unsafe extern "C" fn hrtimer_next_event_without(exclude: *const Hrtimer) -> bindings::ktime_t {
+    // SAFETY: The helper returns the live current-CPU timer base.
+    let cpu_base = unsafe { bindings::rust_helper_hrtimer_this_cpu_base() };
+    // SAFETY: The helper acquires the timer CPU base lock.
+    let lock = unsafe { lock_cpu_base(cpu_base) };
+    // SAFETY: The caller keeps local timer initialization stable.
+    if !unsafe { bindings::rust_helper_hrtimer_hres_active(cpu_base) } {
+        // SAFETY: The context came from the matching lock helper.
+        unsafe { unlock_cpu_base(&lock) };
+        return bindings::ktime_t::MAX;
+    }
+
+    let mut expires = bindings::ktime_t::MAX;
+    // SAFETY: The caller holds the CPU base lock.
+    let active = unsafe { (*cpu_base).active_bases } & HRTIMER_ACTIVE_SOFT;
+    // SAFETY: The caller holds the CPU base lock.
+    if active != 0 && !unsafe { (*cpu_base).softirq_activated } {
+        // SAFETY: The caller holds the CPU base lock.
+        expires = unsafe { next_event_without(cpu_base, exclude, HRTIMER_ACTIVE_SOFT, expires) };
+    }
+
+    // SAFETY: The caller holds the CPU base lock.
+    let active = unsafe { (*cpu_base).active_bases } & HRTIMER_ACTIVE_HARD;
+    if active != 0 {
+        // SAFETY: The caller holds the CPU base lock.
+        expires = unsafe { next_event_without(cpu_base, exclude, HRTIMER_ACTIVE_HARD, expires) };
+    }
+
+    // SAFETY: The context came from the matching lock helper.
+    unsafe { unlock_cpu_base(&lock) };
+    expires
+}
+
+/// Runs the low-resolution timer queues from the timer tick.
+///
+/// # Safety
+///
+/// The function must run in hard interrupt context on the current CPU.
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+#[export]
+unsafe extern "C" fn hrtimer_run_queues() {
+    // SAFETY: The helper returns the live current-CPU timer base.
+    let cpu_base = unsafe { bindings::rust_helper_hrtimer_this_cpu_base() };
+    // SAFETY: The caller keeps local timer initialization stable.
+    if unsafe { bindings::rust_helper_hrtimer_hres_active(cpu_base) } {
+        return;
+    }
+
+    // SAFETY: The tick callback owns the clock source transition.
+    if unsafe { bindings::rust_helper_hrtimer_try_switch_to_hres() } {
+        return;
+    }
+
+    // SAFETY: The helper acquires the timer CPU base lock.
+    let lock = unsafe { lock_cpu_base(cpu_base) };
+    // SAFETY: The caller holds the CPU base lock.
+    let now = unsafe { bindings::rust_helper_hrtimer_interrupt_update_base(cpu_base) };
+    // SAFETY: The caller holds the CPU base lock.
+    if now >= unsafe { (*cpu_base).softirq_expires_next } {
+        // SAFETY: The caller holds the CPU base lock.
+        unsafe {
+            (*cpu_base).softirq_expires_next = bindings::ktime_t::MAX;
+            (*cpu_base).softirq_activated = true;
+            bindings::rust_helper_hrtimer_interrupt_raise_softirq();
+        }
+    }
+
+    // SAFETY: The caller holds the CPU base lock and runs in interrupt
+    // context.
+    unsafe { rust_hrtimer_run_queues(cpu_base, now, lock.flags, HRTIMER_ACTIVE_HARD) };
+    // SAFETY: The context came from the matching lock helper.
+    unsafe { unlock_cpu_base(&lock) };
+}
+
+/// Handles a high-resolution timer interrupt.
+///
+/// # Safety
+///
+/// `dev` must identify the live clock event device that raised the interrupt.
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+#[export]
+unsafe extern "C" fn hrtimer_interrupt(dev: *mut bindings::clock_event_device) {
+    // SAFETY: The helper returns the live current-CPU timer base.
+    let cpu_base = unsafe { bindings::rust_helper_hrtimer_this_cpu_base() };
+    // SAFETY: The caller keeps local timer initialization stable.
+    if !unsafe { (*cpu_base).hres_active } {
+        // SAFETY: This preserves the original fatal interrupt invariant.
+        unsafe { bindings::BUG() };
+    }
+    // SAFETY: The caller guarantees that the CPU base is live.
+    unsafe { (*cpu_base).nr_events = (*cpu_base).nr_events.wrapping_add(1) };
+    // SAFETY: The helper clears only the opaque clock event device state.
+    unsafe { bindings::rust_helper_hrtimer_interrupt_prepare(dev) };
+    // SAFETY: The helper acquires the timer CPU base lock.
+    let lock = unsafe { lock_cpu_base(cpu_base) };
+    // SAFETY: The helper returned with the CPU base lock held in interrupt
+    // context.
+    unsafe { rust_hrtimer_interrupt(lock.cpu_base, lock.flags) };
+    // SAFETY: The context came from the matching lock helper.
+    unsafe { unlock_cpu_base(&lock) };
+}
+
+/// Consumes a pending deferred clock event rearm.
+///
+/// # Safety
+///
+/// The function must run on the current CPU after its deferred-rearm flag was
+/// published.
+#[cfg(all(CONFIG_RUST_HRTIMER_ENTRY, CONFIG_HRTIMER_REARM_DEFERRED))]
+#[export]
+unsafe extern "C" fn __hrtimer_rearm_deferred() {
+    // SAFETY: The helper returns the live current-CPU timer base.
+    let cpu_base = unsafe { bindings::rust_helper_hrtimer_this_cpu_base() };
+    // SAFETY: The caller guarantees that the current-CPU base is live.
+    if !unsafe { rust_hrtimer_rearm_pending(cpu_base) } {
+        return;
+    }
+
+    // SAFETY: The lock helper preserves the caller's interrupt state.
+    unsafe { lock_cpu_base_noirq(cpu_base) };
+    // SAFETY: The caller holds the CPU base lock.
+    unsafe { rust_hrtimer_rearm_deferred_locked(cpu_base) };
+    // SAFETY: The lock was acquired by the matching helper.
+    unsafe { unlock_cpu_base_noirq(cpu_base) };
+}
+
+/// Initializes an on-stack hrtimer sleeper.
+///
+/// # Safety
+///
+/// `sleeper` must point to writable on-stack storage for an inactive sleeper.
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+#[export]
+unsafe extern "C" fn hrtimer_setup_sleeper_on_stack(
+    sleeper: *mut bindings::hrtimer_sleeper,
+    clock_id: bindings::clockid_t,
+    mode: bindings::hrtimer_mode,
+) {
+    // SAFETY: The caller supplies writable on-stack sleeper storage.
+    let timer = unsafe { ptr::addr_of_mut!((*sleeper).timer) };
+    // SAFETY: The caller supplies writable on-stack sleeper storage.
+    unsafe { bindings::rust_helper_hrtimer_debug_setup_on_stack(timer, clock_id, mode) };
+    let mut mode = mode;
+    let rt_or_dl = if cfg!(CONFIG_PREEMPT_RT) {
+        // SAFETY: This helper only queries the current task policy.
+        unsafe { bindings::rust_helper_hrtimer_rt_or_dl_task_policy() }
+    } else {
+        false
+    };
+    if rt_or_dl && mode & bindings::hrtimer_mode_HRTIMER_MODE_SOFT == 0 {
+        mode |= bindings::hrtimer_mode_HRTIMER_MODE_HARD;
+    }
+    // SAFETY: The helper returns the live current-CPU timer base.
+    let cpu_base = unsafe { bindings::rust_helper_hrtimer_this_cpu_base() };
+    // SAFETY: The helper returns the existing sleeper callback.
+    let function = unsafe { bindings::rust_helper_hrtimer_sleeper_callback() };
+    // SAFETY: The caller supplies writable inactive timer storage.
+    unsafe { rust_hrtimer_setup(timer, function, clock_id, mode, cpu_base) };
+    // SAFETY: The caller supplies writable sleeper storage and the helper
+    // returns the current task.
+    unsafe { (*sleeper).task = bindings::rust_helper_hrtimer_current_task() };
+}
+
+/// Starts an hrtimer sleeper.
+///
+/// # Safety
+///
+/// `sleeper` must remain live for the duration of the call.
+#[cfg(CONFIG_RUST_HRTIMER_ENTRY)]
+#[export]
+unsafe extern "C" fn hrtimer_sleeper_start_expires(
+    sleeper: *mut bindings::hrtimer_sleeper,
+    mode: bindings::hrtimer_mode,
+) {
+    let mut mode = mode;
+    // SAFETY: The caller guarantees that the sleeper remains live.
+    if cfg!(CONFIG_PREEMPT_RT) && unsafe { (*sleeper).timer.is_hard } {
+        mode |= bindings::hrtimer_mode_HRTIMER_MODE_HARD;
+    }
+
+    // SAFETY: The caller guarantees that the sleeper remains live.
+    let timer = unsafe { ptr::addr_of_mut!((*sleeper).timer) };
+    // SAFETY: The caller guarantees that the sleeper remains live.
+    let soft = unsafe { (*timer)._softexpires };
+    // SAFETY: The caller guarantees that the sleeper remains live.
+    let hard = unsafe { (*timer).node.expires };
+    let delta = hard.wrapping_sub(soft) as u64;
+    // SAFETY: The caller guarantees that the sleeper remains live.
+    if !unsafe { hrtimer_start_range_ns_user(timer, soft, delta, mode) } {
+        // SAFETY: The caller guarantees that the sleeper remains live.
+        unsafe { (*sleeper).task = ptr::null_mut() };
+        // SAFETY: This helper updates the current task state.
+        unsafe { bindings::rust_helper_hrtimer_set_current_state(bindings::TASK_RUNNING as isize) };
+    }
+}
+
+/// Releases debug-object state for an on-stack timer.
+///
+/// # Safety
+///
+/// `timer` must identify an initialized on-stack timer that is no longer
+/// active.
+#[cfg(all(CONFIG_RUST_HRTIMER_ENTRY, CONFIG_DEBUG_OBJECTS_TIMERS))]
+#[export]
+unsafe extern "C" fn destroy_hrtimer_on_stack(timer: *mut Hrtimer) {
+    // SAFETY: The caller satisfies the debug-object release contract.
+    unsafe { bindings::rust_helper_hrtimer_debug_free(timer) };
+}
+
+/// Waits for a running timer callback on PREEMPT_RT.
+///
+/// # Safety
+///
+/// `timer` must remain live for the duration of the call.
+#[cfg(all(CONFIG_RUST_HRTIMER_ENTRY, CONFIG_PREEMPT_RT))]
+#[export]
+unsafe extern "C" fn hrtimer_cancel_wait_running(timer: *const Hrtimer) {
+    // SAFETY: The caller guarantees that the timer remains live.
+    unsafe { bindings::rust_helper_hrtimer_cancel_wait_running(timer.cast_mut()) };
 }

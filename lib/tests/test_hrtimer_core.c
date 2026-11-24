@@ -260,10 +260,7 @@ static void hrtimer_core_test_active(struct kunit *test)
 	base = timer.base;
 	raw_spin_lock_irqsave(&base->cpu_base->lock, flags);
 	base->running = &timer;
-	raw_spin_unlock_irqrestore(&base->cpu_base->lock, flags);
 	KUNIT_EXPECT_TRUE(test, hrtimer_active(&timer));
-
-	raw_spin_lock_irqsave(&base->cpu_base->lock, flags);
 	base->running = NULL;
 	raw_spin_unlock_irqrestore(&base->cpu_base->lock, flags);
 	KUNIT_EXPECT_FALSE(test, hrtimer_active(&timer));
@@ -818,10 +815,8 @@ static void hrtimer_core_test_enqueue(struct kunit *test)
 	timerqueue_linked_init_head(&base->active);
 
 	for (i = 0; i < ARRAY_SIZE(state->timers); i++) {
-		hrtimer_setup_on_stack(&state->timers[i],
-				       hrtimer_core_test_callback,
-				       CLOCK_MONOTONIC,
-				       HRTIMER_MODE_ABS_PINNED);
+		hrtimer_setup(&state->timers[i], hrtimer_core_test_callback,
+			      CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED);
 		state->timers[i].base = base;
 	}
 	hrtimer_set_expires(&state->timers[0], ns_to_ktime(200));
@@ -879,8 +874,8 @@ hrtimer_core_test_init_callback(struct hrtimer_core_test_callback *state)
 	base->cpu_base = cpu_base;
 	base->expires_next = ns_to_ktime(KTIME_MAX);
 	timerqueue_linked_init_head(&base->active);
-	hrtimer_setup_on_stack(&state->timer, hrtimer_core_test_callback,
-			       CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED);
+	hrtimer_setup(&state->timer, hrtimer_core_test_callback,
+		      CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED);
 	state->timer.base = base;
 	hrtimer_set_expires(&state->timer, ns_to_ktime(100));
 }
@@ -1004,8 +999,8 @@ static void hrtimer_core_test_base_migration(struct kunit *test)
 	base = &state->this_cpu_base.clock_base[HRTIMER_BASE_MONOTONIC];
 	new_base = &state->new_cpu_base.clock_base[HRTIMER_BASE_MONOTONIC];
 
-	hrtimer_setup_on_stack(&state->timer, hrtimer_core_test_callback,
-			       CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED);
+	hrtimer_setup(&state->timer, hrtimer_core_test_callback,
+		      CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED);
 	hrtimer_set_expires(&state->timer, ns_to_ktime(100));
 	state->timer.base = base;
 	state->new_cpu_base.expires_next = ns_to_ktime(50);
@@ -1085,8 +1080,8 @@ static void hrtimer_core_test_keep_base(struct kunit *test)
 	base = &state->cpu_base.clock_base[HRTIMER_BASE_MONOTONIC];
 	base->cpu_base = &state->cpu_base;
 
-	hrtimer_setup_on_stack(&state->timer, hrtimer_core_test_callback,
-			       CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
+	hrtimer_setup(&state->timer, hrtimer_core_test_callback,
+		      CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
 	state->timer.base = base;
 
 	base->running = &state->timer;
@@ -1159,9 +1154,8 @@ static void hrtimer_core_test_run_queues(struct kunit *test)
 	timerqueue_linked_init_head(&base->active);
 
 	for (i = 0; i < ARRAY_SIZE(state->timers); i++) {
-		hrtimer_setup_on_stack(&state->timers[i],
-				       hrtimer_core_test_callback,
-				       CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
+		hrtimer_setup(&state->timers[i], hrtimer_core_test_callback,
+			      CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
 		state->timers[i].base = base;
 	}
 	hrtimer_set_expires(&state->timers[0], ns_to_ktime(200));
@@ -1303,10 +1297,10 @@ static void hrtimer_core_test_interrupt(struct kunit *test)
 	state = kunit_kzalloc(test, sizeof(*state), GFP_KERNEL);
 	KUNIT_ASSERT_NOT_NULL(test, state);
 	init_completion(&state->completion);
-	hrtimer_setup_on_stack(&state->first, hrtimer_core_test_interrupt_first,
-			       CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED);
-	hrtimer_setup_on_stack(&state->second, hrtimer_core_test_interrupt_second,
-			       CLOCK_BOOTTIME, HRTIMER_MODE_ABS_PINNED);
+	hrtimer_setup(&state->first, hrtimer_core_test_interrupt_first,
+		      CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED);
+	hrtimer_setup(&state->second, hrtimer_core_test_interrupt_second,
+		      CLOCK_BOOTTIME, HRTIMER_MODE_ABS_PINNED);
 
 	get_cpu();
 	cpu = smp_processor_id();
@@ -1392,8 +1386,8 @@ static void hrtimer_core_test_start(struct kunit *test)
 
 	state = kunit_kzalloc(test, sizeof(*state), GFP_KERNEL);
 	KUNIT_ASSERT_NOT_NULL(test, state);
-	hrtimer_setup_on_stack(&state->timer, hrtimer_core_test_callback,
-			       CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
+	hrtimer_setup(&state->timer, hrtimer_core_test_callback,
+		      CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
 
 	KUNIT_EXPECT_EQ(test,
 			rust_hrtimer_prepare_expiry(&state->timer, ns_to_ktime(50),

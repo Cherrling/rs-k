@@ -12,6 +12,59 @@
 
 struct hrtimer_clock_base;
 struct hrtimer_cpu_base;
+struct clock_event_device;
+struct hrtimer_sleeper;
+struct task_struct;
+
+#ifdef CONFIG_RUST_HRTIMER_ENTRY
+
+struct hrtimer_base_lock {
+	struct hrtimer_clock_base	*base;
+	unsigned long			flags;
+};
+
+struct hrtimer_cpu_base_lock {
+	struct hrtimer_cpu_base		*cpu_base;
+	unsigned long			flags;
+};
+
+void rust_helper_hrtimer_debug_setup(struct hrtimer *timer,
+				     clockid_t clock_id, unsigned int mode);
+void rust_helper_hrtimer_debug_setup_on_stack(struct hrtimer *timer,
+					      clockid_t clock_id,
+					      unsigned int mode);
+void rust_helper_hrtimer_debug_assert_init(const struct hrtimer *timer);
+void rust_helper_hrtimer_debug_free(struct hrtimer *timer);
+void rust_helper_hrtimer_warn_missing_callback(void);
+void rust_helper_hrtimer_warn_start_mode(struct hrtimer *timer,
+					 unsigned int mode);
+bool rust_helper_hrtimer_update_function_check(struct hrtimer *timer,
+					       enum hrtimer_restart (*function)(struct hrtimer *));
+void rust_helper_hrtimer_warn_negative_expiry(ktime_t expires);
+void rust_helper_hrtimer_trace_start_expired(struct hrtimer *timer);
+
+void rust_helper_hrtimer_timer_base_lock(const struct hrtimer *timer,
+					 struct hrtimer_base_lock *lock);
+void rust_helper_hrtimer_timer_base_unlock(const struct hrtimer_base_lock *lock);
+void rust_helper_hrtimer_cpu_base_lock(struct hrtimer_cpu_base *cpu_base,
+				       struct hrtimer_cpu_base_lock *lock);
+void rust_helper_hrtimer_cpu_base_unlock(const struct hrtimer_cpu_base_lock *lock);
+#ifdef CONFIG_HRTIMER_REARM_DEFERRED
+void rust_helper_hrtimer_cpu_base_lock_noirq(struct hrtimer_cpu_base *cpu_base);
+void rust_helper_hrtimer_cpu_base_unlock_noirq(struct hrtimer_cpu_base *cpu_base);
+#endif
+
+bool rust_helper_hrtimer_hres_active(struct hrtimer_cpu_base *cpu_base);
+bool rust_helper_hrtimer_try_switch_to_hres(void);
+
+struct task_struct *rust_helper_hrtimer_current_task(void);
+bool rust_helper_hrtimer_rt_or_dl_task_policy(void);
+void rust_helper_hrtimer_set_current_state(long state);
+enum hrtimer_restart (*rust_helper_hrtimer_sleeper_callback(void))(struct hrtimer *);
+
+void rust_helper_hrtimer_interrupt_prepare(struct clock_event_device *dev);
+
+#endif /* CONFIG_RUST_HRTIMER_ENTRY */
 
 #ifdef CONFIG_RUST_HRTIMER
 
@@ -223,7 +276,8 @@ bool rust_hrtimer_user_expiry_select(ktime_t soft_expires, ktime_t offset,
 
 #endif /* CONFIG_RUST_HRTIMER_USER_EXPIRY */
 
-#if defined(CONFIG_RUST_HRTIMER_BASE_MIGRATION) || \
+#if defined(CONFIG_RUST_HRTIMER_ENTRY) || \
+	defined(CONFIG_RUST_HRTIMER_BASE_MIGRATION) || \
 	defined(CONFIG_RUST_HRTIMER_START)
 
 struct hrtimer_cpu_base *rust_helper_hrtimer_this_cpu_base(void);

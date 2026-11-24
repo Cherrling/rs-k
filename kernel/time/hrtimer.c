@@ -91,7 +91,9 @@
 #define HRTIMER_ACTIVE_ALL	(HRTIMER_ACTIVE_SOFT | HRTIMER_ACTIVE_HARD)
 
 static void retrigger_next_event(void *arg);
+#ifndef CONFIG_RUST_HRTIMER_ENTRY
 static ktime_t __hrtimer_cb_get_time(clockid_t clock_id);
+#endif
 
 /*
  * The timer bases:
@@ -518,11 +520,13 @@ static inline void debug_hrtimer_assert_init(struct hrtimer *timer)
 	debug_object_assert_init(timer, &hrtimer_debug_descr);
 }
 
+#ifndef CONFIG_RUST_HRTIMER_ENTRY
 void destroy_hrtimer_on_stack(struct hrtimer *timer)
 {
 	debug_object_free(timer, &hrtimer_debug_descr);
 }
 EXPORT_SYMBOL_GPL(destroy_hrtimer_on_stack);
+#endif
 
 #else
 
@@ -551,6 +555,70 @@ static inline void debug_activate(struct hrtimer *timer, enum hrtimer_mode mode,
 	debug_hrtimer_activate(timer, mode);
 	trace_hrtimer_start(timer, mode, was_armed);
 }
+
+#ifdef CONFIG_RUST_HRTIMER_ENTRY
+void rust_helper_hrtimer_debug_setup(struct hrtimer *timer,
+				     clockid_t clock_id, unsigned int mode)
+{
+	debug_setup(timer, clock_id, (enum hrtimer_mode)mode);
+}
+
+void rust_helper_hrtimer_debug_setup_on_stack(struct hrtimer *timer,
+					      clockid_t clock_id,
+					      unsigned int mode)
+{
+	debug_setup_on_stack(timer, clock_id, (enum hrtimer_mode)mode);
+}
+
+void rust_helper_hrtimer_debug_assert_init(const struct hrtimer *timer)
+{
+	debug_hrtimer_assert_init((struct hrtimer *)timer);
+}
+
+#ifdef CONFIG_DEBUG_OBJECTS_TIMERS
+void rust_helper_hrtimer_debug_free(struct hrtimer *timer)
+{
+	debug_object_free(timer, &hrtimer_debug_descr);
+}
+#endif
+
+void rust_helper_hrtimer_warn_missing_callback(void)
+{
+	WARN_ON_ONCE(1);
+}
+
+void rust_helper_hrtimer_warn_start_mode(struct hrtimer *timer,
+					 unsigned int mode)
+{
+	if (!IS_ENABLED(CONFIG_PREEMPT_RT))
+		WARN_ON_ONCE(!(mode & HRTIMER_MODE_SOFT) ^ !timer->is_soft);
+	else
+		WARN_ON_ONCE(!(mode & HRTIMER_MODE_HARD) ^ !timer->is_hard);
+}
+
+bool rust_helper_hrtimer_update_function_check(struct hrtimer *timer,
+					       enum hrtimer_restart (*function)(struct hrtimer *))
+{
+#ifdef CONFIG_PROVE_LOCKING
+	if (WARN_ON_ONCE(hrtimer_is_queued(timer)))
+		return true;
+
+	if (WARN_ON_ONCE(!function))
+		return true;
+#endif
+	return false;
+}
+
+void rust_helper_hrtimer_warn_negative_expiry(ktime_t expires)
+{
+	WARN_ON_ONCE(expires < 0);
+}
+
+void rust_helper_hrtimer_trace_start_expired(struct hrtimer *timer)
+{
+	trace_hrtimer_start_expired(timer);
+}
+#endif
 
 #ifdef CONFIG_RUST_HRTIMER
 void rust_helper_hrtimer_debug_deactivate(struct hrtimer *timer)
@@ -676,12 +744,50 @@ void rust_helper_hrtimer_remote_reprogram(struct hrtimer_cpu_base *cpu_base)
 }
 #endif
 
-#if defined(CONFIG_RUST_HRTIMER_BASE_MIGRATION) || \
+#if defined(CONFIG_RUST_HRTIMER_ENTRY) || \
+	defined(CONFIG_RUST_HRTIMER_BASE_MIGRATION) || \
 	defined(CONFIG_RUST_HRTIMER_START)
 struct hrtimer_cpu_base *rust_helper_hrtimer_this_cpu_base(void)
 {
 	return this_cpu_ptr(&hrtimer_bases);
 }
+#endif
+
+#ifdef CONFIG_RUST_HRTIMER_ENTRY
+void rust_helper_hrtimer_timer_base_lock(const struct hrtimer *timer,
+					 struct hrtimer_base_lock *lock)
+{
+	lock->base = lock_hrtimer_base(timer, &lock->flags);
+}
+
+void rust_helper_hrtimer_timer_base_unlock(const struct hrtimer_base_lock *lock)
+{
+	raw_spin_unlock_irqrestore(&lock->base->cpu_base->lock, lock->flags);
+}
+
+void rust_helper_hrtimer_cpu_base_lock(struct hrtimer_cpu_base *cpu_base,
+				       struct hrtimer_cpu_base_lock *lock)
+{
+	lock->cpu_base = cpu_base;
+	raw_spin_lock_irqsave(&cpu_base->lock, lock->flags);
+}
+
+void rust_helper_hrtimer_cpu_base_unlock(const struct hrtimer_cpu_base_lock *lock)
+{
+	raw_spin_unlock_irqrestore(&lock->cpu_base->lock, lock->flags);
+}
+
+#ifdef CONFIG_HRTIMER_REARM_DEFERRED
+void rust_helper_hrtimer_cpu_base_lock_noirq(struct hrtimer_cpu_base *cpu_base)
+{
+	raw_spin_lock(&cpu_base->lock);
+}
+
+void rust_helper_hrtimer_cpu_base_unlock_noirq(struct hrtimer_cpu_base *cpu_base)
+{
+	raw_spin_unlock(&cpu_base->lock);
+}
+#endif
 #endif
 
 #ifdef CONFIG_RUST_HRTIMER_BASE_MIGRATION
@@ -766,10 +872,12 @@ int rust_helper_hrtimer_try_to_cancel(struct hrtimer *timer)
 	return hrtimer_try_to_cancel(timer);
 }
 
+#ifndef CONFIG_RUST_HRTIMER_ENTRY
 void rust_helper_hrtimer_cancel_wait_running(struct hrtimer *timer)
 {
 	hrtimer_cancel_wait_running(timer);
 }
+#endif
 #endif
 
 #ifdef CONFIG_RUST_HRTIMER_FORWARD
@@ -802,6 +910,7 @@ void rust_helper_hrtimer_forward_add(struct hrtimer *timer, ktime_t delta)
 #define hrtimer_from_timerqueue_node(_n) container_of_const(_n, struct hrtimer, node)
 
 #if defined(CONFIG_NO_HZ_COMMON)
+#ifndef CONFIG_RUST_HRTIMER_ENTRY
 /*
  * Same as hrtimer_bases_next_event() below, but skips the excluded timer and
  * does not update cpu_base->next_timer/expires.
@@ -839,6 +948,7 @@ static ktime_t hrtimer_bases_next_event_without(struct hrtimer_cpu_base *cpu_bas
 	/* If base->offset changed, the result might be negative */
 	return max(expires_next, 0);
 }
+#endif
 #endif
 
 static __always_inline struct hrtimer *clock_base_next_timer(struct hrtimer_clock_base *base)
@@ -1094,6 +1204,22 @@ static inline bool hrtimer_is_hres_enabled(void) { return 0; }
 static inline void hrtimer_switch_to_hres(void) { }
 
 #endif /* CONFIG_HIGH_RES_TIMERS */
+
+#ifdef CONFIG_RUST_HRTIMER_ENTRY
+bool rust_helper_hrtimer_hres_active(struct hrtimer_cpu_base *cpu_base)
+{
+	return hrtimer_hres_active(cpu_base);
+}
+
+bool rust_helper_hrtimer_try_switch_to_hres(void)
+{
+	if (!tick_check_oneshot_change(!hrtimer_is_hres_enabled()))
+		return false;
+
+	hrtimer_switch_to_hres();
+	return true;
+}
+#endif
 
 /*
  * Retrigger next event is called after clock was set with interrupts
@@ -1368,6 +1494,7 @@ static inline void unlock_hrtimer_base(const struct hrtimer *timer, unsigned lon
  * Only safe to call if the timer is not enqueued. Can be called in the callback function if the
  * timer is not enqueued at the same time (see the comments above HRTIMER_STATE_ENQUEUED).
  */
+#ifndef CONFIG_RUST_HRTIMER_ENTRY
 void hrtimer_update_function(struct hrtimer *timer,
 			     enum hrtimer_restart (*function)(struct hrtimer *))
 {
@@ -1383,6 +1510,7 @@ void hrtimer_update_function(struct hrtimer *timer,
 	ACCESS_PRIVATE(timer, function) = function;
 }
 EXPORT_SYMBOL_GPL(hrtimer_update_function);
+#endif
 
 /**
  * hrtimer_forward() - forward the timer expiry
@@ -1403,6 +1531,7 @@ EXPORT_SYMBOL_GPL(hrtimer_update_function);
  *
  * Return: The number of overruns are returned.
  */
+#ifndef CONFIG_RUST_HRTIMER_ENTRY
 u64 hrtimer_forward(struct hrtimer *timer, ktime_t now, ktime_t interval)
 {
 #ifdef CONFIG_RUST_HRTIMER_FORWARD
@@ -1441,6 +1570,7 @@ u64 hrtimer_forward(struct hrtimer *timer, ktime_t now, ktime_t interval)
 #endif
 }
 EXPORT_SYMBOL_GPL(hrtimer_forward);
+#endif
 
 /*
  * enqueue_hrtimer - internal function to (re)start a timer
@@ -1864,6 +1994,7 @@ static int __hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim, u64 delt
 }
 #endif
 
+#ifndef CONFIG_RUST_HRTIMER_ENTRY
 static int hrtimer_start_range_ns_common(struct hrtimer *timer, ktime_t tim,
 					 u64 delta_ns, const enum hrtimer_mode mode,
 					 struct hrtimer_clock_base *base)
@@ -2012,6 +2143,7 @@ bool hrtimer_start_range_ns_user(struct hrtimer *timer, ktime_t tim,
 	return ret;
 }
 EXPORT_SYMBOL_GPL(hrtimer_start_range_ns_user);
+#endif
 
 /**
  * hrtimer_try_to_cancel - try to deactivate a timer
@@ -2024,6 +2156,7 @@ EXPORT_SYMBOL_GPL(hrtimer_start_range_ns_user);
  *  * -1 when the timer is currently executing the callback function and
  *    cannot be stopped
  */
+#ifndef CONFIG_RUST_HRTIMER_ENTRY
 int hrtimer_try_to_cancel(struct hrtimer *timer)
 {
 #ifdef CONFIG_RUST_HRTIMER_TRY_TO_CANCEL
@@ -2062,6 +2195,7 @@ int hrtimer_try_to_cancel(struct hrtimer *timer)
 #endif
 }
 EXPORT_SYMBOL_GPL(hrtimer_try_to_cancel);
+#endif
 
 #ifdef CONFIG_PREEMPT_RT
 static void hrtimer_cpu_base_init_expiry_lock(struct hrtimer_cpu_base *base)
@@ -2126,6 +2260,7 @@ static __always_inline bool is_migration_base(struct hrtimer_clock_base *base)
  *    handler on the same CPU, then spin waiting for the timer handler to
  *    complete is never going to end.
  */
+#ifndef CONFIG_RUST_HRTIMER_ENTRY
 void hrtimer_cancel_wait_running(const struct hrtimer *timer)
 {
 	/* Lockless read. Prevent the compiler from reloading it below */
@@ -2152,11 +2287,33 @@ void hrtimer_cancel_wait_running(const struct hrtimer *timer)
 	atomic_dec(&base->cpu_base->timer_waiters);
 	spin_unlock_bh(&base->cpu_base->softirq_expiry_lock);
 }
+#endif
 #else
 static inline void hrtimer_cpu_base_init_expiry_lock(struct hrtimer_cpu_base *base) { }
 static inline void hrtimer_cpu_base_lock_expiry(struct hrtimer_cpu_base *base) { }
 static inline void hrtimer_cpu_base_unlock_expiry(struct hrtimer_cpu_base *base) { }
 static inline void hrtimer_sync_wait_running(struct hrtimer_cpu_base *base, unsigned long fl) { }
+#endif
+
+#ifdef CONFIG_RUST_HRTIMER_ENTRY
+void rust_helper_hrtimer_cancel_wait_running(struct hrtimer *timer)
+{
+#ifdef CONFIG_PREEMPT_RT
+	struct hrtimer_clock_base *base = READ_ONCE(timer->base);
+
+	if (!timer->is_soft || is_migration_base(base)) {
+		cpu_relax();
+		return;
+	}
+
+	atomic_inc(&base->cpu_base->timer_waiters);
+	spin_lock_bh(&base->cpu_base->softirq_expiry_lock);
+	atomic_dec(&base->cpu_base->timer_waiters);
+	spin_unlock_bh(&base->cpu_base->softirq_expiry_lock);
+#else
+	cpu_relax();
+#endif
+}
 #endif
 
 /**
@@ -2167,6 +2324,7 @@ static inline void hrtimer_sync_wait_running(struct hrtimer_cpu_base *base, unsi
  *  0 when the timer was not active
  *  1 when the timer was active
  */
+#ifndef CONFIG_RUST_HRTIMER_ENTRY
 int hrtimer_cancel(struct hrtimer *timer)
 {
 #ifdef CONFIG_RUST_HRTIMER_CANCEL_WAIT
@@ -2184,12 +2342,14 @@ int hrtimer_cancel(struct hrtimer *timer)
 #endif
 }
 EXPORT_SYMBOL_GPL(hrtimer_cancel);
+#endif
 
 /**
  * __hrtimer_get_remaining - get remaining time for the timer
  * @timer:	the timer to read
  * @adjust:	adjust relative timers when CONFIG_TIME_LOW_RES=y
  */
+#ifndef CONFIG_RUST_HRTIMER_ENTRY
 ktime_t __hrtimer_get_remaining(const struct hrtimer *timer, bool adjust)
 {
 	unsigned long flags;
@@ -2301,7 +2461,9 @@ ktime_t hrtimer_cb_get_time(const struct hrtimer *timer)
 	return __hrtimer_cb_get_time(timer->base->clockid);
 }
 EXPORT_SYMBOL_GPL(hrtimer_cb_get_time);
+#endif
 
+#ifndef CONFIG_RUST_HRTIMER_ENTRY
 static void __hrtimer_setup(struct hrtimer *timer, enum hrtimer_restart (*fn)(struct hrtimer *),
 			    clockid_t clock_id, enum hrtimer_mode mode)
 {
@@ -2349,6 +2511,7 @@ static void __hrtimer_setup(struct hrtimer *timer, enum hrtimer_restart (*fn)(st
 		ACCESS_PRIVATE(timer, function) = fn;
 #endif
 }
+#endif
 
 #ifdef CONFIG_RUST_HRTIMER_SETUP
 void rust_helper_hrtimer_setup_invalid_clockid(clockid_t clock_id)
@@ -2370,6 +2533,7 @@ void rust_helper_hrtimer_setup_invalid_clockid(clockid_t clock_id)
  *              but the PINNED bit is ignored as pinning happens
  *              when the hrtimer is started
  */
+#ifndef CONFIG_RUST_HRTIMER_ENTRY
 void hrtimer_setup(struct hrtimer *timer, enum hrtimer_restart (*function)(struct hrtimer *),
 		   clockid_t clock_id, enum hrtimer_mode mode)
 {
@@ -2396,6 +2560,7 @@ void hrtimer_setup_on_stack(struct hrtimer *timer,
 	__hrtimer_setup(timer, function, clock_id, mode);
 }
 EXPORT_SYMBOL_GPL(hrtimer_setup_on_stack);
+#endif
 
 /*
  * A timer is active, when it is enqueued into the rbtree or the
@@ -2426,6 +2591,7 @@ bool rust_helper_hrtimer_active_retry(const struct hrtimer *timer,
 }
 #endif
 
+#ifndef CONFIG_RUST_HRTIMER_ENTRY
 bool hrtimer_active(const struct hrtimer *timer)
 {
 #ifdef CONFIG_RUST_HRTIMER_ACTIVE
@@ -2447,6 +2613,7 @@ bool hrtimer_active(const struct hrtimer *timer)
 #endif
 }
 EXPORT_SYMBOL_GPL(hrtimer_active);
+#endif
 
 /*
  * The write_seqcount_barrier()s in __run_hrtimer() split the thing into 3
@@ -2685,6 +2852,7 @@ static void hrtimer_rearm(struct hrtimer_cpu_base *cpu_base, ktime_t expires_nex
 #endif
 
 #ifdef CONFIG_HRTIMER_REARM_DEFERRED
+#ifndef CONFIG_RUST_HRTIMER_ENTRY
 void __hrtimer_rearm_deferred(void)
 {
 	struct hrtimer_cpu_base *cpu_base = this_cpu_ptr(&hrtimer_bases);
@@ -2713,6 +2881,7 @@ void __hrtimer_rearm_deferred(void)
 	hrtimer_rearm(cpu_base, expires_next, true);
 #endif
 }
+#endif
 
 #ifndef CONFIG_RUST_HRTIMER_INTERRUPT
 static __always_inline void
@@ -2727,10 +2896,19 @@ hrtimer_interrupt_rearm(struct hrtimer_cpu_base *cpu_base, ktime_t expires_next)
 #endif
 #endif /* CONFIG_HRTIMER_REARM_DEFERRED */
 
+#ifdef CONFIG_RUST_HRTIMER_ENTRY
+void rust_helper_hrtimer_interrupt_prepare(struct clock_event_device *dev)
+{
+	dev->next_event = KTIME_MAX;
+	dev->next_event_forced = 0;
+}
+#endif
+
 /*
  * High resolution timer interrupt
  * Called with interrupts disabled
  */
+#ifndef CONFIG_RUST_HRTIMER_ENTRY
 void hrtimer_interrupt(struct clock_event_device *dev)
 {
 	struct hrtimer_cpu_base *cpu_base = this_cpu_ptr(&hrtimer_bases);
@@ -2797,6 +2975,7 @@ retry:
 #endif
 	raw_spin_unlock_irqrestore(&cpu_base->lock, flags);
 }
+#endif
 
 #if defined(CONFIG_RUST_HRTIMER_INTERRUPT) && defined(CONFIG_KUNIT)
 unsigned int rust_hrtimer_interrupt_test_retries(unsigned int cpu)
@@ -2810,6 +2989,7 @@ unsigned int rust_hrtimer_interrupt_test_retries(unsigned int cpu)
 /*
  * Called from run_local_timers in hardirq context every jiffy
  */
+#ifndef CONFIG_RUST_HRTIMER_ENTRY
 void hrtimer_run_queues(void)
 {
 	struct hrtimer_cpu_base *cpu_base = this_cpu_ptr(&hrtimer_bases);
@@ -2843,6 +3023,7 @@ void hrtimer_run_queues(void)
 	__hrtimer_run_queues(cpu_base, now, flags, HRTIMER_ACTIVE_HARD);
 	raw_spin_unlock_irqrestore(&cpu_base->lock, flags);
 }
+#endif
 
 /*
  * Sleep related functions:
@@ -2859,6 +3040,28 @@ static enum hrtimer_restart hrtimer_wakeup(struct hrtimer *timer)
 	return HRTIMER_NORESTART;
 }
 
+#ifdef CONFIG_RUST_HRTIMER_ENTRY
+enum hrtimer_restart (*rust_helper_hrtimer_sleeper_callback(void))(struct hrtimer *)
+{
+	return hrtimer_wakeup;
+}
+
+struct task_struct *rust_helper_hrtimer_current_task(void)
+{
+	return current;
+}
+
+bool rust_helper_hrtimer_rt_or_dl_task_policy(void)
+{
+	return rt_or_dl_task_policy(current);
+}
+
+void rust_helper_hrtimer_set_current_state(long state)
+{
+	__set_current_state(state);
+}
+#endif
+
 /**
  * hrtimer_sleeper_start_expires - Start a hrtimer sleeper timer
  * @sl:		sleeper to be started
@@ -2867,6 +3070,7 @@ static enum hrtimer_restart hrtimer_wakeup(struct hrtimer *timer)
  * Wrapper around hrtimer_start_expires() for hrtimer_sleeper based timers
  * to allow PREEMPT_RT to tweak the delivery mode (soft/hardirq context)
  */
+#ifndef CONFIG_RUST_HRTIMER_ENTRY
 void hrtimer_sleeper_start_expires(struct hrtimer_sleeper *sl, enum hrtimer_mode mode)
 {
 	/*
@@ -2931,6 +3135,7 @@ void hrtimer_setup_sleeper_on_stack(struct hrtimer_sleeper *sl, clockid_t clock_
 	__hrtimer_setup_sleeper(sl, clock_id, mode);
 }
 EXPORT_SYMBOL_GPL(hrtimer_setup_sleeper_on_stack);
+#endif
 
 int nanosleep_copyout(struct restart_block *restart, struct timespec64 *ts)
 {
