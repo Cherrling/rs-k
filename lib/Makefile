@@ -49,6 +49,7 @@ lib-$(CONFIG_MIN_HEAP) += min_heap.o
 
 lib-y	+= kobject.o klist.o
 obj-y	+= lockref.o kref.o
+obj-$(CONFIG_RUST_RCUWAIT) += rcuwait.o
 
 CONTEXT_ANALYSIS_rhashtable.o := y
 

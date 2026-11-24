@@ -10,9 +10,10 @@ The ``CONFIG_RUST_RCUWAIT`` option selects native Rust for the production
 ``rcuwait`` single-task wait state machine. The public API, object layout, and
 export classes remain unchanged.
 
-Rust owns wait object initialization, task publication, waiter activity
-queries, task-state transitions, condition and signal decisions, timeout
-accounting, scheduling selection, completion cleanup, and wake ordering.
+Rust directly defines the public initialization, activity, publication,
+completion, and wake entry points. Rust owns task-state transitions, condition
+and signal decisions, timeout accounting, scheduling selection, and wake
+ordering.
 
 The complete C implementation remains available when the option is disabled.
 
@@ -21,8 +22,11 @@ Ownership
 
 Rust owns:
 
+* The public ``rcuwait_init()``, ``rcuwait_active()``,
+  ``prepare_to_rcuwait()``, ``finish_rcuwait()``, and
+  ``rcuwait_wake_up()`` entry points.
 * Initializing and querying the RCU-protected waiter pointer.
-* Publishing the current task before the first condition evaluation.
+* Publishing and completing the current task around the wait.
 * Setting the requested task state before each condition evaluation.
 * Waiting after a false condition and resuming after a true condition.
 * Completing a finite wait from the first condition evaluation.
@@ -32,6 +36,10 @@ Rust owns:
 * Selecting normal scheduling or timeout scheduling.
 * Clearing the waiter and restoring ``TASK_RUNNING``.
 * Ordering the wake condition before the waiter pointer load.
+
+The three ``rust_rcuwait_wait_*()`` helpers implement the state machine used
+by the public wait macros. They remain internal GPL exports because the macros
+expand in callers, including loadable modules.
 
 C helpers retain:
 
@@ -45,6 +53,11 @@ C helpers retain:
 The C wait macros retain only the loop needed to expand and evaluate the
 caller-provided C condition after Rust sets the task state. They do not choose
 whether to wait, retire a timeout, accept a signal, or schedule a task.
+
+The native ``kernel/exit.o`` and ``kernel/rcu/update.o`` objects retain the
+GPL export metadata for wake and completion. The native ``lib/rcuwait.o``
+object retains ordinary export metadata for initialization, activity, and
+publication. Neither object contains the corresponding function body.
 
 Important invariants
 --------------------
@@ -91,39 +104,44 @@ The unit must pass these checks before integration:
 Validation results
 ------------------
 
-All builds used isolated output directories and the Clang LLVM toolchain.
-Fifteen x86_64 boots covered the production matrix. Native Rust ran once on
-SMP1 and twice on SMP4. Rust fallback and C-only each ran on SMP1 and SMP4.
-KASAN ran on SMP1 and SMP4. Lockdep ran once on SMP1 and twice on SMP4.
-PREEMPT_RT ran once on SMP1 and twice on SMP4. Every boot reported
-``rcuwait: pass:8 fail:0 skip:0 total:8``.
+Validation on 2026-11-24 used base commit ``b976f1f3f6e8``. Six x86_64
+configurations were built: native Rust, Rust fallback, C-only, generic inline
+KASAN, lockdep, and PREEMPT_RT. Native used one SMP1 boot and three SMP4 boots.
+PREEMPT_RT used five SMP1 boots and three SMP4 boots. Every other
+configuration used one SMP1 boot and one SMP4 boot. All 20 final boots passed
+8 of 8 cases.
 
-The KASAN boots initialized generic KernelAddressSanitizer. The lockdep boots
-initialized the lock dependency validator. A scan of all final boot logs found
-no failing KUnit case, BUG, WARNING, Oops, panic, RCU stall, KASAN report, or
-lockdep report.
+The first PREEMPT_RT validation exposed a test-worker lifetime race. A worker
+published its result and returned before the KUnit thread called
+``kthread_stop()``, which allowed the task to be reclaimed first. The test
+workers now wait for the stop request after publishing their result. Five
+consecutive SMP1 runs and three SMP4 runs passed after this test fix.
 
-The validated KASAN configuration used ``CONFIG_FRAME_WARN=8192``. The first
-attempt with the generic value of 2048 stopped on a 2072-byte stack frame in
-``vfs_coredump()`` before this unit ran. The completed KASAN build emitted one
-unrelated objtool warning for ``rust_maple_tree_store_complex()``. No rcuwait
-diagnostic appeared in any build.
+The final logs contained no ``BUG``, warning, Oops, kernel panic, KASAN report,
+lockdep complaint, or RCU stall.
 
-Four additional SMP4 boots ran the focused regression suite. ``swait`` passed
-5 cases, ``completion`` passed 6, ``mm_lifetime`` passed 6, and ``task_work``
-passed 6. All four suites reported zero failures and zero skips.
+The native SMP4 image also passed four adjacent suites: ``swait`` with five
+cases, ``completion`` with six, ``mm_lifetime`` with six, and ``task_work``
+with six. All 23 cases passed.
 
-The native, KASAN, lockdep, and PREEMPT_RT ``vmlinux`` files contained all
-eight ``rust_rcuwait_*`` entry points. The Rust fallback and C-only files
-contained none. Object relocations showed production calls to
-``rust_rcuwait_wake_up()`` from ``kernel/exit.o`` and
-``rust_rcuwait_finish()`` from ``kernel/rcu/update.o``.
+In native, KASAN, lockdep, and PREEMPT_RT configurations,
+``rust/kernel.o`` defined all five public entry points and all three wait
+helpers. ``kernel/exit.o`` and ``kernel/rcu/update.o`` contained no public
+function bodies. The fallback and C-only configurations defined the public
+and wait entry points in C and none in Rust.
 
-Rustfmt, Clippy, Rustdoc, ``git diff --check``, and strict checkpatch passed.
-Strict checkpatch reported 0 errors, 0 warnings, and 0 checks. Focused Sphinx
-generation rendered ``native-rcuwait.html``. The ``-W`` build stopped only on
-two existing cross-directory references in other Rust pages. Neither warning
-concerned the new page.
+Every Rust production ``vmlinux.symvers`` contained ordinary exports for
+initialization, activity, and publication, and GPL exports for completion,
+wake, and the three wait helpers. The Rust automatic exporter omitted the
+five public names to preserve those C-defined export classes.
+
+The native, fallback, and C-only module builds passed modpost. A temporary
+external GPL module referenced all eight symbols and linked successfully.
+
+Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
+``git diff --check`` passed. Sphinx reported only the existing
+``kernel-docs`` and ``getting_llvm`` warnings. Checkpatch required a targeted
+ignore for its export-only placement false positives.
 
 Review conditions
 -----------------

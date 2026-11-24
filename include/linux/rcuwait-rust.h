@@ -12,12 +12,6 @@ struct rcuwait;
 
 #ifdef CONFIG_RUST_RCUWAIT
 
-void rust_rcuwait_init(struct rcuwait *w);
-int rust_rcuwait_active(struct rcuwait *w);
-void rust_rcuwait_prepare(struct rcuwait *w);
-void rust_rcuwait_finish(struct rcuwait *w);
-int rust_rcuwait_wake_up(struct rcuwait *w);
-
 void rust_rcuwait_wait_begin(unsigned int state);
 bool rust_rcuwait_wait_initial(long *ret, bool condition);
 bool rust_rcuwait_wait_step(struct rcuwait *w, bool condition,

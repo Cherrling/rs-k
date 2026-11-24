@@ -98,6 +98,21 @@ Completion state machine
   simple-wait, and ordinary export boundaries. C fallback configurations
   retain the complete implementations.
 
+RCU wait lifecycle
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-rcuwait`.
+
+  Rust directly defines the five public initialization, activity,
+  publication, completion, and wake entry points. Rust also owns the
+  condition, signal, timeout, scheduling, and cleanup decisions behind the
+  three internal wait helpers. C retains the shared layout, caller condition
+  expansion, low-level RCU, task-state, signal, scheduler, and wake helpers,
+  and the original export classes. C fallback configurations retain the
+  complete inline and out-of-line implementations. All 20 final KUnit boots
+  passed 8 of 8 cases, the adjacent SMP4 suites passed 23 of 23 cases, and
+  the module ABI test linked all eight symbols.
+
 Task work queues
   Status: ``migrated``.
 
@@ -357,7 +372,8 @@ Public ABI
   Owner: The public symbols defined in ``include/linux/llist.h``,
   ``include/linux/klist.h``, ``include/linux/kref.h``,
   ``include/linux/lockref.h``,
-  ``include/linux/kobject.h``, ``include/linux/interval_tree.h``,
+  ``include/linux/kobject.h``, ``include/linux/rcuwait.h``,
+  ``include/linux/interval_tree.h``,
   ``include/linux/rbtree.h``, ``include/linux/rbtree_augmented.h``,
   ``include/linux/plist.h``, ``include/linux/list_sort.h``,
   ``include/linux/list_lru.h``, ``include/linux/generic-radix-tree.h``,
@@ -750,6 +766,59 @@ Kref export metadata
 
   Exit condition: Rust export metadata supports the ordinary class without C
   export entries.
+
+RCU wait layout and wait macros
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/types.h`` and ``include/linux/rcuwait.h``.
+
+  Reason: The shared object contains an RCU-protected task pointer, and the
+  public macros must expand the caller-provided C condition after Rust sets
+  the task state.
+
+  Test: Native, fallback, and C-only KUnit boots exercise initialization,
+  short waits, finite timeouts, signal interruption, and repeated handoffs.
+
+  Risk: A layout or macro expansion mismatch can miss a wakeup, evaluate the
+  condition in the wrong task state, or leave a waiter published.
+
+  Exit condition: Rust owns an equivalent condition-callback interface and
+  the shared object layout.
+
+RCU wait scheduler and RCU helpers
+  Status: ``boundary-retained``.
+
+  Owner: ``rust/helpers/rcuwait.c`` and the RCU, task, scheduler, and signal
+  interfaces.
+
+  Reason: Pointer publication, RCU read locking, task-state stores, signal
+  queries, scheduling, timeout scheduling, and task wakeup retain their
+  kernel and architecture contracts.
+
+  Test: Native SMP1/SMP4, KASAN, lockdep, and PREEMPT_RT boots exercise wake,
+  timeout, signal, and handoff paths.
+
+  Risk: Incorrect ordering can expose a stale waiter or lose a wakeup.
+
+  Exit condition: Approved Rust abstractions preserve the complete RCU,
+  scheduler, signal, and wakeup contracts.
+
+RCU wait export metadata
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/rcuwait.c``, ``kernel/exit.c``,
+  ``kernel/rcu/update.c``, and ``rust/Makefile``.
+
+  Reason: Initialization, activity, and publication retain ordinary exports,
+  while completion, wake, and macro helpers retain GPL exports.
+
+  Test: ``Module.symvers`` records the three ordinary and five GPL entries,
+  and a temporary external module resolves all eight symbols.
+
+  Risk: A duplicate export or class change can break module compatibility.
+
+  Exit condition: Rust export metadata supports both original classes without
+  C export entries.
 
 Decrement-and-lock primitive helpers
   Status: ``boundary-retained``.
@@ -1584,6 +1653,12 @@ inline initialization, task and signal primitives, scheduler timeout calls,
 simple-wait operations, PREEMPT_RT assertion, and export metadata remain named
 C boundaries. Rust defines every public entry and owns every count, wait,
 timeout, signal, wake, and consumption decision.
+
+The RCU wait boundary is valid only while the shared wait layout, caller
+condition expansion, RCU and task-state primitives, signal queries, scheduler
+selection, wakeup, and ordinary and GPL export metadata remain named C
+boundaries. Rust defines every public entry and owns every publication,
+condition, timeout, signal, scheduling, cleanup, and wake-order decision.
 
 The task work boundary is valid only while the shared task work-list and
 callback layout, task PI lock, atomic primitives, notification flags,

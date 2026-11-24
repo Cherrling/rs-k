@@ -571,6 +571,11 @@ rust_non_gpl_exports := \
 	kref_put_mutex \
 	kref_put_lock \
 	kref_get_unless_zero \
+	rcuwait_init \
+	rcuwait_active \
+	prepare_to_rcuwait \
+	finish_rcuwait \
+	rcuwait_wake_up \
 	kobject_init \
 	kobject_get \
 	kobject_get_unless_zero \

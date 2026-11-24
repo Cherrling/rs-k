@@ -12,15 +12,8 @@
 
 #ifdef CONFIG_RUST_RCUWAIT
 
-static inline void rcuwait_init(struct rcuwait *w)
-{
-	rust_rcuwait_init(w);
-}
-
-static inline int rcuwait_active(struct rcuwait *w)
-{
-	return rust_rcuwait_active(w);
-}
+void rcuwait_init(struct rcuwait *w);
+int rcuwait_active(struct rcuwait *w);
 
 #else /* !CONFIG_RUST_RCUWAIT */
 
@@ -50,10 +43,7 @@ extern int rcuwait_wake_up(struct rcuwait *w);
 
 #ifdef CONFIG_RUST_RCUWAIT
 
-static inline void prepare_to_rcuwait(struct rcuwait *w)
-{
-	rust_rcuwait_prepare(w);
-}
+void prepare_to_rcuwait(struct rcuwait *w);
 
 #else /* !CONFIG_RUST_RCUWAIT */
 
@@ -79,7 +69,7 @@ extern void finish_rcuwait(struct rcuwait *w);
 	long __ret = (ret);						\
 	typeof(w) __wait = (w);						\
 	typeof(state) __state = (state);				\
-	rust_rcuwait_prepare(__wait);					\
+	prepare_to_rcuwait(__wait);					\
 	do {								\
 		rust_rcuwait_wait_begin(__state);			\
 	} while (!rust_rcuwait_wait_step(__wait, (condition), __state,	\
@@ -96,7 +86,7 @@ extern void finish_rcuwait(struct rcuwait *w);
 	long __ret = (timeout);						\
 	typeof(w) __wait = (w);						\
 	typeof(state) __state = (state);				\
-	rust_rcuwait_prepare(__wait);					\
+	prepare_to_rcuwait(__wait);					\
 	do {								\
 		rust_rcuwait_wait_begin(__state);			\
 	} while (!rust_rcuwait_wait_step(__wait, (condition), __state,	\

@@ -4,8 +4,9 @@
 //!
 //! Rust owns task publication, wait-state transitions, condition and signal
 //! decisions, timeout accounting, scheduling selection, completion cleanup,
-//! and wake ordering. C retains condition-expression expansion and the
-//! low-level RCU, task-state, scheduler, and wakeup primitives.
+//! and wake ordering. Rust directly defines the public entry points. C retains
+//! condition-expression expansion and the low-level RCU, task-state,
+//! scheduler, and wakeup primitives.
 
 use crate::{
     bindings,
@@ -20,8 +21,8 @@ type Wait = bindings::rcuwait;
 /// # Safety
 ///
 /// `w` must point to valid, writable wait storage.
-#[export]
-unsafe extern "C" fn rust_rcuwait_init(w: *mut Wait) {
+#[no_mangle]
+unsafe extern "C" fn rcuwait_init(w: *mut Wait) {
     // SAFETY: The caller guarantees valid wait storage.
     unsafe { bindings::rcuwait_assign_null(w) };
 }
@@ -31,8 +32,8 @@ unsafe extern "C" fn rust_rcuwait_init(w: *mut Wait) {
 /// # Safety
 ///
 /// `w` must point to valid wait storage.
-#[export]
-unsafe extern "C" fn rust_rcuwait_active(w: *mut Wait) -> c_int {
+#[no_mangle]
+unsafe extern "C" fn rcuwait_active(w: *mut Wait) -> c_int {
     // SAFETY: The caller guarantees valid wait storage.
     c_int::from(unsafe { bindings::rcuwait_access(w) })
 }
@@ -43,8 +44,8 @@ unsafe extern "C" fn rust_rcuwait_active(w: *mut Wait) -> c_int {
 ///
 /// `w` must point to valid wait storage and the caller must serialize writes
 /// to `w->task`.
-#[export]
-unsafe extern "C" fn rust_rcuwait_prepare(w: *mut Wait) {
+#[no_mangle]
+unsafe extern "C" fn prepare_to_rcuwait(w: *mut Wait) {
     // SAFETY: The caller guarantees valid wait storage and serialization.
     unsafe { bindings::rcuwait_assign_current(w) };
 }
@@ -55,8 +56,8 @@ unsafe extern "C" fn rust_rcuwait_prepare(w: *mut Wait) {
 ///
 /// `w` must point to valid wait storage and the caller must serialize writes
 /// to `w->task`.
-#[export]
-unsafe extern "C" fn rust_rcuwait_finish(w: *mut Wait) {
+#[no_mangle]
+unsafe extern "C" fn finish_rcuwait(w: *mut Wait) {
     // SAFETY: The caller guarantees valid wait storage and serialization.
     unsafe { bindings::rcuwait_assign_null(w) };
     // SAFETY: The current task is completing an rcuwait operation.
@@ -68,8 +69,8 @@ unsafe extern "C" fn rust_rcuwait_finish(w: *mut Wait) {
 /// # Safety
 ///
 /// `w` must remain valid until the RCU read-side critical section completes.
-#[export]
-unsafe extern "C" fn rust_rcuwait_wake_up(w: *mut Wait) -> c_int {
+#[no_mangle]
+unsafe extern "C" fn rcuwait_wake_up(w: *mut Wait) -> c_int {
     // SAFETY: The caller guarantees that the wait storage remains valid.
     unsafe { bindings::rcu_read_lock() };
     // This orders the wake condition before the waiter pointer load.

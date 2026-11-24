@@ -64,6 +64,12 @@ static bool rcuwait_test_wait_sleeping(struct rcuwait_test_context *context)
 	return false;
 }
 
+static void rcuwait_test_wait_for_stop(void)
+{
+	while (!kthread_should_stop())
+		cond_resched();
+}
+
 static int rcuwait_test_waiter(void *data)
 {
 	struct rcuwait_test_context *context = data;
@@ -75,6 +81,7 @@ static int rcuwait_test_waiter(void *data)
 				      atomic_read(&context->release) != 0,
 				      TASK_UNINTERRUPTIBLE));
 	atomic_set(&context->done, 1);
+	rcuwait_test_wait_for_stop();
 
 	return 0;
 }
@@ -91,6 +98,7 @@ static int rcuwait_test_timeout_waiter(void *data)
 					      TASK_UNINTERRUPTIBLE,
 					      msecs_to_jiffies(1000)));
 	atomic_set(&context->done, 1);
+	rcuwait_test_wait_for_stop();
 
 	return 0;
 }
@@ -108,6 +116,7 @@ static int rcuwait_test_signal_waiter(void *data)
 	flush_signals(current);
 	disallow_signal(SIGUSR1);
 	atomic_set(&context->done, 1);
+	rcuwait_test_wait_for_stop();
 
 	return 0;
 }
@@ -134,6 +143,7 @@ static int rcuwait_test_handoff_waiter(void *data)
 		atomic_set(&context->progress, target);
 	}
 	atomic_set(&context->done, 1);
+	rcuwait_test_wait_for_stop();
 
 	return 0;
 }

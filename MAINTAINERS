@@ -24214,6 +24214,7 @@ F:	lib/klist.c
 F:	lib/kobject.c
 F:	lib/llist.c
 F:	lib/lockref.c
+F:	lib/rcuwait.c
 F:	lib/tests/kobject_kunit.c
 F:	lib/tests/kref_kunit.c
 F:	lib/tests/list_lru_kunit.c

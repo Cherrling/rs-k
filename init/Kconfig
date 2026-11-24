@@ -933,6 +933,11 @@ config RUST_RCUWAIT
 	  signal decisions, timeout accounting, scheduling selection, completion
 	  cleanup, and wake ordering.
 
+	  Rust directly defines the public initialization, activity,
+	  publication, completion, and wake entry points. C retains the wait
+	  macros for caller condition expansion, low-level RCU, task-state,
+	  signal, scheduler, and wake helpers, and export metadata.
+
 	  C retains condition-expression expansion and the low-level RCU,
 	  task-state, scheduler, and wakeup primitives.
 

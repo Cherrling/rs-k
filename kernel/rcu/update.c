@@ -448,15 +448,13 @@ void __wait_rcu_gp(bool checktiny, unsigned int state, int n, call_rcu_func_t *c
 }
 EXPORT_SYMBOL_GPL(__wait_rcu_gp);
 
+#ifndef CONFIG_RUST_RCUWAIT
 void finish_rcuwait(struct rcuwait *w)
 {
-#ifdef CONFIG_RUST_RCUWAIT
-	rust_rcuwait_finish(w);
-#else
 	rcu_assign_pointer(w->task, NULL);
 	__set_current_state(TASK_RUNNING);
-#endif /* CONFIG_RUST_RCUWAIT */
 }
+#endif /* !CONFIG_RUST_RCUWAIT */
 EXPORT_SYMBOL_GPL(finish_rcuwait);
 
 #ifdef CONFIG_DEBUG_OBJECTS_RCU_HEAD
