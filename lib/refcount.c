@@ -292,72 +292,16 @@ void rust_refcount_warn_dec_not_one(void)
 	WARN_ONCE(true, "refcount_t: underflow; use-after-free.\n");
 }
 
-bool __refcount_add_not_zero(int i, refcount_t *r, int *oldp)
-{
-	return rust_refcount_add_not_zero(i, r, oldp);
-}
 EXPORT_SYMBOL(__refcount_add_not_zero);
-
-bool __refcount_add_not_zero_limited_acquire(int i, refcount_t *r, int *oldp,
-					     int limit)
-{
-	return rust_refcount_add_not_zero_limited_acquire(i, r, oldp, limit);
-}
 EXPORT_SYMBOL(__refcount_add_not_zero_limited_acquire);
-
-void __refcount_add(int i, refcount_t *r, int *oldp)
-{
-	rust_refcount_add(i, r, oldp);
-}
 EXPORT_SYMBOL(__refcount_add);
-
-bool __refcount_sub_and_test(int i, refcount_t *r, int *oldp)
-{
-	return rust_refcount_sub_and_test(i, r, oldp);
-}
 EXPORT_SYMBOL(__refcount_sub_and_test);
-
-void __refcount_dec(refcount_t *r, int *oldp)
-{
-	rust_refcount_dec(r, oldp);
-}
 EXPORT_SYMBOL(__refcount_dec);
-
-void refcount_warn_saturate(refcount_t *r, enum refcount_saturation_type t)
-{
-	rust_refcount_warn_saturate(r, t);
-}
 EXPORT_SYMBOL(refcount_warn_saturate);
-
-bool refcount_dec_if_one(refcount_t *r)
-{
-	return rust_refcount_dec_if_one(r);
-}
 EXPORT_SYMBOL(refcount_dec_if_one);
-
-bool refcount_dec_not_one(refcount_t *r)
-{
-	return rust_refcount_dec_not_one(r);
-}
 EXPORT_SYMBOL(refcount_dec_not_one);
-
-bool refcount_dec_and_mutex_lock(refcount_t *r, struct mutex *lock)
-{
-	return rust_refcount_dec_and_mutex_lock(r, lock);
-}
 EXPORT_SYMBOL(refcount_dec_and_mutex_lock);
-
-bool refcount_dec_and_lock(refcount_t *r, spinlock_t *lock)
-{
-	return rust_refcount_dec_and_lock(r, lock);
-}
 EXPORT_SYMBOL(refcount_dec_and_lock);
-
-bool refcount_dec_and_lock_irqsave(refcount_t *r, spinlock_t *lock,
-				   unsigned long *flags)
-{
-	return rust_refcount_dec_and_lock_irqsave(r, lock, flags);
-}
 EXPORT_SYMBOL(refcount_dec_and_lock_irqsave);
 
 #endif /* CONFIG_RUST_REFCOUNT */

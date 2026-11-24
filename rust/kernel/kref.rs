@@ -75,7 +75,7 @@ unsafe extern "C" fn kref_read(kref: *const Kref) -> core::ffi::c_uint {
 #[no_mangle]
 unsafe extern "C" fn kref_get(kref: *mut Kref) {
     // SAFETY: The caller guarantees valid `kref` storage and a live reference.
-    unsafe { bindings::rust_refcount_add(1, refcount(kref), ptr::null_mut()) };
+    unsafe { bindings::__refcount_add(1, refcount(kref), ptr::null_mut()) };
 }
 
 /// Acquires another reference unless the count is zero.
@@ -87,7 +87,7 @@ unsafe extern "C" fn kref_get(kref: *mut Kref) {
 unsafe extern "C" fn kref_get_unless_zero(kref: *mut Kref) -> c_int {
     // SAFETY: The caller guarantees valid `kref` storage.
     unsafe {
-        c_int::from(bindings::rust_refcount_add_not_zero(
+        c_int::from(bindings::__refcount_add_not_zero(
             1,
             refcount(kref),
             ptr::null_mut(),
@@ -104,8 +104,7 @@ unsafe extern "C" fn kref_get_unless_zero(kref: *mut Kref) -> c_int {
 #[no_mangle]
 unsafe extern "C" fn kref_put(kref: *mut Kref, callback: Release) -> c_int {
     // SAFETY: The caller guarantees valid `kref` storage and a live reference.
-    let released =
-        unsafe { bindings::rust_refcount_sub_and_test(1, refcount(kref), ptr::null_mut()) };
+    let released = unsafe { bindings::__refcount_sub_and_test(1, refcount(kref), ptr::null_mut()) };
     if released {
         // SAFETY: The refcount transitioned from one to zero.
         unsafe { release(kref, callback) };
@@ -128,7 +127,7 @@ unsafe extern "C" fn kref_put_mutex(
     mutex: *mut Mutex,
 ) -> c_int {
     // SAFETY: The caller guarantees valid kref and mutex storage.
-    let released = unsafe { bindings::rust_refcount_dec_and_mutex_lock(refcount(kref), mutex) };
+    let released = unsafe { bindings::refcount_dec_and_mutex_lock(refcount(kref), mutex) };
     if released {
         // SAFETY: The conditional transition returned with the mutex held.
         unsafe { release(kref, callback) };
@@ -151,7 +150,7 @@ unsafe extern "C" fn kref_put_lock(
     lock: *mut bindings::spinlock_t,
 ) -> c_int {
     // SAFETY: The caller guarantees valid kref and lock storage.
-    let released = unsafe { bindings::rust_refcount_dec_and_lock(refcount(kref), lock) };
+    let released = unsafe { bindings::refcount_dec_and_lock(refcount(kref), lock) };
     if released {
         // SAFETY: The conditional transition returned with the spinlock held.
         unsafe { release(kref, callback) };

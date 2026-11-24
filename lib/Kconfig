@@ -737,8 +737,10 @@ config RUST_REFCOUNT
 	  Use Rust for the production refcount_t increment, decrement,
 	  saturation, limited-acquire, and conditional-locking state machine.
 
-	  Architecture atomics, memory barriers, and kernel locking primitives
-	  remain in C because they depend on the architecture and scheduler.
+	  Rust directly defines every production entry point. Architecture
+	  atomics, memory barriers, kernel locking primitives, warning sites,
+	  and the original export records remain in C because they depend on
+	  the architecture and scheduler.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

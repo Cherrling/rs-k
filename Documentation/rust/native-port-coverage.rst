@@ -49,6 +49,19 @@ Klist entry operations
   attachment state, and iteration. The native C file retains list
   initialization, blocking removal, and the shared wakeup callback.
 
+Reference counting
+  Status: ``migrated``.
+
+  Evidence: :doc:`refcount`.
+
+  Rust directly defines the eleven public increment, decrement, saturation,
+  limited-acquire, and conditional-locking entry points. Rust owns every
+  transition, saturation, use-after-free, overflow, limit, and held-lock
+  decision. C retains the shared layout and saturation encoding, architecture
+  atomics and barriers, mutex and spinlock primitives, warning sites, and the
+  original ordinary export classes. C fallback configurations retain the
+  complete implementation.
+
 Lockref operations
   Status: ``migrated``.
 
@@ -681,6 +694,61 @@ Klist primitive helpers
 
   Exit condition: Approved Rust list, lock, and refcount abstractions cover the
   complete helper contract.
+
+Refcount layout and saturation encoding
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/refcount_types.h`` and
+  ``include/linux/refcount.h``.
+
+  Reason: C and Rust share the embedded atomic word, signed count domain,
+  saturation constants, and saturation-event enumeration.
+
+  Test: Six configurations passed SMP1 and SMP4 with seven of seven cases.
+  The cases exercise ordinary transitions, limits, exact-zero changes,
+  special decrements, and every saturation event.
+
+  Risk: A layout or constant mismatch can corrupt the counter or misclassify
+  a use-after-free, overflow, underflow, or leak.
+
+  Exit condition: Rust owns an equivalent reference-count type and saturation
+  encoding.
+
+Refcount atomic, barrier, lock, and warning helpers
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/refcount.c`` and the Rust bindings.
+
+  Reason: Atomic reads and updates, acquire and release ordering, the
+  control-dependency acquire barrier, mutex and spinlock operations, IRQ
+  restoration, and warning sites retain architecture and scheduler contracts.
+
+  Test: Native, KASAN, lockdep, and PREEMPT_RT passed SMP1 and SMP4 with
+  seven of seven cases. The native SMP4 image also passed 25 adjacent cases.
+
+  Risk: Incorrect ordering or primitive selection can lose a final reference,
+  expose release-before-acquire, or return with the wrong lock state.
+
+  Exit condition: Approved Rust atomics, barriers, locks, and diagnostics
+  preserve the complete helper contracts.
+
+Refcount export metadata
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/refcount.c`` and ``rust/Makefile``.
+
+  Reason: All eleven native Rust public symbols use ordinary non-GPL exports
+  while generated Rust exports use the GPL class.
+
+  Test: Native exports eleven ``EXPORT_SYMBOL`` entries. Fallback and C-only
+  retain six. Generated Rust export headers exclude all eleven names, and
+  external modules linked against every exported entry.
+
+  Risk: A duplicate export or class change can break non-GPL module
+  compatibility.
+
+  Exit condition: Rust export metadata supports the ordinary class without C
+  export records.
 
 Lockref layout and initialization
   Status: ``boundary-retained``.
@@ -1704,6 +1772,12 @@ The klist boundary is valid only while initialization, blocking removal,
 task wakeup, and shared primitive behavior remain outside the migrated entry
 scope. The retained C functions do not select insertion, reference, deletion,
 attachment, or traversal policy.
+
+The reference-counting boundary is valid only while the shared counter layout,
+saturation encoding, architecture atomics and barriers, lock primitives,
+warning sites, and ordinary export metadata remain named C boundaries. Rust
+defines every public entry and owns every transition, limit, saturation,
+conditional-lock, and held-lock decision.
 
 The lockref boundary is valid only while initialization, the packed layout,
 architecture operations, and non-GPL export metadata remain shared C

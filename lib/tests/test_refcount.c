@@ -180,7 +180,7 @@ static bool refcount_try_acquire_spinlock(spinlock_t *lock)
 static void refcount_test_lock_wrappers(struct kunit *test)
 {
 	/* Verify the mutex conditional-acquire contract. */
-	DEFINE_MUTEX(mutex);
+	struct mutex mutex; /* Test conditional mutex acquisition. */
 	/* Verify the plain and IRQ-safe spinlock contracts. */
 	spinlock_t spinlock;
 	refcount_t ref;
@@ -188,6 +188,7 @@ static void refcount_test_lock_wrappers(struct kunit *test)
 	bool irq_disabled;
 	bool locked;
 
+	mutex_init(&mutex);
 	spin_lock_init(&spinlock);
 
 	ref = (refcount_t)REFCOUNT_INIT(2);
@@ -231,7 +232,10 @@ static void refcount_test_lock_wrappers(struct kunit *test)
 		KUNIT_EXPECT_FALSE(test, locked);
 	irq_disabled = irqs_disabled();
 	spin_unlock_irqrestore(&spinlock, flags);
-	KUNIT_EXPECT_TRUE(test, irq_disabled);
+	if (IS_ENABLED(CONFIG_PREEMPT_RT))
+		KUNIT_EXPECT_FALSE(test, irq_disabled);
+	else
+		KUNIT_EXPECT_TRUE(test, irq_disabled);
 }
 
 struct refcount_worker {
@@ -260,6 +264,13 @@ static int refcount_worker(void *data)
 		atomic64_inc(worker->operations);
 	}
 	atomic_inc(worker->done);
+
+	while (!kthread_should_stop()) {
+		set_current_state(TASK_IDLE);
+		if (!kthread_should_stop())
+			schedule();
+	}
+	__set_current_state(TASK_RUNNING);
 
 	return 0;
 }

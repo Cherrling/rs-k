@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Internal helpers for the native Rust refcount_t implementation.
+ * Internal primitive helpers for the native Rust refcount_t implementation.
  */
 
 #ifndef _LINUX_REFCOUNT_RUST_H
@@ -12,21 +12,6 @@
 struct mutex;
 
 #ifdef CONFIG_RUST_REFCOUNT
-
-bool rust_refcount_add_not_zero(int i, refcount_t *r, int *oldp);
-bool rust_refcount_add_not_zero_limited_acquire(int i, refcount_t *r,
-						int *oldp, int limit);
-void rust_refcount_add(int i, refcount_t *r, int *oldp);
-bool rust_refcount_sub_and_test(int i, refcount_t *r, int *oldp);
-void rust_refcount_dec(refcount_t *r, int *oldp);
-void rust_refcount_warn_saturate(refcount_t *r, int type);
-
-bool rust_refcount_dec_if_one(refcount_t *r);
-bool rust_refcount_dec_not_one(refcount_t *r);
-bool rust_refcount_dec_and_mutex_lock(refcount_t *r, struct mutex *lock);
-bool rust_refcount_dec_and_lock(refcount_t *r, spinlock_t *lock);
-bool rust_refcount_dec_and_lock_irqsave(refcount_t *r, spinlock_t *lock,
-					unsigned long *flags);
 
 int rust_refcount_atomic_read(const refcount_t *r);
 void rust_refcount_atomic_set(refcount_t *r, int value);

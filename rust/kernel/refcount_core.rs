@@ -11,7 +11,6 @@ use core::{
     ffi::{c_int, c_uint},
     ptr,
 };
-use macros::export;
 
 type Ref = bindings::refcount_t;
 type Saturation = bindings::refcount_saturation_type;
@@ -135,8 +134,8 @@ unsafe fn saturate(r: *mut Ref, kind: Saturation) {
 ///
 /// `r` must point to a valid `refcount_t`.  A non-NULL `oldp` must point to
 /// writable storage.
-#[export]
-unsafe extern "C" fn rust_refcount_add_not_zero(i: c_int, r: *mut Ref, oldp: *mut c_int) -> bool {
+#[no_mangle]
+unsafe extern "C" fn __refcount_add_not_zero(i: c_int, r: *mut Ref, oldp: *mut c_int) -> bool {
     // SAFETY: The caller guarantees that `r` is valid.
     let mut old = unsafe { read(r) };
 
@@ -168,8 +167,8 @@ unsafe extern "C" fn rust_refcount_add_not_zero(i: c_int, r: *mut Ref, oldp: *mu
 ///
 /// `r` must point to a valid `refcount_t`.  A non-NULL `oldp` must point to
 /// writable storage.
-#[export]
-unsafe extern "C" fn rust_refcount_add_not_zero_limited_acquire(
+#[no_mangle]
+unsafe extern "C" fn __refcount_add_not_zero_limited_acquire(
     i: c_int,
     r: *mut Ref,
     oldp: *mut c_int,
@@ -209,8 +208,8 @@ unsafe extern "C" fn rust_refcount_add_not_zero_limited_acquire(
 ///
 /// `r` must point to a valid `refcount_t`.  A non-NULL `oldp` must point to
 /// writable storage.
-#[export]
-unsafe extern "C" fn rust_refcount_add(i: c_int, r: *mut Ref, oldp: *mut c_int) {
+#[no_mangle]
+unsafe extern "C" fn __refcount_add(i: c_int, r: *mut Ref, oldp: *mut c_int) {
     // SAFETY: The caller guarantees that `r` is valid.
     let old = unsafe { fetch_add_relaxed(i, r) };
     // SAFETY: The caller guarantees that `oldp` is null or writable.
@@ -257,8 +256,8 @@ unsafe fn sub_and_test(i: c_int, r: *mut Ref, oldp: *mut c_int) -> bool {
 ///
 /// `r` must point to a valid `refcount_t`.  A non-NULL `oldp` must point to
 /// writable storage.
-#[export]
-unsafe extern "C" fn rust_refcount_sub_and_test(i: c_int, r: *mut Ref, oldp: *mut c_int) -> bool {
+#[no_mangle]
+unsafe extern "C" fn __refcount_sub_and_test(i: c_int, r: *mut Ref, oldp: *mut c_int) -> bool {
     // SAFETY: The caller provides the same contract for `r` and `oldp`.
     unsafe { sub_and_test(i, r, oldp) }
 }
@@ -269,8 +268,8 @@ unsafe extern "C" fn rust_refcount_sub_and_test(i: c_int, r: *mut Ref, oldp: *mu
 ///
 /// `r` must point to a valid `refcount_t`.  A non-NULL `oldp` must point to
 /// writable storage.
-#[export]
-unsafe extern "C" fn rust_refcount_dec(r: *mut Ref, oldp: *mut c_int) {
+#[no_mangle]
+unsafe extern "C" fn __refcount_dec(r: *mut Ref, oldp: *mut c_int) {
     // SAFETY: The caller guarantees that `r` is valid.
     let old = unsafe { fetch_sub_release(1, r) };
     // SAFETY: The caller guarantees that `oldp` is null or writable.
@@ -287,8 +286,8 @@ unsafe extern "C" fn rust_refcount_dec(r: *mut Ref, oldp: *mut c_int) {
 /// # Safety
 ///
 /// `r` must point to a valid, writable `refcount_t`.
-#[export]
-unsafe extern "C" fn rust_refcount_warn_saturate(r: *mut Ref, kind: c_int) {
+#[no_mangle]
+unsafe extern "C" fn refcount_warn_saturate(r: *mut Ref, kind: c_int) {
     // SAFETY: The caller guarantees that `r` is valid and writable.
     unsafe { saturate(r, kind as c_uint) };
 }
@@ -298,8 +297,8 @@ unsafe extern "C" fn rust_refcount_warn_saturate(r: *mut Ref, kind: c_int) {
 /// # Safety
 ///
 /// `r` must point to a valid `refcount_t`.
-#[export]
-unsafe extern "C" fn rust_refcount_dec_if_one(r: *mut Ref) -> bool {
+#[no_mangle]
+unsafe extern "C" fn refcount_dec_if_one(r: *mut Ref) -> bool {
     let mut old = 1;
     // SAFETY: The caller guarantees that `r` and `old` are valid.
     unsafe { try_cmpxchg_release(r, &mut old, 0) }
@@ -310,8 +309,8 @@ unsafe extern "C" fn rust_refcount_dec_if_one(r: *mut Ref) -> bool {
 /// # Safety
 ///
 /// `r` must point to a valid `refcount_t`.
-#[export]
-unsafe extern "C" fn rust_refcount_dec_not_one(r: *mut Ref) -> bool {
+#[no_mangle]
+unsafe extern "C" fn refcount_dec_not_one(r: *mut Ref) -> bool {
     // SAFETY: The caller guarantees that `r` is valid.
     let mut old = unsafe { read(r) } as c_uint;
 
@@ -345,13 +344,10 @@ unsafe extern "C" fn rust_refcount_dec_not_one(r: *mut Ref) -> bool {
 ///
 /// `r` and `lock` must be valid.  The caller must have permission to acquire
 /// `lock` in the current context.
-#[export]
-unsafe extern "C" fn rust_refcount_dec_and_mutex_lock(
-    r: *mut Ref,
-    lock: *mut bindings::mutex,
-) -> bool {
+#[no_mangle]
+unsafe extern "C" fn refcount_dec_and_mutex_lock(r: *mut Ref, lock: *mut bindings::mutex) -> bool {
     // SAFETY: The caller guarantees that `r` is valid.
-    if unsafe { rust_refcount_dec_not_one(r) } {
+    if unsafe { refcount_dec_not_one(r) } {
         return false;
     }
 
@@ -373,13 +369,10 @@ unsafe extern "C" fn rust_refcount_dec_and_mutex_lock(
 ///
 /// `r` and `lock` must be valid.  The caller must have permission to acquire
 /// `lock` in the current context.
-#[export]
-unsafe extern "C" fn rust_refcount_dec_and_lock(
-    r: *mut Ref,
-    lock: *mut bindings::spinlock_t,
-) -> bool {
+#[no_mangle]
+unsafe extern "C" fn refcount_dec_and_lock(r: *mut Ref, lock: *mut bindings::spinlock_t) -> bool {
     // SAFETY: The caller guarantees that `r` is valid.
-    if unsafe { rust_refcount_dec_not_one(r) } {
+    if unsafe { refcount_dec_not_one(r) } {
         return false;
     }
 
@@ -401,14 +394,14 @@ unsafe extern "C" fn rust_refcount_dec_and_lock(
 ///
 /// `r`, `lock`, and `flags` must be valid.  The caller must have permission to
 /// acquire `lock` and disable interrupts in the current context.
-#[export]
-unsafe extern "C" fn rust_refcount_dec_and_lock_irqsave(
+#[no_mangle]
+unsafe extern "C" fn refcount_dec_and_lock_irqsave(
     r: *mut Ref,
     lock: *mut bindings::spinlock_t,
     flags: *mut usize,
 ) -> bool {
     // SAFETY: The caller guarantees that `r` is valid.
-    if unsafe { rust_refcount_dec_not_one(r) } {
+    if unsafe { refcount_dec_not_one(r) } {
         return false;
     }
 

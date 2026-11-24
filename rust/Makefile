@@ -564,6 +564,17 @@ $(obj)/helpers/helpers.bc $(obj)/helpers/helpers_module.bc: $(src)/helpers/helpe
 # their EXPORT_SYMBOL() metadata, so the automatic Rust exporter must skip
 # them to avoid duplicate GPL exports.
 rust_non_gpl_exports := \
+	__refcount_add_not_zero \
+	__refcount_add_not_zero_limited_acquire \
+	__refcount_add \
+	__refcount_sub_and_test \
+	__refcount_dec \
+	refcount_warn_saturate \
+	refcount_dec_if_one \
+	refcount_dec_not_one \
+	refcount_dec_and_mutex_lock \
+	refcount_dec_and_lock \
+	refcount_dec_and_lock_irqsave \
 	kref_init \
 	kref_read \
 	kref_get \
