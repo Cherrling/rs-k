@@ -15,7 +15,6 @@ use crate::{
     sync::barrier::{smp_mb, Full},
 };
 use core::ptr;
-use macros::export;
 
 type Head = bindings::wait_queue_head;
 type Entry = bindings::wait_queue_entry;
@@ -124,8 +123,8 @@ unsafe fn remove_locked(wq_head: *mut Head, entry: *mut Entry) {
 /// # Safety
 ///
 /// `wq_head` and `wq_entry` must point to valid objects.
-#[export]
-unsafe extern "C" fn rust_waitqueue_add(wq_head: *mut Head, wq_entry: *mut Entry) {
+#[no_mangle]
+unsafe extern "C" fn add_wait_queue(wq_head: *mut Head, wq_entry: *mut Entry) {
     // SAFETY: The caller guarantees that `wq_entry` is valid.
     unsafe { (*wq_entry).flags &= !WQ_FLAG_EXCLUSIVE };
     // SAFETY: The caller guarantees that `wq_head` is valid.
@@ -142,8 +141,8 @@ unsafe extern "C" fn rust_waitqueue_add(wq_head: *mut Head, wq_entry: *mut Entry
 /// # Safety
 ///
 /// `wq_head` and `wq_entry` must point to valid objects.
-#[export]
-unsafe extern "C" fn rust_waitqueue_add_exclusive(wq_head: *mut Head, wq_entry: *mut Entry) {
+#[no_mangle]
+unsafe extern "C" fn add_wait_queue_exclusive(wq_head: *mut Head, wq_entry: *mut Entry) {
     // SAFETY: The caller guarantees that `wq_entry` is valid.
     unsafe { (*wq_entry).flags |= WQ_FLAG_EXCLUSIVE };
     // SAFETY: The caller guarantees that `wq_head` is valid.
@@ -160,8 +159,8 @@ unsafe extern "C" fn rust_waitqueue_add_exclusive(wq_head: *mut Head, wq_entry: 
 /// # Safety
 ///
 /// `wq_head` and `wq_entry` must point to valid objects.
-#[export]
-unsafe extern "C" fn rust_waitqueue_add_priority(wq_head: *mut Head, wq_entry: *mut Entry) {
+#[no_mangle]
+unsafe extern "C" fn add_wait_queue_priority(wq_head: *mut Head, wq_entry: *mut Entry) {
     // SAFETY: The caller guarantees that `wq_entry` is valid.
     unsafe { (*wq_entry).flags |= WQ_FLAG_PRIORITY };
     // SAFETY: The caller guarantees that `wq_head` is valid.
@@ -180,8 +179,8 @@ unsafe extern "C" fn rust_waitqueue_add_priority(wq_head: *mut Head, wq_entry: *
 /// # Safety
 ///
 /// `wq_head` and `wq_entry` must point to valid objects.
-#[export]
-unsafe extern "C" fn rust_waitqueue_add_priority_exclusive(
+#[no_mangle]
+unsafe extern "C" fn add_wait_queue_priority_exclusive(
     wq_head: *mut Head,
     wq_entry: *mut Entry,
 ) -> c_int {
@@ -217,8 +216,8 @@ unsafe extern "C" fn rust_waitqueue_add_priority_exclusive(
 /// # Safety
 ///
 /// `wq_head` and `wq_entry` must point to valid objects.
-#[export]
-unsafe extern "C" fn rust_waitqueue_remove(wq_head: *mut Head, wq_entry: *mut Entry) {
+#[no_mangle]
+unsafe extern "C" fn remove_wait_queue(wq_head: *mut Head, wq_entry: *mut Entry) {
     // SAFETY: The caller guarantees that `wq_head` is valid.
     let flags = unsafe { lock_irqsave(wq_head) };
     // SAFETY: This function acquired the queue lock and both pointers are
@@ -232,20 +231,16 @@ unsafe extern "C" fn rust_waitqueue_remove(wq_head: *mut Head, wq_entry: *mut En
 ///
 /// # Safety
 ///
-/// `wq_entry` and `task` must point to valid objects. `autoremove` must be a
-/// valid wait queue callback.
-#[export]
-unsafe extern "C" fn rust_waitqueue_init_entry(
-    wq_entry: *mut Entry,
-    flags: c_uint,
-    task: *mut bindings::task_struct,
-    autoremove: bindings::wait_queue_func_t,
-) {
+/// `wq_entry` must point to valid writable storage.
+#[no_mangle]
+unsafe extern "C" fn init_wait_entry(wq_entry: *mut Entry, flags: c_int) {
+    // SAFETY: The caller guarantees that `wq_entry` is valid.
+    let task = unsafe { bindings::get_current() };
     // SAFETY: The caller guarantees that `wq_entry` is valid.
     unsafe {
-        (*wq_entry).flags = flags;
+        (*wq_entry).flags = flags as c_uint;
         (*wq_entry).private = task.cast();
-        (*wq_entry).func = autoremove;
+        (*wq_entry).func = Some(autoremove_wake_function);
     }
     // SAFETY: The caller guarantees that `wq_entry` is valid.
     unsafe { bindings::rust_waitqueue_list_init(ptr::addr_of_mut!((*wq_entry).entry)) };
@@ -257,8 +252,8 @@ unsafe extern "C" fn rust_waitqueue_init_entry(
 ///
 /// `wq_entry` must point to a valid queued entry, and the wait queue lock must
 /// be held.
-#[export]
-unsafe extern "C" fn rust_waitqueue_autoremove(
+#[no_mangle]
+unsafe extern "C" fn autoremove_wake_function(
     wq_entry: *mut Entry,
     mode: c_uint,
     sync: c_int,
@@ -282,12 +277,8 @@ unsafe extern "C" fn rust_waitqueue_autoremove(
 ///
 /// `wq_entry` must point to a valid wait entry associated with the current
 /// task.
-#[export]
-unsafe extern "C" fn rust_waitqueue_wait_woken(
-    wq_entry: *mut Entry,
-    mode: c_uint,
-    mut timeout: c_long,
-) -> c_long {
+#[no_mangle]
+unsafe extern "C" fn wait_woken(wq_entry: *mut Entry, mode: c_uint, mut timeout: c_long) -> c_long {
     // SAFETY: The caller guarantees that `wq_entry` is valid. This helper
     // installs the task state with the scheduler's required barrier.
     unsafe { bindings::rust_waitqueue_set_current_state(mode) };
@@ -324,7 +315,7 @@ unsafe fn woken_wake_common(
     sync: c_int,
     key: *mut c_void,
 ) -> c_int {
-    // Pairs with the store barrier in `rust_waitqueue_wait_woken`.
+    // Pairs with the store barrier in `wait_woken`.
     smp_mb(Full);
     // SAFETY: The caller guarantees that `wq_entry` is valid.
     unsafe { (*wq_entry).flags |= WQ_FLAG_WOKEN };
@@ -338,8 +329,8 @@ unsafe fn woken_wake_common(
 ///
 /// `wq_entry` must point to a valid queued wait entry, and the wait queue lock
 /// must be held.
-#[export]
-unsafe extern "C" fn rust_waitqueue_woken_wake(
+#[no_mangle]
+unsafe extern "C" fn woken_wake_function(
     wq_entry: *mut Entry,
     mode: c_uint,
     sync: c_int,
@@ -355,8 +346,8 @@ unsafe extern "C" fn rust_waitqueue_woken_wake(
 ///
 /// `wq_entry` must point to a valid queued variable wait entry, `key` must be
 /// a valid wake key, and the wait queue lock must be held.
-#[export]
-unsafe extern "C" fn rust_waitqueue_woken_wake_bit(
+#[no_mangle]
+unsafe extern "C" fn woken_wake_bit_function(
     wq_entry: *mut Entry,
     mode: c_uint,
     sync: c_int,
@@ -402,11 +393,8 @@ unsafe fn prepare_do_wait_intr(wq_head: *mut Head, wq_entry: *mut Entry) -> c_in
 /// # Safety
 ///
 /// `wq_head` and `wq_entry` must be valid, and the wait queue lock must be held.
-#[export]
-unsafe extern "C" fn rust_waitqueue_do_wait_intr(
-    wq_head: *mut Head,
-    wq_entry: *mut Entry,
-) -> c_int {
+#[no_mangle]
+unsafe extern "C" fn do_wait_intr(wq_head: *mut Head, wq_entry: *mut Entry) -> c_int {
     // SAFETY: The caller guarantees that the queue lock is held.
     let ret = unsafe { prepare_do_wait_intr(wq_head, wq_entry) };
     if ret != 0 {
@@ -425,11 +413,8 @@ unsafe extern "C" fn rust_waitqueue_do_wait_intr(
 ///
 /// `wq_head` and `wq_entry` must be valid. The wait queue lock must be held
 /// with interrupts disabled.
-#[export]
-unsafe extern "C" fn rust_waitqueue_do_wait_intr_irq(
-    wq_head: *mut Head,
-    wq_entry: *mut Entry,
-) -> c_int {
+#[no_mangle]
+unsafe extern "C" fn do_wait_intr_irq(wq_head: *mut Head, wq_entry: *mut Entry) -> c_int {
     // SAFETY: The caller guarantees that the queue lock is held.
     let ret = unsafe { prepare_do_wait_intr(wq_head, wq_entry) };
     if ret != 0 {
@@ -447,12 +432,8 @@ unsafe extern "C" fn rust_waitqueue_do_wait_intr_irq(
 /// # Safety
 ///
 /// `wq_head` and `wq_entry` must point to valid objects.
-#[export]
-unsafe extern "C" fn rust_waitqueue_prepare(
-    wq_head: *mut Head,
-    wq_entry: *mut Entry,
-    state: c_uint,
-) {
+#[no_mangle]
+unsafe extern "C" fn prepare_to_wait(wq_head: *mut Head, wq_entry: *mut Entry, state: c_int) {
     // SAFETY: The caller guarantees that `wq_entry` is valid.
     unsafe { (*wq_entry).flags &= !WQ_FLAG_EXCLUSIVE };
     // SAFETY: The caller guarantees that `wq_head` is valid.
@@ -464,7 +445,7 @@ unsafe extern "C" fn rust_waitqueue_prepare(
     }
     // SAFETY: The queue lock is held. The helper provides the required
     // scheduler store barrier.
-    unsafe { bindings::rust_waitqueue_set_current_state(state) };
+    unsafe { bindings::rust_waitqueue_set_current_state(state as c_uint) };
     // SAFETY: This function acquired the queue lock.
     unsafe { unlock_irqrestore(wq_head, flags) };
 }
@@ -474,11 +455,11 @@ unsafe extern "C" fn rust_waitqueue_prepare(
 /// # Safety
 ///
 /// `wq_head` and `wq_entry` must point to valid objects.
-#[export]
-unsafe extern "C" fn rust_waitqueue_prepare_exclusive(
+#[no_mangle]
+unsafe extern "C" fn prepare_to_wait_exclusive(
     wq_head: *mut Head,
     wq_entry: *mut Entry,
-    state: c_uint,
+    state: c_int,
 ) -> bool {
     // SAFETY: The caller guarantees that `wq_entry` is valid.
     unsafe { (*wq_entry).flags |= WQ_FLAG_EXCLUSIVE };
@@ -494,7 +475,7 @@ unsafe extern "C" fn rust_waitqueue_prepare_exclusive(
     }
     // SAFETY: The queue lock is held. The helper provides the required
     // scheduler store barrier.
-    unsafe { bindings::rust_waitqueue_set_current_state(state) };
+    unsafe { bindings::rust_waitqueue_set_current_state(state as c_uint) };
     // SAFETY: This function acquired the queue lock.
     unsafe { unlock_irqrestore(wq_head, flags) };
     was_empty
@@ -505,16 +486,17 @@ unsafe extern "C" fn rust_waitqueue_prepare_exclusive(
 /// # Safety
 ///
 /// `wq_head` and `wq_entry` must point to valid objects.
-#[export]
-unsafe extern "C" fn rust_waitqueue_prepare_event(
+#[no_mangle]
+unsafe extern "C" fn prepare_to_wait_event(
     wq_head: *mut Head,
     wq_entry: *mut Entry,
-    state: c_uint,
+    state: c_int,
 ) -> c_long {
     // SAFETY: The caller guarantees that `wq_head` is valid.
     let flags = unsafe { lock_irqsave(wq_head) };
     // SAFETY: The helper reads the state of the current task.
-    let interrupted = unsafe { bindings::rust_waitqueue_signal_pending_state(state) } != 0;
+    let interrupted =
+        unsafe { bindings::rust_waitqueue_signal_pending_state(state as c_uint) } != 0;
     let ret = if interrupted {
         // SAFETY: `wq_entry` is valid. `list_del_init` accepts a self-linked
         // entry, which preserves the queued or unqueued state correctly.
@@ -534,7 +516,7 @@ unsafe extern "C" fn rust_waitqueue_prepare_event(
         }
         // SAFETY: The queue lock is held. The helper provides the required
         // scheduler store barrier.
-        unsafe { bindings::rust_waitqueue_set_current_state(state) };
+        unsafe { bindings::rust_waitqueue_set_current_state(state as c_uint) };
         0
     };
     // SAFETY: This function acquired the queue lock.
@@ -547,8 +529,8 @@ unsafe extern "C" fn rust_waitqueue_prepare_event(
 /// # Safety
 ///
 /// `wq_head` and `wq_entry` must point to valid objects.
-#[export]
-unsafe extern "C" fn rust_waitqueue_finish(wq_head: *mut Head, wq_entry: *mut Entry) {
+#[no_mangle]
+unsafe extern "C" fn finish_wait(wq_head: *mut Head, wq_entry: *mut Entry) {
     // SAFETY: The helper updates the current task state without a barrier as
     // required by the finish_wait protocol.
     unsafe { bindings::rust_waitqueue_set_current_state_relaxed(bindings::TASK_RUNNING as c_uint) };
@@ -644,8 +626,8 @@ unsafe fn wake_common_locked(
 /// # Safety
 ///
 /// `wq_head` must point to a valid wait queue.
-#[export]
-unsafe extern "C" fn rust_waitqueue_wake(
+#[no_mangle]
+unsafe extern "C" fn __wake_up(
     wq_head: *mut Head,
     mode: c_uint,
     nr_exclusive: c_int,
@@ -660,12 +642,8 @@ unsafe extern "C" fn rust_waitqueue_wake(
 /// # Safety
 ///
 /// `wq_head` must point to a valid wait queue.
-#[export]
-unsafe extern "C" fn rust_waitqueue_wake_on_current_cpu(
-    wq_head: *mut Head,
-    mode: c_uint,
-    key: *mut c_void,
-) {
+#[no_mangle]
+unsafe extern "C" fn __wake_up_on_current_cpu(wq_head: *mut Head, mode: c_uint, key: *mut c_void) {
     // SAFETY: The scheduler helper has no additional requirements.
     let wake_flags = unsafe { bindings::rust_waitqueue_current_cpu_wake_flags() };
     // SAFETY: The caller guarantees that `wq_head` is valid.
@@ -677,8 +655,8 @@ unsafe extern "C" fn rust_waitqueue_wake_on_current_cpu(
 /// # Safety
 ///
 /// `wq_head` must be valid and its lock must be held.
-#[export]
-unsafe extern "C" fn rust_waitqueue_wake_locked(wq_head: *mut Head, mode: c_uint, nr: c_int) {
+#[no_mangle]
+unsafe extern "C" fn __wake_up_locked(wq_head: *mut Head, mode: c_uint, nr: c_int) {
     // SAFETY: The caller guarantees that the lock is held.
     unsafe { wake_common(wq_head, mode, nr, 0, ptr::null_mut()) };
 }
@@ -688,12 +666,8 @@ unsafe extern "C" fn rust_waitqueue_wake_locked(wq_head: *mut Head, mode: c_uint
 /// # Safety
 ///
 /// `wq_head` must be valid and its lock must be held.
-#[export]
-unsafe extern "C" fn rust_waitqueue_wake_locked_key(
-    wq_head: *mut Head,
-    mode: c_uint,
-    key: *mut c_void,
-) {
+#[no_mangle]
+unsafe extern "C" fn __wake_up_locked_key(wq_head: *mut Head, mode: c_uint, key: *mut c_void) {
     // SAFETY: The caller guarantees that the lock is held.
     unsafe { wake_common(wq_head, mode, 1, 0, key) };
 }
@@ -703,12 +677,8 @@ unsafe extern "C" fn rust_waitqueue_wake_locked_key(
 /// # Safety
 ///
 /// `wq_head` must point to a valid wait queue.
-#[export]
-unsafe extern "C" fn rust_waitqueue_wake_sync_key(
-    wq_head: *mut Head,
-    mode: c_uint,
-    key: *mut c_void,
-) {
+#[no_mangle]
+unsafe extern "C" fn __wake_up_sync_key(wq_head: *mut Head, mode: c_uint, key: *mut c_void) {
     if wq_head.is_null() {
         return;
     }
@@ -724,12 +694,8 @@ unsafe extern "C" fn rust_waitqueue_wake_sync_key(
 /// # Safety
 ///
 /// `wq_head` must be valid and its lock must be held.
-#[export]
-unsafe extern "C" fn rust_waitqueue_wake_locked_sync_key(
-    wq_head: *mut Head,
-    mode: c_uint,
-    key: *mut c_void,
-) {
+#[no_mangle]
+unsafe extern "C" fn __wake_up_locked_sync_key(wq_head: *mut Head, mode: c_uint, key: *mut c_void) {
     // SAFETY: The scheduler helper has no additional requirements.
     let wake_flags = unsafe { bindings::rust_waitqueue_sync_wake_flags() };
     // SAFETY: The caller guarantees that the lock is held.
@@ -741,8 +707,8 @@ unsafe extern "C" fn rust_waitqueue_wake_locked_sync_key(
 /// # Safety
 ///
 /// `wq_head` must point to a valid wait queue.
-#[export]
-unsafe extern "C" fn rust_waitqueue_wake_sync(wq_head: *mut Head, mode: c_uint) {
+#[no_mangle]
+unsafe extern "C" fn __wake_up_sync(wq_head: *mut Head, mode: c_uint) {
     if wq_head.is_null() {
         return;
     }
@@ -758,8 +724,8 @@ unsafe extern "C" fn rust_waitqueue_wake_sync(wq_head: *mut Head, mode: c_uint) 
 /// # Safety
 ///
 /// `wq_head` must point to a valid wait queue.
-#[export]
-unsafe extern "C" fn rust_waitqueue_wake_pollfree(wq_head: *mut Head) {
+#[no_mangle]
+unsafe extern "C" fn __wake_up_pollfree(wq_head: *mut Head) {
     // SAFETY: The poll helper has no additional requirements.
     let key = unsafe { bindings::rust_waitqueue_pollfree_key() };
     // SAFETY: The caller guarantees that `wq_head` is valid.

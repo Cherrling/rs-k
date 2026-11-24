@@ -139,6 +139,22 @@ Simple wait queue state machine
   boots passed 5 of 5 cases, the adjacent SMP4 suites passed 20 of 20 cases,
   and the module ABI test linked all seven ordinary exports.
 
+Wait queue state machine
+  Status: ``migrated``.
+
+  Evidence: :doc:`waitqueue`.
+
+  Rust directly defines all 24 public and internal wake, entry-operation,
+  preparation, signal, completion, woken, and locked-wait entry points. Rust
+  owns entry ordering, callback selection, autoremove and woken transitions,
+  signal rejection, task-state ordering, finish cleanup, callback traversal,
+  exclusive accounting, wake variants, and POLLFREE traversal. C retains the
+  shared layouts, locking, intrusive list, scheduler, signal, barrier, poll,
+  task, and timeout primitives, plus ordinary export metadata. C fallback
+  configurations retain the complete implementation. All 12 focused KUnit
+  boots passed 18 of 18 cases, the native SMP4 adjacent suites passed 69 of
+  69 cases, and the module ABI test linked all 22 exports.
+
 RCU wait lifecycle
   Status: ``migrated``.
 
@@ -948,6 +964,65 @@ Simple wait export metadata
   Test: ``vmlinux.symvers`` records seven ``EXPORT_SYMBOL`` entries, no entry
   for the three internal names, and the generated Rust export lists exclude
   all ten names.
+
+  Risk: A duplicate export or class change can expose an internal interface
+  or break module compatibility.
+
+  Exit condition: Rust export metadata supports the ordinary and unexported
+  classes without C export records.
+
+Wait queue layout and construction macros
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/wait.h``.
+
+  Reason: C and Rust share the wait queue head lock and list, wait entry,
+  task pointer, callback, and flag layouts. C construction and initialization
+  macros embed those layouts and lock classes in callers.
+
+  Test: Six configurations exercise entry insertion, priority ordering,
+  stack wait entries, task wakeup, timeout, signal, and finish paths.
+
+  Risk: A layout or initializer mismatch can corrupt queue membership, select
+  the wrong callback, or miss a wakeup.
+
+  Exit condition: Rust owns equivalent queue and entry layouts and construction
+  interfaces.
+
+Wait queue locking, scheduler, and signal helpers
+  Status: ``boundary-retained``.
+
+  Owner: ``kernel/sched/wait.c``, ``include/linux/wait-rust.h``, and
+  ``include/linux/sched.h``.
+
+  Reason: Raw lock and interrupt restoration, lockdep assertions, intrusive
+  list mutation, task-state stores, SMP barriers, signal predicates,
+  scheduling with a released queue lock, task wakeup, scheduler wake flags,
+  poll key construction, and timeout operations retain scheduler, signal,
+  poll, architecture, and lock contracts.
+
+  Test: Native SMP1/SMP4, KASAN, lockdep, and PREEMPT_RT boots exercise normal,
+  exclusive, priority, keyed, synchronized, current-CPU, locked, signal,
+  timeout, autoremove, woken, and POLLFREE paths.
+
+  Risk: An incorrect lock, barrier, signal, task-state, or list operation can
+  lose a wakeup, wake an ineligible task, or corrupt a wait entry.
+
+  Exit condition: Approved Rust lock, scheduler, signal, poll, and intrusive
+  list abstractions preserve the complete helper contracts.
+
+Wait queue export metadata
+  Status: ``boundary-retained``.
+
+  Owner: ``kernel/sched/wait.c`` and ``rust/Makefile``.
+
+  Reason: Fifteen production symbols retain ordinary non-GPL exports, seven
+  retain GPL exports, and two remain unexported. C emits the ordinary records
+  while Rust automatic generation emits only the GPL class.
+
+  Test: ``vmlinux.symvers`` records exactly 15 ordinary entries, seven GPL
+  entries, and no entry for the two internal names. Generated Rust export
+  lists omit every ordinary and unexported name.
 
   Risk: A duplicate export or class change can expose an internal interface
   or break module compatibility.
@@ -1860,6 +1935,13 @@ layouts, construction macros, raw lock and list helpers, task-state and signal
 queries, scheduler wakeup, and export metadata remain named C boundaries.
 Rust defines every public entry and owns every initialization, membership,
 wake-selection, wake-all, signal, cleanup, and state-order decision.
+
+The wait queue boundary is valid only while the shared queue and entry
+layouts, construction macros, raw lock and list helpers, task-state and signal
+queries, scheduler actions, barrier and poll primitives, and mixed export
+metadata remain named C boundaries. Rust defines every public and internal
+entry and owns every insertion, callback, autoremove, woken, signal, finish,
+exclusive-budget, wake-variant, and POLLFREE decision.
 
 The RCU wait boundary is valid only while the shared wait layout, caller
 condition expansion, RCU and task-state primitives, signal queries, scheduler

@@ -7,10 +7,13 @@ Status and scope
 ----------------
 
 The ``CONFIG_RUST_WAITQUEUE`` option selects a native Rust implementation of
-the wait queue state machine.  The migration keeps the existing
+the wait queue state machine. The migration keeps the existing
 ``wait_queue_head`` and ``wait_queue_entry`` layouts and caller-facing API.
 
-The Rust code owns these production decisions:
+Rust directly defines all 24 production entry points. The complete original C
+implementation remains available under ``#ifndef CONFIG_RUST_WAITQUEUE``.
+
+Rust owns these production decisions:
 
 * Wait entry flags and insertion order.
 * Wait entry initialization and callback selection.
@@ -30,16 +33,56 @@ The Rust code owns these production decisions:
 * POLLFREE wake traversal and final empty-queue enforcement.
 
 Queue initialization, scheduler state stores, scheduler entry and timeout
-operations, and wait condition loops remain in C.  Those operations will be
+operations, and wait condition loops remain in C. Those operations are
 separate migration units.
 
 Entry points and ownership
 --------------------------
 
-The public wake and entry-operation entry points retain their names,
-signatures, and ordinary export classes.  The production state machine is in
-``rust/kernel/waitqueue_core.rs``.  ``kernel/sched/wait.c`` provides the C ABI
-adapters and the narrow primitive boundary.
+Rust directly defines these ordinary-export entry points:
+
+* ``add_wait_queue()``
+* ``add_wait_queue_exclusive()``
+* ``remove_wait_queue()``
+* ``__wake_up()``
+* ``prepare_to_wait()``
+* ``prepare_to_wait_exclusive()``
+* ``init_wait_entry()``
+* ``prepare_to_wait_event()``
+* ``do_wait_intr()``
+* ``do_wait_intr_irq()``
+* ``finish_wait()``
+* ``autoremove_wake_function()``
+* ``wait_woken()``
+* ``woken_wake_function()``
+* ``woken_wake_bit_function()``
+
+Rust directly defines these GPL-export entry points:
+
+* ``add_wait_queue_priority()``
+* ``add_wait_queue_priority_exclusive()``
+* ``__wake_up_locked()``
+* ``__wake_up_locked_key()``
+* ``__wake_up_sync_key()``
+* ``__wake_up_locked_sync_key()``
+* ``__wake_up_sync()``
+
+Rust directly defines these unexported entry points:
+
+* ``__wake_up_on_current_cpu()``
+* ``__wake_up_pollfree()``
+
+The ordinary symbols retain their ``EXPORT_SYMBOL`` class through metadata in
+``kernel/sched/wait.c``. Rust automatic export generation omits all 15
+ordinary names and both unexported names. It emits the seven GPL exports.
+
+``init_wait_entry()`` reads the current task in Rust and installs the
+Rust-defined ``autoremove_wake_function()`` callback. The C boundary has no
+initialization adapter.
+
+The production state machine is in ``rust/kernel/waitqueue_core.rs``. The
+native scheduler utility object contains only the narrow primitive helpers and
+ordinary export metadata from ``kernel/sched/wait.c``.
 
 Retained C boundary
 -------------------
@@ -60,6 +103,7 @@ locking, poll, or intrusive list internals:
 * Delivery of the scheduler wake request through ``default_wake_function()``.
 * Scheduler wake flags for current-CPU and synchronized wakeups.
 * Poll key construction and the final POLLFREE queue check.
+* Ordinary non-GPL export metadata for Rust-defined entry points.
 
 These helpers do not select an insertion position, reject signals, update task
 state, select callbacks, decide whether autoremove removes an entry, transition
@@ -131,10 +175,9 @@ Validation gate
 
 The migration unit must pass these checks before integration:
 
-* Rust-enabled and C fallback x86_64 builds.
-* Rust-enabled generic inline KASAN build.
-* One-vCPU and repeated four-vCPU Rust KUnit runs.
-* Four-vCPU C fallback, KASAN, and lockdep KUnit runs.
+* Native Rust, Rust fallback, and C-only x86_64 builds.
+* One-vCPU and four-vCPU KUnit runs for all six configurations.
+* Generic inline KASAN, lockdep, and PREEMPT_RT builds and boots.
 * Entry insertion order, removal, and priority-exclusive contention.
 * Wait entry field initialization, callback identity, and list initialization.
 * Successful autoremove and retained entries after failed wakeups.
@@ -148,33 +191,52 @@ The migration unit must pass these checks before integration:
 * Synchronized, current-CPU, locked, and keyed wake variants.
 * POLLFREE key and queue cleanup.
 * Scheduler-backed waiter integration.
-* Export, adapter disassembly, and module unresolved-symbol checks.
-* Rustfmt, Clippy, checkpatch, and ``git diff --check``.
+* Symbol ownership, mixed export class, duplicate-export, and
+  unresolved-symbol checks.
+* Module builds and an external module ABI test for all export classes.
+* Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
+  ``git diff --check``.
 
 Validation results
 ------------------
 
-The final source tree passed seven x86_64 KUnit runs on 2026-11-11:
+Validation on 2026-11-24 used base commit ``dd322f0ac6f5``. Six x86_64
+configurations were built: native Rust, Rust fallback, C-only, generic inline
+KASAN, lockdep, and PREEMPT_RT. Native, fallback, C-only, lockdep, and
+PREEMPT_RT used GCC 16.2. KASAN used Clang 21.1.8 and LLD. Each configuration
+passed one SMP1 boot and one SMP4 boot with eighteen of eighteen cases. The 12
+boots executed 216 cases without a failure or skip.
 
-* One run on one vCPU with the Rust implementation enabled.
-* Three consecutive runs on four vCPUs with the Rust implementation enabled.
-* One run on four vCPUs with the C fallback implementation.
-* One run on four vCPUs with generic inline KASAN enabled.
-* One run on four vCPUs with lockdep, spinlock, and list debugging enabled.
+KASAN initialized generic KernelAddressSanitizer. The lockdep image enabled
+``PROVE_LOCKING``, ``DEBUG_LOCK_ALLOC``, ``LOCKDEP``, ``DEBUG_SPINLOCK``, and
+``DEBUG_LIST``. The PREEMPT_RT image reported ``PREEMPT_RT`` in its kernel
+banner. The logs contain no ``WARNING``, ``BUG``, Oops, failed test, kernel
+panic, KASAN report, lockdep complaint, or RCU stall.
 
-Every run reported eighteen passed tests and no failures, skips, kernel warnings,
-sanitizer reports, lockdep reports, or panic.
+The native SMP4 image also passed six adjacent suites: ``completion`` with six
+cases, ``rcuwait`` with eight, ``sched_wake`` with 37, ``swait`` with five,
+``task_work`` with six, and ``wait_bit`` with seven. All 69 cases passed.
 
-All twenty-four public wait, entry-operation, woken-callback, and locked-wait
-adapters disassemble to tail calls into their Rust counterparts.  The
-initialization adapter prepares the current task and autoremove callback ABI
-arguments before its tail call.  The exported symbol names and classes match
-the C fallback.  The narrow C boundary helpers are not exported.  The C
-fallback image and the twelve loadable modules from both builds contain no
-unresolved Rust wait queue symbols.
+In native, KASAN, lockdep, and PREEMPT_RT, ``rust/kernel.o`` defined all 24
+entry points. The native C scheduler object, built from ``wait.c``, contained
+none of those definitions and retained 27 primitive helpers. The fallback and
+C-only images defined all 24 entry points in the C scheduler object and none
+in Rust.
 
-Clippy, rustfmt, strict checkpatch, and ``git diff --check`` completed without
-errors or warnings.
+Every configuration recorded exactly 15 ordinary ``EXPORT_SYMBOL`` entries,
+seven GPL entries, no entry for either unexported entry point, and no duplicate
+wait queue export. Rust automatic export generation omitted all 17 ordinary
+and unexported names and emitted the seven GPL names.
+
+Native, fallback, and C-only module builds passed modpost. A temporary
+external module referenced all 22 exported entry points and linked against
+each of those three configurations.
+
+Rustfmt, Clippy, Rustdoc, focused Sphinx generation, and
+``git diff --check`` passed. Sphinx emitted only the existing
+``kernel-docs`` and ``getting_llvm`` cross-directory warnings. Strict
+checkpatch reported no errors, warnings, or checks after targeted ignores for
+``EXPORT_SYMBOL`` and function-argument placement.
 
 Review conditions
 -----------------

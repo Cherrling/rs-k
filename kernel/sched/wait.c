@@ -395,91 +395,14 @@ void rust_waitqueue_assert_pollfree_empty(struct wait_queue_head *wq_head)
 	WARN_ON_ONCE(waitqueue_active(wq_head));
 }
 
-void add_wait_queue(struct wait_queue_head *wq_head,
-		    struct wait_queue_entry *wq_entry)
-{
-	rust_waitqueue_add(wq_head, wq_entry);
-}
+/*
+ * Rust defines the ordinary production entry points. Keep their export
+ * metadata here so loadable modules retain the original symbol class.
+ */
 EXPORT_SYMBOL(add_wait_queue);
-
-void add_wait_queue_exclusive(struct wait_queue_head *wq_head,
-			      struct wait_queue_entry *wq_entry)
-{
-	rust_waitqueue_add_exclusive(wq_head, wq_entry);
-}
 EXPORT_SYMBOL(add_wait_queue_exclusive);
-
-void add_wait_queue_priority(struct wait_queue_head *wq_head,
-			     struct wait_queue_entry *wq_entry)
-{
-	rust_waitqueue_add_priority(wq_head, wq_entry);
-}
-EXPORT_SYMBOL_GPL(add_wait_queue_priority);
-
-int add_wait_queue_priority_exclusive(struct wait_queue_head *wq_head,
-				      struct wait_queue_entry *wq_entry)
-{
-	return rust_waitqueue_add_priority_exclusive(wq_head, wq_entry);
-}
-EXPORT_SYMBOL_GPL(add_wait_queue_priority_exclusive);
-
-void remove_wait_queue(struct wait_queue_head *wq_head,
-		       struct wait_queue_entry *wq_entry)
-{
-	rust_waitqueue_remove(wq_head, wq_entry);
-}
 EXPORT_SYMBOL(remove_wait_queue);
-
-int __wake_up(struct wait_queue_head *wq_head, unsigned int mode,
-	      int nr_exclusive, void *key)
-{
-	return rust_waitqueue_wake(wq_head, mode, nr_exclusive, key);
-}
 EXPORT_SYMBOL(__wake_up);
-
-void __wake_up_on_current_cpu(struct wait_queue_head *wq_head, unsigned int mode,
-			      void *key)
-{
-	rust_waitqueue_wake_on_current_cpu(wq_head, mode, key);
-}
-
-void __wake_up_locked(struct wait_queue_head *wq_head, unsigned int mode, int nr)
-{
-	rust_waitqueue_wake_locked(wq_head, mode, nr);
-}
-EXPORT_SYMBOL_GPL(__wake_up_locked);
-
-void __wake_up_locked_key(struct wait_queue_head *wq_head, unsigned int mode,
-			  void *key)
-{
-	rust_waitqueue_wake_locked_key(wq_head, mode, key);
-}
-EXPORT_SYMBOL_GPL(__wake_up_locked_key);
-
-void __wake_up_sync_key(struct wait_queue_head *wq_head, unsigned int mode,
-			void *key)
-{
-	rust_waitqueue_wake_sync_key(wq_head, mode, key);
-}
-EXPORT_SYMBOL_GPL(__wake_up_sync_key);
-
-void __wake_up_locked_sync_key(struct wait_queue_head *wq_head,
-			       unsigned int mode, void *key)
-{
-	rust_waitqueue_wake_locked_sync_key(wq_head, mode, key);
-}
-EXPORT_SYMBOL_GPL(__wake_up_locked_sync_key);
-
-void __wake_up_sync(struct wait_queue_head *wq_head, unsigned int mode)
-{
-	rust_waitqueue_wake_sync(wq_head, mode);
-}
-EXPORT_SYMBOL_GPL(__wake_up_sync);
-
-void __wake_up_pollfree(struct wait_queue_head *wq_head)
-{
-	rust_waitqueue_wake_pollfree(wq_head);
-}
 
 #endif /* CONFIG_RUST_WAITQUEUE */
 
@@ -508,12 +431,6 @@ prepare_to_wait(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_ent
 	set_current_state(state);
 	spin_unlock_irqrestore(&wq_head->lock, flags);
 }
-#else
-void
-prepare_to_wait(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry, int state)
-{
-	rust_waitqueue_prepare(wq_head, wq_entry, state);
-}
 #endif
 EXPORT_SYMBOL(prepare_to_wait);
 
@@ -536,13 +453,6 @@ prepare_to_wait_exclusive(struct wait_queue_head *wq_head,
 	spin_unlock_irqrestore(&wq_head->lock, flags);
 	return was_empty;
 }
-#else
-bool
-prepare_to_wait_exclusive(struct wait_queue_head *wq_head,
-			  struct wait_queue_entry *wq_entry, int state)
-{
-	return rust_waitqueue_prepare_exclusive(wq_head, wq_entry, state);
-}
 #endif
 EXPORT_SYMBOL(prepare_to_wait_exclusive);
 
@@ -553,12 +463,6 @@ void init_wait_entry(struct wait_queue_entry *wq_entry, int flags)
 	wq_entry->private = current;
 	wq_entry->func = autoremove_wake_function;
 	INIT_LIST_HEAD(&wq_entry->entry);
-}
-#else
-void init_wait_entry(struct wait_queue_entry *wq_entry, int flags)
-{
-	rust_waitqueue_init_entry(wq_entry, flags, current,
-				  autoremove_wake_function);
 }
 #endif
 EXPORT_SYMBOL(init_wait_entry);
@@ -599,12 +503,6 @@ long prepare_to_wait_event(struct wait_queue_head *wq_head,
 
 	return ret;
 }
-#else
-long prepare_to_wait_event(struct wait_queue_head *wq_head,
-			   struct wait_queue_entry *wq_entry, int state)
-{
-	return rust_waitqueue_prepare_event(wq_head, wq_entry, state);
-}
 #endif
 EXPORT_SYMBOL(prepare_to_wait_event);
 
@@ -631,11 +529,6 @@ int do_wait_intr(wait_queue_head_t *wq, wait_queue_entry_t *wait)
 
 	return 0;
 }
-#else
-int do_wait_intr(wait_queue_head_t *wq, wait_queue_entry_t *wait)
-{
-	return rust_waitqueue_do_wait_intr(wq, wait);
-}
 #endif
 EXPORT_SYMBOL(do_wait_intr);
 
@@ -654,11 +547,6 @@ int do_wait_intr_irq(wait_queue_head_t *wq, wait_queue_entry_t *wait)
 	spin_lock_irq(&wq->lock);
 
 	return 0;
-}
-#else
-int do_wait_intr_irq(wait_queue_head_t *wq, wait_queue_entry_t *wait)
-{
-	return rust_waitqueue_do_wait_intr_irq(wq, wait);
 }
 #endif
 EXPORT_SYMBOL(do_wait_intr_irq);
@@ -697,11 +585,6 @@ void finish_wait(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_en
 		spin_unlock_irqrestore(&wq_head->lock, flags);
 	}
 }
-#else
-void finish_wait(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry)
-{
-	rust_waitqueue_finish(wq_head, wq_entry);
-}
 #endif
 EXPORT_SYMBOL(finish_wait);
 
@@ -714,12 +597,6 @@ int autoremove_wake_function(struct wait_queue_entry *wq_entry, unsigned mode, i
 		list_del_init_careful(&wq_entry->entry);
 
 	return ret;
-}
-#else
-int autoremove_wake_function(struct wait_queue_entry *wq_entry,
-			     unsigned int mode, int sync, void *key)
-{
-	return rust_waitqueue_autoremove(wq_entry, mode, sync, key);
 }
 #endif
 EXPORT_SYMBOL(autoremove_wake_function);
@@ -768,12 +645,6 @@ long wait_woken(struct wait_queue_entry *wq_entry, unsigned mode, long timeout)
 
 	return timeout;
 }
-#else
-long wait_woken(struct wait_queue_entry *wq_entry, unsigned int mode,
-		long timeout)
-{
-	return rust_waitqueue_wait_woken(wq_entry, mode, timeout);
-}
 #endif
 EXPORT_SYMBOL(wait_woken);
 
@@ -785,12 +656,6 @@ int woken_wake_function(struct wait_queue_entry *wq_entry, unsigned mode, int sy
 	wq_entry->flags |= WQ_FLAG_WOKEN;
 
 	return default_wake_function(wq_entry, mode, sync, key);
-}
-#else
-int woken_wake_function(struct wait_queue_entry *wq_entry,
-			unsigned int mode, int sync, void *key)
-{
-	return rust_waitqueue_woken_wake(wq_entry, mode, sync, key);
 }
 #endif
 EXPORT_SYMBOL(woken_wake_function);
@@ -807,12 +672,6 @@ int woken_wake_bit_function(struct wait_queue_entry *wq_entry, unsigned mode, in
 	wq_entry->flags |= WQ_FLAG_WOKEN;
 
 	return default_wake_function(wq_entry, mode, sync, key);
-}
-#else
-int woken_wake_bit_function(struct wait_queue_entry *wq_entry,
-			    unsigned int mode, int sync, void *key)
-{
-	return rust_waitqueue_woken_wake_bit(wq_entry, mode, sync, key);
 }
 #endif
 EXPORT_SYMBOL(woken_wake_bit_function);
