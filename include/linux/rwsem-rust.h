@@ -85,6 +85,23 @@ bool rust_rwsem_downgrade_write(struct rw_semaphore *sem);
 /*
  * Narrow C helpers used by the Rust state machine.
  */
+void rust_rwsem_init(struct rw_semaphore *sem, const char *name,
+		     struct lock_class_key *key);
+void rust_rwsem_might_sleep(void);
+void rust_rwsem_preempt_disable(void);
+void rust_rwsem_preempt_enable(void);
+void rust_rwsem_lockdep_acquire_read(struct rw_semaphore *sem,
+				     unsigned int subclass, bool trylock);
+void rust_rwsem_lockdep_acquire(struct rw_semaphore *sem,
+				unsigned int subclass, bool trylock);
+void rust_rwsem_lockdep_acquire_nest(struct rw_semaphore *sem,
+				     struct lockdep_map *nest);
+void rust_rwsem_lockdep_release(struct rw_semaphore *sem);
+void rust_rwsem_lockdep_downgrade(struct rw_semaphore *sem);
+#ifdef CONFIG_LOCK_STAT
+void rust_rwsem_lock_contended(struct rw_semaphore *sem);
+void rust_rwsem_lock_acquired(struct rw_semaphore *sem);
+#endif
 long rust_rwsem_read_count(struct rw_semaphore *sem);
 long rust_rwsem_add_return_acquire(struct rw_semaphore *sem, long value);
 long rust_rwsem_add_return_release(struct rw_semaphore *sem, long value);
@@ -96,11 +113,22 @@ void rust_rwsem_set_owner_value(struct rw_semaphore *sem,
 				unsigned long owner);
 unsigned long rust_rwsem_current(void);
 void rust_rwsem_clear_reader_owned(struct rw_semaphore *sem);
+void rust_rwsem_set_reader_owned_null(struct rw_semaphore *sem);
 void rust_rwsem_set_nonspinnable(struct rw_semaphore *sem);
 void rust_rwsem_clear_nonspinnable(struct rw_semaphore *sem);
 bool rust_rwsem_warn_negative_count(struct rw_semaphore *sem, long count);
 void rust_rwsem_warn_release_count(struct rw_semaphore *sem, long count);
+void rust_rwsem_warn_bad_lock(struct rw_semaphore *sem);
+void rust_rwsem_warn_read_unlock(struct rw_semaphore *sem);
+void rust_rwsem_warn_write_unlock(struct rw_semaphore *sem);
+void rust_rwsem_warn_downgrade(struct rw_semaphore *sem);
 void rust_rwsem_trace_release(struct rw_semaphore *sem);
+bool rust_rwsem_down_read_slowpath(struct rw_semaphore *sem, long count,
+				   unsigned int state);
+bool rust_rwsem_down_write_slowpath(struct rw_semaphore *sem,
+				    unsigned int state);
+void rust_rwsem_wake(struct rw_semaphore *sem);
+void rust_rwsem_downgrade_wake(struct rw_semaphore *sem);
 
 #endif /* CONFIG_RUST_RWSEM */
 

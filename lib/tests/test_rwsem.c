@@ -5,6 +5,7 @@
 #include <linux/atomic.h>
 #include <linux/jiffies.h>
 #include <linux/kthread.h>
+#include <linux/mutex.h>
 #include <linux/rwsem.h>
 #include <linux/rwsem-rust.h>
 #include <linux/sched.h>
@@ -477,6 +478,54 @@ cleanup:
 	rwsem_test_stop_workers(&task, 1);
 }
 
+static void rwsem_test_nested_and_non_owner(struct kunit *test)
+{
+	struct rw_semaphore sem;
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+	/* Lockdep parent for down_write_nest_lock(). */
+	struct mutex nest;
+#endif
+
+	init_rwsem(&sem);
+
+	down_read_nested(&sem, 1);
+	KUNIT_EXPECT_EQ(test, rwsem_test_owner_task(&sem),
+			(unsigned long)current);
+	up_read(&sem);
+
+	KUNIT_EXPECT_EQ(test, down_read_killable_nested(&sem, 2), 0);
+	KUNIT_EXPECT_EQ(test, rwsem_test_owner_task(&sem),
+			(unsigned long)current);
+	up_read(&sem);
+
+	down_write_nested(&sem, 1);
+	KUNIT_EXPECT_EQ(test, rwsem_test_owner_task(&sem),
+			(unsigned long)current);
+	up_write(&sem);
+
+	KUNIT_EXPECT_EQ(test, down_write_killable_nested(&sem, 2), 0);
+	KUNIT_EXPECT_EQ(test, rwsem_test_owner_task(&sem),
+			(unsigned long)current);
+	up_write(&sem);
+
+	down_read_non_owner(&sem);
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+	KUNIT_EXPECT_EQ(test, rwsem_test_owner_task(&sem), 0UL);
+#endif
+	up_read_non_owner(&sem);
+	KUNIT_EXPECT_FALSE(test, rwsem_is_locked(&sem));
+
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+	mutex_init(&nest);
+	mutex_lock(&nest);
+	down_write_nest_lock(&sem, &nest);
+	KUNIT_EXPECT_EQ(test, rwsem_test_owner_task(&sem),
+			(unsigned long)current);
+	up_write(&sem);
+	mutex_unlock(&nest);
+#endif
+}
+
 static int rwsem_test_contender_thread(void *data)
 {
 	struct rwsem_test_contender *contender = data;
@@ -590,6 +639,7 @@ static struct kunit_case rwsem_test_cases[] = {
 	KUNIT_CASE(rwsem_test_interruptible_and_killable),
 	KUNIT_CASE(rwsem_test_writer_fifo),
 	KUNIT_CASE(rwsem_test_downgrade),
+	KUNIT_CASE(rwsem_test_nested_and_non_owner),
 	KUNIT_CASE(rwsem_test_concurrent_access),
 	{}
 };

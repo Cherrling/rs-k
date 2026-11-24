@@ -141,6 +141,22 @@ Counting semaphore state machine
   49 of 49 cases, and the non-GPL module ABI test linked all six ordinary
   exports.
 
+Read-write semaphore state machine and public entries
+  Status: ``migrated``.
+
+  Evidence: :doc:`rwsem`.
+
+  Rust directly defines the eleven ordinary initialization, lock, trylock,
+  unlock, and downgrade entry points. With ``CONFIG_DEBUG_LOCK_ALLOC`` it also
+  defines the seven nested and anonymous-owner entries. Rust owns fast and
+  slow path selection, reader and writer count transitions, reader stealing,
+  writer handoff requests, owner encoding, error results, and release wake
+  decisions. C retains the shared layout, atomics and memory ordering,
+  preemption control, intrusive waiters, optimistic spinning, scheduling,
+  wake queues, lockdep and lock-stat delivery, diagnostics, and ordinary
+  export metadata. C fallback configurations retain the complete entry
+  implementations.
+
 Simple wait queue state machine
   Status: ``migrated``.
 
@@ -468,8 +484,8 @@ Public ABI
   ``include/linux/btree.h``, ``include/linux/find.h``,
   ``include/linux/bitmap.h``, ``include/linux/maple_tree.h``,
   ``include/linux/kfifo.h``, ``include/linux/completion.h``,
-  ``include/linux/task_work.h``, ``include/linux/irq_work.h``, and
-  ``include/linux/timerqueue.h``.
+  ``include/linux/task_work.h``, ``include/linux/irq_work.h``,
+  ``include/linux/timerqueue.h``, and ``include/linux/rwsem.h``.
 
   Reason: Existing callers and loadable modules use the stable C ABI.
 
@@ -530,6 +546,28 @@ Timer queue tree primitives
 
   Exit condition: Rust owns compatible timer queue tree primitives without a
   shared C call boundary.
+
+Read-write semaphore scheduler and locking-debug boundary
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/rwsem.h``, ``include/linux/rwsem-rust.h``,
+  ``kernel/locking/rwsem.c``, and ``rust/kernel/rwsem_core.rs``.
+
+  Reason: Native Rust entries select lock state, but intrusive waiters,
+  optimistic spinning, scheduling, wake queues, task state, hung-task
+  accounting, lockdep and lock-stat delivery, and ``DEBUG_RWSEMS`` validation
+  use locking and scheduler internals that remain in C.
+
+  Test: Native, fallback, and C-only KUnit runs exercise reader and writer
+  acquisition, stealing, handoff, signal cancellation, downgrade, nested
+  classes, anonymous ownership, and concurrent exclusion.
+
+  Risk: An ordering or debug-delivery mismatch can lose a waiter, break
+  ownership tracking, or make lockdep and lock-stat report a different
+  acquisition site.
+
+  Exit condition: Rust owns equivalent preemption, wake queue, scheduler,
+  lockdep, lock-stat, and context-analysis interfaces.
 
 Generic bitmap storage and inline interface
   Status: ``boundary-retained``.

@@ -628,6 +628,24 @@ rust_non_gpl_exports := \
 	down_trylock \
 	down_timeout \
 	up \
+	__init_rwsem \
+	down_read \
+	down_read_interruptible \
+	down_read_killable \
+	down_read_trylock \
+	down_write \
+	down_write_killable \
+	down_write_trylock \
+	up_read \
+	up_write \
+	downgrade_write \
+	down_read_nested \
+	down_read_killable_nested \
+	_down_write_nest_lock \
+	down_read_non_owner \
+	down_write_nested \
+	down_write_killable_nested \
+	up_read_non_owner \
 	kobject_init \
 	kobject_get \
 	kobject_get_unless_zero \
@@ -779,7 +797,20 @@ rust_unexported_symbols := \
 	__wake_up_on_current_cpu \
 	__wake_up_pollfree \
 	__var_wake_key \
-	var_wake_function
+	var_wake_function \
+	rust_rwsem_read_fast \
+	rust_rwsem_read_trylock \
+	rust_rwsem_reader_slow_steal \
+	rust_rwsem_write_fast \
+	rust_rwsem_write_unqueued \
+	rust_rwsem_write_slow \
+	rust_rwsem_set_writer_owner \
+	rust_rwsem_cond_wake \
+	rust_rwsem_owner \
+	rust_rwsem_is_reader_owned \
+	rust_rwsem_up_read \
+	rust_rwsem_up_write \
+	rust_rwsem_downgrade_write
 
 rust_exports = $(NM) -p --defined-only $(1) | awk '$$2~/(T|R|D|B)/ && $$3!~/__(pfx|cfi|odr_asan)/ { printf $(2),$$3 }'
 rust_auto_export_skip := $(rust_non_gpl_exports) $(rust_unexported_symbols)

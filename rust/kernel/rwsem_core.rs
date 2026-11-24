@@ -10,12 +10,15 @@
 
 use crate::{
     bindings,
-    ffi::{c_long, c_uint, c_ulong},
+    ffi::{c_char, c_int, c_long, c_uint, c_ulong},
 };
 use macros::export;
 
 type Rwsem = bindings::rw_semaphore;
 type Task = bindings::task_struct;
+type LockClassKey = bindings::lock_class_key;
+#[cfg(CONFIG_DEBUG_LOCK_ALLOC)]
+type LockdepMap = bindings::lockdep_map;
 
 const READER_OWNED: c_ulong = bindings::RWSEM_READER_OWNED as c_ulong;
 const NONSPINNABLE: c_ulong = bindings::RWSEM_NONSPINNABLE as c_ulong;
@@ -456,4 +459,438 @@ unsafe extern "C" fn rust_rwsem_downgrade_write(sem: *mut Rwsem) -> bool {
     // SAFETY: The caller guarantees that `sem` is valid.
     unsafe { bindings::rust_rwsem_trace_release(sem) };
     true
+}
+
+/// Acquires a read lock and returns zero or an interrupted wait result.
+///
+/// # Safety
+///
+/// `sem` must be valid and the caller must permit sleeping.
+unsafe fn down_read_common(sem: *mut Rwsem, state: c_uint, subclass: c_int) -> c_int {
+    // SAFETY: The caller guarantees that sleeping is permitted.
+    unsafe { bindings::rust_rwsem_might_sleep() };
+    // SAFETY: The caller guarantees that `sem` is valid.
+    unsafe { bindings::rust_rwsem_lockdep_acquire_read(sem, subclass as c_uint, false) };
+    // SAFETY: The caller guarantees that `sem` is valid.
+    unsafe { bindings::rust_rwsem_preempt_disable() };
+
+    let mut count = 0;
+    // SAFETY: Preemption is disabled and `sem` is valid.
+    let mut acquired = unsafe { rust_rwsem_read_fast(sem, &mut count) };
+    if !acquired {
+        #[cfg(CONFIG_LOCK_STAT)]
+        // SAFETY: The fast path failed and `sem` is valid.
+        unsafe {
+            bindings::rust_rwsem_lock_contended(sem)
+        };
+        // SAFETY: Preemption is disabled and the fast path left its provisional
+        // reader count in `count`.
+        acquired = unsafe { bindings::rust_rwsem_down_read_slowpath(sem, count, state) };
+    }
+
+    // SAFETY: This function disabled preemption above.
+    unsafe { bindings::rust_rwsem_preempt_enable() };
+
+    if acquired {
+        #[cfg(CONFIG_LOCK_STAT)]
+        // SAFETY: The lock was acquired above.
+        unsafe {
+            bindings::rust_rwsem_lock_acquired(sem)
+        };
+        0
+    } else {
+        // SAFETY: The lock acquisition failed before returning to the caller.
+        unsafe { bindings::rust_rwsem_lockdep_release(sem) };
+        -(bindings::EINTR as c_int)
+    }
+}
+
+/// Acquires a write lock and returns zero or an interrupted wait result.
+///
+/// # Safety
+///
+/// `sem` must be valid and the caller must permit sleeping.
+unsafe fn down_write_common(sem: *mut Rwsem, state: c_uint, subclass: c_int) -> c_int {
+    // SAFETY: The caller guarantees that sleeping is permitted.
+    unsafe { bindings::rust_rwsem_might_sleep() };
+    // SAFETY: The caller guarantees that `sem` is valid.
+    unsafe { bindings::rust_rwsem_lockdep_acquire(sem, subclass as c_uint, false) };
+    // SAFETY: The caller guarantees that `sem` is valid.
+    unsafe { bindings::rust_rwsem_preempt_disable() };
+
+    // SAFETY: Preemption is disabled and `sem` is valid.
+    let mut acquired = unsafe { rust_rwsem_write_fast(sem) };
+    if !acquired {
+        #[cfg(CONFIG_LOCK_STAT)]
+        // SAFETY: The fast path failed and `sem` is valid.
+        unsafe {
+            bindings::rust_rwsem_lock_contended(sem)
+        };
+        // SAFETY: Preemption is disabled and `sem` is valid.
+        acquired = unsafe { bindings::rust_rwsem_down_write_slowpath(sem, state) };
+    }
+
+    // SAFETY: This function disabled preemption above.
+    unsafe { bindings::rust_rwsem_preempt_enable() };
+
+    if acquired {
+        #[cfg(CONFIG_LOCK_STAT)]
+        // SAFETY: The lock was acquired above.
+        unsafe {
+            bindings::rust_rwsem_lock_acquired(sem)
+        };
+        0
+    } else {
+        // SAFETY: The lock acquisition failed before returning to the caller.
+        unsafe { bindings::rust_rwsem_lockdep_release(sem) };
+        -(bindings::EINTR as c_int)
+    }
+}
+
+/// Acquires a write lock under a nested lockdep map.
+///
+/// # Safety
+///
+/// `sem` and `nest` must be valid and sleep must be permitted.
+#[cfg(CONFIG_DEBUG_LOCK_ALLOC)]
+unsafe fn down_write_nest_common(sem: *mut Rwsem, nest: *mut LockdepMap) {
+    // SAFETY: The caller guarantees that sleeping is permitted.
+    unsafe { bindings::rust_rwsem_might_sleep() };
+    // SAFETY: The caller guarantees that `sem` and `nest` are valid.
+    unsafe { bindings::rust_rwsem_lockdep_acquire_nest(sem, nest) };
+    // SAFETY: The caller guarantees that `sem` is valid.
+    unsafe { bindings::rust_rwsem_preempt_disable() };
+
+    // SAFETY: Preemption is disabled and `sem` is valid.
+    let acquired = unsafe { rust_rwsem_write_fast(sem) };
+    if !acquired {
+        #[cfg(CONFIG_LOCK_STAT)]
+        // SAFETY: The fast path failed and `sem` is valid.
+        unsafe {
+            bindings::rust_rwsem_lock_contended(sem)
+        };
+        // SAFETY: Preemption is disabled and `sem` is valid.
+        unsafe { bindings::rust_rwsem_down_write_slowpath(sem, bindings::TASK_UNINTERRUPTIBLE) };
+    }
+
+    // SAFETY: This function disabled preemption above.
+    unsafe { bindings::rust_rwsem_preempt_enable() };
+    #[cfg(CONFIG_LOCK_STAT)]
+    // SAFETY: The lock is now held. An uninterruptible wait cannot fail.
+    unsafe {
+        bindings::rust_rwsem_lock_acquired(sem)
+    };
+}
+
+/// Tries to acquire the rwsem for reading.
+///
+/// # Safety
+///
+/// `sem` must be valid.
+unsafe fn down_read_trylock_common(sem: *mut Rwsem) -> c_int {
+    // SAFETY: The caller guarantees that `sem` is valid.
+    unsafe { bindings::rust_rwsem_warn_bad_lock(sem) };
+    // SAFETY: The caller guarantees that `sem` is valid.
+    unsafe { bindings::rust_rwsem_preempt_disable() };
+    // SAFETY: Preemption is disabled and `sem` is valid.
+    let acquired = unsafe { rust_rwsem_read_trylock(sem) };
+    // SAFETY: This function disabled preemption above.
+    unsafe { bindings::rust_rwsem_preempt_enable() };
+
+    if acquired {
+        // SAFETY: The caller guarantees that `sem` is valid.
+        unsafe { bindings::rust_rwsem_lockdep_acquire_read(sem, 0, true) };
+    }
+    c_int::from(acquired)
+}
+
+/// Tries to acquire the rwsem for writing.
+///
+/// # Safety
+///
+/// `sem` must be valid.
+unsafe fn down_write_trylock_common(sem: *mut Rwsem) -> c_int {
+    // SAFETY: The caller guarantees that `sem` is valid.
+    unsafe { bindings::rust_rwsem_warn_bad_lock(sem) };
+    // SAFETY: The caller guarantees that `sem` is valid.
+    unsafe { bindings::rust_rwsem_preempt_disable() };
+    // SAFETY: Preemption is disabled and `sem` is valid.
+    let acquired = unsafe { rust_rwsem_write_fast(sem) };
+    // SAFETY: This function disabled preemption above.
+    unsafe { bindings::rust_rwsem_preempt_enable() };
+
+    if acquired {
+        // SAFETY: The caller guarantees that `sem` is valid.
+        unsafe { bindings::rust_rwsem_lockdep_acquire(sem, 0, true) };
+    }
+    c_int::from(acquired)
+}
+
+/// Initializes a read-write semaphore.
+///
+/// # Safety
+///
+/// `sem` must point to writable storage for a read-write semaphore.
+#[export]
+unsafe extern "C" fn __init_rwsem(sem: *mut Rwsem, name: *const c_char, key: *mut LockClassKey) {
+    // SAFETY: The caller guarantees writable semaphore storage.
+    unsafe { bindings::rust_rwsem_init(sem, name, key) };
+}
+
+/// Acquires a read lock.
+///
+/// # Safety
+///
+/// `sem` must be valid and the caller must permit sleeping.
+#[export]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn down_read(sem: *mut Rwsem) {
+    // SAFETY: The caller guarantees that sleeping is permitted.
+    unsafe { down_read_common(sem, bindings::TASK_UNINTERRUPTIBLE, 0) };
+}
+
+/// Acquires a read lock unless interrupted.
+///
+/// # Safety
+///
+/// `sem` must be valid and the caller must permit sleeping.
+#[export]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn down_read_interruptible(sem: *mut Rwsem) -> c_int {
+    // SAFETY: The caller guarantees that sleeping is permitted.
+    unsafe { down_read_common(sem, bindings::TASK_INTERRUPTIBLE, 0) }
+}
+
+/// Acquires a read lock unless killed.
+///
+/// # Safety
+///
+/// `sem` must be valid and the caller must permit sleeping.
+#[export]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn down_read_killable(sem: *mut Rwsem) -> c_int {
+    // SAFETY: The caller guarantees that sleeping is permitted.
+    unsafe { down_read_common(sem, bindings::TASK_KILLABLE, 0) }
+}
+
+/// Tries to acquire a read lock.
+///
+/// # Safety
+///
+/// `sem` must be valid.
+#[export]
+unsafe extern "C" fn down_read_trylock(sem: *mut Rwsem) -> c_int {
+    // SAFETY: The caller guarantees that `sem` is valid.
+    unsafe { down_read_trylock_common(sem) }
+}
+
+/// Acquires a write lock.
+///
+/// # Safety
+///
+/// `sem` must be valid and the caller must permit sleeping.
+#[export]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn down_write(sem: *mut Rwsem) {
+    // SAFETY: The caller guarantees that sleeping is permitted.
+    unsafe { down_write_common(sem, bindings::TASK_UNINTERRUPTIBLE, 0) };
+}
+
+/// Acquires a write lock unless killed.
+///
+/// # Safety
+///
+/// `sem` must be valid and the caller must permit sleeping.
+#[export]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn down_write_killable(sem: *mut Rwsem) -> c_int {
+    // SAFETY: The caller guarantees that sleeping is permitted.
+    unsafe { down_write_common(sem, bindings::TASK_KILLABLE, 0) }
+}
+
+/// Tries to acquire a write lock.
+///
+/// # Safety
+///
+/// `sem` must be valid.
+#[export]
+unsafe extern "C" fn down_write_trylock(sem: *mut Rwsem) -> c_int {
+    // SAFETY: The caller guarantees that `sem` is valid.
+    unsafe { down_write_trylock_common(sem) }
+}
+
+/// Releases a read lock.
+///
+/// # Safety
+///
+/// `sem` must be reader-owned by the caller.
+#[export]
+unsafe extern "C" fn up_read(sem: *mut Rwsem) {
+    // SAFETY: The caller guarantees that `sem` is reader-owned.
+    unsafe { bindings::rust_rwsem_lockdep_release(sem) };
+    // SAFETY: The caller guarantees that `sem` is reader-owned.
+    unsafe { bindings::rust_rwsem_warn_read_unlock(sem) };
+    // SAFETY: The caller guarantees that `sem` is valid.
+    unsafe { bindings::rust_rwsem_preempt_disable() };
+    // SAFETY: Preemption is disabled and `sem` is reader-owned.
+    if unsafe { rust_rwsem_up_read(sem) } {
+        // SAFETY: The release helper selects waiters after the count change.
+        unsafe { bindings::rust_rwsem_wake(sem) };
+    }
+    // SAFETY: This function disabled preemption above.
+    unsafe { bindings::rust_rwsem_preempt_enable() };
+}
+
+/// Releases a write lock.
+///
+/// # Safety
+///
+/// `sem` must be writer-owned by the caller.
+#[export]
+unsafe extern "C" fn up_write(sem: *mut Rwsem) {
+    // SAFETY: The caller guarantees that `sem` is writer-owned here.
+    unsafe { bindings::rust_rwsem_lockdep_release(sem) };
+    // SAFETY: The caller guarantees that `sem` is writer-owned here.
+    unsafe { bindings::rust_rwsem_warn_write_unlock(sem) };
+    // SAFETY: The caller guarantees that `sem` is valid.
+    unsafe { bindings::rust_rwsem_preempt_disable() };
+    // SAFETY: Preemption is disabled and `sem` is writer-owned.
+    if unsafe { rust_rwsem_up_write(sem) } {
+        // SAFETY: The release helper selects waiters after the count change.
+        unsafe { bindings::rust_rwsem_wake(sem) };
+    }
+    // SAFETY: This function disabled preemption above.
+    unsafe { bindings::rust_rwsem_preempt_enable() };
+}
+
+/// Downgrades a write lock to a read lock.
+///
+/// # Safety
+///
+/// `sem` must be writer-owned by the caller.
+#[export]
+unsafe extern "C" fn downgrade_write(sem: *mut Rwsem) {
+    // SAFETY: The caller guarantees that `sem` is writer-owned here.
+    unsafe { bindings::rust_rwsem_lockdep_downgrade(sem) };
+    // SAFETY: The caller guarantees that `sem` is writer-owned here.
+    unsafe { bindings::rust_rwsem_warn_downgrade(sem) };
+    // SAFETY: The caller guarantees that `sem` is valid.
+    unsafe { bindings::rust_rwsem_preempt_disable() };
+    // SAFETY: Preemption is disabled and `sem` is writer-owned.
+    if unsafe { rust_rwsem_downgrade_write(sem) } {
+        // SAFETY: The downgrade helper selects eligible readers.
+        unsafe { bindings::rust_rwsem_downgrade_wake(sem) };
+    }
+    // SAFETY: This function disabled preemption above.
+    unsafe { bindings::rust_rwsem_preempt_enable() };
+}
+
+#[cfg(CONFIG_DEBUG_LOCK_ALLOC)]
+/// Acquires a read lock with a lockdep subclass.
+///
+/// # Safety
+///
+/// `sem` must be valid and the caller must permit sleeping.
+#[export]
+unsafe extern "C" fn down_read_nested(sem: *mut Rwsem, subclass: c_int) {
+    // SAFETY: The caller guarantees that sleeping is permitted.
+    unsafe { down_read_common(sem, bindings::TASK_UNINTERRUPTIBLE, subclass) };
+}
+
+#[cfg(CONFIG_DEBUG_LOCK_ALLOC)]
+/// Acquires a read lock with a lockdep subclass unless killed.
+///
+/// # Safety
+///
+/// `sem` must be valid and the caller must permit sleeping.
+#[export]
+unsafe extern "C" fn down_read_killable_nested(sem: *mut Rwsem, subclass: c_int) -> c_int {
+    // SAFETY: The caller guarantees that sleeping is permitted.
+    unsafe { down_read_common(sem, bindings::TASK_KILLABLE, subclass) }
+}
+
+#[cfg(CONFIG_DEBUG_LOCK_ALLOC)]
+/// Acquires a write lock under a nested lockdep map.
+///
+/// # Safety
+///
+/// `sem` and `nest` must be valid and sleep must be permitted.
+#[export]
+unsafe extern "C" fn _down_write_nest_lock(sem: *mut Rwsem, nest: *mut LockdepMap) {
+    // SAFETY: The caller guarantees that `sem` and `nest` are valid.
+    unsafe { down_write_nest_common(sem, nest) };
+}
+
+#[cfg(CONFIG_DEBUG_LOCK_ALLOC)]
+/// Acquires a read lock that another task will release.
+///
+/// # Safety
+///
+/// `sem` must be valid and the caller must permit sleeping.
+#[export]
+unsafe extern "C" fn down_read_non_owner(sem: *mut Rwsem) {
+    // SAFETY: The caller guarantees that sleeping is permitted.
+    unsafe { bindings::rust_rwsem_might_sleep() };
+    // SAFETY: The caller guarantees that `sem` is valid.
+    unsafe { bindings::rust_rwsem_preempt_disable() };
+
+    let mut count = 0;
+    // SAFETY: Preemption is disabled and `sem` is valid.
+    if !unsafe { rust_rwsem_read_fast(sem, &mut count) } {
+        // SAFETY: Preemption is disabled and `sem` is valid.
+        unsafe {
+            bindings::rust_rwsem_down_read_slowpath(sem, count, bindings::TASK_UNINTERRUPTIBLE)
+        };
+    }
+    // SAFETY: The lock is now reader-owned and ownership is intentionally
+    // anonymous for this API.
+    unsafe { bindings::rust_rwsem_set_reader_owned_null(sem) };
+    // SAFETY: This function disabled preemption above.
+    unsafe { bindings::rust_rwsem_preempt_enable() };
+}
+
+#[cfg(CONFIG_DEBUG_LOCK_ALLOC)]
+/// Acquires a write lock with a lockdep subclass.
+///
+/// # Safety
+///
+/// `sem` must be valid and the caller must permit sleeping.
+#[export]
+unsafe extern "C" fn down_write_nested(sem: *mut Rwsem, subclass: c_int) {
+    // SAFETY: The caller guarantees that sleeping is permitted.
+    unsafe { down_write_common(sem, bindings::TASK_UNINTERRUPTIBLE, subclass) };
+}
+
+#[cfg(CONFIG_DEBUG_LOCK_ALLOC)]
+/// Acquires a write lock with a lockdep subclass unless killed.
+///
+/// # Safety
+///
+/// `sem` must be valid and the caller must permit sleeping.
+#[export]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn down_write_killable_nested(sem: *mut Rwsem, subclass: c_int) -> c_int {
+    // SAFETY: The caller guarantees that sleeping is permitted.
+    unsafe { down_write_common(sem, bindings::TASK_KILLABLE, subclass) }
+}
+
+#[cfg(CONFIG_DEBUG_LOCK_ALLOC)]
+/// Releases a read lock acquired by another task.
+///
+/// # Safety
+///
+/// `sem` must be reader-owned.
+#[export]
+unsafe extern "C" fn up_read_non_owner(sem: *mut Rwsem) {
+    // SAFETY: The caller guarantees that `sem` is reader-owned.
+    unsafe { bindings::rust_rwsem_warn_read_unlock(sem) };
+    // SAFETY: The caller guarantees that `sem` is valid.
+    unsafe { bindings::rust_rwsem_preempt_disable() };
+    // SAFETY: Preemption is disabled and `sem` is reader-owned.
+    if unsafe { rust_rwsem_up_read(sem) } {
+        // SAFETY: The release helper selects waiters after the count change.
+        unsafe { bindings::rust_rwsem_wake(sem) };
+    }
+    // SAFETY: This function disabled preemption above.
+    unsafe { bindings::rust_rwsem_preempt_enable() };
 }

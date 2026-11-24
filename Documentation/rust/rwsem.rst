@@ -1,13 +1,14 @@
 .. SPDX-License-Identifier: GPL-2.0
 
-Native Rust Read-Write Semaphore Protocol
-=========================================
+Native Rust Read-Write Semaphore Migration
+==========================================
 
 Status and scope
 ----------------
 
 The ``CONFIG_RUST_RWSEM`` option selects a native Rust implementation of the
-read-write semaphore count and owner protocol on non-RT kernels. The existing
+non-RT read-write semaphore protocol. Rust directly defines the public lock,
+trylock, unlock, downgrade, and initialization entry points. The existing
 ``struct rw_semaphore`` layout and public API remain unchanged. The
 PREEMPT_RT ``rwbase`` implementation remains unchanged.
 
@@ -21,39 +22,59 @@ The Rust code owns these production decisions:
 * Reader and writer owner encoding and decoding.
 * ``up_read()``, ``up_write()``, and downgrade count transitions.
 * Whether a release or waiter insertion must wake waiters.
+* Initialization and failure cleanup around the public entry points.
 
-Raw atomic operations and memory ordering, preemption, intrusive waiter
-lists, optimistic spinning, task state, scheduling, wake queues, hung-task
-accounting, lockdep, tracing, debugging, and public ABI adapters remain in C.
+The original C implementations remain available when the option is disabled.
 
 Entry points and ownership
 --------------------------
 
-The public lock, trylock, unlock, and downgrade entry points retain their
-names, signatures, annotations, and export classes. The state machine is in
-``rust/kernel/rwsem_core.rs``. ``kernel/locking/rwsem.c`` provides narrow
-atomic and debug helpers. C keeps waiter insertion, waiter ordering,
-optimistic spinning, scheduling, and task wakeups.
+When the option is enabled, Rust directly defines these eleven public entry
+points:
+
+* ``__init_rwsem()``.
+* ``down_read()``, ``down_read_interruptible()``, and
+  ``down_read_killable()``.
+* ``down_read_trylock()``.
+* ``down_write()`` and ``down_write_killable()``.
+* ``down_write_trylock()``.
+* ``up_read()`` and ``up_write()``.
+* ``downgrade_write()``.
+
+With ``CONFIG_DEBUG_LOCK_ALLOC``, Rust also defines these seven entry points:
+
+* ``down_read_nested()`` and ``down_read_killable_nested()``.
+* ``_down_write_nest_lock()``.
+* ``down_read_non_owner()``.
+* ``down_write_nested()`` and ``down_write_killable_nested()``.
+* ``up_read_non_owner()``.
+
+Thus the debug-lock configuration has eighteen Rust-defined public entry
+points. Without that option, the public header maps the nested and anonymous
+owner names to ordinary Rust entries.
+
+The public symbols retain their ordinary ``EXPORT_SYMBOL`` class through
+metadata in ``kernel/locking/rwsem.c``. The enabled native C object defines no
+public rwsem entry body. The state machine and entry composition are in
+``rust/kernel/rwsem_core.rs``.
+
+Scheduler-backed blocking entries retain their ``.sched.text`` placement.
+This applies to ``down_read()`` and its signal-aware variants,
+``down_write()``, ``down_write_killable()``, and
+``down_write_killable_nested()``.
 
 The Rust-to-C helper calls are:
 
+* Initialization, sleep-context assertion, and preemption control.
+* Lockdep acquire, nested acquire, release, and downgrade delivery.
+* Lock-stat contention and acquisition delivery.
 * Atomic count reads, additions, and acquire compare-exchange.
 * Atomic owner reads and writes.
 * Current task lookup.
 * Reader owner clearing and nonspinnable flag operations.
-* Count warnings and contended-release tracing.
-
-The C-to-Rust production entries are:
-
-* ``rust_rwsem_read_fast()`` and ``rust_rwsem_read_trylock()``.
-* ``rust_rwsem_reader_slow_steal()``.
-* ``rust_rwsem_write_fast()`` and ``rust_rwsem_write_unqueued()``.
-* ``rust_rwsem_write_slow()``.
-* ``rust_rwsem_set_writer_owner()``.
-* ``rust_rwsem_cond_wake()``.
-* ``rust_rwsem_owner()`` and ``rust_rwsem_is_reader_owned()``.
-* ``rust_rwsem_up_read()``, ``rust_rwsem_up_write()``, and
-  ``rust_rwsem_downgrade_write()``.
+* Count warnings, ownership warnings, and contended-release tracing.
+* Reader and writer slow-path entry.
+* Ordinary and downgrade wake delivery.
 
 Retained C boundary
 -------------------
@@ -67,12 +88,27 @@ scheduler, tracing, debug, lockdep, or intrusive locking internals:
 * Optimistic spin queue, owner-running checks, and need-resched checks.
 * Task state changes, signal checks, scheduling, and wake queue delivery.
 * Hung-task blocker accounting and contention tracepoints.
-* Lockdep, ``DEBUG_RWSEMS`` validation, and public ABI annotations.
+* Lockdep and lock-stat delivery, ``DEBUG_RWSEMS`` validation, and
+  initialization.
+* Public ABI declarations, caller-facing annotations, and ordinary export
+  metadata.
 * The complete PREEMPT_RT ``rwbase`` implementation.
 
 These helpers do not choose the fast or slow path, decide reader stealing,
 perform writer count transitions, encode or decode ownership, or decide
 whether a release must wake waiters.
+
+Context analysis boundary
+-------------------------
+
+The original public C entries use ``__no_context_analysis``. Kernel Rust has
+no equivalent function attribute. The public header still supplies the
+caller-facing acquisition and release annotations. Analysis inside the native
+Rust entry bodies is therefore not covered by the C context-analysis pass.
+
+Locking-debug helpers use the C helper return address as the acquisition or
+release site. The original external caller return address is not preserved
+across the Rust entry and helper boundary.
 
 Important invariants
 --------------------
@@ -107,48 +143,67 @@ Validation gate
 
 The migration unit must pass these checks before integration:
 
-* Rust-enabled and C fallback x86_64 builds.
-* Rust-enabled generic inline KASAN build.
-* One-vCPU and three consecutive four-vCPU Rust KUnit runs.
-* Four-vCPU C fallback, KASAN, and lockdep KUnit runs.
-* Fast read and write acquisition, unlock, and owner encoding.
+* Native Rust, Rust fallback, and C-only x86_64 builds.
+* Native Rust, Rust fallback, and C-only KUnit runs on one and four vCPUs.
+* Rust-enabled generic inline KASAN and lockdep builds and runs.
+* Lock-stat compilation and a focused lock-stat boot.
+* PREEMPT_RT compilation with ``CONFIG_RUST_RWSEM`` disabled.
+* Fast acquisition, unlock, initialization, and owner encoding.
 * Reader and writer trylock behavior under contention.
 * Reader optimistic stealing and release wake transitions.
 * Blocking reader wakeup and writer FIFO handoff.
 * Interruptible and killable waiter cancellation.
 * Writer-to-reader downgrade with a queued reader.
-* Concurrent reader/writer exclusion and operation accounting.
-* PREEMPT_RT compilation with ``CONFIG_RUST_RWSEM`` disabled.
-* Export, adapter disassembly, and module unresolved-symbol checks.
-* Rustfmt, Clippy, checkpatch, and ``git diff --check``.
+* Nested lockdep classes, anonymous reader ownership, and nested lock maps.
+* Concurrent reader and writer exclusion and operation accounting.
+* Symbol ownership, export class, duplicate-export, and unresolved-symbol
+  checks.
+* Module builds and a non-GPL external module ABI test.
+* Rustfmt, Clippy, Rustdoc, focused Sphinx, strict checkpatch, and
+  ``git diff --check``.
 
 Validation evidence
 -------------------
 
-The count and owner protocol was validated on 2026-11-11 with x86_64
-``LLVM=1`` builds and QEMU 11.1.3:
+The final source tree was validated on 2026-11-24 with x86_64 ``LLVM=1``
+builds and KVM QEMU:
 
-* The Rust image passed all 8 KUnit cases on one vCPU.
-* Three consecutive four-vCPU Rust runs each passed all 8 KUnit cases.
-* The four-vCPU C fallback passed all 8 cases.
-* The four-vCPU generic inline KASAN and lockdep images each passed all
-  8 cases.
-* A production-style configuration with ``CONFIG_DEBUG_RWSEMS`` disabled
-  compiled ``kernel/locking/rwsem.o``, ``lib/tests/test_rwsem.o``, and the
-  Rust kernel crate.
-* A separate four-vCPU PREEMPT_RT configuration compiled
-  ``kernel/locking/rwsem.o`` and ``kernel/locking/rtmutex_api.o`` with
-  ``CONFIG_RUST_RWSEM`` disabled.
-* Clippy completed with the kernel trailing ``-D warnings`` policy.
-* Public ``down_read`` and ``down_write`` paths call the Rust fast
-  acquisition entries before selecting the existing C slow paths.
-* Public release and downgrade paths call Rust for count transitions and
-  wake decisions, then use the existing C wake adapters.
-* The affected public symbols have the same export class as the C fallback.
-  No built module has an unresolved ``rust_rwsem_*`` symbol.
-* Rustfmt and ``git diff --check`` pass. Strict checkpatch reports no errors
-  or checks. Its only warning asks whether new file paths are maintained, and
-  the added ``MAINTAINERS`` entries cover those paths.
+* Native Rust, Rust fallback, C-only, generic inline KASAN, and lockdep plus
+  lock-stat configurations each passed the nine rwsem cases on one and four
+  vCPUs.
+
+* The ten rwsem boots passed 90 of 90 cases. Every boot reported no failure,
+  skip, kernel warning, bug, sanitizer report, lock dependency report, or
+  panic.
+
+* The PREEMPT_RT image compiled with ``CONFIG_RUST_RWSEM`` disabled. One and
+  four-vCPU adjacent semaphore boots passed 12 of 12 cases.
+
+* The native four-vCPU adjacent suites passed 56 of 56 cases: mutex 7, rwsem
+  9, rwlock 5, completion 6, simple wait queue 5, wait queue 18, and
+  semaphore 6.
+
+The native and KASAN Rust objects define the eleven ordinary public entries.
+The lockdep plus lock-stat Rust object defines all eighteen public entries.
+Their C rwsem objects define none of those entries. The fallback, C-only, and
+RT C rwsem objects define the eleven ordinary entries, and their Rust objects
+define none. The five ordinary Rust configurations keep the five expected
+blocking entries in ``.sched.text``. The lockdep plus lock-stat object also
+keeps ``down_write_killable_nested()`` there.
+
+All six ``Module.symvers`` files contain exactly the expected eleven or
+eighteen ordinary exports. They contain no GPL export, duplicate, or internal
+``rust_rwsem_*`` export. The generated Rust GPL export headers exclude every
+public and internal rwsem name. Every kernel image has no unresolved symbol.
+
+Native, fallback, C-only, KASAN, lockdep, and RT module builds passed modpost.
+A proprietary external module linked all eleven ordinary exports against the
+native, fallback, and C-only configurations. A lockdep build of that module
+linked all eighteen ordinary exports.
+
+Clippy, Rustfmt, Rustdoc, focused Sphinx generation, strict checkpatch, and
+``git diff --check`` passed. Focused Sphinx generation emitted only the known
+unrelated cross-reference warning in ``rust/index.rst``.
 
 Review conditions
 -----------------
@@ -156,10 +211,11 @@ Review conditions
 Reopen the retained C boundary if any of these conditions changes:
 
 * Kernel Rust gains stable abstractions for atomic count and owner operations,
-  preemption, wake queues, or locking debug facilities.
+  preemption, wake queues, locking debug facilities, or context analysis.
 * The count or owner encoding changes.
 * The rwsem handoff or reader stealing policy changes.
 * Intrusive waiter ordering moves out of the current C implementation.
+* Lockdep or lock-stat instrumentation moves into a Rust-owned abstraction.
 * The PREEMPT_RT representation stops using ``rwbase``.
-* Benchmarks show that out-of-line state-machine helpers add unacceptable
-  contention-path overhead.
+* Benchmarks show that out-of-line entry and helper transitions add
+  unacceptable contention-path overhead.
