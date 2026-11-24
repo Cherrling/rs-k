@@ -24147,6 +24147,7 @@ F:	Documentation/rust/native-port-coverage.rst
 F:	Documentation/rust/native-rbtree.rst
 F:	Documentation/rust/native-rcuwait.rst
 F:	Documentation/rust/native-task-work.rst
+F:	Documentation/rust/wait-bit.rst
 F:	Documentation/rust/waitqueue.rst
 F:	include/linux/btree-rust.h
 F:	include/linux/complete-signal-rust.h
@@ -24213,6 +24214,7 @@ F:	include/linux/wait-rust.h
 F:	include/linux/xarray-rust.h
 F:	include/trace/events/rust_sample.h
 F:	kernel/sched/wait.c
+F:	kernel/sched/wait_bit.c
 F:	lib/dec_and_lock.c
 F:	lib/kref.c
 F:	lib/klist.c
@@ -24299,6 +24301,7 @@ F:	rust/kernel/lockref.rs
 F:	rust/kernel/percpu_refcount.rs
 F:	rust/kernel/rcuwait.rs
 F:	rust/kernel/task_work.rs
+F:	rust/kernel/wait_bit_core.rs
 F:	rust/kernel/waitqueue_core.rs
 F:	samples/rust/
 F:	scripts/*rust*

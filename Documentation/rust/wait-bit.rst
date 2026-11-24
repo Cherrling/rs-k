@@ -11,7 +11,11 @@ the bit and variable wait APIs in ``kernel/sched/wait_bit.c``. The migration
 keeps the existing ``wait_bit_key``, ``wait_bit_queue_entry``, and public API
 layouts.
 
-The Rust code owns these production decisions:
+Rust directly defines all 15 exported production entry points and the
+unexported variable-key helper. The complete C implementation remains under
+``#ifndef CONFIG_RUST_WAIT_BIT``.
+
+Rust owns these production decisions:
 
 * Shared queue hashing and table selection for bit and variable waits.
 * Bit wait key matching, including the waited bit's current value.
@@ -23,17 +27,47 @@ The Rust code owns these production decisions:
 * Signal and timeout result propagation from wait actions.
 * Variable wait entry initialization.
 * Wake submission for explicit, bit, and variable queue selection.
+* Normal, I/O, and timed scheduler wait actions.
 
 Shared table storage, hash and atomic bit operations, current task and jiffies
-reads, scheduler actions, and public ABI wrappers remain in C.
+reads, scheduler primitives, signal queries, timeout comparison, and ordinary
+export metadata remain in C.
 
 Entry points and ownership
 --------------------------
 
-The public wait, wake, callback, and queue-selection entry points retain their
-names, signatures, and export classes. The production state machines are in
-``rust/kernel/wait_bit_core.rs``. ``kernel/sched/wait_bit.c`` provides the C
-ABI adapters and narrow primitive boundary.
+Rust directly defines these ordinary-export entry points:
+
+* ``bit_waitqueue()``
+* ``wake_bit_function()``
+* ``__wait_on_bit()``
+* ``out_of_line_wait_on_bit()``
+* ``__wait_on_bit_lock()``
+* ``out_of_line_wait_on_bit_lock()``
+* ``__wake_up_bit()``
+* ``wake_up_bit()``
+* ``__var_waitqueue()``
+* ``init_wait_var_entry()``
+* ``wake_up_var()``
+* ``bit_wait()``
+* ``bit_wait_io()``
+
+Rust directly defines these GPL-export entry points:
+
+* ``out_of_line_wait_on_bit_timeout()``
+* ``bit_wait_timeout()``
+
+Rust also directly defines the unexported ``__var_wake_key()`` helper and the
+internal ``var_wake_function()`` callback. The ordinary symbols retain their
+``EXPORT_SYMBOL`` class through metadata in ``kernel/sched/wait_bit.c``. Rust
+automatic export generation omits the 13 ordinary names and both unexported
+names, and emits the two GPL exports.
+
+Scheduler-backed Rust entries retain the ``.sched.text`` section placement.
+
+The production state machines are in ``rust/kernel/wait_bit_core.rs``. The
+native C scheduler object contains only the narrow primitive helpers and
+ordinary export metadata.
 
 Retained C boundary
 -------------------
@@ -47,13 +81,14 @@ scheduler, or table internals:
 * Atomic test-and-set for bit locks.
 * Current task lookup.
 * Read-once jiffies access.
-* ``schedule()``, ``io_schedule()``, and timeout scheduling actions.
-* Context annotation on scheduler-backed public entry points.
+* ``schedule()``, ``io_schedule()``, and timeout scheduling primitives.
+* Current-task signal queries and wrapping timeout comparison.
 * Initialization of the shared wait queue table.
+* Ordinary non-GPL export metadata for Rust-defined entry points.
 
 These helpers do not select a queue, match a bit or variable key, choose a
-callback, decide when a wait loop continues, call a wait action, acquire a bit
-lock, set a timeout deadline, or decide whether to send a wake.
+callback, decide when a wait loop continues, select a wait action result,
+acquire a bit lock, set a timeout deadline, or decide whether to send a wake.
 
 Important invariants
 --------------------
@@ -84,10 +119,9 @@ Validation gate
 
 The migration unit must pass these checks before integration:
 
-* Rust-enabled and C fallback x86_64 builds.
-* Rust-enabled generic inline KASAN build.
-* One-vCPU and repeated four-vCPU Rust KUnit runs.
-* Four-vCPU C fallback, KASAN, and lockdep KUnit runs.
+* Native Rust, Rust fallback, and C-only x86_64 builds.
+* One-vCPU and four-vCPU KUnit runs for all six configurations.
+* Generic inline KASAN, lockdep, and PREEMPT_RT builds and boots.
 * Bit queue stability and variable queue stability.
 * Bit callback address, bit-number, set-bit, and clear-bit decisions.
 * Normal wait completion for an already-clear bit and an action-cleared bit.
@@ -95,32 +129,45 @@ The migration unit must pass these checks before integration:
 * Clear-bit lock acquisition and action-cleared lock acquisition.
 * Scheduler-backed normal and locked wait wakeups.
 * Variable entry fields, callback identity, address matching, and wake cleanup.
-* Export, adapter disassembly, and module unresolved-symbol checks.
-* Rustfmt, Clippy, checkpatch, and ``git diff --check``.
+* Symbol ownership, mixed export class, duplicate-export, and
+  unresolved-symbol checks.
+* Module builds and an external module ABI test for both export classes.
+* Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
+  ``git diff --check``.
 
 Validation results
 ------------------
 
-The final source tree passed seven x86_64 KUnit runs on 2026-11-11:
+The final source tree passed twelve x86_64 KUnit boots on 2026-11-24:
 
-* One run on one vCPU with the Rust implementation enabled.
-* Three consecutive runs on four vCPUs with the Rust implementation enabled.
-* One run on four vCPUs with the C fallback implementation.
-* One run on four vCPUs with generic inline KASAN enabled.
-* One run on four vCPUs with lockdep, spinlock, and list debugging enabled.
+* Native Rust, Rust fallback, and C-only configurations on one and four vCPUs.
+* Generic inline KASAN, lockdep, and PREEMPT_RT configurations on one and
+  four vCPUs.
 
-Every run reported seven passed tests and no failures, skips, kernel warnings,
-sanitizer reports, lockdep reports, or panic. A final normal Rust rebuild after
-the Clippy run also passed the four-vCPU suite.
+Every boot reported seven passed tests and no failures, skips, kernel warnings,
+sanitizer reports, lockdep reports, or panic. The twelve boots passed 84 of
+84 cases.
 
-All thirteen public bit wait, callback, and queue-selection adapters disassemble
-to tail calls into their Rust counterparts. The exported symbol names and
-classes match the C fallback. The narrow C boundary helpers are not exported.
-The C fallback image and the twelve loadable modules from both builds contain
-no unresolved Rust bit wait symbols.
+The native four-vCPU adjacent suites passed 80 of 80 cases: wait queue 18,
+scheduler wake 37, completion 6, simple wait queue 5, RCU wait 8, and task
+work 6.
 
-Clippy, rustfmt, strict checkpatch, and ``git diff --check`` completed without
-errors or warnings.
+The native Rust object defines all 17 entry points, while the native C
+scheduler archive defines none. The fallback and C-only Rust objects define
+none, while their C scheduler archives define all 17. The same ownership split
+holds for the KASAN, lockdep, and PREEMPT_RT configurations.
+
+All six ``Module.symvers`` files contain exactly 13 ordinary exports and two
+GPL exports. Neither internal name is exported, no duplicate symbol record
+exists, and every kernel image has no unresolved symbols.
+
+Native, fallback, and C-only module builds passed modpost, and their twelve
+loadable modules contain no unresolved Rust bit wait helper. An external
+module that references all 15 exports linked against all three configurations.
+
+Clippy, Rustdoc, rustfmt, strict checkpatch, and ``git diff --check``
+completed without errors or warnings. Sphinx generated both modified pages
+without errors or local warnings.
 
 Review conditions
 -----------------

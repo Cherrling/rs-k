@@ -609,6 +609,19 @@ rust_non_gpl_exports := \
 	wait_woken \
 	woken_wake_function \
 	woken_wake_bit_function \
+	bit_waitqueue \
+	wake_bit_function \
+	__wait_on_bit \
+	out_of_line_wait_on_bit \
+	__wait_on_bit_lock \
+	out_of_line_wait_on_bit_lock \
+	__wake_up_bit \
+	wake_up_bit \
+	__var_waitqueue \
+	init_wait_var_entry \
+	wake_up_var \
+	bit_wait \
+	bit_wait_io \
 	kobject_init \
 	kobject_get \
 	kobject_get_unless_zero \
@@ -758,7 +771,9 @@ rust_unexported_symbols := \
 	__prepare_to_swait \
 	__finish_swait \
 	__wake_up_on_current_cpu \
-	__wake_up_pollfree
+	__wake_up_pollfree \
+	__var_wake_key \
+	var_wake_function
 
 rust_exports = $(NM) -p --defined-only $(1) | awk '$$2~/(T|R|D|B)/ && $$3!~/__(pfx|cfi|odr_asan)/ { printf $(2),$$3 }'
 rust_auto_export_skip := $(rust_non_gpl_exports) $(rust_unexported_symbols)

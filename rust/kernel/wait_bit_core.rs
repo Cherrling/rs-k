@@ -4,16 +4,16 @@
 //!
 //! Rust owns shared queue selection, bit and variable key matching, wait entry
 //! construction, normal and exclusive wait loops, lock acquisition, timed wait
-//! setup, and wake submission. C helpers retain shared table storage, hashing,
-//! atomic bit operations, current task and jiffies reads, scheduler actions,
-//! and public ABI adapters.
+//! setup, wake submission, and scheduler wait actions. Rust directly defines
+//! the public entry points. C helpers retain shared table storage, hashing,
+//! atomic bit operations, current task and jiffies reads, scheduler primitives,
+//! signal queries, and ordinary export metadata.
 
 use crate::{
     bindings,
     ffi::{c_int, c_uint, c_ulong, c_void},
 };
 use core::{mem::MaybeUninit, ptr};
-use macros::export;
 
 type Head = bindings::wait_queue_head;
 type Entry = bindings::wait_queue_entry;
@@ -25,8 +25,8 @@ type Key = bindings::wait_bit_key;
 /// # Safety
 ///
 /// `word` is used only as an address and need not be readable.
-#[export]
-unsafe extern "C" fn rust_wait_bit_waitqueue(word: *mut c_ulong, bit: c_int) -> *mut Head {
+#[no_mangle]
+unsafe extern "C" fn bit_waitqueue(word: *mut c_ulong, bit: c_int) -> *mut Head {
     let shift = if usize::BITS == 32 { 5 } else { 6 };
     let value = (word as usize) << shift | bit as usize;
     // SAFETY: The shared wait queue table is initialized before bit waits are
@@ -39,8 +39,8 @@ unsafe extern "C" fn rust_wait_bit_waitqueue(word: *mut c_ulong, bit: c_int) -> 
 /// # Safety
 ///
 /// `var` is used only as an address and need not be readable.
-#[export]
-unsafe extern "C" fn rust_wait_bit_var_waitqueue(var: *mut c_void) -> *mut Head {
+#[no_mangle]
+unsafe extern "C" fn __var_waitqueue(var: *mut c_void) -> *mut Head {
     // SAFETY: The shared wait queue table is initialized before variable waits
     // are used, and the hash helper returns an in-range table index.
     unsafe { rust_wait_bit_waitqueue_hash(bindings::rust_wait_bit_hash(var as usize)) }
@@ -116,7 +116,7 @@ unsafe fn init_bit_entry(wbq_entry: *mut BitEntry, word: *mut c_ulong, bit: c_in
         };
         (*wbq_entry).wq_entry = Entry::default();
         (*wbq_entry).wq_entry.private = bindings::rust_wait_bit_current_task();
-        (*wbq_entry).wq_entry.func = Some(rust_wait_bit_wake_bit_function);
+        (*wbq_entry).wq_entry.func = Some(wake_bit_function);
         bindings::rust_waitqueue_list_init(ptr::addr_of_mut!((*wbq_entry).wq_entry.entry));
     }
 }
@@ -127,8 +127,8 @@ unsafe fn init_bit_entry(wbq_entry: *mut BitEntry, word: *mut c_ulong, bit: c_in
 ///
 /// `wq_entry` must be a valid bit wait entry, and `key` must be a valid wake
 /// key. The wait queue lock must be held.
-#[export]
-unsafe extern "C" fn rust_wait_bit_wake_bit_function(
+#[no_mangle]
+unsafe extern "C" fn wake_bit_function(
     wq_entry: *mut Entry,
     mode: c_uint,
     sync: c_int,
@@ -163,11 +163,8 @@ unsafe extern "C" fn rust_wait_bit_wake_bit_function(
 ///
 /// `wq_entry` must be a valid variable wait entry, and `arg` must be either
 /// null or a valid wake key.
-#[export]
-unsafe extern "C" fn rust_wait_bit_var_wake_key(
-    wq_entry: *mut Entry,
-    arg: *mut c_void,
-) -> *mut Key {
+#[no_mangle]
+unsafe extern "C" fn __var_wake_key(wq_entry: *mut Entry, arg: *mut c_void) -> *mut Key {
     if arg.is_null() {
         return ptr::null_mut();
     }
@@ -190,8 +187,8 @@ unsafe extern "C" fn rust_wait_bit_var_wake_key(
 ///
 /// `wq_entry` must be a valid variable wait entry, and `key` must be a valid
 /// wake key. The wait queue lock must be held.
-#[export]
-unsafe extern "C" fn rust_wait_bit_var_wake_function(
+#[no_mangle]
+unsafe extern "C" fn var_wake_function(
     wq_entry: *mut Entry,
     mode: c_uint,
     sync: c_int,
@@ -199,7 +196,7 @@ unsafe extern "C" fn rust_wait_bit_var_wake_function(
 ) -> c_int {
     // SAFETY: The caller guarantees that `wq_entry` is valid and `key` is
     // either null or a valid wake key.
-    let key = unsafe { rust_wait_bit_var_wake_key(wq_entry, key) };
+    let key = unsafe { __var_wake_key(wq_entry, key) };
     if key.is_null() {
         return 0;
     }
@@ -214,12 +211,8 @@ unsafe extern "C" fn rust_wait_bit_var_wake_function(
 /// # Safety
 ///
 /// `wbq_entry` must point to writable storage for a variable wait entry.
-#[export]
-unsafe extern "C" fn rust_wait_bit_init_var_entry(
-    wbq_entry: *mut BitEntry,
-    var: *mut c_void,
-    flags: c_int,
-) {
+#[no_mangle]
+unsafe extern "C" fn init_wait_var_entry(wbq_entry: *mut BitEntry, var: *mut c_void, flags: c_int) {
     // SAFETY: The caller guarantees that the output storage is writable.
     unsafe {
         (*wbq_entry).key = Key {
@@ -230,7 +223,7 @@ unsafe extern "C" fn rust_wait_bit_init_var_entry(
         (*wbq_entry).wq_entry = Entry::default();
         (*wbq_entry).wq_entry.flags = flags as c_uint;
         (*wbq_entry).wq_entry.private = bindings::rust_wait_bit_current_task();
-        (*wbq_entry).wq_entry.func = Some(rust_wait_bit_var_wake_function);
+        (*wbq_entry).wq_entry.func = Some(var_wake_function);
         bindings::rust_waitqueue_list_init(ptr::addr_of_mut!((*wbq_entry).wq_entry.entry));
     }
 }
@@ -240,8 +233,9 @@ unsafe extern "C" fn rust_wait_bit_init_var_entry(
 /// # Safety
 ///
 /// All pointers must be valid, and `action` must be non-null.
-#[export]
-unsafe extern "C" fn rust_wait_bit_wait_on_bit(
+#[no_mangle]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn __wait_on_bit(
     wq_head: *mut Head,
     wbq_entry: *mut BitEntry,
     action: bindings::wait_bit_action_f,
@@ -284,8 +278,9 @@ unsafe extern "C" fn rust_wait_bit_wait_on_bit(
 /// # Safety
 ///
 /// All pointers must be valid, and `action` must be non-null.
-#[export]
-unsafe extern "C" fn rust_wait_bit_wait_on_bit_lock(
+#[no_mangle]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn __wait_on_bit_lock(
     wq_head: *mut Head,
     wbq_entry: *mut BitEntry,
     action: bindings::wait_bit_action_f,
@@ -331,8 +326,9 @@ unsafe extern "C" fn rust_wait_bit_wait_on_bit_lock(
 /// # Safety
 ///
 /// `word` and `action` must be valid, and `action` must be non-null.
-#[export]
-unsafe extern "C" fn rust_wait_bit_out_of_line_wait(
+#[no_mangle]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn out_of_line_wait_on_bit(
     word: *mut c_ulong,
     bit: c_int,
     action: bindings::wait_bit_action_f,
@@ -344,9 +340,7 @@ unsafe extern "C" fn rust_wait_bit_out_of_line_wait(
     unsafe { init_bit_entry(wbq_entry, word, bit) };
     // SAFETY: The queue and initialized entry are valid, and the action is
     // non-null.
-    unsafe {
-        rust_wait_bit_wait_on_bit(rust_wait_bit_waitqueue(word, bit), wbq_entry, action, mode)
-    }
+    unsafe { __wait_on_bit(bit_waitqueue(word, bit), wbq_entry, action, mode) }
 }
 
 /// Constructs and runs a timed out-of-line bit wait.
@@ -354,8 +348,9 @@ unsafe extern "C" fn rust_wait_bit_out_of_line_wait(
 /// # Safety
 ///
 /// `word` and `action` must be valid, and `action` must be non-null.
-#[export]
-unsafe extern "C" fn rust_wait_bit_out_of_line_wait_timeout(
+#[no_mangle]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn out_of_line_wait_on_bit_timeout(
     word: *mut c_ulong,
     bit: c_int,
     action: bindings::wait_bit_action_f,
@@ -372,9 +367,7 @@ unsafe extern "C" fn rust_wait_bit_out_of_line_wait_timeout(
     }
     // SAFETY: The queue and initialized entry are valid, and the action is
     // non-null.
-    unsafe {
-        rust_wait_bit_wait_on_bit(rust_wait_bit_waitqueue(word, bit), wbq_entry, action, mode)
-    }
+    unsafe { __wait_on_bit(bit_waitqueue(word, bit), wbq_entry, action, mode) }
 }
 
 /// Constructs and runs an out-of-line locked bit wait.
@@ -382,8 +375,9 @@ unsafe extern "C" fn rust_wait_bit_out_of_line_wait_timeout(
 /// # Safety
 ///
 /// `word` and `action` must be valid, and `action` must be non-null.
-#[export]
-unsafe extern "C" fn rust_wait_bit_out_of_line_wait_lock(
+#[no_mangle]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn out_of_line_wait_on_bit_lock(
     word: *mut c_ulong,
     bit: c_int,
     action: bindings::wait_bit_action_f,
@@ -395,9 +389,7 @@ unsafe extern "C" fn rust_wait_bit_out_of_line_wait_lock(
     unsafe { init_bit_entry(wbq_entry, word, bit) };
     // SAFETY: The queue and initialized entry are valid, and the action is
     // non-null.
-    unsafe {
-        rust_wait_bit_wait_on_bit_lock(rust_wait_bit_waitqueue(word, bit), wbq_entry, action, mode)
-    }
+    unsafe { __wait_on_bit_lock(bit_waitqueue(word, bit), wbq_entry, action, mode) }
 }
 
 /// Wakes waiters on one bit through an already selected shared queue.
@@ -405,8 +397,8 @@ unsafe extern "C" fn rust_wait_bit_out_of_line_wait_lock(
 /// # Safety
 ///
 /// `wq_head` and `word` must be valid.
-#[export]
-unsafe extern "C" fn rust_wait_bit_wake_up_bit(wq_head: *mut Head, word: *mut c_ulong, bit: c_int) {
+#[no_mangle]
+unsafe extern "C" fn __wake_up_bit(wq_head: *mut Head, word: *mut c_ulong, bit: c_int) {
     // SAFETY: The caller guarantees that the queue and word are valid.
     unsafe { rust_wait_bit_wake_up_common(wq_head, word, bit) };
 }
@@ -416,10 +408,10 @@ unsafe extern "C" fn rust_wait_bit_wake_up_bit(wq_head: *mut Head, word: *mut c_
 /// # Safety
 ///
 /// `word` is used only as an address and need not be readable.
-#[export]
-unsafe extern "C" fn rust_wait_bit_wake_up(word: *mut c_ulong, bit: c_int) {
+#[no_mangle]
+unsafe extern "C" fn wake_up_bit(word: *mut c_ulong, bit: c_int) {
     // SAFETY: The shared table is initialized.
-    let wq_head = unsafe { rust_wait_bit_waitqueue(word, bit) };
+    let wq_head = unsafe { bit_waitqueue(word, bit) };
     // SAFETY: The selected queue and word are valid for a bit wake.
     unsafe { rust_wait_bit_wake_up_common(wq_head, word, bit) };
 }
@@ -429,12 +421,76 @@ unsafe extern "C" fn rust_wait_bit_wake_up(word: *mut c_ulong, bit: c_int) {
 /// # Safety
 ///
 /// `var` is used only as an address and need not be readable.
-#[export]
-unsafe extern "C" fn rust_wait_bit_wake_up_var(var: *mut c_void) {
+#[no_mangle]
+unsafe extern "C" fn wake_up_var(var: *mut c_void) {
     // SAFETY: The shared table is initialized.
-    let wq_head = unsafe { rust_wait_bit_var_waitqueue(var) };
+    let wq_head = unsafe { __var_waitqueue(var) };
     // SAFETY: The selected queue and variable are valid for a variable wake.
     unsafe { rust_wait_bit_wake_up_common(wq_head, var.cast(), -1) };
+}
+
+/// Waits until another task wakes the current task.
+///
+/// # Safety
+///
+/// The caller must be in a context in which it can schedule.
+#[no_mangle]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn bit_wait(_word: *mut Key, mode: c_int) -> c_int {
+    // SAFETY: The caller guarantees that scheduling is permitted.
+    unsafe { bindings::rust_wait_bit_schedule() };
+    // SAFETY: The helper reads the current task's pending signal state.
+    if unsafe { bindings::rust_wait_bit_signal_pending_state(mode as c_uint) } {
+        -(bindings::EINTR as c_int)
+    } else {
+        0
+    }
+}
+
+/// Waits for I/O while allowing another task to wake the current task.
+///
+/// # Safety
+///
+/// The caller must be in a context in which it can schedule.
+#[no_mangle]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn bit_wait_io(_word: *mut Key, mode: c_int) -> c_int {
+    // SAFETY: The caller guarantees that I/O scheduling is permitted.
+    unsafe { bindings::rust_wait_bit_io_schedule() };
+    // SAFETY: The helper reads the current task's pending signal state.
+    if unsafe { bindings::rust_wait_bit_signal_pending_state(mode as c_uint) } {
+        -(bindings::EINTR as c_int)
+    } else {
+        0
+    }
+}
+
+/// Waits until the key deadline expires or another task wakes the waiter.
+///
+/// # Safety
+///
+/// `word` must point to a valid bit wait key, and the caller must be in a
+/// context in which it can schedule.
+#[no_mangle]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn bit_wait_timeout(word: *mut Key, mode: c_int) -> c_int {
+    // SAFETY: The helper reads the current jiffies value.
+    let now = unsafe { bindings::rust_wait_bit_jiffies() };
+    // SAFETY: The caller guarantees that `word` is valid.
+    let deadline = unsafe { (*word).timeout };
+    // SAFETY: The helper applies the kernel's wrapping timeout comparison.
+    if unsafe { bindings::rust_wait_bit_time_after_eq(now, deadline) } {
+        return -(bindings::EAGAIN as c_int);
+    }
+
+    // SAFETY: The remaining duration is valid and scheduling is permitted.
+    unsafe { bindings::rust_wait_bit_schedule_timeout(deadline.wrapping_sub(now)) };
+    // SAFETY: The helper reads the current task's pending signal state.
+    if unsafe { bindings::rust_wait_bit_signal_pending_state(mode as c_uint) } {
+        -(bindings::EINTR as c_int)
+    } else {
+        0
+    }
 }
 
 /// Wakes matching waiters on an already selected queue.

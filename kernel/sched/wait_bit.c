@@ -48,6 +48,31 @@ unsigned long rust_wait_bit_jiffies(void)
 {
 	return READ_ONCE(jiffies);
 }
+
+void rust_wait_bit_schedule(void)
+{
+	schedule();
+}
+
+void rust_wait_bit_io_schedule(void)
+{
+	io_schedule();
+}
+
+long rust_wait_bit_schedule_timeout(unsigned long timeout)
+{
+	return schedule_timeout(timeout);
+}
+
+bool rust_wait_bit_signal_pending_state(unsigned int mode)
+{
+	return signal_pending_state(mode, current);
+}
+
+bool rust_wait_bit_time_after_eq(unsigned long now, unsigned long timeout)
+{
+	return time_after_eq(now, timeout);
+}
 #endif /* CONFIG_RUST_WAIT_BIT */
 
 #ifndef CONFIG_RUST_WAIT_BIT
@@ -57,11 +82,6 @@ wait_queue_head_t *bit_waitqueue(unsigned long *word, int bit)
 	unsigned long val = (unsigned long)word << shift | bit;
 
 	return bit_wait_table + hash_long(val, WAIT_TABLE_BITS);
-}
-#else
-wait_queue_head_t *bit_waitqueue(unsigned long *word, int bit)
-{
-	return rust_wait_bit_waitqueue(word, bit);
 }
 #endif
 EXPORT_SYMBOL(bit_waitqueue);
@@ -78,12 +98,6 @@ int wake_bit_function(struct wait_queue_entry *wq_entry, unsigned mode, int sync
 		return 0;
 
 	return autoremove_wake_function(wq_entry, mode, sync, key);
-}
-#else
-int wake_bit_function(struct wait_queue_entry *wq_entry, unsigned int mode,
-		      int sync, void *arg)
-{
-	return rust_wait_bit_wake_bit_function(wq_entry, mode, sync, arg);
 }
 #endif
 EXPORT_SYMBOL(wake_bit_function);
@@ -110,13 +124,6 @@ __wait_on_bit(struct wait_queue_head *wq_head, struct wait_bit_queue_entry *wbq_
 
 	return ret;
 }
-#else
-int __sched
-__wait_on_bit(struct wait_queue_head *wq_head, struct wait_bit_queue_entry *wbq_entry,
-	      wait_bit_action_f *action, unsigned int mode)
-{
-	return rust_wait_bit_wait_on_bit(wq_head, wbq_entry, action, mode);
-}
 #endif
 EXPORT_SYMBOL(__wait_on_bit);
 
@@ -128,12 +135,6 @@ int __sched out_of_line_wait_on_bit(unsigned long *word, int bit,
 	DEFINE_WAIT_BIT(wq_entry, word, bit);
 
 	return __wait_on_bit(wq_head, &wq_entry, action, mode);
-}
-#else
-int __sched out_of_line_wait_on_bit(unsigned long *word, int bit,
-				    wait_bit_action_f *action, unsigned int mode)
-{
-	return rust_wait_bit_out_of_line_wait(word, bit, action, mode);
 }
 #endif
 EXPORT_SYMBOL(out_of_line_wait_on_bit);
@@ -150,18 +151,8 @@ int __sched out_of_line_wait_on_bit_timeout(
 
 	return __wait_on_bit(wq_head, &wq_entry, action, mode);
 }
-#else
-int __sched out_of_line_wait_on_bit_timeout(unsigned long *word,
-					    int bit,
-					    wait_bit_action_f *action,
-					    unsigned int mode,
-					    unsigned long timeout)
-{
-	return rust_wait_bit_out_of_line_wait_timeout(word, bit, action,
-						      mode, timeout);
-}
-#endif
 EXPORT_SYMBOL_GPL(out_of_line_wait_on_bit_timeout);
+#endif
 
 #ifndef CONFIG_RUST_WAIT_BIT
 int __sched
@@ -192,13 +183,6 @@ __wait_on_bit_lock(struct wait_queue_head *wq_head, struct wait_bit_queue_entry 
 		}
 	}
 }
-#else
-int __sched
-__wait_on_bit_lock(struct wait_queue_head *wq_head, struct wait_bit_queue_entry *wbq_entry,
-		   wait_bit_action_f *action, unsigned int mode)
-{
-	return rust_wait_bit_wait_on_bit_lock(wq_head, wbq_entry, action, mode);
-}
 #endif
 EXPORT_SYMBOL(__wait_on_bit_lock);
 
@@ -212,13 +196,6 @@ int __sched out_of_line_wait_on_bit_lock(unsigned long *word, int bit,
 
 	return __wait_on_bit_lock(wq_head, &wq_entry, action, mode);
 }
-#else
-int __sched out_of_line_wait_on_bit_lock(unsigned long *word, int bit,
-					 wait_bit_action_f *action,
-					 unsigned int mode)
-{
-	return rust_wait_bit_out_of_line_wait_lock(word, bit, action, mode);
-}
 #endif
 EXPORT_SYMBOL(out_of_line_wait_on_bit_lock);
 
@@ -229,11 +206,6 @@ void __wake_up_bit(struct wait_queue_head *wq_head, unsigned long *word, int bit
 
 	if (waitqueue_active(wq_head))
 		__wake_up(wq_head, TASK_NORMAL, 1, &key);
-}
-#else
-void __wake_up_bit(struct wait_queue_head *wq_head, unsigned long *word, int bit)
-{
-	rust_wait_bit_wake_up_bit(wq_head, word, bit);
 }
 #endif
 EXPORT_SYMBOL(__wake_up_bit);
@@ -268,11 +240,6 @@ void wake_up_bit(unsigned long *word, int bit)
 {
 	__wake_up_bit(bit_waitqueue(word, bit), word, bit);
 }
-#else
-void wake_up_bit(unsigned long *word, int bit)
-{
-	rust_wait_bit_wake_up(word, bit);
-}
 #endif
 EXPORT_SYMBOL(wake_up_bit);
 
@@ -280,11 +247,6 @@ EXPORT_SYMBOL(wake_up_bit);
 wait_queue_head_t *__var_waitqueue(void *p)
 {
 	return bit_wait_table + hash_ptr(p, WAIT_TABLE_BITS);
-}
-#else
-wait_queue_head_t *__var_waitqueue(void *p)
-{
-	return rust_wait_bit_var_waitqueue(p);
 }
 #endif
 EXPORT_SYMBOL(__var_waitqueue);
@@ -312,11 +274,6 @@ static int var_wake_function(struct wait_queue_entry *wq_entry, unsigned int mod
 
 	return autoremove_wake_function(wq_entry, mode, sync, key);
 }
-#else
-struct wait_bit_key *__var_wake_key(struct wait_queue_entry *wq_entry, void *arg)
-{
-	return rust_wait_bit_var_wake_key(wq_entry, arg);
-}
 #endif
 
 #ifndef CONFIG_RUST_WAIT_BIT
@@ -334,11 +291,6 @@ void init_wait_var_entry(struct wait_bit_queue_entry *wbq_entry, void *var, int 
 			.entry	 = LIST_HEAD_INIT(wbq_entry->wq_entry.entry),
 		},
 	};
-}
-#else
-void init_wait_var_entry(struct wait_bit_queue_entry *wbq_entry, void *var, int flags)
-{
-	rust_wait_bit_init_var_entry(wbq_entry, var, flags);
 }
 #endif
 EXPORT_SYMBOL(init_wait_var_entry);
@@ -378,14 +330,10 @@ void wake_up_var(void *var)
 {
 	__wake_up_bit(__var_waitqueue(var), var, -1);
 }
-#else
-void wake_up_var(void *var)
-{
-	rust_wait_bit_wake_up_var(var);
-}
 #endif
 EXPORT_SYMBOL(wake_up_var);
 
+#ifndef CONFIG_RUST_WAIT_BIT
 __sched int bit_wait(struct wait_bit_key *word, int mode)
 {
 	schedule();
@@ -394,7 +342,6 @@ __sched int bit_wait(struct wait_bit_key *word, int mode)
 
 	return 0;
 }
-EXPORT_SYMBOL(bit_wait);
 
 __sched int bit_wait_io(struct wait_bit_key *word, int mode)
 {
@@ -404,7 +351,6 @@ __sched int bit_wait_io(struct wait_bit_key *word, int mode)
 
 	return 0;
 }
-EXPORT_SYMBOL(bit_wait_io);
 
 __sched int bit_wait_timeout(struct wait_bit_key *word, int mode)
 {
@@ -419,6 +365,10 @@ __sched int bit_wait_timeout(struct wait_bit_key *word, int mode)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(bit_wait_timeout);
+#endif
+
+EXPORT_SYMBOL(bit_wait);
+EXPORT_SYMBOL(bit_wait_io);
 
 void __init wait_bit_init(void)
 {

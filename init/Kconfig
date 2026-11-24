@@ -2712,14 +2712,16 @@ config RUST_WAIT_BIT
 	depends on RUST_WAITQUEUE
 	default y
 	help
-	  Use Rust for the production bit and variable wait state machines.
-	  This includes shared queue selection, bit and variable key matching,
-	  normal and exclusive wait loops, lock acquisition after waiting,
-	  timed wait setup, wait entry construction, and variable entry setup.
+	  Use Rust for the production bit and variable wait state machines, and
+	  define the public entry points directly in Rust.  This includes shared
+	  queue selection, bit and variable key matching, normal and exclusive
+	  wait loops, lock acquisition after waiting, timed wait setup, wait entry
+	  construction, variable entry setup, and scheduler wait actions.
 
 	  Shared table storage, hash and atomic bit primitives, current task and
-	  jiffies reads, scheduler actions, and public ABI wrappers remain in C
-	  because they depend on architecture, scheduler, and linker internals.
+	  jiffies reads, scheduler primitives, signal predicates, timeout
+	  comparison, and ordinary export metadata remain in C because they
+	  depend on architecture, scheduler, and linker internals.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

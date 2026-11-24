@@ -155,6 +155,20 @@ Wait queue state machine
   boots passed 18 of 18 cases, the native SMP4 adjacent suites passed 69 of
   69 cases, and the module ABI test linked all 22 exports.
 
+Bit and variable wait state machine
+  Status: ``migrated``.
+
+  Evidence: :doc:`wait-bit`.
+
+  Rust directly defines all 15 exported bit, variable, queue-selection,
+  callback, and scheduler wait entries. Rust owns queue selection, key
+  matching, wait construction, normal and locked wait loops, action results,
+  deadlines, variable initialization, wake submission, and scheduler action
+  decisions. C retains the shared layouts and table, hashing, atomic bit
+  operations, task and jiffies reads, scheduler and signal primitives, and
+  ordinary export metadata. C fallback configurations retain the complete
+  implementation.
+
 RCU wait lifecycle
   Status: ``migrated``.
 
@@ -1026,6 +1040,63 @@ Wait queue export metadata
 
   Risk: A duplicate export or class change can expose an internal interface
   or break module compatibility.
+
+  Exit condition: Rust export metadata supports the ordinary and unexported
+  classes without C export records.
+
+Bit wait layout and shared table
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/wait_bit.h`` and ``kernel/sched/wait_bit.c``.
+
+  Reason: C and Rust share the key, queue entry, wait entry, hashed table, and
+  initialization layout. Callers also construct stack entries with C macros.
+
+  Test: Six configurations exercise bit queue selection, variable queue
+  selection, stack entries, timeouts, signals, and scheduler-backed wakeups.
+
+  Risk: A layout, hash, or initialization mismatch can select the wrong queue,
+  miss a waiter, or corrupt stack queue links.
+
+  Exit condition: Rust owns an equivalent key, entry, table, and construction
+  interface.
+
+Bit wait architecture and scheduler helpers
+  Status: ``boundary-retained``.
+
+  Owner: ``kernel/sched/wait_bit.c``, ``include/linux/wait-bit-rust.h``, and
+  scheduler, signal, and time interfaces.
+
+  Reason: Shared table storage, architecture-sized hashing, ordered and
+  unordered bit tests, test-and-set, current-task and jiffies reads, schedule,
+  I/O schedule, timeout schedule, signal state, and wrapping time comparison
+  retain architecture and scheduler contracts.
+
+  Test: Native SMP1/SMP4, KASAN, lockdep, and PREEMPT_RT boots exercise normal,
+  locked, timed, signal, bit callback, variable callback, and scheduler paths.
+
+  Risk: Incorrect bit ordering, time comparison, signal handling, or scheduler
+  selection can lose a wakeup, return a wrong action result, or violate bit
+  lock ownership.
+
+  Exit condition: Approved Rust architecture, scheduler, signal, and time
+  abstractions preserve the complete helper contracts.
+
+Bit wait export metadata
+  Status: ``boundary-retained``.
+
+  Owner: ``kernel/sched/wait_bit.c`` and ``rust/Makefile``.
+
+  Reason: Thirteen production symbols retain ordinary non-GPL exports, two
+  retain GPL exports, and two internal names remain unexported. C emits the
+  ordinary records while Rust automatic generation emits only the GPL class.
+
+  Test: ``Module.symvers`` records exactly 13 ordinary entries, two GPL
+  entries, and no entry for either internal name. Generated Rust export lists
+  omit every ordinary and unexported name.
+
+  Risk: A duplicate export or class change can expose an internal callback or
+  break module compatibility.
 
   Exit condition: Rust export metadata supports the ordinary and unexported
   classes without C export records.
@@ -1942,6 +2013,13 @@ queries, scheduler actions, barrier and poll primitives, and mixed export
 metadata remain named C boundaries. Rust defines every public and internal
 entry and owns every insertion, callback, autoremove, woken, signal, finish,
 exclusive-budget, wake-variant, and POLLFREE decision.
+
+The bit and variable wait boundary is valid only while the shared key and
+entry layouts, hashed table, callers' construction macros, atomic bit
+primitives, task and jiffies reads, scheduler actions, signal queries, timeout
+comparison, and mixed export metadata remain named C boundaries. Rust defines
+every exported entry and the variable-key helper and owns every queue
+selection, key match, wait loop, action result, deadline, and wake decision.
 
 The RCU wait boundary is valid only while the shared wait layout, caller
 condition expansion, RCU and task-state primitives, signal queries, scheduler
