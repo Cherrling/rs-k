@@ -2,10 +2,11 @@
 
 //! Native IDR allocation.
 //!
-//! Rust owns base-relative range normalization, first-fit free-slot selection,
-//! hole reuse, range exhaustion, cyclic search and wrap, next-ID publication
-//! ordering, and cursor updates. C retains XArray node allocation, slot
-//! publication, free-mark storage, node layout, and tagged-entry encoding.
+//! Rust directly defines the public entry points and owns base-relative range
+//! normalization, first-fit free-slot selection, hole reuse, range exhaustion,
+//! cyclic search and wrap, next-ID publication ordering, and cursor updates.
+//! C retains XArray node allocation, slot publication, free-mark storage, node
+//! layout, tagged-entry encoding, and export metadata.
 
 use crate::bindings;
 use core::{ffi::c_void, mem::MaybeUninit};
@@ -219,13 +220,13 @@ unsafe fn alloc_cyclic(idr: *mut Idr, ptr: *mut c_void, start: i32, end: i32, gf
     id as i32
 }
 
-/// Allocates one ID with an inclusive base-relative maximum.
+/// Implements `idr_alloc_u32()`.
 ///
 /// # Safety
 ///
-/// The C caller must supply valid objects and hold the IDR lock.
+/// The public IDR allocation contract applies.
 #[export]
-unsafe extern "C" fn rust_idr_alloc_u32(
+unsafe extern "C" fn idr_alloc_u32(
     idr: *mut Idr,
     ptr: *mut c_void,
     nextid: *mut u32,
@@ -236,13 +237,13 @@ unsafe extern "C" fn rust_idr_alloc_u32(
     unsafe { alloc_u32(idr, ptr, nextid, max, gfp) }
 }
 
-/// Allocates one ID with an exclusive end bound.
+/// Implements `idr_alloc()`.
 ///
 /// # Safety
 ///
-/// The C caller must supply valid objects and hold the IDR lock.
+/// The public IDR allocation contract applies.
 #[export]
-unsafe extern "C" fn rust_idr_alloc(
+unsafe extern "C" fn idr_alloc(
     idr: *mut Idr,
     ptr: *mut c_void,
     start: i32,
@@ -253,13 +254,13 @@ unsafe extern "C" fn rust_idr_alloc(
     unsafe { alloc(idr, ptr, start, end, gfp) }
 }
 
-/// Allocates one ID in cyclic order with an exclusive end bound.
+/// Implements `idr_alloc_cyclic()`.
 ///
 /// # Safety
 ///
-/// The C caller must supply valid objects and hold the IDR lock.
+/// The public IDR allocation contract applies.
 #[export]
-unsafe extern "C" fn rust_idr_alloc_cyclic(
+unsafe extern "C" fn idr_alloc_cyclic(
     idr: *mut Idr,
     ptr: *mut c_void,
     start: i32,

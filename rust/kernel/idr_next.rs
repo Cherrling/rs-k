@@ -2,9 +2,10 @@
 
 //! Native IDR iteration.
 //!
-//! Rust owns base-relative cursor normalization, sparse traversal control,
-//! retry recovery, and signed-ID overflow handling. C retains IDR and XArray
-//! layouts, RCU slot access, entry classification, and the overflow diagnostic.
+//! Rust directly defines the public entry points and owns base-relative cursor
+//! normalization, sparse traversal control, retry recovery, and signed-ID
+//! overflow handling. C retains IDR and XArray layouts, RCU slot access, entry
+//! classification, the overflow diagnostic, and export metadata.
 
 use crate::bindings;
 use core::{ffi::c_void, mem::MaybeUninit};
@@ -124,10 +125,9 @@ unsafe fn get_next(idr: *mut Idr, nextid: *mut i32) -> *mut c_void {
 ///
 /// # Safety
 ///
-/// `idr` and `nextid` must be valid. The caller must provide the synchronization
-/// required by the public API.
+/// The public IDR iteration contract applies.
 #[export]
-unsafe extern "C" fn rust_idr_get_next_ul(idr: *mut Idr, nextid: *mut usize) -> *mut c_void {
+unsafe extern "C" fn idr_get_next_ul(idr: *mut Idr, nextid: *mut usize) -> *mut c_void {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { get_next_ul(idr, nextid) }
 }
@@ -136,10 +136,9 @@ unsafe extern "C" fn rust_idr_get_next_ul(idr: *mut Idr, nextid: *mut usize) -> 
 ///
 /// # Safety
 ///
-/// `idr` and `nextid` must be valid. The caller must provide the synchronization
-/// required by the public API.
+/// The public IDR iteration contract applies.
 #[export]
-unsafe extern "C" fn rust_idr_get_next(idr: *mut Idr, nextid: *mut i32) -> *mut c_void {
+unsafe extern "C" fn idr_get_next(idr: *mut Idr, nextid: *mut i32) -> *mut c_void {
     // SAFETY: Guaranteed by this function's contract.
     unsafe { get_next(idr, nextid) }
 }

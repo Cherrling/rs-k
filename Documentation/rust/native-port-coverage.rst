@@ -692,6 +692,28 @@ Scheduler task runqueue transition entries
   passed all 4 cases. Real activation and deactivation traffic exercises both
   direct entries. Native and fallback hrtimer regressions passed all 25 cases.
 
+IDR allocation and iteration entry points
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-idr-alloc` and :doc:`native-idr-next`.
+
+  Rust directly defines ``idr_alloc_u32()``, ``idr_alloc()``,
+  ``idr_alloc_cyclic()``, ``idr_get_next_ul()``, and ``idr_get_next()``. Rust
+  owns range normalization, first-fit and cyclic allocation policy, hole
+  reuse, allocation retry and publication ordering, sparse iteration, retry
+  recovery, cursor updates, and signed-ID overflow decisions. C retains the
+  IDR and XArray layouts, RCU slot access, node allocation and publication,
+  free-mark storage, tagged-entry encoding, diagnostics, and original export
+  classes. C fallback and C-only configurations retain the complete
+  implementations.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT runs passed
+  all seven allocation and six iteration cases at one and four virtual CPUs.
+  A lockdep adjacent Maple Tree run passed 56 of 56 cases. The native
+  ``rust/kernel.o`` defines all five public symbols and the native
+  ``lib/idr.o`` defines none. Every configuration preserves the original GPL
+  and non-GPL export classes and has no unresolved IDR symbol.
+
 Boundary-retained inventory
 ---------------------------
 
@@ -708,6 +730,27 @@ Shared type layouts
 
   Exit condition: All consumers use a Rust-owned type and the C layout is no
   longer part of the shared interface.
+
+IDR and XArray state
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/idr.h``, ``include/linux/xarray.h``,
+  ``lib/idr.c``, and ``lib/xarray.c``.
+
+  Reason: Rust and C access the same IDR and XArray root, node, cursor, mark,
+  and tagged-entry state. The public IDR contract also permits caller-owned
+  writer locking instead of the XArray-internal lock.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT runs exercise
+  allocation, sparse iteration, RCU slot access, retry handling, and adjacent
+  Maple Tree operations.
+
+  Risk: A layout, encoding, mark, locking, or cursor-contract change can
+  invalidate Rust field access or external-writer assumptions.
+
+  Exit condition: XArray and IDR storage, cursor state, tagged-entry
+  encoding, and synchronization policy have Rust-owned representations and C
+  consumers no longer access them directly.
 
 Public ABI
   Status: ``boundary-retained``.
@@ -727,6 +770,7 @@ Public ABI
   ``include/linux/timerqueue.h``, ``include/linux/hrtimer.h``,
   ``include/linux/itimer-rust.h``, ``include/linux/cpupri.h``,
   ``include/linux/dmapool.h``, ``include/linux/dmapool-rust.h``,
+  ``include/linux/idr.h``, ``include/linux/idr-rust.h``,
   ``include/linux/mutex.h``,
   ``include/linux/ww_mutex.h``, and ``include/linux/rwsem.h``.
 

@@ -21,20 +21,10 @@ enum rust_idr_constant {
 void rust_idr_prepare(struct idr *idr);
 void rust_idr_commit(struct idr *idr, struct xa_state *xas, void *ptr);
 void rust_idr_warn_invalid_start(void);
-
-int rust_idr_alloc_u32(struct idr *idr, void *ptr, u32 *nextid,
-		       unsigned long max, gfp_t gfp);
-int rust_idr_alloc(struct idr *idr, void *ptr, int start, int end,
-		   gfp_t gfp);
-int rust_idr_alloc_cyclic(struct idr *idr, void *ptr, int start, int end,
-			  gfp_t gfp);
 #endif /* CONFIG_RUST_IDR_ALLOC */
 
 #ifdef CONFIG_RUST_IDR_NEXT
 void rust_idr_warn_id_overflow(void);
-
-void *rust_idr_get_next_ul(struct idr *idr, unsigned long *nextid);
-void *rust_idr_get_next(struct idr *idr, int *nextid);
 #endif /* CONFIG_RUST_IDR_NEXT */
 
 #endif /* _LINUX_IDR_RUST_H */

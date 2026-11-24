@@ -32,8 +32,10 @@ Entry points and ownership
 --------------------------
 
 The public IDR interfaces and their export classes do not change. With this
-option enabled, both C entry points forward directly to the matching Rust
-production function.
+option enabled, Rust directly defines ``idr_get_next_ul()`` and
+``idr_get_next()``. The native C object retains only their export metadata
+and the narrow helper boundaries listed below. In the fallback, C defines
+both functions and retains their original export records.
 
 Rust initializes an XArray cursor at the normalized start index and uses the
 native Rust forward-search unit. It owns every loop decision that controls
@@ -44,6 +46,10 @@ Retained C boundaries
 
 The IDR and XArray root layouts remain in C. The signed-ID overflow diagnostic
 also remains in C.
+
+The original GPL and non-GPL export classes remain in C metadata. The
+automatic Rust GPL exporter skips these direct entries to avoid duplicate
+exports.
 
 RCU slot access and parent lookup remain C primitives. Rust decides when to
 perform a lookup, when to descend, and when to restart after a retry entry.
@@ -104,46 +110,38 @@ The unit must pass these checks before integration:
 * Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
   ``git diff --check``.
 
-* Symbol checks showing that the enabled C object calls both Rust entry points
-  and that the fallback contains no Rust IDR iteration calls.
+* Symbol checks showing that Rust defines both public entry points, the native
+  C object defines neither, and the fallback defines each one.
 
 Validation results
 ------------------
 
-Validation on 2026-11-17 used parent commit
-``bd6eae17399e``.
+Validation on 2026-11-25 used parent commit
+``9dbe9972e10f2098631eef434960f4395fc7ac21``. All builds used LLVM.
 
-The native Rust, Rust C-fallback, and pure C runs passed all seven focused
-IDR allocation cases and all six IDR iteration cases on one and four CPUs.
-Each run also passed the complete Maple Tree self-test with 3,809,321 of
-3,809,321 checks.
+Native Rust, Rust C-fallback, and pure C runs passed all six focused iteration
+cases on one and four CPUs. The same six runs passed all seven allocation
+cases. KASAN, lockdep, and PREEMPT_RT each passed both suites on one and four
+CPUs. No final log contained a KASAN report, lockdep or RCU report, BUG,
+warning, Oops, kernel panic, or RCU stall.
 
-KASAN SMP1 and SMP4 runs passed both IDR suites without a KASAN report.
-
-The first lockdep boot reported suspicious RCU reads in the native XArray
-search path from callers such as generic-netlink registration and workqueue
-CPU online. Those callers use a caller-owned lock instead of ``xa_lock``.
-The public IDR API permits this synchronization, and the retained
-radix-tree iterator uses raw RCU loads for the same contract. Final SMP1 and
-SMP4 lockdep boots passed without an RCU warning after the Rust IDR path
-selected the corresponding external-lock load variants.
+A lockdep four-CPU adjacent run passed all eight Maple Tree suites, with 56 of
+56 cases passing.
 
 The iteration tests use aligned ``u32`` storage for IDR values. Scalar
 variables with unaligned addresses can resemble encoded internal XArray
 entries and are not valid IDR values.
 
-In the native configuration, ``lib/idr.o`` references
-``rust_idr_get_next`` and ``rust_idr_get_next_ul``.
-``rust/kernel.o`` defines both symbols. The Rust C-fallback and pure C
-objects contain neither Rust iteration reference.
+In the native configuration, ``rust/kernel.o`` directly defines
+``idr_get_next()`` and ``idr_get_next_ul()``. ``lib/idr.o`` defines neither
+symbol and retains only the references needed by their export records. The
+C-fallback and pure C objects define both symbols, and the Rust fallback
+object defines neither.
 
 The final source passed ``rustfmtcheck``, a full kernel build with
 ``CLIPPY=1``, Rustdoc, focused Sphinx generation, strict checkpatch, and
-``git diff --check``. Strict checkpatch reported no errors. Two expected
-messages were reviewed and ignored: the added-file warning is covered by the
-updated ``MAINTAINERS`` entries, and ``idr_init_base()`` is required to test
-the public base behavior. Focused Sphinx reported only the existing missing
-``kernel-docs`` document warning.
+``git diff --check``. Focused Sphinx rendered both IDR pages and reported only
+the existing missing ``kernel-docs`` document warning outside this scope.
 
 Review conditions
 -----------------
@@ -163,4 +161,4 @@ Reopen a retained boundary decision if any of these conditions changes:
 * A C helper starts to select iteration policy instead of providing a
   primitive operation.
 
-* The fallback starts to use a new Rust IDR iteration symbol.
+* The fallback starts to depend on a Rust IDR iteration symbol.

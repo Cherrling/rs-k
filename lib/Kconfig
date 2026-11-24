@@ -1285,12 +1285,13 @@ config RUST_IDR_ALLOC
 	  Use Rust for the production IDR allocation policy behind
 	  idr_alloc_u32(), idr_alloc(), and idr_alloc_cyclic().
 
-	  Rust owns base-relative range normalization, first-fit free-slot
-	  selection, hole reuse, range exhaustion, cyclic search and wrap,
-	  next-ID publication ordering, and cursor updates. XArray node
-	  allocation, slot publication, free-mark storage, node layout, and
-	  tagged-entry encoding remain explicit boundaries. The C fallback
-	  retains the complete IDR allocation policy.
+	  Rust directly defines the three public entry points and owns
+	  base-relative range normalization, first-fit free-slot selection,
+	  hole reuse, range exhaustion, cyclic search and wrap, next-ID
+	  publication ordering, and cursor updates. XArray node allocation,
+	  slot publication, free-mark storage, node layout, tagged-entry
+	  encoding, and export metadata remain explicit boundaries. The C
+	  fallback retains the complete IDR allocation policy.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -1303,10 +1304,11 @@ config RUST_IDR_NEXT
 	  Use Rust for the production IDR iteration policy behind
 	  idr_get_next_ul() and idr_get_next().
 
-	  Rust owns base-relative cursor normalization, sparse tree traversal
-	  control, retry recovery, and the signed-ID overflow check. XArray node
-	  and cursor layouts, RCU slot access, and entry classification remain
-	  explicit boundaries.
+	  Rust directly defines both public entry points and owns base-relative
+	  cursor normalization, sparse tree traversal control, retry recovery,
+	  and the signed-ID overflow check. XArray node and cursor layouts, RCU
+	  slot access, entry classification, and export metadata remain explicit
+	  boundaries. The C fallback retains the complete IDR iteration policy.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

@@ -68,12 +68,10 @@ void rust_idr_warn_id_overflow(void)
  * or -ENOSPC if no free IDs could be found.  If an error occurred,
  * @nextid is unchanged.
  */
+#ifndef CONFIG_RUST_IDR_ALLOC
 int idr_alloc_u32(struct idr *idr, void *ptr, u32 *nextid,
-			unsigned long max, gfp_t gfp)
+		  unsigned long max, gfp_t gfp)
 {
-#ifdef CONFIG_RUST_IDR_ALLOC
-	return rust_idr_alloc_u32(idr, ptr, nextid, max, gfp);
-#else
 	struct radix_tree_iter iter;
 	void __rcu **slot;
 	unsigned int base = idr->idr_base;
@@ -96,8 +94,8 @@ int idr_alloc_u32(struct idr *idr, void *ptr, u32 *nextid,
 	radix_tree_iter_tag_clear(&idr->idr_rt, &iter, IDR_FREE);
 
 	return 0;
-#endif
 }
+#endif /* !CONFIG_RUST_IDR_ALLOC */
 EXPORT_SYMBOL_GPL(idr_alloc_u32);
 
 /**
@@ -120,11 +118,9 @@ EXPORT_SYMBOL_GPL(idr_alloc_u32);
  * Return: The newly allocated ID, -ENOMEM if memory allocation failed,
  * or -ENOSPC if no free IDs could be found.
  */
+#ifndef CONFIG_RUST_IDR_ALLOC
 int idr_alloc(struct idr *idr, void *ptr, int start, int end, gfp_t gfp)
 {
-#ifdef CONFIG_RUST_IDR_ALLOC
-	return rust_idr_alloc(idr, ptr, start, end, gfp);
-#else
 	u32 id = start;
 	int ret;
 
@@ -136,8 +132,8 @@ int idr_alloc(struct idr *idr, void *ptr, int start, int end, gfp_t gfp)
 		return ret;
 
 	return id;
-#endif
 }
+#endif /* !CONFIG_RUST_IDR_ALLOC */
 EXPORT_SYMBOL_GPL(idr_alloc);
 
 /**
@@ -162,11 +158,9 @@ EXPORT_SYMBOL_GPL(idr_alloc);
  * Return: The newly allocated ID, -ENOMEM if memory allocation failed,
  * or -ENOSPC if no free IDs could be found.
  */
+#ifndef CONFIG_RUST_IDR_ALLOC
 int idr_alloc_cyclic(struct idr *idr, void *ptr, int start, int end, gfp_t gfp)
 {
-#ifdef CONFIG_RUST_IDR_ALLOC
-	return rust_idr_alloc_cyclic(idr, ptr, start, end, gfp);
-#else
 	u32 id = idr->idr_next;
 	int err, max = end > 0 ? end - 1 : INT_MAX;
 
@@ -183,8 +177,8 @@ int idr_alloc_cyclic(struct idr *idr, void *ptr, int start, int end, gfp_t gfp)
 
 	idr->idr_next = id + 1;
 	return id;
-#endif
 }
+#endif /* !CONFIG_RUST_IDR_ALLOC */
 EXPORT_SYMBOL(idr_alloc_cyclic);
 
 /**
@@ -276,11 +270,9 @@ EXPORT_SYMBOL(idr_for_each);
  * to the ID of the found value.  To use in a loop, the value pointed to by
  * nextid must be incremented by the user.
  */
+#ifndef CONFIG_RUST_IDR_NEXT
 void *idr_get_next_ul(struct idr *idr, unsigned long *nextid)
 {
-#ifdef CONFIG_RUST_IDR_NEXT
-	return rust_idr_get_next_ul(idr, nextid);
-#else
 	struct radix_tree_iter iter;
 	void __rcu **slot;
 	void *entry = NULL;
@@ -303,8 +295,8 @@ void *idr_get_next_ul(struct idr *idr, unsigned long *nextid)
 
 	*nextid = iter.index + base;
 	return entry;
-#endif
 }
+#endif /* !CONFIG_RUST_IDR_NEXT */
 EXPORT_SYMBOL(idr_get_next_ul);
 
 /**
@@ -317,11 +309,9 @@ EXPORT_SYMBOL(idr_get_next_ul);
  * to the ID of the found value.  To use in a loop, the value pointed to by
  * nextid must be incremented by the user.
  */
+#ifndef CONFIG_RUST_IDR_NEXT
 void *idr_get_next(struct idr *idr, int *nextid)
 {
-#ifdef CONFIG_RUST_IDR_NEXT
-	return rust_idr_get_next(idr, nextid);
-#else
 	unsigned long id = *nextid;
 	void *entry = idr_get_next_ul(idr, &id);
 
@@ -329,8 +319,8 @@ void *idr_get_next(struct idr *idr, int *nextid)
 		return NULL;
 	*nextid = id;
 	return entry;
-#endif
 }
+#endif /* !CONFIG_RUST_IDR_NEXT */
 EXPORT_SYMBOL(idr_get_next);
 
 /**

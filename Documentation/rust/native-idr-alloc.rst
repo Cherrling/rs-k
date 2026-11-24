@@ -32,8 +32,10 @@ Entry points and ownership
 --------------------------
 
 The public IDR interfaces and their export classes do not change. With this
-option enabled, each C entry point forwards directly to the matching Rust
-production function.
+option enabled, Rust directly defines ``idr_alloc_u32()``, ``idr_alloc()``,
+and ``idr_alloc_cyclic()``. The native C object retains only their export
+metadata and the narrow helper boundaries listed below. In the fallback, C
+defines all three functions and retains their original export records.
 
 Rust owns the allocation loops in ``rust/kernel/idr_alloc.rs``. It performs
 the retained free-mark search and calls the native Rust XArray node-creation
@@ -46,6 +48,10 @@ Retained C boundaries
 The IDR root marker and its existing malformed-root diagnostic remain in C.
 Rust calls the marker helper before each allocation. The negative-start
 diagnostic also remains in C.
+
+The original GPL and non-GPL export classes remain in C metadata. The
+automatic Rust GPL exporter skips these direct entries to avoid duplicate
+exports.
 
 IDR slot replacement and accounting remain C. An IDR can store a NULL value
 as an allocated ID. The replacement boundary therefore uses the existing
@@ -121,25 +127,23 @@ The unit must pass these checks before integration:
 * Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
   ``git diff --check``.
 
-* Symbol checks showing that the enabled C object calls the three Rust entry
-  points and that the fallback contains no Rust IDR calls.
+* Symbol checks showing that Rust defines all three public entry points, the
+  native C object defines none of them, and the fallback defines each one.
 
 Validation results
 ------------------
 
-Validation on 2026-11-17 used parent commit
-``4d1d0c00c9cea38e5eea1a633776f25d7f5f39fb``.
+Validation on 2026-11-25 used parent commit
+``9dbe9972e10f2098631eef434960f4395fc7ac21``. All builds used LLVM.
 
-The native Rust, Rust C-fallback, and pure C runs passed all seven focused
-KUnit cases on one and four CPUs. Each run also passed the complete Maple Tree
-self-test with 3,809,321 of 3,809,321 checks.
+Native Rust, Rust C-fallback, and pure C runs passed all seven focused
+allocation cases on one and four CPUs. The same six runs passed all six
+iteration cases. KASAN, lockdep, and PREEMPT_RT each passed both suites on one
+and four CPUs. No final log contained a KASAN report, lockdep or RCU report,
+BUG, warning, Oops, kernel panic, or RCU stall.
 
-KASAN SMP1 and SMP4 runs passed all seven cases without a KASAN report.
-
-The first lockdep boot exposed suspicious RCU reads in the Rust XArray helpers.
-IDR used a caller-owned writer lock while the helpers asserted ownership of
-``xa_lock``. The dedicated external-writer-lock operations fixed this contract.
-Final lockdep SMP1 and SMP4 runs passed all seven cases without a warning.
+A lockdep four-CPU adjacent run passed all eight Maple Tree suites, with 56 of
+56 cases passing.
 
 The concurrent case uses four workers to allocate every ID in a shared
 128-entry range. An atomic compare-exchange detects duplicate claims. A hard
@@ -147,16 +151,21 @@ timeout bounds startup and allocation, and the test verifies that every slot
 was claimed exactly once. No final log contained a BUG, Oops, warning, or call
 trace.
 
-In the native configuration, ``lib/idr.o`` references
-``rust_idr_alloc_u32``, ``rust_idr_alloc``, and
-``rust_idr_alloc_cyclic``. ``rust/kernel.o`` defines all three symbols. The
-C-fallback object contains no Rust IDR reference.
-The pure C object also contains no Rust IDR reference.
+In the native configuration, ``rust/kernel.o`` defines all five public IDR
+allocation and iteration symbols. ``lib/idr.o`` defines none of them and has
+only the references needed by their export records. The C-fallback and pure C
+objects define all five symbols, and the Rust fallback object defines none.
+
+The native, fallback, and pure C ``Module.symvers`` files preserve the original
+classes. ``idr_alloc`` and ``idr_alloc_u32`` use ``EXPORT_SYMBOL_GPL``.
+``idr_alloc_cyclic``, ``idr_get_next``, and ``idr_get_next_ul`` use
+``EXPORT_SYMBOL``. The old ``rust_idr_alloc*`` and ``rust_idr_get_next*``
+adapter names are absent. The final ``vmlinux`` has no unresolved IDR symbol.
 
 The final source passed ``rustfmtcheck``, a full kernel build with
 ``CLIPPY=1``, Rustdoc, focused Sphinx generation, strict checkpatch, and
-``git diff --check``. Focused Sphinx reported only the existing missing
-``kernel-docs`` document and undefined ``getting_llvm`` label warnings.
+``git diff --check``. Focused Sphinx rendered both IDR pages and reported only
+the existing missing ``kernel-docs`` document warning outside this scope.
 
 Review conditions
 -----------------
@@ -176,4 +185,4 @@ Reopen a retained boundary decision if any of these conditions changes:
 * A C helper starts to select allocation policy instead of providing a
   primitive operation.
 
-* The fallback starts to use any new Rust IDR symbol.
+* The fallback starts to depend on a Rust IDR symbol.

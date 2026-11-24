@@ -564,6 +564,8 @@ $(obj)/helpers/helpers.bc $(obj)/helpers/helpers_module.bc: $(src)/helpers/helpe
 # their EXPORT_SYMBOL() metadata, so the automatic Rust exporter must skip
 # them to avoid duplicate GPL exports.
 rust_non_gpl_exports := \
+	idr_alloc_cyclic \
+	idr_get_next \
 	__refcount_add_not_zero \
 	__refcount_add_not_zero_limited_acquire \
 	__refcount_add \
@@ -779,6 +781,9 @@ rust_non_gpl_exports := \
 
 # Rust-defined production symbols that must not receive automatic exports.
 rust_unexported_symbols := \
+	idr_alloc \
+	idr_alloc_u32 \
+	idr_get_next_ul \
 	__list_lru_add \
 	__list_lru_del \
 	list_lru_add_irq \
