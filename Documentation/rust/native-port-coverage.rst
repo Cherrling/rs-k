@@ -308,6 +308,17 @@ Kernel FIFO operations
   mutation, and ordinary non-GPL export metadata. C fallback configurations
   retain the complete algorithms.
 
+Timer queue operations
+  Status: ``migrated``.
+
+  Evidence: :doc:`timerqueue`.
+
+  Rust directly defines the four public GPL insertion, deletion, successor,
+  and linked-tree insertion entry points. Rust owns ordered search, intrusive
+  node linking, cached-leftmost maintenance, deletion, successor lookup, and
+  linked-chain insertion. C retains the intrusive timer queue layout, inline
+  accessors, red-black tree primitives, and the complete fallback.
+
 Boundary-retained inventory
 ---------------------------
 
@@ -337,7 +348,8 @@ Public ABI
   ``include/linux/btree.h``, ``include/linux/find.h``,
   ``include/linux/bitmap.h``, ``include/linux/maple_tree.h``,
   ``include/linux/kfifo.h``, ``include/linux/completion.h``,
-  ``include/linux/task_work.h``, and ``include/linux/irq_work.h``.
+  ``include/linux/task_work.h``, ``include/linux/irq_work.h``, and
+  ``include/linux/timerqueue.h``.
 
   Reason: Existing callers and loadable modules use the stable C ABI.
 
@@ -362,6 +374,42 @@ Architecture atomics
 
   Exit condition: A replacement atomic API preserves the complete LKMM
   contract and all architecture implementations.
+
+Timer queue layout and inline operations
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/timerqueue.h`` and
+  ``include/linux/timerqueue_types.h``.
+
+  Reason: C and Rust access the same intrusive red-black node, cached root,
+  linked-node chain, expiration field, and inline access operations.
+
+  Test: Native, fallback, and C-only KUnit runs exercise signed ordering,
+  duplicate expirations, cached-leftmost maintenance, successor traversal,
+  and linked-chain insertion and removal.
+
+  Risk: A layout or inline-contract change can make Rust update the wrong
+  cached root or expose a node outside the timer queue ordering rules.
+
+  Exit condition: Rust-owned timer queue types and inline interfaces replace
+  the shared C representation.
+
+Timer queue tree primitives
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/rbtree.h``, ``lib/rbtree.c``, and the Rust bindings.
+
+  Reason: Intrusive linking, rotations, color repair, erasure, and successor
+  lookup retain the shared red-black tree layout and inlining contracts.
+
+  Test: Native and fallback runs execute timer queues with both the Rust and C
+  red-black tree implementations.
+
+  Risk: A primitive contract change can corrupt ordering or detach a timer
+  from the cached leftmost path.
+
+  Exit condition: Rust owns compatible timer queue tree primitives without a
+  shared C call boundary.
 
 Generic bitmap storage and inline interface
   Status: ``boundary-retained``.
@@ -1496,6 +1544,12 @@ jiffies arithmetic, diagnostics, full descriptor scans, IRQ disabling, timer
 rearming, and unexported entry policy remain named C boundaries. Rust defines
 the production entry and owns every polling, result, threaded-accounting,
 window, misroute, threshold, and terminal-state decision.
+
+The timer queue boundary is valid only while intrusive timer queue layouts,
+inline accessors, red-black tree primitives, and caller serialization remain
+named C boundaries. Rust defines every out-of-line public entry and owns every
+ordered search, link, cached-root, deletion, successor, and linked-chain
+decision.
 
 The kobject boundary is valid only while the shared layout, bitfields,
 diagnostics, final cleanup callback, and non-GPL export metadata remain named

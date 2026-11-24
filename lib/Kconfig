@@ -888,11 +888,14 @@ config RUST_TIMERQUEUE
 	depends on RUST
 	default y
 	help
-	  Use Rust for the production timer queue insertion, deletion,
-	  successor traversal, and linked-tree insertion operations.
+	  Rust directly defines the production timer queue insertion,
+	  deletion, successor traversal, and linked-tree insertion entry
+	  points. Rust owns the ordered search, node linking, cached-leftmost
+	  maintenance, successor lookup, and linked-tree insertion.
 
 	  Locking and timer callback semantics remain with the existing
-	  callers. The exported C entry points remain as ABI adapters.
+	  callers. C retains the intrusive timer queue layout, inline access
+	  operations, red-black tree primitives, and the complete fallback.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

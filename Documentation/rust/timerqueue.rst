@@ -1,20 +1,21 @@
 .. SPDX-License-Identifier: GPL-2.0
 
-Native Rust Timer Queue Migration
-=================================
+Native Rust timer queue operations
+==================================
 
 Status and scope
 ----------------
 
 The ``CONFIG_RUST_TIMERQUEUE`` option selects native Rust implementations for
-cached timer queue insertion, deletion, and successor traversal.  It also
-selects native Rust insertion into linked timer queues.  The public API and
-device driver scope remain unchanged.
+cached timer queue insertion, deletion, and successor traversal. It also
+selects native Rust insertion into linked timer queues. Rust directly defines
+the four public GPL entry points. The public API and device driver scope
+remain unchanged.
 
 Callers continue to serialize queue access.  Timer callback rules, timer base
 state, and locking remain outside this library.
 
-The Rust code owns these production decisions:
+Rust owns these production decisions:
 
 * Ordered search by the signed ``expires`` value.
 * Intrusive red-black node linking.
@@ -30,15 +31,16 @@ shared primitives are also implemented in Rust.
 Entry points and state ownership
 --------------------------------
 
-The exported ``timerqueue_*()`` functions remain C ABI adapters.  When the Rust
-option is enabled, these adapters call the Rust production functions:
+With the option enabled, Rust directly defines these public entry points:
 
-* ``rust_timerqueue_add()``
-* ``rust_timerqueue_del()``
-* ``rust_timerqueue_iterate_next()``
-* ``rust_timerqueue_linked_add()``
+* ``timerqueue_add()``
+* ``timerqueue_del()``
+* ``timerqueue_iterate_next()``
+* ``timerqueue_linked_add()``
 
-The original C search, linking, and cached-leftmost decisions are compiled out.
+The original C search, linking, cached-leftmost decisions, and
+``timerqueue_*()`` definitions are excluded from the native build. The
+generated Rust GPL export metadata retains the existing module ABI.
 
 Retained C boundary
 -------------------
@@ -52,9 +54,14 @@ The following operations remain inline in ``include/linux/timerqueue.h``:
 * ``timerqueue_linked_del()``.
 
 These operations are direct field access or calls to the existing linked-tree
-erasure primitive.  Keeping them inline preserves the established intrusive
-data layout and lockless read paths.  ``timerqueue_linked_del()`` already uses
-the Rust linked-tree erasure primitive when ``CONFIG_RUST_RBTREE`` is enabled.
+erasure primitive. Keeping them inline preserves the established intrusive
+data layout and lockless read paths. ``timerqueue_linked_del()`` uses the Rust
+linked-tree erasure primitive when ``CONFIG_RUST_RBTREE`` is enabled.
+
+The intrusive timer queue and linked-node layouts, cached red-black root, and
+inline accessors remain shared C interfaces. The red-black tree insertion,
+rotation, color repair, erasure, and successor operations remain architecture
+or shared tree boundaries.
 
 Important invariants
 --------------------
@@ -75,30 +82,45 @@ must clear both chain pointers and the intrusive node sentinel.
 Validation record
 -----------------
 
-The x86_64 validation used six configurations:
+Validation on 2026-11-24 used base commit ``0b7f0e1cacf0``. Seven x86_64
+configurations were built:
 
-* Rust timer queues enabled with the Rust red-black tree implementation.
-* The original C timer queue implementation and Rust red-black tree.
-* Rust timer queues with generic inline KASAN.
-* Rust timer queues with lockdep.
-* Rust timer queues with PREEMPT_RT.
-* Rust timer queues with the C red-black tree implementation.
+* Native Rust timer queues with Rust red-black tree primitives.
+* Rust timer queues with C red-black tree primitives.
+* The C timer queue implementation with Rust red-black tree primitives.
+* C-only build with ``CONFIG_RUST=n``.
+* Native Rust with generic inline KASAN.
+* Native Rust with lockdep and prove-locking.
+* Native Rust with PREEMPT_RT.
 
-The Rust production configuration passed all four KUnit cases in three
-consecutive runs on four vCPUs.  The C fallback, KASAN, lockdep, PREEMPT_RT,
-and C-red-black-tree configurations each passed all four cases on four vCPUs.
-The tests covered signed boundaries, duplicate expiration values, cached
-leftmost maintenance, deletion, successor traversal, and linked-chain
-insertion and removal.
+All 18 timer queue KUnit runs passed 4 of 4 cases. Native used one SMP1 run
+and three SMP4 runs. KASAN used one SMP1 run and three SMP4 runs. Every other
+configuration used one SMP1 and one SMP4 run. The tests covered signed
+boundaries, duplicate expiration values, cached-leftmost maintenance,
+deletion, successor traversal, and linked-chain insertion and removal.
 
-The validation logs contained no ``BUG``, warning, KASAN report, lockdep
-complaint, or panic.  Disassembly showed that all four exported adapters
-tail-call their Rust counterparts.  The C fallback had no Rust timer queue
-symbols.  The configuration without the Rust red-black tree still ran the Rust
-timer queue code and called the C tree primitives.  Every production image had
-zero unresolved symbols.
+The adjacent ``hrtimer_core`` suite passed 25 of 25 cases on SMP4 for native,
+fallback, C-red-black-tree, KASAN, lockdep, and PREEMPT_RT configurations.
+The C-only configuration passed its five applicable hrtimer cases.
 
-Rustfmt, Clippy, strict checkpatch, and ``git diff --check`` passed.
+The validation logs contained no ``BUG``, warning, Oops, kernel panic, KASAN
+report, lockdep complaint, or RCU stall.
+
+In the native, KASAN, lockdep, PREEMPT_RT, and C-red-black-tree
+configurations, ``rust/kernel.o`` defined all four public entry points and
+``lib/timerqueue.o`` defined none. The fallback and C-only configurations
+defined all four in ``lib/timerqueue.o`` and none in Rust.
+``rust/exports_kernel_generated.h`` emitted the four GPL exports in every Rust
+timer queue configuration. Every ``Module.symvers`` contained exactly four
+``EXPORT_SYMBOL_GPL`` entries for these names. No unresolved timer queue
+symbols or old C ABI adapters remained.
+
+Disassembly showed that ``timerqueue_add()`` directly executes the Rust
+ordered search and tree insertion rather than tail-calling an adapter.
+
+Rustfmt, Clippy, Rustdoc, focused Rust Sphinx generation, strict checkpatch,
+and ``git diff --check`` passed. Sphinx reported only the existing
+``kernel-docs`` and ``getting_llvm`` warnings.
 
 Review conditions
 -----------------

@@ -24194,7 +24194,6 @@ F:	include/linux/task-group-exit-sync-rust.h
 F:	include/linux/task-release-rust.h
 F:	include/linux/task-rust.h
 F:	include/linux/task-work-rust.h
-F:	include/linux/timerqueue-rust.h
 F:	include/linux/vma-merge-commit-rust.h
 F:	include/linux/vma-merge-compat-rust.h
 F:	include/linux/vma-merge-existing-rust.h

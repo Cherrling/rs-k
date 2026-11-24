@@ -11,7 +11,6 @@ use core::{
     ptr,
     sync::atomic::{AtomicBool, Ordering},
 };
-use macros::export;
 
 type RbNode = bindings::rb_node;
 type RbNodeLinked = bindings::rb_node_linked;
@@ -83,8 +82,8 @@ unsafe fn rb_linked_node_from_rb(node: *mut RbNode) -> *mut RbNodeLinked {
 ///
 /// `head` and `node` must point to live objects. The caller must serialize
 /// access to the queue and initialize `node` with `timerqueue_init()`.
-#[export]
-unsafe extern "C" fn rust_timerqueue_add(head: *mut TimerHead, node: *mut TimerNode) -> bool {
+#[no_mangle]
+unsafe extern "C" fn timerqueue_add(head: *mut TimerHead, node: *mut TimerNode) -> bool {
     // SAFETY: The caller guarantees that node is live.
     let node_rb = unsafe { ptr::addr_of_mut!((*node).node) };
     // SAFETY: The caller guarantees that node is initialized.
@@ -132,8 +131,8 @@ unsafe extern "C" fn rust_timerqueue_add(head: *mut TimerHead, node: *mut TimerN
 ///
 /// `head` and `node` must point to live objects. The caller must serialize
 /// access to the queue and `node` must currently be queued.
-#[export]
-unsafe extern "C" fn rust_timerqueue_del(head: *mut TimerHead, node: *mut TimerNode) -> bool {
+#[no_mangle]
+unsafe extern "C" fn timerqueue_del(head: *mut TimerHead, node: *mut TimerNode) -> bool {
     // SAFETY: The caller guarantees that node is live.
     let node_rb = unsafe { ptr::addr_of_mut!((*node).node) };
     // SAFETY: The caller guarantees that node is live.
@@ -161,8 +160,8 @@ unsafe extern "C" fn rust_timerqueue_del(head: *mut TimerHead, node: *mut TimerN
 ///
 /// `node` must be null or point to a queued timer queue entry. The caller must
 /// serialize access to the queue.
-#[export]
-unsafe extern "C" fn rust_timerqueue_iterate_next(node: *mut TimerNode) -> *mut TimerNode {
+#[no_mangle]
+unsafe extern "C" fn timerqueue_iterate_next(node: *mut TimerNode) -> *mut TimerNode {
     if node.is_null() {
         return ptr::null_mut();
     }
@@ -229,8 +228,8 @@ unsafe fn link_linked_node(
 /// `head` and `node` must point to live objects. The caller must serialize
 /// access to the queue and initialize `node` with
 /// `timerqueue_linked_init()`.
-#[export]
-unsafe extern "C" fn rust_timerqueue_linked_add(
+#[no_mangle]
+unsafe extern "C" fn timerqueue_linked_add(
     head: *mut TimerLinkedHead,
     node: *mut TimerLinkedNode,
 ) -> bool {
