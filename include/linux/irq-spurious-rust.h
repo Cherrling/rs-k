@@ -12,9 +12,6 @@ struct irq_desc;
 
 #ifdef CONFIG_RUST_IRQ_SPURIOUS
 
-/* Rust-owned production spurious detection state machine. */
-void rust_irq_spurious_note(struct irq_desc *desc, u32 action_ret);
-
 /* C helpers for descriptor state, time, diagnostics, and recovery actions. */
 bool rust_irq_spurious_poll_in_progress(struct irq_desc *desc);
 bool rust_irq_spurious_is_polled(struct irq_desc *desc);

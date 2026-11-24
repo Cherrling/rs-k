@@ -704,6 +704,7 @@ rust_unexported_symbols := \
 	__irq_wake_thread \
 	handle_irq_event \
 	handle_irq_event_percpu \
+	note_interrupt \
 	check_irq_resend \
 	clear_irq_resend \
 	irq_resend_init \

@@ -10,7 +10,6 @@
 //! descriptor scans, descriptor disabling, and timer rearming.
 
 use crate::{bindings, ffi::c_uint};
-use macros::export;
 
 type Desc = bindings::irq_desc;
 
@@ -179,8 +178,8 @@ unsafe fn note(desc: *mut Desc, mut action_ret: c_uint) {
 ///
 /// `desc` must remain live. The caller must use the normal event-completion
 /// context.
-#[export]
-unsafe extern "C" fn rust_irq_spurious_note(desc: *mut Desc, action_ret: c_uint) {
+#[no_mangle]
+unsafe extern "C" fn note_interrupt(desc: *mut Desc, action_ret: c_uint) {
     // SAFETY: The caller provides the note contract.
     unsafe { note(desc, action_ret) };
 }

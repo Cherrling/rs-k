@@ -1986,10 +1986,10 @@ config RUST_IRQ_SPURIOUS
 	depends on RUST
 	default y
 	help
-	  Use Rust for the production spurious IRQ detection state machine.
-	  This includes polling exclusions, bad handler results, deferred
-	  threaded results, unhandled windows, misroute policy, and stuck IRQ
-	  thresholds.
+	  Rust directly defines the production spurious IRQ detection entry
+	  point. Rust owns polling exclusions, bad handler results, deferred
+	  threaded results, unhandled windows, misroute policy, stuck IRQ
+	  thresholds, and final state transitions.
 
 	  C helpers retain descriptor fields, jiffies arithmetic, diagnostics,
 	  full IRQ descriptor scans, descriptor disabling, and timer

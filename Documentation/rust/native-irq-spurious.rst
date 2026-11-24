@@ -10,11 +10,13 @@ The ``CONFIG_RUST_IRQ_SPURIOUS`` option selects native Rust for the production
 spurious IRQ detection state machine. The trace, diagnostic, recovery, and
 timer behavior remains compatible with the C implementation.
 
-Rust owns polling exclusions, invalid handler-result classification, deferred
+Rust directly defines the production ``note_interrupt()`` entry. Rust owns
+polling exclusions, invalid handler-result classification, deferred
 threaded-result accounting, unhandled time windows, misroute policy,
 stuck-interrupt thresholds, and final state transitions.
 
-The complete C implementation remains available when the option is disabled.
+The native C object contains no ``note_interrupt()`` implementation. The
+complete C implementation remains available when the option is disabled.
 
 Ownership
 ---------
@@ -114,13 +116,13 @@ Validation results
 
 The final source passes the IRQ KUnit suite in these configurations:
 
-* Native Rust, SMP4: 28 passed.
+* Native Rust, SMP4: three runs with 28 passed each.
 * Native Rust, SMP1: 27 passed and one CPU-hotplug test skipped.
 * Rust fallback, SMP4: 28 passed.
 * Rust fallback, SMP1: 27 passed and one CPU-hotplug test skipped.
 * C only, SMP4: 28 passed.
 * C only, SMP1: 27 passed and one CPU-hotplug test skipped.
-* Native Rust with KASAN, SMP4: 28 passed.
+* Native Rust with KASAN, SMP4: three runs with 28 passed each.
 * Native Rust with KASAN, SMP1: 27 passed and one CPU-hotplug test skipped.
 * Native Rust with lockdep, SMP4: 28 passed.
 * Native Rust with lockdep, SMP1: 27 passed and one CPU-hotplug test skipped.
@@ -131,16 +133,17 @@ The final source passes the IRQ KUnit suite in these configurations:
 The existing IRQ work, rcuwait, simple wait queue, completion, memory lifetime,
 and task work KUnit suites pass on the final native Rust image.
 
-Symbol inspection finds ``rust_irq_spurious_note`` in the native Rust, KASAN,
-lockdep, and PREEMPT_RT images. The symbol is absent from the fallback and C-only
-images. Disassembly shows that ``note_interrupt`` tail-calls
-``rust_irq_spurious_note``.
+Symbol inspection finds ``note_interrupt`` in the Rust ``kernel.o`` and not in
+the C ``spurious.o`` for the native Rust, KASAN, lockdep, and PREEMPT_RT
+configurations. The fallback and C-only configurations define it in the C
+``spurious.o``. All six ``Module.symvers`` files and generated Rust export
+headers omit the symbol. The previous Rust adapter is absent. Disassembly
+shows that the Rust entry calls only the narrow C helpers.
 
 The final source also passes Rustfmt, Clippy, Rustdoc, focused Rust Sphinx
 generation, ``git diff --check``, and strict checkpatch. Sphinx reports only the
 existing ``kernel-docs`` reference warning and the existing ``getting_llvm``
-label warning. KASAN reports the existing Maple Tree objtool ``noreturn``
-advisory.
+label warning.
 
 Review conditions
 -----------------

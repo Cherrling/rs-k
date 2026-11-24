@@ -355,12 +355,9 @@ void rust_irq_spurious_schedule_poll(void)
 {
 	mod_timer(&poll_spurious_irq_timer, jiffies + POLL_SPURIOUS_IRQ_INTERVAL);
 }
+#endif /* CONFIG_RUST_IRQ_SPURIOUS */
 
-void note_interrupt(struct irq_desc *desc, irqreturn_t action_ret)
-{
-	rust_irq_spurious_note(desc, (u32)action_ret);
-}
-#else
+#ifndef CONFIG_RUST_IRQ_SPURIOUS
 void note_interrupt(struct irq_desc *desc, irqreturn_t action_ret)
 {
 	unsigned int irq;
@@ -520,7 +517,7 @@ void note_interrupt(struct irq_desc *desc, irqreturn_t action_ret)
 	}
 	desc->irqs_unhandled = 0;
 }
-#endif /* CONFIG_RUST_IRQ_SPURIOUS */
+#endif /* !CONFIG_RUST_IRQ_SPURIOUS */
 
 bool noirqdebug __read_mostly;
 

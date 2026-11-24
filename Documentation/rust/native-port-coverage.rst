@@ -122,9 +122,8 @@ IRQ event dispatch
   suppression, oneshot and active-count updates, and pending/in-progress
   transitions. C retains descriptor and action layouts, handler invocation
   with tracing and duration diagnostics, lock and interrupt transitions,
-  thread flags, scheduler wakeup, randomness, and spurious accounting. All
-  four entries remain unexported. C fallback configurations retain the
-  complete implementations.
+  thread flags, scheduler wakeup, and randomness. All four entries remain
+  unexported. C fallback configurations retain the complete implementations.
 
 IRQ resend state machine
   Status: ``migrated``.
@@ -139,6 +138,19 @@ IRQ resend state machine
   operations, tasklet storage and scheduling, irqchip callbacks, IRQ-number
   lookup, and flow-handler invocation. All four entries remain unexported. C
   fallback configurations retain the complete implementations.
+
+IRQ spurious detection
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-irq-spurious`.
+
+  Rust directly defines the internal ``note_interrupt()`` entry. Rust owns
+  polling exclusions, bad-result classification, deferred threaded
+  accounting, unhandled windows, misroute policy, stuck-IRQ thresholds, and
+  final state transitions. C retains descriptor fields, jiffies arithmetic,
+  diagnostics, full descriptor scans, IRQ disabling, and timer rearming. The
+  entry remains unexported. C fallback configurations retain the complete
+  implementation.
 
 Kobject lifecycle
   Status: ``migrated``.
@@ -840,7 +852,7 @@ IRQ event primitive helpers
 
   Reason: Handler tracing, duration diagnostics, descriptor locking,
   interrupt-state changes, thread flags, scheduler wakeup, randomness, and
-  spurious-interrupt accounting retain scheduler, tracing, and architecture
+  descriptor state access retain scheduler, tracing, and architecture
   contracts.
 
   Test: Native SMP1/SMP4, KASAN, lockdep, and PREEMPT_RT runs exercise
@@ -851,7 +863,7 @@ IRQ event primitive helpers
   trace or diagnostic, or leave descriptor and thread state inconsistent.
 
   Exit condition: Approved Rust tracing, locking, interrupt, thread, wake,
-  randomness, and accounting abstractions preserve the helper contracts.
+  randomness, and descriptor state abstractions preserve the helper contracts.
 
 IRQ event unexported entry policy
   Status: ``boundary-retained``.
@@ -1468,16 +1480,22 @@ queue, state, drain, dispatch, tick, and synchronization decision.
 
 The IRQ event boundary is valid only while the shared descriptor and action
 layouts, handler callback ABI, tracing and duration helpers, interrupt and
-descriptor locking, thread flags, scheduler wakeup, randomness, spurious
-accounting, and unexported entry policy remain named C boundaries. Rust
-defines every production entry and owns every traversal, result, wake,
-oneshot, active-count, and lifecycle decision.
+descriptor locking, thread flags, scheduler wakeup, randomness, and unexported
+entry policy remain named C boundaries. Rust defines every production entry
+and owns every traversal, result, wake, oneshot, active-count, and lifecycle
+decision.
 
 The IRQ resend boundary is valid only while the shared descriptor and resend
 queue layouts, raw lock, hlist operations, tasklet storage and scheduling,
 irqchip callbacks, flow-handler invocation, and unexported entry policy remain
 named C boundaries. Rust defines every production entry and owns every level,
 replay, pending, retrigger, nesting, deduplication, and drain-order decision.
+
+The IRQ spurious boundary is valid only while shared descriptor fields,
+jiffies arithmetic, diagnostics, full descriptor scans, IRQ disabling, timer
+rearming, and unexported entry policy remain named C boundaries. Rust defines
+the production entry and owns every polling, result, threaded-accounting,
+window, misroute, threshold, and terminal-state decision.
 
 The kobject boundary is valid only while the shared layout, bitfields,
 diagnostics, final cleanup callback, and non-GPL export metadata remain named
