@@ -714,6 +714,20 @@ IDR allocation and iteration entry points
   ``lib/idr.o`` defines none. Every configuration preserves the original GPL
   and non-GPL export classes and has no unresolved IDR symbol.
 
+XArray allocation entry points
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-xarray-alloc`.
+
+  Rust directly defines ``__xa_alloc()`` and ``__xa_alloc_cyclic()``. Rust
+  owns free-mark search, first-fit and cyclic selection, allocation retries,
+  range exhaustion, next-ID advancement, and wrap notification. C retains
+  XArray locking and operation preallocation, node and tagged-entry layouts,
+  free-mark storage, diagnostics, and the original non-GPL export class. C
+  fallback and C-only configurations retain the complete implementations.
+  Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT builds at SMP1 and
+  SMP4 passed the focused suite and the 158825682-check XArray regression.
+
 Boundary-retained inventory
 ---------------------------
 
@@ -771,6 +785,7 @@ Public ABI
   ``include/linux/itimer-rust.h``, ``include/linux/cpupri.h``,
   ``include/linux/dmapool.h``, ``include/linux/dmapool-rust.h``,
   ``include/linux/idr.h``, ``include/linux/idr-rust.h``,
+  ``include/linux/xarray.h``, ``include/linux/xarray-rust.h``,
   ``include/linux/mutex.h``,
   ``include/linux/ww_mutex.h``, and ``include/linux/rwsem.h``.
 

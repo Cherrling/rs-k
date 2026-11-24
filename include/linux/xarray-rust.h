@@ -132,10 +132,6 @@ enum rust_xarray_alloc_constant {
 	RUST_XARRAY_ALLOC_EBUSY = -EBUSY,
 };
 
-int rust_xarray_alloc(struct xarray *xa, u32 *id, void *entry,
-		      struct xa_limit limit, gfp_t gfp);
-int rust_xarray_alloc_cyclic(struct xarray *xa, u32 *id, void *entry,
-			     struct xa_limit limit, u32 *next, gfp_t gfp);
 bool rust_xarray_alloc_nomem(struct xa_state *xas, gfp_t gfp);
 
 #endif /* CONFIG_RUST_XARRAY_ALLOC */

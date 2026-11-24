@@ -1263,15 +1263,14 @@ config RUST_XARRAY_ALLOC
 		RUST_XARRAY_STORE && X86_64
 	default y
 	help
-	  Use Rust for the production implementation behind __xa_alloc() and
-	  __xa_alloc_cyclic(). Rust owns free-mark search, first-fit selection,
-	  range exhaustion, allocation retries, next-ID updates, and cyclic
-	  wrap reporting.
+	  Use Rust for the production implementation of __xa_alloc() and
+	  __xa_alloc_cyclic(). Rust directly defines both public entry points
+	  and owns free-mark search, first-fit selection, range exhaustion,
+	  allocation retries, next-ID updates, and cyclic wrap reporting.
 
 	  XArray locking, operation preallocation, free-mark storage, node
-	  layout, and tagged-entry encoding remain in C. The exported entry
-	  points remain as ABI adapters. The C fallback retains the complete
-	  allocation policy.
+	  layout, tagged-entry encoding, and export metadata remain in C. The
+	  C fallback retains the complete allocation policy.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

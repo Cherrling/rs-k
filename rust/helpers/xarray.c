@@ -473,11 +473,6 @@ rust_helper_xarray_alloc_warn_track_free(const struct xarray *xa)
 	WARN_ON_ONCE(!(xa->xa_flags & XA_FLAGS_TRACK_FREE));
 }
 
-__rust_helper bool rust_helper_xarray_is_restart(const struct xa_state *xas)
-{
-	return xas->xa_node == XAS_RESTART;
-}
-
 __rust_helper bool rust_helper_xarray_alloc_wrapped(const struct xarray *xa)
 {
 	return xa->xa_flags & XA_FLAGS_ALLOC_WRAPPED;
@@ -491,6 +486,13 @@ __rust_helper void rust_helper_xarray_alloc_clear_wrapped(struct xarray *xa)
 __rust_helper void rust_helper_xarray_alloc_set_wrapped(struct xarray *xa)
 {
 	xa->xa_flags |= XA_FLAGS_ALLOC_WRAPPED;
+}
+#endif
+
+#if defined(CONFIG_RUST_XARRAY_ALLOC) || defined(CONFIG_RUST_IDR_ALLOC)
+__rust_helper bool rust_helper_xarray_is_restart(const struct xa_state *xas)
+{
+	return xas->xa_node == XAS_RESTART;
 }
 #endif
 

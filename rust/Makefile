@@ -564,6 +564,8 @@ $(obj)/helpers/helpers.bc $(obj)/helpers/helpers_module.bc: $(src)/helpers/helpe
 # their EXPORT_SYMBOL() metadata, so the automatic Rust exporter must skip
 # them to avoid duplicate GPL exports.
 rust_non_gpl_exports := \
+	__xa_alloc \
+	__xa_alloc_cyclic \
 	idr_alloc_cyclic \
 	idr_get_next \
 	__refcount_add_not_zero \

@@ -2,10 +2,11 @@
 
 //! Native XArray ID allocation.
 //!
-//! Rust owns free-mark search, first-fit selection, allocation retries,
-//! range-exhaustion handling, next-ID updates, and cyclic wrap reporting.
-//! C retains XArray locking, operation preallocation, mark storage, node
-//! layout, and tagged-entry encoding.
+//! Rust directly defines the public entry points and owns free-mark search,
+//! first-fit selection, allocation retries, range-exhaustion handling, next-ID
+//! updates, and cyclic wrap reporting. C retains XArray locking, operation
+//! preallocation, mark storage, node layout, tagged-entry encoding, and export
+//! metadata.
 
 use crate::bindings;
 use core::{cmp, ffi::c_void, mem::MaybeUninit};
@@ -278,13 +279,13 @@ unsafe fn alloc_cyclic(
     ret
 }
 
-/// Allocates an ID through the production C ABI.
+/// Implements `__xa_alloc()`.
 ///
 /// # Safety
 ///
-/// The C caller must provide valid pointers and hold the XArray lock.
+/// The public locked XArray allocation contract applies.
 #[export]
-unsafe extern "C" fn rust_xarray_alloc(
+unsafe extern "C" fn __xa_alloc(
     xa: *mut XArray,
     id: *mut u32,
     entry: *mut c_void,
@@ -295,13 +296,13 @@ unsafe extern "C" fn rust_xarray_alloc(
     unsafe { alloc(xa, id, entry, limit, gfp) }
 }
 
-/// Allocates a cyclic ID through the production C ABI.
+/// Implements `__xa_alloc_cyclic()`.
 ///
 /// # Safety
 ///
-/// The C caller must provide valid pointers and hold the XArray lock.
+/// The public locked cyclic XArray allocation contract applies.
 #[export]
-unsafe extern "C" fn rust_xarray_alloc_cyclic(
+unsafe extern "C" fn __xa_alloc_cyclic(
     xa: *mut XArray,
     id: *mut u32,
     entry: *mut c_void,

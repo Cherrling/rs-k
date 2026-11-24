@@ -2341,12 +2341,10 @@ EXPORT_SYMBOL(xa_get_order);
  * Return: 0 on success, -ENOMEM if memory could not be allocated or
  * -EBUSY if there are no free entries in @limit.
  */
+#ifndef CONFIG_RUST_XARRAY_ALLOC
 int __xa_alloc(struct xarray *xa, u32 *id, void *entry,
-		struct xa_limit limit, gfp_t gfp)
+	       struct xa_limit limit, gfp_t gfp)
 {
-#ifdef CONFIG_RUST_XARRAY_ALLOC
-	return rust_xarray_alloc(xa, id, entry, limit, gfp);
-#else
 	XA_STATE(xas, xa, 0);
 
 	if (WARN_ON_ONCE(xa_is_advanced(entry)))
@@ -2369,8 +2367,8 @@ int __xa_alloc(struct xarray *xa, u32 *id, void *entry,
 	} while (__xas_nomem(&xas, gfp));
 
 	return xas_error(&xas);
-#endif
 }
+#endif /* !CONFIG_RUST_XARRAY_ALLOC */
 EXPORT_SYMBOL(__xa_alloc);
 
 /**
@@ -2397,12 +2395,10 @@ EXPORT_SYMBOL(__xa_alloc);
  * allocation succeeded after wrapping, -ENOMEM if memory could not be
  * allocated or -EBUSY if there are no free entries in @limit.
  */
+#ifndef CONFIG_RUST_XARRAY_ALLOC
 int __xa_alloc_cyclic(struct xarray *xa, u32 *id, void *entry,
-		struct xa_limit limit, u32 *next, gfp_t gfp)
+		      struct xa_limit limit, u32 *next, gfp_t gfp)
 {
-#ifdef CONFIG_RUST_XARRAY_ALLOC
-	return rust_xarray_alloc_cyclic(xa, id, entry, limit, next, gfp);
-#else
 	u32 min = limit.min;
 	int ret;
 
@@ -2426,8 +2422,8 @@ int __xa_alloc_cyclic(struct xarray *xa, u32 *id, void *entry,
 			xa->xa_flags |= XA_FLAGS_ALLOC_WRAPPED;
 	}
 	return ret;
-#endif
 }
+#endif /* !CONFIG_RUST_XARRAY_ALLOC */
 EXPORT_SYMBOL(__xa_alloc_cyclic);
 
 /**

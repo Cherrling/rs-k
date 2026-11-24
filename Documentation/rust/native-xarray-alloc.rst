@@ -30,8 +30,11 @@ Entry points and ownership
 --------------------------
 
 The public ``__xa_alloc()`` and ``__xa_alloc_cyclic()`` interfaces and their
-``EXPORT_SYMBOL`` export class do not change. With this option enabled, each C
-entry point forwards directly to the matching Rust production function.
+``EXPORT_SYMBOL`` export class do not change. With this option enabled, Rust
+directly defines both public entry points. Their native C implementations are
+omitted, while C retains their export records and the narrow helper
+boundaries listed below. The C fallback defines both functions and retains
+their original export records.
 
 Rust owns the allocation loops in ``rust/kernel/xarray_alloc.rs``. It calls
 the native Rust marked-search, store, mark, and preallocation units instead of
@@ -52,6 +55,12 @@ preallocation unit, and reacquires the same lock class.
 Free-mark storage remains C. Rust calls the native mark lifecycle to clear the
 selected slot mark and uses the retained root flag helpers for cyclic-wrap
 notification.
+
+The restart-state helper is shared with IDR allocation. It is built when
+either ``CONFIG_RUST_XARRAY_ALLOC`` or ``CONFIG_RUST_IDR_ALLOC`` is enabled.
+
+The ``EXPORT_SYMBOL`` records remain in C metadata. The automatic Rust GPL
+exporter skips both direct entries to avoid duplicate exports.
 
 The node and tagged-entry layouts remain C. Rust calls the existing value,
 node, sibling, zero, restart, and advanced-entry classifiers and encoders.
@@ -90,42 +99,50 @@ Validation gate
 
 The unit must pass these checks before integration:
 
-* Rust-enabled x86_64 LLVM builds with one and four virtual CPUs.
+* Rust-enabled, C fallback, and Rust-disabled C-only x86_64 LLVM builds with
+  one and four virtual CPUs.
 
 * Focused KUnit cases for first-fit holes, reserved entries, range
   exhaustion, cyclic retry from the minimum, the maximum ID, and concurrent
   allocation.
 
-* The same four runs with native Rust allocation disabled.
-
-* The same runs with Rust enabled and KASAN enabled.
+* The same runs with native Rust allocation enabled under KASAN, lockdep, and
+  PREEMPT_RT.
 
 * The complete upstream XArray regression suite in every run.
 
 * Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
   ``git diff --check``.
 
-* Symbol and disassembly checks showing that both C entry points call Rust in
-  the enabled configuration and that the fallback retains both C algorithms.
+* Symbol checks showing that Rust defines both public entry points, the native
+  C object defines neither, and the fallback defines each one.
 
 Validation results
 ------------------
 
-This unit was validated on 2026-11-16 against ``6818a19ce259`` with the unit
+This unit was validated on 2026-11-25 against ``adc270b6fa65`` with the unit
 patch applied.
 
-The Rust-enabled, C fallback, and Rust-enabled KASAN images each passed one
-single-CPU run and three four-CPU runs. Every run passed all six focused KUnit
-cases and the complete XArray suite with 158825682 of 158825682 tests.
+The native, C fallback, C-only, KASAN, lockdep, and PREEMPT_RT builds each
+passed one single-CPU run and one four-CPU run. Every run passed all six
+focused KUnit cases and the complete XArray suite with 158825682 of 158825682
+tests.
 
 The concurrent case uses four workers to allocate every ID in a shared
 128-entry range. The test detects duplicate claims and allocation failures.
 No validation log contained a BUG, Oops, KASAN report, warning, call trace,
 kernel panic, or RCU stall.
 
+Symbol checks showed that ``rust/kernel.o`` defines both entry points in each
+native configuration. The corresponding ``lib/xarray.o`` retains only
+unresolved references for the export records. The fallback and C-only
+``lib/xarray.o`` define both functions. Every configuration retains the
+original ``EXPORT_SYMBOL`` class.
+
 Rustfmt, Clippy, Rustdoc, strict checkpatch, and ``git diff --check`` passed.
-Focused Sphinx generation completed with pre-existing cross-reference
-warnings in unrelated documents.
+Strict checkpatch reported no errors, warnings, or checks. Focused Sphinx
+generation completed with two unrelated cross-reference warnings in
+``rust/index.rst`` and ``rust/quick-start.rst``.
 
 Review conditions
 -----------------
@@ -143,4 +160,4 @@ Reopen a retained boundary decision if any of these conditions changes:
 
 * The cyclic wrap notification or next-ID rules change.
 
-* The fallback starts to use any new Rust allocation symbol.
+* The fallback starts to depend on a Rust XArray allocation symbol.
