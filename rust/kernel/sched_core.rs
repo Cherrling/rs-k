@@ -2723,7 +2723,12 @@ extern "C" fn rust_sched_rq_transition_select(migrating: bool, deactivate_flags:
 /// must hold the runqueue lock.
 #[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
 #[export]
-unsafe extern "C" fn rust_sched_activate_task_locked(rq: *mut Rq, task: *mut Task, flags: c_int) {
+unsafe extern "C" fn activate_task(rq: *mut Rq, task: *mut Task, flags: c_int) {
+    // SAFETY: The caller holds the runqueue lock.
+    #[cfg(CONFIG_LOCKDEP)]
+    unsafe {
+        bindings::rust_helper_sched_resched_assert_locked(rq)
+    };
     // SAFETY: The caller holds the task runqueue lock.
     let migrating = unsafe { task_on_rq_migrating(task) };
     let plan = rq_transition_plan(migrating, 0);
@@ -2750,7 +2755,12 @@ unsafe extern "C" fn rust_sched_activate_task_locked(rq: *mut Rq, task: *mut Tas
 /// must hold the runqueue lock.
 #[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
 #[export]
-unsafe extern "C" fn rust_sched_deactivate_task_locked(rq: *mut Rq, task: *mut Task, flags: c_int) {
+unsafe extern "C" fn deactivate_task(rq: *mut Rq, task: *mut Task, flags: c_int) {
+    // SAFETY: The caller holds the runqueue lock.
+    #[cfg(CONFIG_LOCKDEP)]
+    unsafe {
+        bindings::rust_helper_sched_resched_assert_locked(rq)
+    };
     let plan = rq_transition_plan(false, flags);
 
     if plan & RQ_WARN_DEQUEUE_SLEEP != 0 {

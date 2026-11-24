@@ -1197,15 +1197,15 @@ config RUST_SCHED_RQ_TRANSITION
 	depends on RUST
 	default y
 	help
-	  Use Rust for the production task activation and deactivation state
-	  machines. Rust owns migrating-state detection, runqueue membership
-	  reads and writes, migrated enqueue selection, invalid sleeping-dequeue
-	  validation, membership publication ordering, and the dequeue call
-	  decision.
+	  Use Rust to directly define the production task activation and
+	  deactivation entry points. Rust owns migrating-state detection, runqueue
+	  membership reads and writes, migrated enqueue selection, invalid
+	  sleeping-dequeue validation, membership publication ordering, and the
+	  dequeue call decision.
 
 	  Runqueue locking, scheduler queue operations, other task-state and
 	  bitfield writes, the KCSAN writer assertion, warnings, tracepoints,
-	  and public scheduler ABI adapters remain in C.
+	  and the runqueue-held assertion remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

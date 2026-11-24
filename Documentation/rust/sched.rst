@@ -43,8 +43,9 @@ core-scheduling task pick, deferred-server clear, active-class traversal,
 pick-callback dispatch, and retry-sentinel propagation.
 The ``CONFIG_RUST_SCHED_BLOCK_TASK`` option selects Rust for the production
 task blocking state machine.
-The ``CONFIG_RUST_SCHED_RQ_TRANSITION`` option selects Rust for the production
-task activation and deactivation state machines.
+The ``CONFIG_RUST_SCHED_RQ_TRANSITION`` option selects direct Rust definitions
+of ``activate_task()`` and ``deactivate_task()``. Rust owns the activation and
+deactivation state machines.
 
 Rust owns these production decisions:
 
@@ -109,9 +110,10 @@ Rust owns these production decisions:
 * Classifying whether a blocking task contributes to load, classifying whether
   its state is special, updating its load flag, selecting special dequeue,
   and deciding whether dequeue and block accounting run.
-* Reading task runqueue membership, detecting migrating tasks, selecting
-  migrated enqueue, rejecting sleeping deactivation, publishing queued and
-  migrating membership, and ordering dequeue.
+* Defining the public task activation and deactivation entries, reading task
+  runqueue membership, detecting migrating tasks, selecting migrated enqueue,
+  rejecting sleeping deactivation, publishing queued and migrating
+  membership, and ordering dequeue.
 
 Task-state storage outside the wake-state protocol, warning delivery, task and
 runqueue locking, scheduler queue and proxy operations, wake-list handling,
@@ -203,8 +205,6 @@ The remaining C-to-Rust production entries are:
 * ``rust_sched_pick_next_task()``.
 * ``rust_sched_core_pick_task()``.
 * ``rust_sched_block_task_locked()``.
-* ``rust_sched_activate_task_locked()``.
-* ``rust_sched_deactivate_task_locked()``.
 
 The caller keeps the existing ``p->pi_lock`` serialization, or the current-task
 preemption exclusion, around the state-match entries. For the runnable entry,
@@ -289,11 +289,14 @@ passes the task state to Rust. Rust classifies the state and calls the bitfield,
 dequeue, and accounting helpers in order. C retains ownership of the runqueue
 lock across the complete Rust call.
 
-For activation and deactivation, C validates that it holds the runqueue lock
-and passes the operation flags to Rust. Rust owns the transition decision and
-calls the enqueue and dequeue functions directly through the bindgen-generated
-FFI declarations. Rust also reads and writes task runqueue membership through
-the kernel atomic API. C retains the lock across the complete Rust call.
+For task activation and deactivation, Rust directly defines both public
+entries. The caller holds the runqueue lock. When lockdep is enabled, Rust
+calls the narrow C assertion helper before it performs any other operation.
+Rust owns the transition decision and calls the enqueue and dequeue functions
+directly through the bindgen-generated FFI declarations. Rust also reads and
+writes task runqueue membership through the kernel atomic API. C retains the
+lock, the runqueue-held assertion, the writer assertion, warning delivery, and
+the fallback definitions used when the Rust option is disabled.
 
 Retained C boundary
 -------------------
@@ -415,17 +418,18 @@ write, the special dequeue decision, and the order of dequeue and accounting.
 The accounting helper runs only after the scheduling class accepts the
 dequeue.
 
-The transition path retains the KCSAN writer assertion, warning delivery,
-queue operations, tracing, and public scheduler ABI adapters in C. Rust owns
-task runqueue membership reads and writes, migrated-state detection, the
-condition that adds ``ENQUEUE_MIGRATED``, the condition that warns about
-``DEQUEUE_SLEEP``, and the order of membership publication and dequeue. Rust
-composes the enqueue flags and calls ``enqueue_task()`` and
-``dequeue_task()`` directly. There is no runtime C wrapper for a queue
-operation or a runqueue membership state transition. C supplies the
-``ASSERT_EXCLUSIVE_WRITER`` mechanism and compile-time checked constants.
-The C scheduler asserts that those constants match its private scheduler
-definitions.
+The transition path retains the runqueue lock and its assertion, the KCSAN
+writer assertion, warning delivery, queue operations, tracing, and the
+fallback C definitions. Rust directly defines ``activate_task()`` and
+``deactivate_task()``. Rust owns task runqueue membership reads and writes,
+migrated-state detection, the condition that adds ``ENQUEUE_MIGRATED``, the
+condition that warns about ``DEQUEUE_SLEEP``, and the order of membership
+publication and dequeue. Rust composes the enqueue flags and calls
+``enqueue_task()`` and ``dequeue_task()`` directly. There is no runtime C
+wrapper for a queue operation or a runqueue membership state transition. C
+supplies the ``ASSERT_EXCLUSIVE_WRITER`` mechanism and compile-time checked
+constants. The C scheduler asserts that those constants match its private
+scheduler definitions.
 
 Rust maps the ``on_rq`` field to a one-byte atomic value. A relaxed atomic load
 has the same LKMM semantics as ``READ_ONCE()``, and a relaxed atomic store has
@@ -637,8 +641,9 @@ scheduling pick.
 On an SMT machine, the core-scheduling path case creates a core-scheduling
 cookie and schedules real tasks while the Rust core-pick entry is active.
 
-The unit must pass repeated four-vCPU Rust runs, a C fallback run, PREEMPT_RT,
-KASAN, lockdep, and a no-KUnit production build. Static checks include Rustfmt,
+The transition unit must pass native and transition-only four-vCPU Rust runs,
+four-vCPU C fallback and C-only runs, PREEMPT_RT, KASAN, lockdep, hrtimer
+regressions, and a no-KUnit production build. Static checks include Rustfmt,
 Clippy, strict checkpatch, and ``git diff --check``.
 
 Validation evidence
@@ -726,25 +731,45 @@ builds and QEMU 11.1.3:
 * The production image contained no unresolved symbols. No run reported a
   ``BUG``, warning, KASAN report, lock dependency diagnosis, Oops, or panic.
 
-The runqueue-transition unit was validated on 2026-11-13 with x86_64
-``LLVM=1`` builds and QEMU 11.1.3:
+The task runqueue transition direct-entry unit was validated on 2026-11-25
+with x86_64 ``LLVM=1`` builds and QEMU 11.1.3:
 
-* Three consecutive four-vCPU Rust runs passed all nine scheduler cases.
-* Three consecutive four-vCPU hrtimer regression runs passed all twenty-five
-  cases on the same image.
-* Three consecutive four-vCPU C fallback runs passed all eight applicable
-  cases with only ``CONFIG_RUST_SCHED_RQ_TRANSITION`` disabled.
-* Three consecutive four-vCPU runs with only this Rust scheduler option
-  enabled passed all four applicable scheduler cases and all twenty-five
-  hrtimer cases.
-* Three consecutive four-vCPU runs each on PREEMPT_RT, KASAN, and lockdep
-  images passed all nine scheduler cases and all twenty-five hrtimer cases.
-* The full Rust image built with Clippy, Rustfmt, and no unresolved symbols.
-* Rust calls ``enqueue_task()`` and ``dequeue_task()`` directly through
-  bindgen and owns their flags and ordering. The transition path has no
-  per-operation C wrapper for a runqueue transition.
-* No run reported a ``BUG``, warning, KASAN report, lock dependency diagnosis,
-  Oops, or panic.
+* Three consecutive four-vCPU native runs each passed all 37 cases.
+* The one-vCPU native run passed 35 cases and skipped 2 cases that require
+  multiple CPUs.
+* The four-vCPU fallback and C-only runs passed all 36 and 3 applicable
+  cases. Their one-vCPU runs passed 34 and 2 cases and skipped 2 and 1 cases.
+* The four-vCPU transition-only run passed all 4 applicable cases. Its
+  one-vCPU run passed 3 cases and skipped 1 case.
+* The four-vCPU KASAN, lockdep, and PREEMPT_RT runs each passed all 37 cases.
+* The four-vCPU transition-only lockdep run passed all 4 applicable cases.
+* Native and fallback four-vCPU hrtimer regression runs each passed all 25
+  cases.
+* All passing runs completed without a ``BUG``, warning, KASAN report, lock
+  dependency diagnosis, Oops, panic, or atomic-scheduling violation.
+
+Rust directly defines ``activate_task()`` and ``deactivate_task()``. Native,
+transition-only, debug, and RT ``kernel/sched/core.o`` objects have only
+undefined references to both entries. Their ``rust/kernel.o`` objects define
+both entries. Fallback and C-only ``kernel/sched/core.o`` objects define both
+entries and do not use the old Rust transition symbols. The linked images have
+one definition of each entry, and neither entry is exported.
+
+The direct entries run the runqueue-held assertion first when lockdep is
+enabled. Activation selects ``ENQUEUE_MIGRATED`` when required, calls
+``enqueue_task()``, then publishes the queued membership state. Deactivation
+warns about sleeping dequeue, publishes the migrating state, then calls
+``dequeue_task()``. The KCSAN writer assertion still follows each membership
+store.
+
+The no-KUnit production configuration enabled all fourteen scheduler Rust
+options and built with ``CLIPPY=1``. Its symbol table contains both Rust
+entries and the narrow C helpers used by the transition path. It contains no
+RQ-transition KUnit selector and no unresolved RQ-transition symbol. The
+production image booted to the expected missing-root-filesystem panic without
+a scheduler ``BUG``, warning, KASAN report, lock dependency diagnosis, Oops,
+or unexpected panic. Rustfmt, Clippy, Rustdoc, strict checkpatch, and
+``git diff --check`` passed.
 
 The shared task-runqueue-state unit was validated on 2026-11-13 with x86_64
 ``LLVM=1`` builds and QEMU 11.1.3:
@@ -1001,9 +1026,8 @@ consecutive four-vCPU runs:
 
 Rust constructs ``ENQUEUE_WAKEUP``, ``ENQUEUE_NOCLOCK``,
 ``ENQUEUE_RQ_SELECTED``, and ``ENQUEUE_MIGRATED``. Rust calls
-``activate_task()`` directly and that function has no activation wrapper.
-Activation-only builds confirm that this path does not depend on another Rust
-scheduler option.
+``activate_task()`` directly, and ``activate_task()`` is itself a Rust public
+entry in the runqueue-transition unit.
 
 Rust updates ``struct rq.nr_uninterruptible`` as an ``unsigned long`` at the
 offset generated from the C layout. The KUnit case sets the count to two and
@@ -1012,8 +1036,9 @@ all exported enqueue flag values.
 
 Rust removes ``rust_helper_sched_ttwu_dec_uninterruptible()`` and
 ``rust_helper_sched_ttwu_activate()``. C retains the runqueue lock, the
-scheduling-class queue operation reached through ``activate_task()``, I/O wait
-delay accounting, preemption, tracing, and the class callback contract.
+scheduling-class queue operation reached through the Rust
+``activate_task()`` entry, I/O wait delay accounting, preemption, tracing, and
+the class callback contract.
 
 The full configuration passed Rustfmt, Clippy, strict checkpatch, and
 ``git diff --check``. The all-Rust configuration with KUnit disabled also

@@ -23,7 +23,8 @@ void resched_cpu(int cpu);
 #if (defined(CONFIG_RUST_SCHED_RESCHED_CURR) || \
 	defined(CONFIG_RUST_SCHED_RESCHED_CPU) || \
 	defined(CONFIG_RUST_SCHED_WAKE_IF_IDLE) || \
-	defined(CONFIG_RUST_SCHED_RQ_OPS)) && defined(CONFIG_LOCKDEP)
+	defined(CONFIG_RUST_SCHED_RQ_OPS) || \
+	defined(CONFIG_RUST_SCHED_RQ_TRANSITION)) && defined(CONFIG_LOCKDEP)
 void rust_helper_sched_resched_assert_locked(struct rq *rq);
 #endif
 
@@ -212,6 +213,13 @@ void enqueue_task(struct rq *rq, struct task_struct *task, int flags);
 
 #endif
 
+#if defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE) || \
+	defined(CONFIG_RUST_SCHED_RQ_TRANSITION)
+
+void activate_task(struct rq *rq, struct task_struct *task, int flags);
+
+#endif
+
 #if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
 	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE) || \
 	defined(CONFIG_RUST_SCHED_RQ_OPS)
@@ -253,8 +261,6 @@ void rust_sched_ttwu_wakeup_state_select(struct task_struct *task);
 void rust_helper_sched_ttwu_delayacct_blkio_end(struct task_struct *task);
 void rust_helper_sched_rq_unpin_lock(struct rq *rq, struct rq_flags *rf);
 void rust_helper_sched_rq_repin_lock(struct rq *rq, struct rq_flags *rf);
-
-void activate_task(struct rq *rq, struct task_struct *task, int flags);
 
 void rust_sched_ttwu_activate_locked(struct rq *rq, struct task_struct *task,
 				     int wake_flags, struct rq_flags *rf);
@@ -301,14 +307,10 @@ void rust_sched_block_task_set_contributes_load_select(struct task_struct *task,
 #define RUST_SCHED_DEQUEUE_SLEEP		0x0001
 
 bool dequeue_task(struct rq *rq, struct task_struct *task, int flags);
+void deactivate_task(struct rq *rq, struct task_struct *task, int flags);
 
 void rust_helper_sched_rq_assert_exclusive_writer(struct task_struct *task);
 void rust_helper_sched_rq_warn_dequeue_sleep(void);
-
-void rust_sched_activate_task_locked(struct rq *rq, struct task_struct *task,
-				     int flags);
-void rust_sched_deactivate_task_locked(struct rq *rq, struct task_struct *task,
-				       int flags);
 
 #ifdef CONFIG_KUNIT
 unsigned int rust_sched_rq_transition_select(bool migrating,

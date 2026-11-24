@@ -609,6 +609,27 @@ Scheduler runqueue operation entries
   35, and 3 applicable cases. KASAN, lockdep, and PREEMPT_RT each passed all
   37 cases. Native and fallback hrtimer regressions passed all 25 cases.
 
+Scheduler task runqueue transition entries
+  Status: ``migrated``.
+
+  Evidence: :doc:`sched`.
+
+  Rust directly defines ``activate_task()`` and ``deactivate_task()``. Rust
+  owns migrating-state detection, the migrated enqueue flag, queued and
+  migrating membership publication, the invalid sleeping-dequeue warning
+  decision, and dequeue ordering. C retains the runqueue lock, runqueue-held
+  lockdep assertion, KCSAN writer assertion, scheduler queue operations,
+  warning delivery, and fallback definitions.
+
+  Test: Native, runqueue-transition-only, C fallback, C-only, KASAN, lockdep,
+  and PREEMPT_RT scheduler boots passed all applicable cases. The transition
+  table covers migrated enqueue, invalid sleeping dequeue, and the unchanged
+  transition. Three native four-vCPU runs passed all 37 cases. The
+  transition-only, C fallback, and C-only runs passed 4, 36, and 3 cases. The
+  debug and RT runs passed all 37 cases, and a transition-only lockdep run
+  passed all 4 cases. Real activation and deactivation traffic exercises both
+  direct entries. Native and fallback hrtimer regressions passed all 25 cases.
+
 Boundary-retained inventory
 ---------------------------
 
