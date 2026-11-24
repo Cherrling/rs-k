@@ -106,6 +106,16 @@ void rust_semaphore_unlock_irqrestore_wake(struct semaphore *sem,
 		wake_up_q(wake_q);
 }
 
+void rust_semaphore_wake_q_init(struct wake_q_head *wake_q)
+{
+	wake_q_init(wake_q);
+}
+
+void rust_semaphore_might_sleep(void)
+{
+	might_sleep();
+}
+
 struct task_struct *rust_semaphore_current_task(void)
 {
 	return current;
@@ -202,12 +212,9 @@ static inline void __sem_acquire(struct semaphore *sem)
  * Use of this function is deprecated, please use down_interruptible() or
  * down_killable() instead.
  */
+#ifndef CONFIG_RUST_SEMAPHORE
 void __sched down(struct semaphore *sem)
 {
-#ifdef CONFIG_RUST_SEMAPHORE
-	might_sleep();
-	rust_semaphore_down(sem);
-#else
 	unsigned long flags;
 
 	might_sleep();
@@ -217,8 +224,8 @@ void __sched down(struct semaphore *sem)
 	else
 		__down(sem);
 	raw_spin_unlock_irqrestore(&sem->lock, flags);
-#endif
 }
+#endif
 EXPORT_SYMBOL(down);
 
 /**
@@ -230,12 +237,9 @@ EXPORT_SYMBOL(down);
  * If the sleep is interrupted by a signal, this function will return -EINTR.
  * If the semaphore is successfully acquired, this function returns 0.
  */
+#ifndef CONFIG_RUST_SEMAPHORE
 int __sched down_interruptible(struct semaphore *sem)
 {
-#ifdef CONFIG_RUST_SEMAPHORE
-	might_sleep();
-	return rust_semaphore_down_interruptible(sem);
-#else
 	unsigned long flags;
 	int result = 0;
 
@@ -248,8 +252,8 @@ int __sched down_interruptible(struct semaphore *sem)
 	raw_spin_unlock_irqrestore(&sem->lock, flags);
 
 	return result;
-#endif
 }
+#endif
 EXPORT_SYMBOL(down_interruptible);
 
 /**
@@ -262,12 +266,9 @@ EXPORT_SYMBOL(down_interruptible);
  * -EINTR.  If the semaphore is successfully acquired, this function returns
  * 0.
  */
+#ifndef CONFIG_RUST_SEMAPHORE
 int __sched down_killable(struct semaphore *sem)
 {
-#ifdef CONFIG_RUST_SEMAPHORE
-	might_sleep();
-	return rust_semaphore_down_killable(sem);
-#else
 	unsigned long flags;
 	int result = 0;
 
@@ -280,8 +281,8 @@ int __sched down_killable(struct semaphore *sem)
 	raw_spin_unlock_irqrestore(&sem->lock, flags);
 
 	return result;
-#endif
 }
+#endif
 EXPORT_SYMBOL(down_killable);
 
 /**
@@ -297,11 +298,9 @@ EXPORT_SYMBOL(down_killable);
  * Unlike mutex_trylock, this function can be used from interrupt context,
  * and the semaphore can be released by any task or interrupt.
  */
+#ifndef CONFIG_RUST_SEMAPHORE
 int __sched down_trylock(struct semaphore *sem)
 {
-#ifdef CONFIG_RUST_SEMAPHORE
-	return rust_semaphore_down_trylock(sem);
-#else
 	unsigned long flags;
 	int count;
 
@@ -312,8 +311,8 @@ int __sched down_trylock(struct semaphore *sem)
 	raw_spin_unlock_irqrestore(&sem->lock, flags);
 
 	return (count < 0);
-#endif
 }
+#endif
 EXPORT_SYMBOL(down_trylock);
 
 /**
@@ -326,12 +325,9 @@ EXPORT_SYMBOL(down_trylock);
  * If the semaphore is not released within the specified number of jiffies,
  * this function returns -ETIME.  It returns 0 if the semaphore was acquired.
  */
+#ifndef CONFIG_RUST_SEMAPHORE
 int __sched down_timeout(struct semaphore *sem, long timeout)
 {
-#ifdef CONFIG_RUST_SEMAPHORE
-	might_sleep();
-	return rust_semaphore_down_timeout(sem, timeout);
-#else
 	unsigned long flags;
 	int result = 0;
 
@@ -344,8 +340,8 @@ int __sched down_timeout(struct semaphore *sem, long timeout)
 	raw_spin_unlock_irqrestore(&sem->lock, flags);
 
 	return result;
-#endif
 }
+#endif
 EXPORT_SYMBOL(down_timeout);
 
 /**
@@ -355,12 +351,10 @@ EXPORT_SYMBOL(down_timeout);
  * Release the semaphore.  Unlike mutexes, up() may be called from any
  * context and even by tasks which have never called down().
  */
+#ifndef CONFIG_RUST_SEMAPHORE
 void __sched up(struct semaphore *sem)
 {
 	DEFINE_WAKE_Q(wake_q);
-#ifdef CONFIG_RUST_SEMAPHORE
-	rust_semaphore_up(sem, &wake_q);
-#else
 	unsigned long flags;
 
 	raw_spin_lock_irqsave(&sem->lock, flags);
@@ -378,8 +372,8 @@ void __sched up(struct semaphore *sem)
 	raw_spin_unlock_irqrestore(&sem->lock, flags);
 	if (!wake_q_empty(&wake_q))
 		wake_up_q(&wake_q);
-#endif
 }
+#endif
 EXPORT_SYMBOL(up);
 
 /* Functions for the contended case */

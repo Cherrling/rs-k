@@ -622,6 +622,12 @@ rust_non_gpl_exports := \
 	wake_up_var \
 	bit_wait \
 	bit_wait_io \
+	down \
+	down_interruptible \
+	down_killable \
+	down_trylock \
+	down_timeout \
+	up \
 	kobject_init \
 	kobject_get \
 	kobject_get_unless_zero \

@@ -953,14 +953,16 @@ config RUST_SEMAPHORE
 	depends on RUST
 	default y
 	help
-	  Use Rust for the production counting semaphore state machine. This
-	  includes count transitions, fast acquisition, FIFO waiter management,
-	  direct release handoff, timeout and signal results, and contended
-	  acquisition loops.
+	  Use Rust for the production counting semaphore state machine and
+	  directly define its public entry points. This includes count
+	  transitions, fast acquisition, FIFO waiter management, direct release
+	  handoff, timeout and signal results, and contended acquisition loops.
 
 	  Raw locking, task state, signal queries, scheduling, intrusive list
 	  primitives, wake queues, hung-task accounting, and tracepoint delivery
 	  remain in C because they depend on scheduler and locking internals.
+	  C also retains the ordinary export records. The complete C
+	  implementation remains available when this option is disabled.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

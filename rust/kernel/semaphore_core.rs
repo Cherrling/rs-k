@@ -12,7 +12,6 @@ use crate::{
     ffi::{c_int, c_long, c_uint, c_ulong},
 };
 use core::{mem::MaybeUninit, ptr};
-use macros::export;
 
 type Semaphore = bindings::semaphore;
 type Waiter = bindings::semaphore_waiter;
@@ -245,8 +244,11 @@ unsafe fn down_common(sem: *mut Semaphore, state: c_uint, timeout: c_long) -> c_
 /// # Safety
 ///
 /// `sem` must point to a valid semaphore.
-#[export]
-unsafe extern "C" fn rust_semaphore_down(sem: *mut Semaphore) {
+#[no_mangle]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn down(sem: *mut Semaphore) {
+    // SAFETY: The public entry contract requires sleepable context.
+    unsafe { bindings::rust_semaphore_might_sleep() };
     // SAFETY: The caller guarantees that `sem` is valid and sleeping is
     // permitted.
     unsafe { down_common(sem, bindings::TASK_UNINTERRUPTIBLE, MAX_SCHEDULE_TIMEOUT) };
@@ -257,8 +259,11 @@ unsafe extern "C" fn rust_semaphore_down(sem: *mut Semaphore) {
 /// # Safety
 ///
 /// `sem` must point to a valid semaphore.
-#[export]
-unsafe extern "C" fn rust_semaphore_down_interruptible(sem: *mut Semaphore) -> c_int {
+#[no_mangle]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn down_interruptible(sem: *mut Semaphore) -> c_int {
+    // SAFETY: The public entry contract requires sleepable context.
+    unsafe { bindings::rust_semaphore_might_sleep() };
     // SAFETY: The caller guarantees that `sem` is valid and sleeping is
     // permitted.
     unsafe { down_common(sem, bindings::TASK_INTERRUPTIBLE, MAX_SCHEDULE_TIMEOUT) }
@@ -269,8 +274,11 @@ unsafe extern "C" fn rust_semaphore_down_interruptible(sem: *mut Semaphore) -> c
 /// # Safety
 ///
 /// `sem` must point to a valid semaphore.
-#[export]
-unsafe extern "C" fn rust_semaphore_down_killable(sem: *mut Semaphore) -> c_int {
+#[no_mangle]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn down_killable(sem: *mut Semaphore) -> c_int {
+    // SAFETY: The public entry contract requires sleepable context.
+    unsafe { bindings::rust_semaphore_might_sleep() };
     // SAFETY: The caller guarantees that `sem` is valid and sleeping is
     // permitted.
     unsafe { down_common(sem, bindings::TASK_KILLABLE, MAX_SCHEDULE_TIMEOUT) }
@@ -281,8 +289,9 @@ unsafe extern "C" fn rust_semaphore_down_killable(sem: *mut Semaphore) -> c_int 
 /// # Safety
 ///
 /// `sem` must point to a valid semaphore.
-#[export]
-unsafe extern "C" fn rust_semaphore_down_trylock(sem: *mut Semaphore) -> c_int {
+#[no_mangle]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn down_trylock(sem: *mut Semaphore) -> c_int {
     // SAFETY: The caller guarantees that `sem` is valid.
     let flags = unsafe { lock_irqsave(sem) };
     // SAFETY: The semaphore lock is held.
@@ -301,8 +310,11 @@ unsafe extern "C" fn rust_semaphore_down_trylock(sem: *mut Semaphore) -> c_int {
 /// # Safety
 ///
 /// `sem` must point to a valid semaphore.
-#[export]
-unsafe extern "C" fn rust_semaphore_down_timeout(sem: *mut Semaphore, timeout: c_long) -> c_int {
+#[no_mangle]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn down_timeout(sem: *mut Semaphore, timeout: c_long) -> c_int {
+    // SAFETY: The public entry contract requires sleepable context.
+    unsafe { bindings::rust_semaphore_might_sleep() };
     // SAFETY: The caller guarantees that `sem` is valid and sleeping is
     // permitted.
     unsafe { down_common(sem, bindings::TASK_UNINTERRUPTIBLE, timeout) }
@@ -312,9 +324,15 @@ unsafe extern "C" fn rust_semaphore_down_timeout(sem: *mut Semaphore, timeout: c
 ///
 /// # Safety
 ///
-/// `sem` must be valid and `wake_q` must point to an initialized wake queue.
-#[export]
-unsafe extern "C" fn rust_semaphore_up(sem: *mut Semaphore, wake_q: *mut WakeQ) {
+/// `sem` must be valid.
+#[no_mangle]
+#[link_section = ".sched.text"]
+unsafe extern "C" fn up(sem: *mut Semaphore) {
+    let mut wake_q = MaybeUninit::<WakeQ>::uninit();
+    let wake_q = wake_q.as_mut_ptr();
+    // SAFETY: `wake_q` points to writable storage.
+    unsafe { bindings::rust_semaphore_wake_q_init(wake_q) };
+
     // SAFETY: The caller guarantees that `sem` is valid.
     let flags = unsafe { lock_irqsave(sem) };
     // SAFETY: The semaphore lock is held.

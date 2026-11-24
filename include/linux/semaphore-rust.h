@@ -2,10 +2,10 @@
 #ifndef _LINUX_SEMAPHORE_RUST_H
 #define _LINUX_SEMAPHORE_RUST_H
 
+#include <linux/sched/wake_q.h>
 #include <linux/semaphore.h>
 
 struct task_struct;
-struct wake_q_head;
 
 struct semaphore_waiter {
 	struct list_head list;
@@ -14,13 +14,6 @@ struct semaphore_waiter {
 };
 
 #ifdef CONFIG_RUST_SEMAPHORE
-
-void rust_semaphore_down(struct semaphore *sem);
-int rust_semaphore_down_interruptible(struct semaphore *sem);
-int rust_semaphore_down_killable(struct semaphore *sem);
-int rust_semaphore_down_trylock(struct semaphore *sem);
-int rust_semaphore_down_timeout(struct semaphore *sem, long timeout);
-void rust_semaphore_up(struct semaphore *sem, struct wake_q_head *wake_q);
 
 void rust_semaphore_lock_irqsave(struct semaphore *sem,
 				 unsigned long *flags);
@@ -31,6 +24,8 @@ void rust_semaphore_unlock_irq(struct semaphore *sem);
 void rust_semaphore_unlock_irqrestore_wake(struct semaphore *sem,
 					   unsigned long flags,
 					   struct wake_q_head *wake_q);
+void rust_semaphore_wake_q_init(struct wake_q_head *wake_q);
+void rust_semaphore_might_sleep(void);
 
 struct task_struct *rust_semaphore_current_task(void);
 void rust_semaphore_set_current_state(unsigned int state);

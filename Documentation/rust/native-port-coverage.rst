@@ -124,6 +124,23 @@ Completion state machine
   simple-wait, and ordinary export boundaries. C fallback configurations
   retain the complete implementations.
 
+Counting semaphore state machine
+  Status: ``migrated``.
+
+  Evidence: :doc:`semaphore`.
+
+  Rust directly defines the six public semaphore acquisition, trylock,
+  timeout, and release entry points. Rust owns every count transition,
+  positive-count fast path, FIFO waiter insertion and removal, signal and
+  timeout result, direct handoff, and wake selection decision. C retains the
+  shared layout and initialization, raw locks, task state, signal predicates,
+  scheduling, intrusive list and wake queue primitives, hung-task and trace
+  accounting, sleep-context assertion, and ordinary export metadata. C
+  fallback configurations retain the complete implementation. All twelve
+  KUnit boots passed 6 of 6 cases, the adjacent lock and wait suites passed
+  49 of 49 cases, and the non-GPL module ABI test linked all six ordinary
+  exports.
+
 Simple wait queue state machine
   Status: ``migrated``.
 
@@ -1245,6 +1262,59 @@ Completion export metadata
   Exit condition: Rust export metadata supports the original non-GPL and
   unexported classes without C export records.
 
+Semaphore layout and initialization
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/semaphore.h``.
+
+  Reason: C callers and Rust share the raw lock, count, first-waiter pointer,
+  optional last-holder field, and lockdep initialization interface.
+
+  Test: Native, fallback, and C-only KUnit runs initialize semaphores on the
+  stack and exercise count, waiter, and holder fields directly.
+
+  Risk: A layout or initialization mismatch can corrupt the waiter list or
+  leave the raw lock without its lockdep state.
+
+  Exit condition: Rust-owned semaphore and waiter representations replace the
+  shared C layout and initialization interface.
+
+Semaphore locking, scheduling, and diagnostics
+  Status: ``boundary-retained``.
+
+  Owner: ``kernel/locking/semaphore.c``, the Rust bindings, and the scheduler
+  and tracing interfaces.
+
+  Reason: Raw spinlocks, interrupt restoration, task state, signal queries,
+  scheduling, intrusive list operations, wake queues, hung-task accounting,
+  tracepoints, and the sleep-context assertion retain scheduler,
+  architecture, and tracing contracts.
+
+  Test: Native, KASAN, lockdep, and PREEMPT_RT runs cover fast acquisition,
+  blocked waits, signals, timeouts, FIFO handoff, and concurrent exclusion.
+
+  Risk: A primitive or ordering mismatch can lose a wakeup, select the wrong
+  result, leave a waiter queued, or restore the wrong interrupt state.
+
+  Exit condition: Approved Rust lock, task, signal, scheduler, tracing, and
+  wake-queue abstractions preserve the complete helper contracts.
+
+Semaphore export metadata
+  Status: ``boundary-retained``.
+
+  Owner: ``kernel/locking/semaphore.c`` and ``rust/Makefile``.
+
+  Reason: All six public symbols retain ordinary non-GPL exports while
+  generated Rust exports use the GPL class.
+
+  Test: ``Module.symvers`` records six ``EXPORT_SYMBOL`` entries, and the
+  generated Rust GPL export header excludes all six names.
+
+  Risk: A duplicate export or class change can break module compatibility.
+
+  Exit condition: Rust export metadata supports the original non-GPL class
+  without C export entries.
+
 Task work layout and callback ABI
   Status: ``boundary-retained``.
 
@@ -2000,6 +2070,14 @@ inline initialization, task and signal primitives, scheduler timeout calls,
 simple-wait operations, PREEMPT_RT assertion, and export metadata remain named
 C boundaries. Rust defines every public entry and owns every count, wait,
 timeout, signal, wake, and consumption decision.
+
+The semaphore boundary is valid only while the shared layout and
+initialization, raw lock and interrupt transitions, task-state and signal
+queries, scheduling, intrusive list and wake queue primitives, hung-task and
+trace accounting, sleep assertion, and ordinary export metadata remain named
+C boundaries. Rust defines every public entry and owns every count, fast path,
+waiter, signal, timeout, handoff, wake-selection, and concurrent exclusion
+decision.
 
 The simple wait queue boundary is valid only while the shared queue and wait
 layouts, construction macros, raw lock and list helpers, task-state and signal
