@@ -24165,7 +24165,6 @@ F:	include/linux/irq-resend-rust.h
 F:	include/linux/irq-work-rust.h
 F:	include/linux/itimer-rust.h
 F:	include/linux/kobject-rust.h
-F:	include/linux/kref-rust.h
 F:	include/linux/klist-rust.h
 F:	include/linux/list_lru-rust.h
 F:	include/linux/lockref-rust.h
@@ -24210,6 +24209,7 @@ F:	include/linux/wait-rust.h
 F:	include/linux/xarray-rust.h
 F:	include/trace/events/rust_sample.h
 F:	lib/dec_and_lock.c
+F:	lib/kref.c
 F:	lib/klist.c
 F:	lib/kobject.c
 F:	lib/llist.c

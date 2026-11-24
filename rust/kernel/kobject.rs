@@ -42,7 +42,7 @@ unsafe extern "C" fn rust_kobject_init_internal(kobj: *mut Kobject) {
     // SAFETY: The caller guarantees valid `kobject` storage.
     unsafe {
         bindings::INIT_LIST_HEAD(ptr::addr_of_mut!((*kobj).entry));
-        bindings::rust_kref_init(kref(kobj));
+        bindings::kref_init(kref(kobj));
         bindings::rust_kobject_state_reset(kobj);
         bindings::rust_kobject_state_mark_initialized(kobj);
     }
@@ -95,7 +95,7 @@ unsafe extern "C" fn kobject_get(kobj: *mut Kobject) -> *mut Kobject {
             unsafe { bindings::rust_kobject_warn_uninitialized(kobj, false) };
         }
         // SAFETY: The caller holds a reference to the initialized object.
-        unsafe { bindings::rust_kref_get(kref(kobj)) };
+        unsafe { bindings::kref_get(kref(kobj)) };
     }
 
     kobj
@@ -114,7 +114,7 @@ unsafe extern "C" fn kobject_get_unless_zero(kobj: *mut Kobject) -> *mut Kobject
     }
 
     // SAFETY: The caller guarantees valid `kobject` storage.
-    if unsafe { bindings::rust_kref_get_unless_zero(kref(kobj)) } != 0 {
+    if unsafe { bindings::kref_get_unless_zero(kref(kobj)) } != 0 {
         kobj
     } else {
         ptr::null_mut()
@@ -139,5 +139,5 @@ unsafe extern "C" fn kobject_put(kobj: *mut Kobject) {
         unsafe { bindings::rust_kobject_warn_uninitialized(kobj, true) };
     }
     // SAFETY: The caller holds a reference to the initialized object.
-    unsafe { bindings::rust_kref_put(kref(kobj), Some(bindings::rust_kobject_release)) };
+    unsafe { bindings::kref_put(kref(kobj), Some(bindings::rust_kobject_release)) };
 }

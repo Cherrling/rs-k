@@ -59,6 +59,21 @@ Lockref operations
   layout, initialization, architecture compare-exchange, and spinlock
   helpers.
 
+Kref lifecycle
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-kref`.
+
+  Rust defines the seven public ``kref_*`` functions. Rust owns
+  initialization, reference reads and increments, conditional increments,
+  final-reference detection, and release callback dispatch. The native C
+  object retains only their ordinary export metadata. C also retains the
+  embedded refcount layout, compile-time initializer, mutex and spinlock
+  operations, and callback ABI. C fallback configurations retain the complete
+  inline implementation. All 14 kref KUnit boots passed 4 of 4 cases, the
+  native SMP4 adjacent suites passed 22 of 22 cases, and native, fallback,
+  and C-only module builds passed modpost.
+
 Decrement-and-lock protocols
   Status: ``migrated``.
 
@@ -340,7 +355,8 @@ Public ABI
   Status: ``boundary-retained``.
 
   Owner: The public symbols defined in ``include/linux/llist.h``,
-  ``include/linux/klist.h``, ``include/linux/lockref.h``,
+  ``include/linux/klist.h``, ``include/linux/kref.h``,
+  ``include/linux/lockref.h``,
   ``include/linux/kobject.h``, ``include/linux/interval_tree.h``,
   ``include/linux/rbtree.h``, ``include/linux/rbtree_augmented.h``,
   ``include/linux/plist.h``, ``include/linux/list_sort.h``,
@@ -684,6 +700,56 @@ Lockref export metadata
 
   Exit condition: Rust export metadata supports the original non-GPL class
   without C export entries.
+
+Kref layout and initializer
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/kref.h``.
+
+  Reason: The public API wraps an embedded ``refcount_t``, and
+  ``KREF_INIT()`` is a compile-time initializer used by shared C objects.
+
+  Test: Native, fallback, and C-only KUnit runs use the same object layout and
+  initializer.
+
+  Risk: A layout or initializer mismatch can expose an invalid initial count
+  or invalidate the embedded refcount.
+
+  Exit condition: Rust owns the shared object layout and equivalent static
+  initialization.
+
+Kref lock and callback helpers
+  Status: ``boundary-retained``.
+
+  Owner: The lock, refcount, and release callback interfaces.
+
+  Reason: Mutex and spinlock acquisition, architecture atomics, and subsystem
+  release callbacks retain their existing kernel contracts.
+
+  Test: Native KUnit exercises plain, mutex, and spinlock final-reference
+  release, plus concurrent reference traffic.
+
+  Risk: A lock or callback mismatch can release with the wrong lock state or
+  invoke a release function more than once.
+
+  Exit condition: Approved Rust lock, atomic, and callback abstractions
+  preserve the complete contracts.
+
+Kref export metadata
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/kref.c``.
+
+  Reason: The public lifecycle functions need ordinary non-GPL module
+  visibility, while Rust entry points do not generate ordinary exports.
+
+  Test: ``Module.symvers`` records all seven public symbols as
+  ``EXPORT_SYMBOL`` and the native object defines no kref function body.
+
+  Risk: A duplicate export or class change can break module compatibility.
+
+  Exit condition: Rust export metadata supports the ordinary class without C
+  export entries.
 
 Decrement-and-lock primitive helpers
   Status: ``boundary-retained``.
@@ -1502,6 +1568,11 @@ attachment, or traversal policy.
 The lockref boundary is valid only while initialization, the packed layout,
 architecture operations, and non-GPL export metadata remain shared C
 boundaries. Rust owns every reference transition and fallback decision.
+
+The kref boundary is valid only while the shared layout, compile-time
+initializer, refcount and lock primitives, release callback ABI, and ordinary
+export metadata remain named C boundaries. Rust defines every public lifecycle
+entry and owns every reference and release decision.
 
 The decrement-and-lock boundary is valid only while architecture atomics,
 lock and IRQ primitives, and ordinary export metadata remain named C

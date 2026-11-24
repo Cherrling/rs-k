@@ -564,6 +564,13 @@ $(obj)/helpers/helpers.bc $(obj)/helpers/helpers_module.bc: $(src)/helpers/helpe
 # their EXPORT_SYMBOL() metadata, so the automatic Rust exporter must skip
 # them to avoid duplicate GPL exports.
 rust_non_gpl_exports := \
+	kref_init \
+	kref_read \
+	kref_get \
+	kref_put \
+	kref_put_mutex \
+	kref_put_lock \
+	kref_get_unless_zero \
 	kobject_init \
 	kobject_get \
 	kobject_get_unless_zero \

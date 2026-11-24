@@ -772,12 +772,13 @@ config RUST_KREF
 	  Use Rust for the production kref initialization, reference,
 	  conditional-reference, final-reference, and release decisions.
 
-	  Rust calls the native refcount_t state machine directly. C retains
-	  the public inline ABI adapters, mutex and spinlock acquisition, and
-	  release callback entry.
+	  Rust directly defines the seven public entry points and calls the
+	  native refcount_t state machine directly. C retains the shared kref
+	  layout, mutex and spinlock acquisition, the release callback entry,
+	  and ordinary export metadata.
 
-	  The complete C kref implementation remains available when this
-	  option is disabled.
+	  The complete C inline kref implementation remains available when
+	  this option is disabled.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

@@ -20,8 +20,19 @@ disabled.
 Entry points and ownership
 --------------------------
 
-The public ``kref_*()`` functions remain inline C ABI adapters. When the
-option is enabled, every adapter calls a native Rust entry point.
+With the option enabled, Rust directly defines these public entry points:
+
+* ``kref_init()``
+* ``kref_read()``
+* ``kref_get()``
+* ``kref_put()``
+* ``kref_put_mutex()``
+* ``kref_put_lock()``
+* ``kref_get_unless_zero()``
+
+The native C object ``lib/kref.o`` contains only their ordinary export
+metadata. The Rust implementation owns every reference transition and release
+decision.
 
 Rust owns:
 
@@ -46,7 +57,7 @@ Retained C boundaries
 
 The C boundary retains:
 
-* The public inline API and compile-time ``KREF_INIT()`` initializer.
+* The public declarations and compile-time ``KREF_INIT()`` initializer.
 
 * The embedded ``refcount_t`` layout.
 
@@ -56,9 +67,10 @@ The C boundary retains:
 
 * The callback ABI used by kernel release functions.
 
-The C adapters are small calls to Rust and contain no reference-count policy.
-The release callback remains a C boundary because it is supplied by each
-kernel subsystem.
+* Ordinary non-GPL export metadata in ``lib/kref.c``.
+
+The export object contains no reference-count policy. The release callback
+remains a C boundary because each kernel subsystem supplies it.
 
 Important invariants
 --------------------
@@ -101,18 +113,36 @@ The unit must pass these checks before integration:
 Validation results
 ------------------
 
-On 2026-11-17, x86_64 QEMU boots with one CPU and four CPUs passed the 4-case
-KUnit suite for native Rust, Rust fallback, and C-only builds. Native Rust
-boots under generic KASAN and under lockdep, prove-locking, and debug
-spinlocks also passed the same 4-case suite. All ten boot logs completed
-without a BUG, warning, KASAN report, lock inversion, panic, or RCU stall.
+Validation on 2026-11-24 used base commit ``531d347d8711``. Fourteen x86_64
+QEMU boots ran the four-case ``kref`` suite. Native used one SMP1 boot and
+three SMP4 boots. Rust fallback, C-only, KASAN, lockdep, and PREEMPT_RT each
+used one SMP1 boot and one SMP4 boot. All 56 test cases passed with no skips.
 
-The native test object referenced all seven Rust entry points. The Rust
-fallback and C-only test objects referenced none of them.
+The native SMP4 image also passed four adjacent suites: ``kobject`` with four
+cases, ``refcount`` with seven, ``lockref`` with four, and ``mutex`` with
+seven. All 22 cases passed.
 
-Rustfmt, Clippy, Rustdoc, and focused Sphinx generation passed. The focused
-Sphinx build generated this document and reported only two existing reference
-warnings from other Rust index pages.
+The final boot logs contained no ``BUG``, warning, Oops, kernel panic, KASAN
+report, lockdep complaint, or RCU stall.
+
+In native, KASAN, lockdep, and PREEMPT_RT configurations,
+``rust/kernel.o`` defined all seven public entry points and ``lib/kref.o``
+defined none. The fallback and C-only configurations defined none in Rust
+and did not emit out-of-line exports. Every Rust production
+``vmlinux.symvers`` contained the seven expected ``EXPORT_SYMBOL`` entries
+and no GPL duplicates. Disassembly showed that the Rust ``kref_get()`` entry
+executed the reference transition directly.
+
+The native, fallback, and C-only module builds passed modpost. A native
+module that uses the public API, ``usblcd.ko``, referenced ``kref_get()``,
+``kref_init()``, and ``kref_put()`` and resolved them through the ordinary
+exports.
+
+Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
+``git diff --check`` passed. Sphinx reported only the existing
+``kernel-docs`` and ``getting_llvm`` warnings. Checkpatch required targeted
+ignores for its export-only placement and conditional-acquisition prototype
+false positives.
 
 Review conditions
 -----------------
@@ -123,7 +153,7 @@ Reopen the C boundary decision if any of these conditions changes:
 
 * The public release callback contract changes.
 
-* A retained C adapter starts to select a reference transition.
+* A retained C function starts to select a reference transition.
 
 * Kernel Rust gains a safer interface for atomic state or callback dispatch.
 

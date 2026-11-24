@@ -5,12 +5,11 @@
 //! Rust owns initialization, reference reads, successful and conditional
 //! references, final-reference detection, and release callback dispatch.
 //! The native Rust `refcount_t` state machine performs the count transitions.
-//! C retains only the public inline ABI adapters, mutex and spinlock
-//! primitives, and callback entry.
+//! Rust directly defines the public entry points. C retains the shared layout,
+//! mutex and spinlock primitives, callback ABI, and ordinary export metadata.
 
 use crate::bindings;
 use core::{ffi::c_int, ptr};
-use macros::export;
 
 type Kref = bindings::kref;
 type Mutex = bindings::mutex;
@@ -48,8 +47,8 @@ unsafe fn release(kref: *mut Kref, callback: Release) {
 /// # Safety
 ///
 /// `kref` must point to valid, writable `kref` storage.
-#[export]
-unsafe extern "C" fn rust_kref_init(kref: *mut Kref) {
+#[no_mangle]
+unsafe extern "C" fn kref_init(kref: *mut Kref) {
     // SAFETY: The caller guarantees valid `kref` storage.
     unsafe { bindings::refcount_set(refcount(kref), 1) };
 }
@@ -59,8 +58,8 @@ unsafe extern "C" fn rust_kref_init(kref: *mut Kref) {
 /// # Safety
 ///
 /// `kref` must point to valid `kref` storage.
-#[export]
-unsafe extern "C" fn rust_kref_read(kref: *const Kref) -> core::ffi::c_uint {
+#[no_mangle]
+unsafe extern "C" fn kref_read(kref: *const Kref) -> core::ffi::c_uint {
     // SAFETY: The caller guarantees valid `kref` storage.
     let refcount = unsafe { ptr::addr_of!((*kref).refcount) };
     // SAFETY: The embedded refcount is valid for the lifetime of `kref`.
@@ -73,8 +72,8 @@ unsafe extern "C" fn rust_kref_read(kref: *const Kref) -> core::ffi::c_uint {
 ///
 /// `kref` must point to valid `kref` storage and the caller must hold a
 /// reference to the object.
-#[export]
-unsafe extern "C" fn rust_kref_get(kref: *mut Kref) {
+#[no_mangle]
+unsafe extern "C" fn kref_get(kref: *mut Kref) {
     // SAFETY: The caller guarantees valid `kref` storage and a live reference.
     unsafe { bindings::rust_refcount_add(1, refcount(kref), ptr::null_mut()) };
 }
@@ -84,8 +83,8 @@ unsafe extern "C" fn rust_kref_get(kref: *mut Kref) {
 /// # Safety
 ///
 /// `kref` must point to valid `kref` storage with a stable lifetime.
-#[export]
-unsafe extern "C" fn rust_kref_get_unless_zero(kref: *mut Kref) -> c_int {
+#[no_mangle]
+unsafe extern "C" fn kref_get_unless_zero(kref: *mut Kref) -> c_int {
     // SAFETY: The caller guarantees valid `kref` storage.
     unsafe {
         c_int::from(bindings::rust_refcount_add_not_zero(
@@ -102,8 +101,8 @@ unsafe extern "C" fn rust_kref_get_unless_zero(kref: *mut Kref) -> c_int {
 ///
 /// `kref` must point to valid `kref` storage and the caller must hold a
 /// reference. `release` must satisfy the public `kref_put()` contract.
-#[export]
-unsafe extern "C" fn rust_kref_put(kref: *mut Kref, callback: Release) -> c_int {
+#[no_mangle]
+unsafe extern "C" fn kref_put(kref: *mut Kref, callback: Release) -> c_int {
     // SAFETY: The caller guarantees valid `kref` storage and a live reference.
     let released =
         unsafe { bindings::rust_refcount_sub_and_test(1, refcount(kref), ptr::null_mut()) };
@@ -122,8 +121,8 @@ unsafe extern "C" fn rust_kref_put(kref: *mut Kref, callback: Release) -> c_int 
 ///
 /// `kref` and `mutex` must be valid. The caller must hold a reference. The
 /// release callback receives the mutex and must unlock it.
-#[export]
-unsafe extern "C" fn rust_kref_put_mutex(
+#[no_mangle]
+unsafe extern "C" fn kref_put_mutex(
     kref: *mut Kref,
     callback: Release,
     mutex: *mut Mutex,
@@ -145,8 +144,8 @@ unsafe extern "C" fn rust_kref_put_mutex(
 ///
 /// `kref` and `lock` must be valid. The caller must hold a reference. The
 /// release callback receives the lock and must unlock it.
-#[export]
-unsafe extern "C" fn rust_kref_put_lock(
+#[no_mangle]
+unsafe extern "C" fn kref_put_lock(
     kref: *mut Kref,
     callback: Release,
     lock: *mut bindings::spinlock_t,

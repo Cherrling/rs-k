@@ -48,7 +48,7 @@ lib-$(CONFIG_SMP) += cpumask.o
 lib-$(CONFIG_MIN_HEAP) += min_heap.o
 
 lib-y	+= kobject.o klist.o
-obj-y	+= lockref.o
+obj-y	+= lockref.o kref.o
 
 CONTEXT_ANALYSIS_rhashtable.o := y
 
