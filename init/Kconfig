@@ -1233,13 +1233,13 @@ config RUST_SCHED_CLASS_TRANSITION
 	depends on RUST
 	default y
 	help
-	  Use Rust for the production scheduler-class transition routing.
-	  Rust owns the donor check, deferred server transfer, same-task
-	  short circuit, callback lookup, and put-prev and set-next callback
-	  order.
+	  Use Rust to directly define the production put-prev, set-next, and
+	  combined scheduler-class transition entries. Rust owns the donor
+	  check, deferred server transfer, same-task short circuit, callback
+	  lookup, and callback order.
 
-	  The scheduling-class callback implementations and warning delivery
-	  remain in C.
+	  The scheduling-class callback implementations, warning delivery,
+	  and fallback definitions remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

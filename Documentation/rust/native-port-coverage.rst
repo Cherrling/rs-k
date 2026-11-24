@@ -609,6 +609,26 @@ Scheduler runqueue operation entries
   35, and 3 applicable cases. KASAN, lockdep, and PREEMPT_RT each passed all
   37 cases. Native and fallback hrtimer regressions passed all 25 cases.
 
+Scheduler class transition entries
+  Status: ``migrated``.
+
+  Evidence: :doc:`sched`.
+
+  Rust directly defines ``put_prev_task()``, ``set_next_task()``, and
+  ``put_prev_set_next_task()``. Rust owns the donor check, deferred
+  scheduling-server transfer, same-task short circuit, callback lookup, and
+  callback order. C retains the runqueue lock, the runqueue donor mismatch
+  warning, scheduling-class callback implementations, and the fallback
+  definitions used when the Rust option is disabled.
+
+  Test: Native, class-transition-only, fallback, C-only, KASAN, lockdep, and
+  PREEMPT_RT four-vCPU scheduler boots passed all applicable cases. Three
+  consecutive native runs passed all 37 cases. The class-transition-only,
+  fallback, C-only, and class-transition-only lockdep configurations passed 4,
+  36, 3, and 4 cases. KASAN, lockdep, and PREEMPT_RT each passed all 37 cases.
+  Real scheduler traffic entered all three direct entries. Native and fallback
+  hrtimer regressions passed all 25 cases.
+
 Scheduler task runqueue transition entries
   Status: ``migrated``.
 

@@ -810,6 +810,9 @@ rust_unexported_symbols := \
 	wake_up_if_idle \
 	enqueue_task \
 	dequeue_task \
+	put_prev_task \
+	set_next_task \
+	put_prev_set_next_task \
 	activate_task \
 	deactivate_task \
 	irq_work_needs_cpu \

@@ -367,11 +367,10 @@ unsigned int rust_sched_dequeue_task_plan_select(int flags,
 
 void rust_helper_sched_class_warn_donor_mismatch(void);
 
-void rust_sched_class_put_prev_task(struct rq *rq, struct task_struct *prev);
-void rust_sched_class_set_next_task(struct rq *rq, struct task_struct *next);
-void rust_sched_class_put_prev_set_next_task(struct rq *rq,
-					     struct task_struct *prev,
-					     struct task_struct *next);
+void put_prev_task(struct rq *rq, struct task_struct *prev);
+void set_next_task(struct rq *rq, struct task_struct *next);
+void put_prev_set_next_task(struct rq *rq, struct task_struct *prev,
+			    struct task_struct *next);
 
 #ifdef CONFIG_KUNIT
 unsigned int rust_sched_class_put_prev_plan_select(bool donor_matches);

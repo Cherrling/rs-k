@@ -29,9 +29,11 @@ check, and the fallback decision.
 The ``CONFIG_RUST_SCHED_RQ_OPS`` option selects direct Rust definitions of
 ``enqueue_task()`` and ``dequeue_task()``. Rust owns the conditional action
 order, scheduling-class callback dispatch, and dequeue result.
-The ``CONFIG_RUST_SCHED_CLASS_TRANSITION`` option selects Rust for the
-production put-prev and set-next routing, deferred scheduling-server transfer,
-same-task short circuit, and callback order.
+The ``CONFIG_RUST_SCHED_CLASS_TRANSITION`` option selects direct Rust
+definitions of ``put_prev_task()``, ``set_next_task()``, and
+``put_prev_set_next_task()``. Rust owns the donor check, deferred
+scheduling-server transfer, same-task short circuit, callback lookup, and
+callback order.
 The ``CONFIG_RUST_SCHED_PREV_BALANCE`` option selects Rust for the production
 previous-task balance pass, active scheduling-class traversal, class balance
 callback dispatch, and stop decision.
@@ -198,9 +200,9 @@ The remaining C-to-Rust production entries are:
 * ``rust_sched_ttwu_runnable_locked()``.
 * ``rust_sched_ttwu_activate_locked()``.
 * ``rust_sched_wakeup_preempt()``.
-* ``rust_sched_class_put_prev_task()``.
-* ``rust_sched_class_set_next_task()``.
-* ``rust_sched_class_put_prev_set_next_task()``.
+* ``put_prev_task()``.
+* ``set_next_task()``.
+* ``put_prev_set_next_task()``.
 * ``rust_sched_prev_balance()``.
 * ``rust_sched_pick_next_task()``.
 * ``rust_sched_core_pick_task()``.
@@ -227,12 +229,13 @@ scheduling-class implementations, the narrow accounting and core-scheduling
 primitives, and the fallback definitions used when the Rust option is
 disabled. Rust returns the scheduling-class dequeue result unchanged.
 
-For scheduler-class transitions, the caller holds the runqueue lock across
-the complete Rust call. Rust validates the donor, transfers
-``rq->dl_server`` and the task server pointers, takes the same-task short
-circuit, reads the selected put-prev and set-next callbacks, and invokes them
-in order. The warning text and scheduling-class callback implementations
-remain in C.
+For scheduler-class transitions, Rust directly defines all three production
+entries. The caller holds the runqueue lock across the complete Rust call.
+Rust validates the donor, transfers ``rq->dl_server`` and the task server
+pointers, takes the same-task short circuit, reads the selected put-prev and
+set-next callbacks, and invokes them in order. The warning text,
+scheduling-class callback implementations, and fallback definitions used when
+the Rust option is disabled remain in C.
 
 For the previous-task balance pass, the caller holds the runqueue lock across
 the complete Rust call. Rust reads the donor class, obtains fixed class
@@ -922,40 +925,45 @@ Rust removes these C helpers:
 * ``rust_helper_sched_ttwu_rq_selected()``.
 * ``rust_helper_sched_ttwu_migrated()``.
 
-The scheduler-class transition unit was validated on 2026-11-13 with x86_64
-``LLVM=1`` builds and QEMU 11.1.3. Each configuration passed three consecutive
-four-vCPU runs:
+The scheduler-class transition entry unit was validated on 2026-11-25 with
+x86_64 ``LLVM=1`` builds and QEMU 11.1.3. The native configuration passed three
+consecutive four-vCPU runs. One four-vCPU run passed for each remaining
+configuration:
 
 .. list-table::
    :header-rows: 1
-   :widths: 45 25 25
+   :widths: 55 45
 
    * - Configuration
      - Scheduler cases
-     - hrtimer cases
    * - Full Rust
-     - 33
-     - 25
+     - 37
    * - Class transition fallback
-     - 32
-     - 25
+     - 36
    * - Class transition only
      - 4
-     - 25
+   * - C only
+     - 3
    * - PREEMPT_RT
-     - 33
-     - 25
+     - 37
    * - KASAN
-     - 33
-     - 25
+     - 37
    * - lockdep
-     - 33
-     - 25
+     - 37
+   * - Class transition only with lockdep
+     - 4
 
-Rustfmt, strict checkpatch, and ``git diff --check`` passed. The no-KUnit
-production image built with Clippy. It contained the three production Rust
-transition symbols and the C warning helper. It contained no transition KUnit
-selector symbols and no unresolved symbols.
+Native and fallback hrtimer regressions passed all 25 cases. Rustfmt, Clippy,
+Rustdoc, strict checkpatch, and ``git diff --check`` passed. The no-KUnit
+production image built with Clippy. It contained the C warning helper and no
+transition KUnit selector symbols.
+
+The Rust object defined ``put_prev_task()``, ``set_next_task()``, and
+``put_prev_set_next_task()``. The scheduler C object referenced each canonical
+name as undefined, and the linked image had no unresolved symbols. The old
+``rust_sched_class_put_prev_task()``, ``rust_sched_class_set_next_task()``, and
+``rust_sched_class_put_prev_set_next_task()`` production names were absent.
+The canonical names were not added to the automatic Rust GPL export list.
 
 Disassembly showed that the production entries compare ``rq->donor``, call the
 warning helper only on a mismatch, move the deferred server pointer, and take
@@ -965,10 +973,8 @@ with the next task, then calls set-next with the first-task argument set to
 true. The standalone entries pass a null next task to put-prev and false to
 set-next.
 
-The production image reached the expected
-``VFS: Unable to mount root fs on unknown-block(0,0)`` panic without another
-scheduler diagnostic. No run reported a ``BUG``, warning, KASAN report, lock
-dependency diagnosis, Oops, or unexpected panic.
+No run reported a ``BUG``, warning, KASAN report, lock dependency diagnosis,
+Oops, atomic scheduling diagnostic, or unexpected panic.
 
 The saved-state transition test verifies the direct read and write protocol.
 The new KUnit cases verify delayed-state reads, individual wake-flag decoding,

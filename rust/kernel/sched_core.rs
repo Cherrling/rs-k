@@ -1410,31 +1410,31 @@ unsafe fn put_prev_set_next_task_locked(rq: *mut Rq, prev: *mut Task, next: *mut
     unsafe { set_callback(rq, next, true) };
 }
 
-/// Implements the production standalone put-prev operation.
+/// Runs the production standalone put-prev operation.
 ///
 /// # Safety
 ///
 /// `rq` and `prev` must remain live and the caller must hold the runqueue lock.
 #[cfg(CONFIG_RUST_SCHED_CLASS_TRANSITION)]
 #[export]
-unsafe extern "C" fn rust_sched_class_put_prev_task(rq: *mut Rq, prev: *mut Task) {
+unsafe extern "C" fn put_prev_task(rq: *mut Rq, prev: *mut Task) {
     // SAFETY: The caller satisfies the exported entry-point contract.
     unsafe { put_prev_task_locked(rq, prev) };
 }
 
-/// Implements the production standalone set-next operation.
+/// Runs the production standalone set-next operation.
 ///
 /// # Safety
 ///
 /// `rq` and `next` must remain live and the caller must hold the runqueue lock.
 #[cfg(CONFIG_RUST_SCHED_CLASS_TRANSITION)]
 #[export]
-unsafe extern "C" fn rust_sched_class_set_next_task(rq: *mut Rq, next: *mut Task) {
+unsafe extern "C" fn set_next_task(rq: *mut Rq, next: *mut Task) {
     // SAFETY: The caller satisfies the exported entry-point contract.
     unsafe { set_next_task_locked(rq, next) };
 }
 
-/// Implements the production complete scheduler-class transition.
+/// Runs the production complete scheduler-class transition.
 ///
 /// # Safety
 ///
@@ -1442,11 +1442,7 @@ unsafe extern "C" fn rust_sched_class_set_next_task(rq: *mut Rq, next: *mut Task
 /// runqueue lock.
 #[cfg(CONFIG_RUST_SCHED_CLASS_TRANSITION)]
 #[export]
-unsafe extern "C" fn rust_sched_class_put_prev_set_next_task(
-    rq: *mut Rq,
-    prev: *mut Task,
-    next: *mut Task,
-) {
+unsafe extern "C" fn put_prev_set_next_task(rq: *mut Rq, prev: *mut Task, next: *mut Task) {
     // SAFETY: The caller satisfies the exported entry-point contract.
     unsafe { put_prev_set_next_task_locked(rq, prev, next) };
 }
