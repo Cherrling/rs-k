@@ -26,9 +26,9 @@ The ``CONFIG_RUST_SCHED_SELECT_TASK_RQ`` option selects a direct Rust
 definition of ``select_task_rq()``. Rust owns task CPU selection routing,
 scheduling-class callback dispatch, selected-CPU flag publication, eligibility
 check, and the fallback decision.
-The ``CONFIG_RUST_SCHED_RQ_OPS`` option selects Rust for the production
-runqueue enqueue and dequeue routing, conditional action order,
-scheduling-class callback dispatch, and dequeue result.
+The ``CONFIG_RUST_SCHED_RQ_OPS`` option selects direct Rust definitions of
+``enqueue_task()`` and ``dequeue_task()``. Rust owns the conditional action
+order, scheduling-class callback dispatch, and dequeue result.
 The ``CONFIG_RUST_SCHED_CLASS_TRANSITION`` option selects Rust for the
 production put-prev and set-next routing, deferred scheduling-server transfer,
 same-task short circuit, and callback order.
@@ -80,7 +80,8 @@ Rust owns these production decisions:
   callback.
 * Validating the selected CPU and requesting fallback placement from the task's
   current CPU when that selection is not allowed.
-* Selecting and ordering the runqueue clock update, utilization-clamp change,
+* Defining the public runqueue enqueue and dequeue entries, and selecting and
+  ordering the runqueue clock update, utilization-clamp change,
   scheduling-class enqueue or dequeue callback, pressure accounting,
   scheduler-statistics change, and core-scheduling change.
 * Reading the optional core-scheduling state, invoking the selected scheduling
@@ -163,6 +164,8 @@ The Rust-to-C calls are:
 * The task pi-lock held assertion used by the task CPU selection entry point.
 * The utilization-clamp, pressure, scheduler-statistics, and core-scheduling
   primitives used by runqueue enqueue and dequeue.
+* The runqueue-held lockdep assertion used by the direct enqueue and dequeue
+  entries.
 * Scheduling-class put-prev and set-next callback implementations reached
   through indirect calls from Rust.
 * The runqueue donor mismatch warning.
@@ -193,8 +196,6 @@ The remaining C-to-Rust production entries are:
 * ``rust_sched_ttwu_runnable_locked()``.
 * ``rust_sched_ttwu_activate_locked()``.
 * ``rust_sched_wakeup_preempt()``.
-* ``rust_sched_enqueue_task_locked()``.
-* ``rust_sched_dequeue_task_locked()``.
 * ``rust_sched_class_put_prev_task()``.
 * ``rust_sched_class_set_next_task()``.
 * ``rust_sched_class_put_prev_set_next_task()``.
@@ -216,13 +217,15 @@ holds ``p->pi_lock``. Rust reads the affinity count, migration-disabled state,
 affinity mask pointer, and scheduling-class callback while that lock is held.
 Rust does not acquire or release any lock.
 
-For runqueue enqueue and dequeue, C validates that it holds the runqueue lock
-and calls Rust while that lock remains held. Rust owns every conditional
-decision and the complete helper order. Rust reads the selected scheduling
-class callback through a compile-time checked offset and calls it directly.
-C retains only the scheduling-class implementation and the narrow accounting
-and core-scheduling primitives. Rust returns the scheduling-class dequeue
-result unchanged.
+For runqueue enqueue and dequeue, Rust directly defines both public entries.
+The caller holds the runqueue lock. When lockdep is enabled, Rust calls the
+narrow C assertion helper before it performs any other operation. Rust owns
+every conditional decision and the complete helper order. Rust reads the
+selected scheduling-class callback through a compile-time checked offset and
+calls it directly. C retains the runqueue-held assertion, the
+scheduling-class implementations, the narrow accounting and core-scheduling
+primitives, and the fallback definitions used when the Rust option is
+disabled. Rust returns the scheduling-class dequeue result unchanged.
 
 For scheduler-class transitions, the caller holds the runqueue lock across
 the complete Rust call. Rust validates the donor, transfers
@@ -359,10 +362,11 @@ checks, and the conditional ``resched_curr()`` call.
 The runqueue-operation path retains the runqueue lock and its assertion,
 scheduling-class queue implementations, utilization-clamp accounting,
 pressure accounting, scheduler-statistics accounting, core-scheduling
-operations, and the public ``enqueue_task()`` and ``dequeue_task()`` adapters
-in C. Rust reads the operation flags and core-scheduling state, selects each
-conditional operation, invokes each primitive in the original order, calls the
-selected scheduling-class callback directly, and returns the class result.
+operations, and the fallback C definitions. Rust directly defines
+``enqueue_task()`` and ``dequeue_task()``. Rust reads the operation flags and
+core-scheduling state, selects each conditional operation, invokes each
+primitive in the original order, calls the selected scheduling-class callback
+directly, and returns the class result.
 
 The scheduler-class transition path retains runqueue lock ownership,
 scheduling-class callback implementations, and warning delivery in C. Rust
@@ -1522,42 +1526,29 @@ options and built the image with ``CLIPPY=1``. Its symbol table contains the
 Rust entry point and the four narrow primitive helpers. It contains no
 task-selection KUnit selector symbol and no unresolved Rust scheduler symbol.
 
-The runqueue operation ownership unit was validated on 2026-11-13 with
-x86_64 ``LLVM=1`` builds and QEMU 11.1.3. Each configuration passed three
-consecutive four-vCPU runs for the applicable scheduler and hrtimer suites.
+The runqueue operation direct-entry unit was validated on 2026-11-25 with
+x86_64 ``LLVM=1`` builds and QEMU 11.1.3:
 
-.. list-table::
-   :header-rows: 1
-   :widths: 45 25 25
+* Three consecutive four-vCPU native runs each passed all 37 cases.
+* The four-vCPU runqueue-operations-only run passed all 5 applicable cases.
+* The four-vCPU fallback and C-only runs passed all 35 and 3 applicable cases.
+* The four-vCPU KASAN, lockdep, and PREEMPT_RT runs each passed all 37 cases.
+* Native and fallback four-vCPU hrtimer regression runs each passed all 25
+  cases.
+* The one-vCPU native image normally passed 35 cases and skipped 2 cases that
+  require multiple CPUs. The existing uninterruptible-timeout case was
+  intermittent under concurrent host build load. It failed once in ten runs
+  for both the current image and the unchanged image from the previous unit.
+* All passing runs completed without a ``BUG``, warning, KASAN report, lock
+  dependency diagnosis, Oops, panic, or atomic-scheduling violation.
 
-   * - Configuration
-     - Scheduler cases
-     - hrtimer cases
-   * - Full Rust
-     - 32
-     - 25
-   * - C fallback
-     - 30
-     - 25
-   * - RQ-operations only
-     - 5
-     - 25
-   * - PREEMPT_RT
-     - 32
-     - 25
-   * - KASAN
-     - 32
-     - 25
-   * - lockdep
-     - 32
-     - 25
-
-The full image contains direct C-to-Rust jumps from ``enqueue_task()`` and
-``dequeue_task()`` to their Rust entries. Disassembly of the Rust entries
-shows the original helper order: clock, utilization clamp, class callback,
-pressure, statistics, and core scheduling for enqueue, then core scheduling,
-clock, statistics, pressure, utilization clamp, and the class callback for
-dequeue. The class callback is an indirect call loaded once from the selected
+Rust directly defines ``enqueue_task()`` and ``dequeue_task()``. The C object
+has only undefined references to both entries. The Rust entries call the
+runqueue-held assertion first when lockdep is enabled, then execute the
+original helper order. Enqueue updates the clock, utilization clamp, class
+callback, pressure, statistics, and core scheduling. Dequeue updates core
+scheduling, clock, statistics, pressure, utilization clamp, and the class
+callback. Each class callback is loaded once from the selected
 scheduling-class pointer.
 
 The isolated RQ-operations build initially exposed a missing bindgen
@@ -1565,13 +1556,14 @@ declaration for ``update_rq_clock()``. The scheduler Rust header now declares
 that boundary whenever either the runnable option or the runqueue-operation
 option is enabled.
 
-The no-KUnit production configuration enabled all eleven scheduler Rust
+The no-KUnit production configuration enabled all fourteen scheduler Rust
 options and built with ``CLIPPY=1``. Its symbol table contains both Rust
-entries and all ten narrow C helpers. It contains no RQ-operation KUnit
-selector and no unresolved Rust scheduler symbol. The production image booted
-to the expected missing-root-filesystem panic without a scheduler ``BUG``,
-warning, KASAN report, lock dependency diagnosis, Oops, or unexpected panic.
-Rustfmt, strict checkpatch, and ``git diff --check`` passed.
+entries, all ten narrow RQ-operation C helpers, and the runqueue-held
+assertion helper under lockdep. It contains no RQ-operation KUnit selector and
+no unresolved Rust scheduler symbol. The production image booted to the
+expected missing-root-filesystem panic without a scheduler ``BUG``, warning,
+KASAN report, lock dependency diagnosis, Oops, or unexpected panic. Rustfmt,
+strict checkpatch, and ``git diff --check`` passed.
 
 The previous-task balance ownership unit was validated on 2026-11-13 with
 x86_64 ``LLVM=1`` builds and QEMU 11.1.3. Each configuration passed three

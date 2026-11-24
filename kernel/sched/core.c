@@ -1486,7 +1486,8 @@ int rust_helper_sched_resched_lazy_tif(void)
 
 #if (defined(CONFIG_RUST_SCHED_RESCHED_CURR) || \
 	defined(CONFIG_RUST_SCHED_RESCHED_CPU) || \
-	defined(CONFIG_RUST_SCHED_WAKE_IF_IDLE)) && defined(CONFIG_LOCKDEP)
+	defined(CONFIG_RUST_SCHED_WAKE_IF_IDLE) || \
+	defined(CONFIG_RUST_SCHED_RQ_OPS)) && defined(CONFIG_LOCKDEP)
 void rust_helper_sched_resched_assert_locked(struct rq *rq)
 {
 	lockdep_assert_rq_held(rq);
@@ -2544,12 +2545,9 @@ unsigned int rust_helper_sched_scx_state(void)
 }
 #endif
 
+#ifndef CONFIG_RUST_SCHED_RQ_OPS
 void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 {
-#ifdef CONFIG_RUST_SCHED_RQ_OPS
-	lockdep_assert_rq_held(rq);
-	rust_sched_enqueue_task_locked(rq, p, flags);
-#else
 	if (!(flags & ENQUEUE_NOCLOCK))
 		update_rq_clock(rq);
 
@@ -2569,7 +2567,6 @@ void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 
 	if (sched_core_enabled(rq))
 		sched_core_enqueue(rq, p);
-#endif
 }
 
 /*
@@ -2577,10 +2574,6 @@ void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
  */
 inline bool dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 {
-#ifdef CONFIG_RUST_SCHED_RQ_OPS
-	lockdep_assert_rq_held(rq);
-	return rust_sched_dequeue_task_locked(rq, p, flags);
-#else
 	if (sched_core_enabled(rq))
 		sched_core_dequeue(rq, p, flags);
 
@@ -2598,8 +2591,8 @@ inline bool dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 	 */
 	uclamp_rq_dec(rq, p);
 	return p->sched_class->dequeue_task(rq, p, flags);
-#endif
 }
+#endif
 
 #ifdef CONFIG_RUST_SCHED_RQ_TRANSITION
 void rust_helper_sched_rq_assert_exclusive_writer(struct task_struct *task)

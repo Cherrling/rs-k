@@ -22,7 +22,8 @@ void resched_cpu(int cpu);
 
 #if (defined(CONFIG_RUST_SCHED_RESCHED_CURR) || \
 	defined(CONFIG_RUST_SCHED_RESCHED_CPU) || \
-	defined(CONFIG_RUST_SCHED_WAKE_IF_IDLE)) && defined(CONFIG_LOCKDEP)
+	defined(CONFIG_RUST_SCHED_WAKE_IF_IDLE) || \
+	defined(CONFIG_RUST_SCHED_RQ_OPS)) && defined(CONFIG_LOCKDEP)
 void rust_helper_sched_resched_assert_locked(struct rq *rq);
 #endif
 
@@ -345,11 +346,6 @@ void rust_helper_sched_rq_dequeue_info(struct rq *rq,
 				       struct task_struct *task);
 void rust_helper_sched_rq_core_dequeue(struct rq *rq,
 				       struct task_struct *task, int flags);
-
-void rust_sched_enqueue_task_locked(struct rq *rq, struct task_struct *task,
-				    int flags);
-bool rust_sched_dequeue_task_locked(struct rq *rq, struct task_struct *task,
-				    int flags);
 
 #ifdef CONFIG_KUNIT
 unsigned int rust_sched_enqueue_task_plan_select(int flags,

@@ -589,6 +589,26 @@ Scheduler idle CPU wakeup entry
   passed all 37 cases. Three consecutive native four-vCPU runs passed all 37
   cases. Native and fallback hrtimer regressions passed all 25 cases.
 
+Scheduler runqueue operation entries
+  Status: ``migrated``.
+
+  Evidence: :doc:`sched`.
+
+  Rust directly defines ``enqueue_task()`` and ``dequeue_task()``. Rust owns
+  the runqueue clock-update condition, utilization-clamp order,
+  scheduling-class callback dispatch, pressure and scheduler-statistics
+  conditions, core-scheduling order, and dequeue result. C retains the
+  runqueue lock, the runqueue-held lockdep assertion, scheduling-class queue
+  implementations, accounting and core-scheduling primitives, and the
+  fallback definitions used when the Rust option is disabled.
+
+  Test: Native, runqueue-operations-only, C fallback, C-only, KASAN, lockdep,
+  and PREEMPT_RT scheduler boots passed all applicable cases. Three
+  consecutive native four-vCPU runs passed all 37 cases. The
+  runqueue-operations-only, C fallback, and C-only configurations passed 5,
+  35, and 3 applicable cases. KASAN, lockdep, and PREEMPT_RT each passed all
+  37 cases. Native and fallback hrtimer regressions passed all 25 cases.
+
 Boundary-retained inventory
 ---------------------------
 

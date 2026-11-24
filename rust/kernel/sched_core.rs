@@ -1157,7 +1157,7 @@ unsafe fn dequeue_task_locked(rq: *mut Rq, task: *mut Task, flags: c_int) -> boo
     unsafe { callback(rq, task, flags) }
 }
 
-/// Implements the production runqueue enqueue operation.
+/// Enqueues a task on a runqueue.
 ///
 /// # Safety
 ///
@@ -1165,12 +1165,17 @@ unsafe fn dequeue_task_locked(rq: *mut Rq, task: *mut Task, flags: c_int) -> boo
 /// hold the runqueue lock.
 #[cfg(CONFIG_RUST_SCHED_RQ_OPS)]
 #[export]
-unsafe extern "C" fn rust_sched_enqueue_task_locked(rq: *mut Rq, task: *mut Task, flags: c_int) {
+unsafe extern "C" fn enqueue_task(rq: *mut Rq, task: *mut Task, flags: c_int) {
+    // SAFETY: The caller holds the runqueue lock.
+    #[cfg(CONFIG_LOCKDEP)]
+    unsafe {
+        bindings::rust_helper_sched_resched_assert_locked(rq)
+    };
     // SAFETY: The caller satisfies the exported entry-point contract.
     unsafe { enqueue_task_locked(rq, task, flags) };
 }
 
-/// Implements the production runqueue dequeue operation.
+/// Dequeues a task from a runqueue.
 ///
 /// # Safety
 ///
@@ -1178,11 +1183,12 @@ unsafe extern "C" fn rust_sched_enqueue_task_locked(rq: *mut Rq, task: *mut Task
 /// the runqueue lock.
 #[cfg(CONFIG_RUST_SCHED_RQ_OPS)]
 #[export]
-unsafe extern "C" fn rust_sched_dequeue_task_locked(
-    rq: *mut Rq,
-    task: *mut Task,
-    flags: c_int,
-) -> bool {
+unsafe extern "C" fn dequeue_task(rq: *mut Rq, task: *mut Task, flags: c_int) -> bool {
+    // SAFETY: The caller holds the runqueue lock.
+    #[cfg(CONFIG_LOCKDEP)]
+    unsafe {
+        bindings::rust_helper_sched_resched_assert_locked(rq)
+    };
     // SAFETY: The caller satisfies the exported entry-point contract.
     unsafe { dequeue_task_locked(rq, task, flags) }
 }

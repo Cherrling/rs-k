@@ -1215,14 +1215,15 @@ config RUST_SCHED_RQ_OPS
 	depends on RUST
 	default y
 	help
-	  Use Rust for the production runqueue enqueue and dequeue operations.
+	  Use Rust to directly define the production runqueue enqueue and
+	  dequeue entry points.
 	  Rust owns the clock-update, utilization-clamp, scheduling-class,
 	  pressure accounting, scheduler statistics, and core-scheduling action
 	  order. It calls the selected scheduling class directly.
 
 	  Runqueue locking, scheduling-class queue implementations, utilization
 	  clamp accounting, pressure and statistics accounting, core scheduling
-	  operations, and public scheduler ABI adapters remain in C.
+	  operations, and the runqueue-held assertion remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

@@ -808,6 +808,8 @@ rust_unexported_symbols := \
 	resched_cpu \
 	select_task_rq \
 	wake_up_if_idle \
+	enqueue_task \
+	dequeue_task \
 	irq_work_needs_cpu \
 	irq_work_queue_on \
 	irq_work_single \
