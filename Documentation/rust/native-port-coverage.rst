@@ -503,6 +503,22 @@ High-resolution timer state machine and public entries
   timekeeping bridges. C fallback configurations retain the complete
   implementation.
 
+Interval timer state machine and entry points
+  Status: ``migrated``.
+
+  Evidence: :doc:`itimer`.
+
+  Rust directly defines ``itimer_get()``, ``itimer_set()``,
+  ``posixtimer_rearm_itimer()``, and ``alarm_setitimer()``. Rust owns interval
+  validation, real and CPU timer replacement, real timer cancellation retry,
+  remaining-time normalization, period updates, periodic rearm selection,
+  and alarm rounding. The native C object compiles out its complete get, set,
+  rearm, and alarm implementations. C retains user copies, the signal lock,
+  hrtimer operations, CPU-time sampling, tracepoints, and SIGALRM delivery.
+  C fallback and C-only configurations retain the complete C state machine.
+  Seven native, fallback, C-only, KASAN, lockdep, PREEMPT_RT, and debug-object
+  configurations passed ten boot runs at 6 of 6 cases.
+
 Boundary-retained inventory
 ---------------------------
 
@@ -536,6 +552,7 @@ Public ABI
   ``include/linux/kfifo.h``, ``include/linux/completion.h``,
   ``include/linux/task_work.h``, ``include/linux/irq_work.h``,
   ``include/linux/timerqueue.h``, ``include/linux/hrtimer.h``,
+  ``include/linux/itimer-rust.h``,
   ``include/linux/mutex.h``,
   ``include/linux/ww_mutex.h``, and ``include/linux/rwsem.h``.
 
@@ -624,6 +641,30 @@ High-resolution timer shared entry boundary
   Exit condition: Rust owns compatible timer types, locks, diagnostics, clock
   event access, task integration, and timekeeping bridges without shared C
   entry trampolines.
+
+Interval timer shared entry boundary
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/itimer-rust.h``, ``kernel/time/itimer.c``,
+  ``rust/kernel/itimer_core.rs``, and ``rust/helpers``.
+
+  Reason: C and Rust share task and signal layouts, the signal lock and
+  interrupt-state transition, hrtimer timers, CPU-time sampling, tracepoint
+  delivery, user copies, and SIGALRM delivery. The system call adapters and
+  ``it_real_fn()`` remain in C.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, PREEMPT_RT, and debug-object
+  configurations passed ten boot runs at 6 of 6 cases. The runs cover invalid
+  clocks, real and CPU timer lifecycles, repeated replacement, periodic
+  rearm, and alarm rounding.
+
+  Risk: A task, signal, lock, hrtimer, CPU-time, or tracepoint mismatch can
+  corrupt timer state, report the wrong remaining time, or deadlock against
+  signal delivery.
+
+  Exit condition: Rust owns compatible signal locking, task and signal
+  storage, hrtimer operations, CPU-time sampling, tracepoints, user copies,
+  and signal delivery without shared C entry helpers.
 
 Mutex scheduler, tracing, and locking-debug boundary
   Status: ``boundary-retained``.

@@ -2,10 +2,12 @@
 
 //! Native interval timer state machine.
 //!
-//! Rust owns interval validation results, real and CPU timer state
-//! transitions, real timer cancellation retry, remaining-time normalization,
-//! period updates, and alarm rounding. C retains user copies, the signal lock,
-//! hrtimer operations, CPU-time sampling, tracepoints, and SIGALRM delivery.
+//! Rust directly defines the production interval timer entry points. It owns
+//! interval validation results, real and CPU timer state transitions, real
+//! timer cancellation retry, remaining-time normalization, period updates,
+//! periodic rearm selection, and alarm rounding. C retains user copies, the
+//! signal lock, hrtimer operations, CPU-time sampling, tracepoints, and
+//! SIGALRM delivery.
 
 use crate::{
     bindings,
@@ -155,17 +157,13 @@ unsafe fn get_cpu_itimer(task: *mut Task, clock_id: c_uint, value: *mut ItimerSp
     }
 }
 
-/// Returns an interval timer through the native state machine.
+/// Returns an interval timer.
 ///
 /// # Safety
 ///
 /// `task` must point to the current task and `value` must be writable.
 #[export]
-unsafe extern "C" fn rust_itimer_get(
-    task: *mut Task,
-    which: c_uint,
-    value: *mut ItimerSpec,
-) -> c_int {
+unsafe extern "C" fn itimer_get(task: *mut Task, which: c_uint, value: *mut ItimerSpec) -> c_int {
     match which {
         bindings::ITIMER_REAL => {
             // SAFETY: The caller guarantees that the task and output are valid.
@@ -329,14 +327,14 @@ unsafe fn set_cpu_itimer(
     }
 }
 
-/// Sets an interval timer through the native state machine.
+/// Sets an interval timer.
 ///
 /// # Safety
 ///
 /// `task` must point to the current task. `value` must be valid and
 /// `old_value` must be writable when non-null.
 #[export]
-unsafe extern "C" fn rust_itimer_set(
+unsafe extern "C" fn itimer_set(
     task: *mut Task,
     which: c_uint,
     value: *const ItimerSpec,
@@ -384,7 +382,7 @@ unsafe extern "C" fn rust_itimer_set(
 ///
 /// `task` must point to a live task.
 #[export]
-unsafe extern "C" fn rust_itimer_rearm(task: *mut Task) {
+unsafe extern "C" fn posixtimer_rearm_itimer(task: *mut Task) {
     // SAFETY: The caller guarantees that the task and signal state are live.
     let sig = unsafe { signal(task) };
     // SAFETY: The caller guarantees that the signal state is live.
@@ -408,7 +406,7 @@ unsafe extern "C" fn rust_itimer_rearm(task: *mut Task) {
 ///
 /// `task` must point to the current task.
 #[export]
-unsafe extern "C" fn rust_itimer_alarm(task: *mut Task, seconds: c_uint) -> c_uint {
+unsafe extern "C" fn alarm_setitimer(seconds: c_uint) -> c_uint {
     let seconds = if core::mem::size_of::<c_ulong>() < core::mem::size_of::<i64>()
         && seconds > c_int::MAX as c_uint
     {
@@ -425,8 +423,10 @@ unsafe extern "C" fn rust_itimer_alarm(task: *mut Task, seconds: c_uint) -> c_ui
     };
     let mut old_value = ItimerSpec::default();
 
-    // SAFETY: The caller guarantees that task is current.
-    if unsafe { rust_itimer_set(task, bindings::ITIMER_REAL, &input, &mut old_value) } != 0 {
+    // SAFETY: This helper only reads the current task pointer.
+    let task = unsafe { bindings::get_current() };
+    // SAFETY: The current task remains valid for the duration of the call.
+    if unsafe { itimer_set(task, bindings::ITIMER_REAL, &input, &mut old_value) } != 0 {
         return 0;
     }
 

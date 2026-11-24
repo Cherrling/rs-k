@@ -796,6 +796,10 @@ rust_unexported_symbols := \
 	task_work_cancel_match \
 	task_work_run \
 	rust_task_work_test_run_task \
+	itimer_get \
+	itimer_set \
+	posixtimer_rearm_itimer \
+	alarm_setitimer \
 	irq_work_needs_cpu \
 	irq_work_queue_on \
 	irq_work_single \

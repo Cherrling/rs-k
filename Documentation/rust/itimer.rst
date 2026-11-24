@@ -1,14 +1,16 @@
 .. SPDX-License-Identifier: GPL-2.0
 
-Native Rust Interval Timer State Machine
-========================================
+Native Rust Interval Timer Entry Points
+=======================================
 
 Status and scope
 ----------------
 
-The ``CONFIG_RUST_ITIMER`` option selects a native Rust implementation of the
-process interval timer state machine. The existing task, signal, hrtimer, and
-system call layouts remain unchanged.
+The ``CONFIG_RUST_ITIMER`` option selects direct Rust definitions of the
+production process interval timer entry points. The existing task, signal,
+hrtimer, and system call layouts remain unchanged. The native build excludes
+the complete C implementations. C fallback and C-only configurations retain
+them.
 
 The Rust code owns these production decisions:
 
@@ -27,13 +29,18 @@ Entry points and ownership
 --------------------------
 
 ``kernel/time/itimer.c`` keeps the system call adapters and
-``it_real_fn()``. With the Rust configuration enabled, timer lookup and update
-flow through:
+``it_real_fn()``. When ``CONFIG_RUST_ITIMER`` is enabled, the adapters route
+timer lookup and update through these Rust definitions:
 
-* ``rust_itimer_get()``.
-* ``rust_itimer_set()``.
-* ``rust_itimer_rearm()``.
-* ``rust_itimer_alarm()``.
+* ``itimer_get()``.
+* ``itimer_set()``.
+* ``posixtimer_rearm_itimer()``.
+* ``alarm_setitimer()``.
+
+The native C object does not define these entry points. The C definitions of
+``do_getitimer()``, ``do_setitimer()``, the periodic rearm body, and the alarm
+helper are compiled out. ``alarm_setitimer()`` obtains the current task in
+Rust.
 
 The Rust-to-C helpers perform these operations:
 
@@ -90,41 +97,61 @@ Validation gate
 
 The migration unit must pass these checks before integration:
 
-* Rust-enabled and C fallback x86_64 builds.
-* Rust-enabled, C fallback, KASAN, lockdep, and PREEMPT_RT boots.
+* Native, C fallback, and C-only x86_64 builds.
+* Native, C fallback, C-only, KASAN, lockdep, PREEMPT_RT, and debug-object
+  boots.
+* SMP1 and SMP4 runs for native, C fallback, and C-only configurations.
 * Real and CPU timer set, get, disarm, and period checks.
 * Invalid clock identifier checks.
 * Repeated real and CPU timer replacement.
 * Alarm rounding and periodic rearm path inspection.
-* Adapter disassembly and unresolved-symbol inspection.
-* Rustfmt, Clippy, checkpatch, and ``git diff --check``.
+* Object-level entry-point ownership and export inspection.
+* Rustfmt, Clippy, Rustdoc, Sphinx, checkpatch, and ``git diff --check``.
 
 Validation evidence
 -------------------
 
-The final source tree was validated on 2026-11-11 with x86_64 LLVM builds
-and QEMU/KVM using four vCPUs and 1 GiB of RAM.
+The final source tree was validated on 2026-11-24 with x86_64 LLVM 21.1.8
+and Rust 1.97.1. The configurations used QEMU/KVM, ``CONFIG_SMP``,
+``NR_CPUS=64``, KUnit, and ``CONFIG_ITIMER_KUNIT_TEST``.
 
-* Rust production configuration: 6/6 KUnit tests passed.
-* C fallback configuration: 6/6 KUnit tests passed.
-* KASAN generic and inline configuration: 6/6 KUnit tests passed.
-* Lockdep configuration: 6/6 KUnit tests passed.
-* PREEMPT_RT configuration: 6/6 KUnit tests passed.
+Seven configurations completed ten boot runs. Every run passed all 6 timer
+tests:
 
-All five configurations completed the build and booted. The test logs
-contained no BUG, WARNING, KASAN report, lockdep complaint, panic, or
+* Native Rust: SMP1 and SMP4.
+* C fallback: SMP1 and SMP4.
+* C-only: SMP1 and SMP4.
+* KASAN generic: SMP4.
+* Lockdep: SMP4.
+* PREEMPT_RT: SMP4.
+* Debug objects with ``CONFIG_DEBUG_OBJECTS_TIMERS``: SMP4.
+
+The KASAN logs contain ``KernelAddressSanitizer initialized``. The lockdep
+logs contain ``Lock dependency validator`` initialization. The PREEMPT_RT
+boot identifies the kernel as ``SMP PREEMPT_RT``. No validation log contains
+a KASAN report, BUG, WARNING, Oops, panic, RCU stall, lock inversion, or
 atomic-scheduling report.
 
-The Rust helper object also built with ``CONFIG_POSIX_TIMERS`` and
-``CONFIG_RUST_ITIMER`` disabled.
+``nm`` showed ``itimer_get()``, ``itimer_set()``,
+``posixtimer_rearm_itimer()``, and ``alarm_setitimer()`` as defined text
+symbols in native ``rust/kernel.o``. The native ``kernel/time/itimer.o``
+referenced all four as undefined symbols and did not define the corresponding
+C helpers. Disassembly showed direct calls or jumps from the native system
+call and test adapters to the Rust definitions.
 
-The Rust image had no unresolved symbols. Disassembly showed calls from
-the syscall and signal paths to ``rust_itimer_get()``,
-``rust_itimer_set()``, ``rust_itimer_alarm()``, and
-``rust_itimer_rearm()``. The C fallback image contained no
-``rust_itimer_*`` production symbols.
+The C fallback Rust object contained none of the four definitions. Its C
+object contained ``do_getitimer()``, ``do_setitimer()``, and the complete
+periodic rearm body. The C-only build used the same complete C path. Neither
+the fallback nor the C-only object referenced the four Rust production
+entries.
 
-Rustfmt, Clippy, strict checkpatch, and ``git diff --check`` passed.
+The linked native ``vmlinux`` contained the four production entries and no
+``rust_itimer_*`` production symbols. ``Module.symvers`` contained none of the
+four entries. The only matching exported symbol was the GPL helper
+``rust_helper_itimer_set_process_cpu_timer()``.
+
+Rustfmt, Clippy, Rustdoc, a Rust Sphinx build, strict checkpatch, and
+``git diff --check`` passed.
 
 Retained C boundary review conditions
 -------------------------------------

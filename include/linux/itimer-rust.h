@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Internal helpers for the native Rust interval timer implementation.
+ * Native Rust interval timer entry points and helper boundary.
  */
 
 #ifndef _LINUX_ITIMER_RUST_H
@@ -15,13 +15,12 @@ struct task_struct;
 
 #ifdef CONFIG_RUST_ITIMER
 
-int rust_itimer_get(struct task_struct *task, unsigned int which,
-		    struct itimerspec64 *value);
-int rust_itimer_set(struct task_struct *task, unsigned int which,
-		    const struct itimerspec64 *value,
-		    struct itimerspec64 *old_value);
-void rust_itimer_rearm(struct task_struct *task);
-unsigned int rust_itimer_alarm(struct task_struct *task, unsigned int seconds);
+int itimer_get(struct task_struct *task, unsigned int which,
+	       struct itimerspec64 *value);
+int itimer_set(struct task_struct *task, unsigned int which,
+	       const struct itimerspec64 *value,
+	       struct itimerspec64 *old_value);
+unsigned int alarm_setitimer(unsigned int seconds);
 
 void rust_helper_itimer_start(struct hrtimer *timer, ktime_t expires);
 void rust_helper_itimer_lock(struct task_struct *task);

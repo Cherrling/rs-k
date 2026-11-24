@@ -83,13 +83,12 @@ static void get_cpu_itimer(struct task_struct *tsk, unsigned int clock_id,
 
 #endif
 
+#ifndef CONFIG_RUST_ITIMER
+
 static int do_getitimer(int which, struct itimerspec64 *value)
 {
 	struct task_struct *tsk = current;
 
-#ifdef CONFIG_RUST_ITIMER
-	return rust_itimer_get(tsk, which, value);
-#else
 	switch (which) {
 	case ITIMER_REAL:
 		spin_lock_irq(&tsk->sighand->siglock);
@@ -108,8 +107,9 @@ static int do_getitimer(int which, struct itimerspec64 *value)
 		return(-EINVAL);
 	}
 	return 0;
-#endif
 }
+
+#endif /* !CONFIG_RUST_ITIMER */
 
 static int put_itimerval(struct __kernel_old_itimerval __user *o,
 			 const struct itimerspec64 *i)
@@ -127,7 +127,11 @@ static int put_itimerval(struct __kernel_old_itimerval __user *o,
 SYSCALL_DEFINE2(getitimer, int, which, struct __kernel_old_itimerval __user *, value)
 {
 	struct itimerspec64 get_buffer;
+#ifdef CONFIG_RUST_ITIMER
+	int error = itimer_get(current, which, &get_buffer);
+#else
 	int error = do_getitimer(which, &get_buffer);
+#endif
 
 	if (!error && put_itimerval(value, &get_buffer))
 		error = -EFAULT;
@@ -156,7 +160,11 @@ COMPAT_SYSCALL_DEFINE2(getitimer, int, which,
 		       struct old_itimerval32 __user *, value)
 {
 	struct itimerspec64 get_buffer;
+#ifdef CONFIG_RUST_ITIMER
+	int error = itimer_get(current, which, &get_buffer);
+#else
 	int error = do_getitimer(which, &get_buffer);
+#endif
 
 	if (!error && put_old_itimerval32(value, &get_buffer))
 		error = -EFAULT;
@@ -172,19 +180,19 @@ COMPAT_SYSCALL_DEFINE2(getitimer, int, which,
  * with small increments in the high reolution timer case and reduces timer
  * noise in general.
  */
+#ifndef CONFIG_RUST_ITIMER
+
 void posixtimer_rearm_itimer(struct task_struct *tsk)
 {
-#ifdef CONFIG_RUST_ITIMER
-	rust_itimer_rearm(tsk);
-#else
 	struct hrtimer *tmr = &tsk->signal->real_timer;
 
 	if (!hrtimer_is_queued(tmr) && tsk->signal->it_real_incr != 0) {
 		hrtimer_forward_now(tmr, tsk->signal->it_real_incr);
 		hrtimer_restart(tmr);
 	}
-#endif
 }
+
+#endif /* !CONFIG_RUST_ITIMER */
 
 /*
  * Interval timers are restarted in the signal delivery path.  See
@@ -282,15 +290,7 @@ again:
 	return 0;
 }
 
-#else
-
-static int do_setitimer(int which, struct itimerspec64 *value,
-			struct itimerspec64 *ovalue)
-{
-	return rust_itimer_set(current, which, value, ovalue);
-}
-
-#endif
+#endif /* !CONFIG_RUST_ITIMER */
 
 #ifdef CONFIG_SECURITY_SELINUX
 void clear_itimer(void)
@@ -298,8 +298,13 @@ void clear_itimer(void)
 	struct itimerspec64 v = {};
 	int i;
 
-	for (i = 0; i < 3; i++)
+	for (i = 0; i < 3; i++) {
+#ifdef CONFIG_RUST_ITIMER
+		itimer_set(current, i, &v, NULL);
+#else
 		do_setitimer(i, &v, NULL);
+#endif
+	}
 }
 #endif
 
@@ -315,11 +320,10 @@ void clear_itimer(void)
  * On 32 bit machines the seconds value is limited to (INT_MAX/2) to avoid
  * negative timeval settings which would cause immediate expiry.
  */
+#ifndef CONFIG_RUST_ITIMER
+
 static unsigned int __maybe_unused alarm_setitimer(unsigned int seconds)
 {
-#ifdef CONFIG_RUST_ITIMER
-	return rust_itimer_alarm(current, seconds);
-#else
 	struct itimerspec64 it_new, it_old;
 
 #if BITS_PER_LONG < 64
@@ -341,8 +345,9 @@ static unsigned int __maybe_unused alarm_setitimer(unsigned int seconds)
 		it_old.it_value.tv_sec++;
 
 	return it_old.it_value.tv_sec;
-#endif
 }
+
+#endif /* !CONFIG_RUST_ITIMER */
 
 #ifdef __ARCH_WANT_SYS_ALARM
 
@@ -393,7 +398,12 @@ SYSCALL_DEFINE3(setitimer, int, which, struct __kernel_old_itimerval __user *, v
 			    current->comm);
 	}
 
+#ifdef CONFIG_RUST_ITIMER
+	error = itimer_set(current, which, &set_buffer,
+			   ovalue ? &get_buffer : NULL);
+#else
 	error = do_setitimer(which, &set_buffer, ovalue ? &get_buffer : NULL);
+#endif
 	if (error || !ovalue)
 		return error;
 
@@ -440,7 +450,12 @@ COMPAT_SYSCALL_DEFINE3(setitimer, int, which,
 			    current->comm);
 	}
 
+#ifdef CONFIG_RUST_ITIMER
+	error = itimer_set(current, which, &set_buffer,
+			   ovalue ? &get_buffer : NULL);
+#else
 	error = do_setitimer(which, &set_buffer, ovalue ? &get_buffer : NULL);
+#endif
 	if (error || !ovalue)
 		return error;
 	if (put_old_itimerval32(ovalue, &get_buffer))
@@ -452,13 +467,21 @@ COMPAT_SYSCALL_DEFINE3(setitimer, int, which,
 #ifdef CONFIG_ITIMER_KUNIT_TEST
 int itimer_test_get(int which, struct itimerspec64 *value)
 {
+#ifdef CONFIG_RUST_ITIMER
+	return itimer_get(current, which, value);
+#else
 	return do_getitimer(which, value);
+#endif
 }
 
 int itimer_test_set(int which, const struct itimerspec64 *value,
 		    struct itimerspec64 *old_value)
 {
+#ifdef CONFIG_RUST_ITIMER
+	return itimer_set(current, which, value, old_value);
+#else
 	return do_setitimer(which, (struct itimerspec64 *)value, old_value);
+#endif
 }
 
 void itimer_test_rearm(void)
