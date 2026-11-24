@@ -519,6 +519,22 @@ Interval timer state machine and entry points
   Seven native, fallback, C-only, KASAN, lockdep, PREEMPT_RT, and debug-object
   configurations passed ten boot runs at 6 of 6 cases.
 
+CPU-priority scheduler state machine and entry points
+  Status: ``migrated``.
+
+  Evidence: :doc:`cpupri`.
+
+  Rust directly defines ``cpupri_find()``, ``cpupri_find_fitness()``, and
+  ``cpupri_set()``. Rust owns scheduler priority conversion, vector search,
+  affinity and active-CPU filtering, capacity fitness selection,
+  priority-first fallback, and ordered transitions between vectors. C retains
+  the shared layout, cpumask storage and primitives, atomics and barriers,
+  run-queue locking, initialization, cleanup, and invalid-priority
+  diagnostics. C fallback and C-only configurations retain the complete C
+  state machine. Twelve native, fallback, C-only, KASAN, lockdep, PREEMPT_RT,
+  and off-stack cpumask boots passed all applicable cases, including three
+  consecutive native four-vCPU runs.
+
 Boundary-retained inventory
 ---------------------------
 
@@ -552,7 +568,7 @@ Public ABI
   ``include/linux/kfifo.h``, ``include/linux/completion.h``,
   ``include/linux/task_work.h``, ``include/linux/irq_work.h``,
   ``include/linux/timerqueue.h``, ``include/linux/hrtimer.h``,
-  ``include/linux/itimer-rust.h``,
+  ``include/linux/itimer-rust.h``, ``include/linux/cpupri.h``,
   ``include/linux/mutex.h``,
   ``include/linux/ww_mutex.h``, and ``include/linux/rwsem.h``.
 
@@ -665,6 +681,29 @@ Interval timer shared entry boundary
   Exit condition: Rust owns compatible signal locking, task and signal
   storage, hrtimer operations, CPU-time sampling, tracepoints, user copies,
   and signal delivery without shared C entry helpers.
+
+CPU-priority scheduler shared entry boundary
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/cpupri.h``, ``include/linux/cpupri-rust.h``,
+  ``kernel/sched/cpupri.c``, ``rust/kernel/cpupri_core.rs``, and
+  ``rust/helpers``.
+
+  Reason: C and Rust share the CPU-priority vector layout, task affinity and
+  active-CPU masks, atomic counts, memory barriers, run-queue locking,
+  initialization and cleanup, and invalid-priority diagnostics.
+
+  Test: The native, fallback, and C-only configurations exercise the full
+  priority search matrix, affinity and active-CPU filtering, fitness fallback,
+  and concurrent vector transitions. Native KASAN, lockdep, PREEMPT_RT, and
+  off-stack cpumask configurations cover the retained primitives.
+
+  Risk: A layout, mask, count, barrier, or lock mismatch can miss a runnable
+  CPU during migration or publish a vector that the scheduler cannot trust.
+
+  Exit condition: Rust owns compatible cpumasks, atomic and barrier
+  primitives, scheduler locking, initialization, diagnostics, and lifecycle
+  operations without shared C helper entries.
 
 Mutex scheduler, tracing, and locking-debug boundary
   Status: ``boundary-retained``.

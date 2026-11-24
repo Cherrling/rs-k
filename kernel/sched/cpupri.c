@@ -289,24 +289,6 @@ void rust_cpupri_bug_bad_priority(int priority)
 	BUG_ON(priority < CPUPRI_INVALID || priority >= CPUPRI_NR_PRIORITIES);
 }
 
-int cpupri_find(struct cpupri *cp, struct task_struct *p,
-		struct cpumask *lowest_mask)
-{
-	return rust_cpupri_find(cp, p, lowest_mask);
-}
-
-int cpupri_find_fitness(struct cpupri *cp, struct task_struct *p,
-			struct cpumask *lowest_mask,
-			bool (*fitness_fn)(struct task_struct *p, int cpu))
-{
-	return rust_cpupri_find_fitness(cp, p, lowest_mask, fitness_fn);
-}
-
-void cpupri_set(struct cpupri *cp, int cpu, int newpri)
-{
-	rust_cpupri_set(cp, cpu, newpri);
-}
-
 #endif /* CONFIG_RUST_CPUPRI */
 
 /**

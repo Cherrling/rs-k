@@ -1,14 +1,16 @@
 .. SPDX-License-Identifier: GPL-2.0
 
-Native Rust CPU-Priority State Machine
-======================================
+Native Rust CPU-Priority Entry Points
+=====================================
 
 Status and scope
 ----------------
 
-The ``CONFIG_RUST_CPUPRI`` option selects a native Rust implementation of the
-scheduler CPU-priority state machine. The existing ``struct cpupri`` layout
-and scheduler entry points remain unchanged.
+The ``CONFIG_RUST_CPUPRI`` option selects direct Rust definitions of the
+production scheduler CPU-priority entry points. The existing ``struct cpupri``
+layout and calling contracts remain unchanged. The native build compiles out
+the C priority conversion, vector search, fitness selection, and transition
+implementations. C fallback and C-only configurations retain them.
 
 The Rust code owns these production decisions:
 
@@ -19,16 +21,20 @@ The Rust code owns these production decisions:
 * Ordered CPU transitions between priority vectors.
 
 Cpumask storage allocation, cpumask primitives, atomics and memory barriers,
-run-queue locking, invalid-priority diagnostics, and the public scheduler
-adapters remain in C.
+run-queue locking, and invalid-priority diagnostics remain in C.
 
 Entry points and ownership
 --------------------------
 
-``kernel/sched/cpupri.c`` keeps the scheduler-facing entry points
-``cpupri_find()``, ``cpupri_find_fitness()``, and ``cpupri_set()``. When the
-Rust configuration is enabled, each entry is a tail-call adapter to the state
-machine in ``rust/kernel/cpupri_core.rs``.
+When ``CONFIG_RUST_CPUPRI`` is enabled, ``rust/kernel/cpupri_core.rs`` directly
+defines these production scheduler entry points:
+
+* ``cpupri_find()``.
+* ``cpupri_find_fitness()``.
+* ``cpupri_set()``.
+
+The native C object does not define these entries or the shared priority
+conversion and search implementation.
 
 The Rust-to-C helper calls are:
 
@@ -37,12 +43,6 @@ The Rust-to-C helper calls are:
 * Cpumask intersection, empty, any-CPU, set, clear, and iteration operations.
 * Read, before-atomic, and after-atomic memory barriers.
 * Invalid task-priority warning and invalid CPU-priority bug checks.
-
-The C-to-Rust production entries are:
-
-* ``rust_cpupri_find()``.
-* ``rust_cpupri_find_fitness()``.
-* ``rust_cpupri_set()``.
 
 ``cpupri_init()`` and ``cpupri_cleanup()`` remain in C because they allocate and
 free the vector cpumasks and the ``cpu_to_pri`` array. They do not select CPUs,
@@ -92,46 +92,50 @@ Validation gate
 
 The migration unit must pass these checks before integration:
 
-* Rust-enabled and C fallback x86_64 builds.
-* Rust-enabled, C fallback, KASAN, and lockdep boots.
+* Rust-enabled, Rust fallback, and C-only x86_64 builds.
+* One-vCPU native, fallback, and C-only boots.
+* Three consecutive four-vCPU native boots.
+* Four-vCPU fallback, C-only, KASAN, lockdep, and PREEMPT_RT boots.
 * A ``CONFIG_CPUMASK_OFFSTACK`` boot with debug cpumask allocation.
-* One-vCPU and three consecutive four-vCPU Rust KUnit runs.
 * Priority-vector conversion boundaries.
 * Affinity, active-CPU, lowest-priority, and equal-priority mask selection.
 * Fitness filtering and priority-first fallback.
-* Concurrent vector transitions and lock-free searches.
-* Adapter disassembly and unresolved-symbol inspection.
+* Concurrent vector transitions, valid returned masks, and eventual search
+  success after transitions finish.
+* Production symbol ownership and exported-symbol inspection.
 * Rustfmt, Clippy, checkpatch, and ``git diff --check``.
 
 Validation evidence
 -------------------
 
-The CPU-priority state machine was validated on 2026-11-11 with x86_64
-``LLVM=1`` builds and QEMU 11.1.3:
+The CPU-priority entry points were validated on 2026-11-24 with x86_64
+``LLVM=1`` builds and QEMU 11.1.3. Twelve boots passed:
 
-* Three consecutive four-vCPU Rust runs passed all 6 KUnit cases.
-* The one-vCPU Rust run passed 3 cases and skipped the 3 tests that require
-  two active CPUs.
-* The four-vCPU C fallback, generic inline KASAN, lockdep, and PREEMPT_RT runs
-  each passed all 6 KUnit cases.
-* A four-vCPU Rust run with ``CONFIG_CPUMASK_OFFSTACK`` and
-  ``CONFIG_DEBUG_PER_CPU_MAPS`` enabled also passed all 6 KUnit cases.
+* The one-vCPU native, fallback, and C-only runs passed 3 cases and skipped
+  the 3 tests that require two active CPUs.
+* Three consecutive four-vCPU native runs each passed all 6 KUnit cases.
+* The four-vCPU fallback and C-only runs each passed all 6 KUnit cases.
+* The four-vCPU KASAN, lockdep, PREEMPT_RT, and off-stack cpumask runs each
+  passed all 6 KUnit cases.
 * The KUnit cases cover the full 101 by 101 priority search matrix, null and
   non-null candidate masks, affinity and active-CPU filtering, equal and
   different priority vectors, fitness filtering, priority-first fallback,
   invalid vector transitions, and concurrent vector changes.
+* The KASAN run exposed an invalid-vector test that indexed before
+  ``pri_to_cpu``. The test now checks the invalid vector without that access.
+* The concurrent test accepts the documented transient search miss during a
+  transition. Every successful result must be a nonempty subset of the active
+  CPUs, and the final search must succeed after all workers stop.
 * No run reported a BUG, warning, KASAN report, lockdep complaint, kernel
   panic, or atomic-scheduling violation.
-* ``cpupri_find()``, ``cpupri_find_fitness()``, and ``cpupri_set()`` compile
-  to direct tail calls into Rust. The Rust configuration contains no C
-  conversion, vector search, or transition implementation.
-* The C fallback contains no Rust CPU-priority symbols. The Rust object
-  defines the three production entries and a shared native search routine.
-* Clippy and Rustfmt pass with the kernel warning policy.
-  ``git diff --check`` passes. Strict checkpatch reports no errors or checks.
-  Its two warnings ask about new file paths and the retained ``BUG_ON``
-  invariant. ``MAINTAINERS`` covers the new paths, and the ``BUG_ON``
-  preserves the existing scheduler contract for invalid priority input.
+* Native ``rust/kernel.o`` defines ``cpupri_find()``,
+  ``cpupri_find_fitness()``, and ``cpupri_set()``. Native
+  ``kernel/sched/build_utility.o`` retains only initialization, cleanup, and
+  the Rust helper boundary.
+* Fallback and C-only integrated objects define the complete C state machine.
+  The PREEMPT_RT ``vmlinux`` has one definition of each production entry.
+  No old ``rust_cpupri_*`` production symbol remains, and
+  ``vmlinux.symvers`` does not export the three unexported entries.
 
 Review conditions
 -----------------

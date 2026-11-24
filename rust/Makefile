@@ -800,6 +800,9 @@ rust_unexported_symbols := \
 	itimer_set \
 	posixtimer_rearm_itimer \
 	alarm_setitimer \
+	cpupri_find \
+	cpupri_find_fitness \
+	cpupri_set \
 	irq_work_needs_cpu \
 	irq_work_queue_on \
 	irq_work_single \

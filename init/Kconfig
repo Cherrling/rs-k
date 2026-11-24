@@ -2295,14 +2295,15 @@ config RUST_CPUPRI
 	depends on RUST && SMP
 	default y
 	help
-	  Use Rust for the production CPU-priority scheduling state machine.
-	  This includes scheduler priority conversion, lowest-priority vector
-	  search, task-affinity intersection, active-CPU filtering, capacity
-	  fitness filtering, and ordered CPU transitions between vectors.
+	  Rust directly defines the production CPU-priority scheduling entry
+	  points. Rust owns scheduler priority conversion, lowest-priority
+	  vector search, task-affinity intersection, active-CPU filtering,
+	  capacity fitness filtering, and ordered CPU transitions between
+	  vectors.
 
 	  Cpumask storage allocation and primitives, atomics and memory ordering,
-	  scheduler locks, invalid-priority diagnostics, and public ABI adapters
-	  remain in C because they depend on scheduler and cpumask internals.
+	  scheduler locks, and invalid-priority diagnostics remain in C. The
+	  complete C entry-point fallback remains available.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

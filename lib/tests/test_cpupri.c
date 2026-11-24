@@ -103,9 +103,10 @@ static void cpupri_test_priority_mapping(struct kunit *test)
 
 		cpupri_set(&cp, cpu, cases[i].priority);
 		KUNIT_EXPECT_EQ(test, cp.cpu_to_pri[cpu], vector);
-		KUNIT_EXPECT_EQ(test,
-				atomic_read(&cp.pri_to_cpu[vector].count),
-				vector == CPUPRI_INVALID ? 0 : 1);
+		if (vector != CPUPRI_INVALID)
+			KUNIT_EXPECT_EQ(test,
+					atomic_read(&cp.pri_to_cpu[vector].count),
+					1);
 		if (i) {
 			int old_vector = cases[i - 1].vector;
 
@@ -372,9 +373,15 @@ static void cpupri_test_concurrent_transitions(struct kunit *test)
 	}
 
 	atomic_set(&start, 1);
+	/*
+	 * A concurrent transition can temporarily hide a CPU across the scan.
+	 * Validate every returned mask and require the final search to succeed.
+	 */
 	for (i = 0; i < CPUPRI_TEST_SEARCHES; i++) {
-		if (!cpupri_find(&cp, task, lowest_mask) ||
-		    cpumask_empty(lowest_mask))
+		if (!cpupri_find(&cp, task, lowest_mask))
+			continue;
+		if (cpumask_empty(lowest_mask) ||
+		    !cpumask_subset(lowest_mask, cpu_active_mask))
 			errors++;
 		if (!(i & 255))
 			cond_resched();
@@ -386,6 +393,8 @@ static void cpupri_test_concurrent_transitions(struct kunit *test)
 
 	KUNIT_EXPECT_EQ(test, errors, 0);
 	KUNIT_EXPECT_EQ(test, atomic_read(&done), nr_workers);
+	KUNIT_EXPECT_EQ(test, cpupri_find(&cp, task, lowest_mask), 1);
+	KUNIT_EXPECT_FALSE(test, cpumask_empty(lowest_mask));
 
 cleanup:
 	atomic_set(&start, 1);

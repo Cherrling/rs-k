@@ -4,15 +4,16 @@
 //!
 //! Rust owns scheduler priority conversion, lowest-priority vector search,
 //! task-affinity intersection, active-CPU filtering, fitness filtering, and
-//! the ordered transition between priority vectors. C retains cpumask storage
-//! allocation, cpumask primitives, atomics and barriers, and the public
-//! scheduler entry-point adapters.
+//! the ordered transition between priority vectors. Rust directly defines the
+//! production scheduler entry points. C retains cpumask storage allocation,
+//! cpumask primitives, atomics and barriers, and scheduler locks.
 
 use crate::{
     bindings,
     ffi::{c_int, c_uint},
 };
 use core::ptr;
+use macros::export;
 
 type Cpupri = bindings::cpupri;
 type Cpumask = bindings::cpumask;
@@ -220,8 +221,8 @@ unsafe fn find_vectors(
 ///
 /// `cp` must be initialized, `task` must be valid, and `lowest_mask` must be
 /// null or point to writable cpumask storage.
-#[no_mangle]
-unsafe extern "C" fn rust_cpupri_find(
+#[export]
+unsafe extern "C" fn cpupri_find(
     cp: *mut Cpupri,
     task: *mut Task,
     lowest_mask: *mut Cpumask,
@@ -234,10 +235,10 @@ unsafe extern "C" fn rust_cpupri_find(
 ///
 /// # Safety
 ///
-/// The caller must provide the same contracts as `rust_cpupri_find`.
+/// The caller must provide the same contracts as `cpupri_find`.
 /// `fitness_fn` must be null or valid for `task` and every candidate CPU.
-#[no_mangle]
-unsafe extern "C" fn rust_cpupri_find_fitness(
+#[export]
+unsafe extern "C" fn cpupri_find_fitness(
     cp: *mut Cpupri,
     task: *mut Task,
     lowest_mask: *mut Cpumask,
@@ -303,8 +304,8 @@ unsafe fn set_priority(cp: *mut Cpupri, cpu: c_int, new_priority: c_int) {
 ///
 /// `cp` must be initialized, `cpu` must be a valid CPU index, and the caller
 /// must hold the run-queue lock required by the scheduler contract.
-#[no_mangle]
-unsafe extern "C" fn rust_cpupri_set(cp: *mut Cpupri, cpu: c_int, new_priority: c_int) {
+#[export]
+unsafe extern "C" fn cpupri_set(cp: *mut Cpupri, cpu: c_int, new_priority: c_int) {
     let Some(converted) = convert_priority(new_priority) else {
         // SAFETY: The helper handles the invalid scheduler input.
         unsafe { bindings::rust_cpupri_bug_bad_priority(new_priority) };
