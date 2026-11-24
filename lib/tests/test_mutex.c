@@ -379,6 +379,15 @@ static void mutex_test_ww_integration(struct kunit *test)
 
 	ww_mutex_init(&lock, &mutex_test_ww_class);
 	ww_acquire_init(&ctx, &mutex_test_ww_class);
+	KUNIT_EXPECT_EQ(test, ww_mutex_lock(&lock, &ctx), 0);
+	KUNIT_EXPECT_TRUE(test, ww_mutex_is_locked(&lock));
+	KUNIT_EXPECT_EQ(test, ww_mutex_lock(&lock, &ctx), -EALREADY);
+	ww_mutex_unlock(&lock);
+
+	KUNIT_EXPECT_EQ(test, ww_mutex_lock_interruptible(&lock, &ctx), 0);
+	KUNIT_EXPECT_TRUE(test, ww_mutex_is_locked(&lock));
+	ww_mutex_unlock(&lock);
+
 	KUNIT_EXPECT_EQ(test, ww_mutex_trylock(&lock, &ctx), 1);
 	KUNIT_EXPECT_TRUE(test, ww_mutex_is_locked(&lock));
 	KUNIT_EXPECT_EQ(test, mutex_get_owner(&lock.base),
@@ -389,6 +398,57 @@ static void mutex_test_ww_integration(struct kunit *test)
 	KUNIT_EXPECT_FALSE(test, ww_mutex_is_locked(&lock));
 	KUNIT_EXPECT_EQ(test, mutex_get_owner(&lock.base), 0UL);
 	ww_mutex_destroy(&lock);
+}
+
+static void mutex_test_nested_and_io(struct kunit *test)
+{
+	struct mutex lock; /* Mutex under test. */
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+	struct mutex nest; /* Lock that provides the nested lockdep map. */
+#endif
+
+	mutex_init(&lock);
+
+	mutex_lock_nested(&lock, 1);
+	KUNIT_EXPECT_EQ(test, mutex_get_owner(&lock), (unsigned long)current);
+	mutex_unlock(&lock);
+
+	KUNIT_EXPECT_EQ(test, mutex_lock_interruptible_nested(&lock, 2), 0);
+	KUNIT_EXPECT_EQ(test, mutex_get_owner(&lock), (unsigned long)current);
+	mutex_unlock(&lock);
+
+	KUNIT_EXPECT_EQ(test, mutex_lock_killable_nested(&lock, 3), 0);
+	KUNIT_EXPECT_EQ(test, mutex_get_owner(&lock), (unsigned long)current);
+	mutex_unlock(&lock);
+
+	mutex_lock_io(&lock);
+	KUNIT_EXPECT_EQ(test, mutex_get_owner(&lock), (unsigned long)current);
+	mutex_unlock(&lock);
+
+	mutex_lock_io_nested(&lock, 4);
+	KUNIT_EXPECT_EQ(test, mutex_get_owner(&lock), (unsigned long)current);
+	mutex_unlock(&lock);
+
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+	mutex_init(&nest);
+	mutex_lock(&nest);
+
+	mutex_lock_nest_lock(&lock, &nest);
+	KUNIT_EXPECT_EQ(test, mutex_get_owner(&lock), (unsigned long)current);
+	mutex_unlock(&lock);
+
+	KUNIT_EXPECT_EQ(test, mutex_lock_killable_nest_lock(&lock, &nest), 0);
+	KUNIT_EXPECT_EQ(test, mutex_get_owner(&lock), (unsigned long)current);
+	mutex_unlock(&lock);
+
+	KUNIT_EXPECT_TRUE(test, mutex_trylock_nest_lock(&lock, &nest));
+	KUNIT_EXPECT_EQ(test, mutex_get_owner(&lock), (unsigned long)current);
+	mutex_unlock(&lock);
+
+	mutex_unlock(&nest);
+#endif
+
+	mutex_destroy(&lock);
 }
 
 static void mutex_test_atomic_dec_and_lock(struct kunit *test)
@@ -471,6 +531,7 @@ static struct kunit_case mutex_test_cases[] = {
 	KUNIT_CASE(mutex_test_handoff),
 	KUNIT_CASE(mutex_test_fifo_order),
 	KUNIT_CASE(mutex_test_ww_integration),
+	KUNIT_CASE(mutex_test_nested_and_io),
 	KUNIT_CASE(mutex_test_atomic_dec_and_lock),
 	KUNIT_CASE(mutex_test_concurrent_ownership),
 	{}

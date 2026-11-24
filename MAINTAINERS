@@ -24125,6 +24125,7 @@ T:	git https://github.com/Rust-for-Linux/linux.git rust-next
 F:	.clippy.toml
 F:	.rustfmt.toml
 F:	Documentation/rust/
+F:	Documentation/rust/mutex.rst
 F:	Documentation/rust/native-btree-entry.rst
 F:	Documentation/rust/native-btree-structural.rst
 F:	Documentation/rust/native-btree-traversal.rst
@@ -24215,6 +24216,7 @@ F:	include/linux/wait-bit-rust.h
 F:	include/linux/wait-rust.h
 F:	include/linux/xarray-rust.h
 F:	include/trace/events/rust_sample.h
+F:	kernel/locking/mutex.c
 F:	kernel/locking/rwsem.c
 F:	kernel/locking/semaphore.c
 F:	kernel/sched/wait.c
@@ -24302,6 +24304,7 @@ F:	rust/kernel/klist.rs
 F:	rust/kernel/llist.rs
 F:	rust/kernel/list_lru.rs
 F:	rust/kernel/lockref.rs
+F:	rust/kernel/mutex_core.rs
 F:	rust/kernel/percpu_refcount.rs
 F:	rust/kernel/rcuwait.rs
 F:	rust/kernel/rwsem_core.rs

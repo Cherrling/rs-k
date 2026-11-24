@@ -61,14 +61,12 @@ static inline struct task_struct *__owner_task(unsigned long owner)
 	return (struct task_struct *)(owner & ~MUTEX_FLAGS);
 }
 
+#ifndef CONFIG_RUST_MUTEX
 bool mutex_is_locked(struct mutex *lock)
 {
-#ifdef CONFIG_RUST_MUTEX
-	return rust_mutex_is_locked(lock);
-#else
 	return __mutex_owner(lock) != NULL;
-#endif
 }
+#endif
 EXPORT_SYMBOL(mutex_is_locked);
 
 static inline unsigned long __owner_flags(unsigned long owner)
@@ -77,18 +75,64 @@ static inline unsigned long __owner_flags(unsigned long owner)
 }
 
 /* Do not use the return value as a pointer directly. */
+#ifndef CONFIG_RUST_MUTEX
 unsigned long mutex_get_owner(struct mutex *lock)
 {
-#ifdef CONFIG_RUST_MUTEX
-	return rust_mutex_get_owner(lock);
-#else
 	unsigned long owner = atomic_long_read(&lock->owner);
 
 	return (unsigned long)__owner_task(owner);
-#endif
 }
+#endif
 
 #ifdef CONFIG_RUST_MUTEX
+void rust_mutex_might_sleep(void)
+{
+	might_sleep();
+}
+
+void rust_mutex_preempt_disable(void)
+{
+	preempt_disable();
+}
+
+void rust_mutex_preempt_enable(void)
+{
+	preempt_enable();
+}
+
+void rust_mutex_warn_bad_lock(struct mutex *lock)
+{
+	MUTEX_WARN_ON(lock->magic != lock);
+}
+
+void rust_mutex_warn_bad_ww_lock(struct ww_mutex *lock)
+{
+	MUTEX_WARN_ON(lock->base.magic != &lock->base);
+}
+
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+void rust_mutex_lockdep_acquire(struct mutex *lock, unsigned int subclass,
+				bool trylock, struct lockdep_map *nest)
+{
+	mutex_acquire_nest(&lock->dep_map, subclass, trylock, nest, _RET_IP_);
+}
+#endif
+
+void rust_mutex_contention_begin_spin(struct mutex *lock)
+{
+	trace_contention_begin(lock, LCB_F_MUTEX | LCB_F_SPIN);
+}
+
+void rust_mutex_contention_end(struct mutex *lock, int ret)
+{
+	trace_contention_end(lock, ret);
+}
+
+void rust_mutex_lock_acquired(struct mutex *lock)
+{
+	lock_acquired(&lock->dep_map, _RET_IP_);
+}
+
 unsigned long rust_mutex_read_owner(struct mutex *lock)
 {
 	return atomic_long_read(&lock->owner);
@@ -196,7 +240,11 @@ static inline bool __mutex_trylock(struct mutex *lock)
  * There is nothing that would stop spreading the lockdep annotations outwards
  * except more code.
  */
+#ifdef CONFIG_RUST_MUTEX
+void rust_mutex_init_generic(struct mutex *lock)
+#else
 void mutex_init_generic(struct mutex *lock)
+#endif
 {
 	__mutex_init_generic(lock);
 }
@@ -238,7 +286,12 @@ static __always_inline bool __mutex_unlock_fast(struct mutex *lock)
 
 #else /* !CONFIG_DEBUG_LOCK_ALLOC */
 
+#ifdef CONFIG_RUST_MUTEX
+void rust_mutex_init_lockdep(struct mutex *lock, const char *name,
+			     struct lock_class_key *key)
+#else
 void mutex_init_lockdep(struct mutex *lock, const char *name, struct lock_class_key *key)
+#endif
 {
 	__mutex_init_generic(lock);
 
@@ -353,8 +406,10 @@ static void __mutex_handoff(struct mutex *lock, struct task_struct *task)
  * We also put the fastpath first in the kernel image, to make sure the
  * branch is predicted by the CPU as default-untaken.
  */
+#ifndef CONFIG_RUST_MUTEX
 static void __sched __mutex_lock_slowpath(struct mutex *lock)
 	__acquires(lock);
+#endif
 
 /**
  * mutex_lock - acquire the mutex
@@ -377,6 +432,7 @@ static void __sched __mutex_lock_slowpath(struct mutex *lock)
  *
  * This function is similar to (but not equivalent to) down().
  */
+#ifndef CONFIG_RUST_MUTEX
 void __sched mutex_lock(struct mutex *lock)
 {
 	might_sleep();
@@ -384,10 +440,24 @@ void __sched mutex_lock(struct mutex *lock)
 	if (!__mutex_trylock_fast(lock))
 		__mutex_lock_slowpath(lock);
 }
+#endif
 EXPORT_SYMBOL(mutex_lock);
 #endif
 
 #include "ww_mutex.h"
+
+#ifdef CONFIG_RUST_MUTEX
+void rust_ww_mutex_set_context_fastpath(struct ww_mutex *lock,
+					struct ww_acquire_ctx *ctx)
+{
+	ww_mutex_set_context_fastpath(lock, ctx);
+}
+
+void rust_ww_mutex_unlock_context(struct ww_mutex *lock)
+{
+	__ww_mutex_unlock(lock);
+}
+#endif
 
 #ifdef CONFIG_MUTEX_SPIN_ON_OWNER
 
@@ -639,6 +709,7 @@ static noinline void __sched __mutex_unlock_slowpath(struct mutex *lock, unsigne
  *
  * This function is similar to (but not equivalent to) up().
  */
+#ifndef CONFIG_RUST_MUTEX
 void __sched mutex_unlock(struct mutex *lock)
 {
 #ifndef CONFIG_DEBUG_LOCK_ALLOC
@@ -647,6 +718,7 @@ void __sched mutex_unlock(struct mutex *lock)
 #endif
 	__mutex_unlock_slowpath(lock, _RET_IP_);
 }
+#endif
 EXPORT_SYMBOL(mutex_unlock);
 
 /**
@@ -660,12 +732,14 @@ EXPORT_SYMBOL(mutex_unlock);
  * This function must not be used in interrupt context. Unlocking
  * of a unlocked mutex is not allowed.
  */
+#ifndef CONFIG_RUST_MUTEX
 void __sched ww_mutex_unlock(struct ww_mutex *lock)
 	__no_context_analysis
 {
 	__ww_mutex_unlock(lock);
 	mutex_unlock(&lock->base);
 }
+#endif
 EXPORT_SYMBOL(ww_mutex_unlock);
 
 /*
@@ -674,7 +748,8 @@ EXPORT_SYMBOL(ww_mutex_unlock);
 static __always_inline int __sched
 __mutex_lock_common(struct mutex *lock, unsigned int state, unsigned int subclass,
 		    struct lockdep_map *nest_lock, unsigned long ip,
-		    struct ww_acquire_ctx *ww_ctx, const bool use_ww_ctx)
+		    struct ww_acquire_ctx *ww_ctx, const bool use_ww_ctx,
+		    bool prelude_done)
 	__cond_acquires(0, lock)
 {
 	DEFINE_WAKE_Q(wake_q);
@@ -686,32 +761,36 @@ __mutex_lock_common(struct mutex *lock, unsigned int state, unsigned int subclas
 	if (!use_ww_ctx)
 		ww_ctx = NULL;
 
-	might_sleep();
-
-	MUTEX_WARN_ON(lock->magic != lock);
-
 	ww = container_of(lock, struct ww_mutex, base);
-	if (ww_ctx) {
-		if (unlikely(ww_ctx == READ_ONCE(ww->ctx)))
-			return -EALREADY;
 
-		/*
-		 * Reset the wounded flag after a kill. No other process can
-		 * race and wound us here since they can't have a valid owner
-		 * pointer if we don't have any locks held.
-		 */
-		if (ww_ctx->acquired == 0)
-			ww_ctx->wounded = 0;
+	if (!prelude_done) {
+		might_sleep();
+
+		MUTEX_WARN_ON(lock->magic != lock);
+
+		if (ww_ctx) {
+			if (unlikely(ww_ctx == READ_ONCE(ww->ctx)))
+				return -EALREADY;
+
+			/*
+			 * Reset the wounded flag after a kill. No other process
+			 * can race and wound us here since they can't have a
+			 * valid owner pointer if we don't have any locks held.
+			 */
+			if (ww_ctx->acquired == 0)
+				ww_ctx->wounded = 0;
 
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
-		nest_lock = &ww_ctx->dep_map;
+			nest_lock = &ww_ctx->dep_map;
 #endif
+		}
+
+		preempt_disable();
+		mutex_acquire_nest(&lock->dep_map, subclass, 0, nest_lock, ip);
+
+		trace_contention_begin(lock, LCB_F_MUTEX | LCB_F_SPIN);
 	}
 
-	preempt_disable();
-	mutex_acquire_nest(&lock->dep_map, subclass, 0, nest_lock, ip);
-
-	trace_contention_begin(lock, LCB_F_MUTEX | LCB_F_SPIN);
 	if (__mutex_trylock(lock) ||
 	    mutex_optimistic_spin(lock, ww_ctx, NULL)) {
 		/* got the lock, yay! */
@@ -719,7 +798,8 @@ __mutex_lock_common(struct mutex *lock, unsigned int state, unsigned int subclas
 		if (ww_ctx)
 			ww_mutex_set_context_fastpath(ww, ww_ctx);
 		trace_contention_end(lock, 0);
-		preempt_enable();
+		if (!prelude_done)
+			preempt_enable();
 		return 0;
 	}
 
@@ -862,7 +942,8 @@ skip_wait:
 		ww_mutex_lock_acquired(ww, ww_ctx);
 
 	raw_spin_unlock_irqrestore_wake(&lock->wait_lock, flags, &wake_q);
-	preempt_enable();
+	if (!prelude_done)
+		preempt_enable();
 	return 0;
 
 err:
@@ -875,16 +956,19 @@ err_early_kill:
 	raw_spin_unlock_irqrestore_wake(&lock->wait_lock, flags, &wake_q);
 	debug_mutex_free_waiter(&waiter);
 	mutex_release(&lock->dep_map, ip);
-	preempt_enable();
+	if (!prelude_done)
+		preempt_enable();
 	return ret;
 }
 
+#ifndef CONFIG_RUST_MUTEX
 static int __sched
 __mutex_lock(struct mutex *lock, unsigned int state, unsigned int subclass,
 	     struct lockdep_map *nest_lock, unsigned long ip)
 	__cond_acquires(0, lock)
 {
-	return __mutex_lock_common(lock, state, subclass, nest_lock, ip, NULL, false);
+	return __mutex_lock_common(lock, state, subclass, nest_lock, ip, NULL,
+				   false, false);
 }
 
 static int __sched
@@ -892,8 +976,19 @@ __ww_mutex_lock(struct mutex *lock, unsigned int state, unsigned int subclass,
 		unsigned long ip, struct ww_acquire_ctx *ww_ctx)
 	__cond_acquires(0, lock)
 {
-	return __mutex_lock_common(lock, state, subclass, NULL, ip, ww_ctx, true);
+	return __mutex_lock_common(lock, state, subclass, NULL, ip, ww_ctx,
+				   true, false);
 }
+#endif
+
+#ifdef CONFIG_RUST_MUTEX
+int __sched rust_mutex_lock_slow(struct mutex *lock, unsigned int state,
+				 struct ww_acquire_ctx *ww_ctx, bool use_ww_ctx)
+{
+	return __mutex_lock_common(lock, state, 0, NULL, _RET_IP_, ww_ctx,
+				   use_ww_ctx, true);
+}
+#endif
 
 /**
  * ww_mutex_trylock - tries to acquire the w/w mutex with optional acquire context
@@ -908,6 +1003,7 @@ __ww_mutex_lock(struct mutex *lock, unsigned int state, unsigned int subclass,
  *
  * A mutex acquired with this function must be released with ww_mutex_unlock.
  */
+#ifndef CONFIG_RUST_MUTEX
 int ww_mutex_trylock(struct ww_mutex *ww, struct ww_acquire_ctx *ww_ctx)
 {
 	if (!ww_ctx)
@@ -931,41 +1027,51 @@ int ww_mutex_trylock(struct ww_mutex *ww, struct ww_acquire_ctx *ww_ctx)
 
 	return 0;
 }
+#endif
 EXPORT_SYMBOL(ww_mutex_trylock);
 
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
+#ifndef CONFIG_RUST_MUTEX
 void __sched
 mutex_lock_nested(struct mutex *lock, unsigned int subclass)
 {
 	__mutex_lock(lock, TASK_UNINTERRUPTIBLE, subclass, NULL, _RET_IP_);
 	__acquire(lock);
 }
+#endif
 
 EXPORT_SYMBOL_GPL(mutex_lock_nested);
 
+#ifndef CONFIG_RUST_MUTEX
 void __sched
 _mutex_lock_nest_lock(struct mutex *lock, struct lockdep_map *nest)
 {
 	__mutex_lock(lock, TASK_UNINTERRUPTIBLE, 0, nest, _RET_IP_);
 	__acquire(lock);
 }
+#endif
 EXPORT_SYMBOL_GPL(_mutex_lock_nest_lock);
 
+#ifndef CONFIG_RUST_MUTEX
 int __sched
 _mutex_lock_killable(struct mutex *lock, unsigned int subclass,
 				      struct lockdep_map *nest)
 {
 	return __mutex_lock(lock, TASK_KILLABLE, subclass, nest, _RET_IP_);
 }
+#endif
 EXPORT_SYMBOL_GPL(_mutex_lock_killable);
 
+#ifndef CONFIG_RUST_MUTEX
 int __sched
 mutex_lock_interruptible_nested(struct mutex *lock, unsigned int subclass)
 {
 	return __mutex_lock(lock, TASK_INTERRUPTIBLE, subclass, NULL, _RET_IP_);
 }
+#endif
 EXPORT_SYMBOL_GPL(mutex_lock_interruptible_nested);
 
+#ifndef CONFIG_RUST_MUTEX
 void __sched
 mutex_lock_io_nested(struct mutex *lock, unsigned int subclass)
 {
@@ -979,6 +1085,7 @@ mutex_lock_io_nested(struct mutex *lock, unsigned int subclass)
 	__acquire(lock);
 	io_schedule_finish(token);
 }
+#endif
 EXPORT_SYMBOL_GPL(mutex_lock_io_nested);
 
 static inline int
@@ -1008,6 +1115,15 @@ ww_mutex_deadlock_injection(struct ww_mutex *lock, struct ww_acquire_ctx *ctx)
 	return 0;
 }
 
+#ifdef CONFIG_RUST_MUTEX
+int rust_ww_mutex_deadlock_injection(struct ww_mutex *lock,
+				     struct ww_acquire_ctx *ctx)
+{
+	return ww_mutex_deadlock_injection(lock, ctx);
+}
+#endif
+
+#ifndef CONFIG_RUST_MUTEX
 int __sched
 ww_mutex_lock(struct ww_mutex *lock, struct ww_acquire_ctx *ctx)
 {
@@ -1021,8 +1137,10 @@ ww_mutex_lock(struct ww_mutex *lock, struct ww_acquire_ctx *ctx)
 
 	return ret;
 }
+#endif
 EXPORT_SYMBOL_GPL(ww_mutex_lock);
 
+#ifndef CONFIG_RUST_MUTEX
 int __sched
 ww_mutex_lock_interruptible(struct ww_mutex *lock, struct ww_acquire_ctx *ctx)
 {
@@ -1037,6 +1155,7 @@ ww_mutex_lock_interruptible(struct ww_mutex *lock, struct ww_acquire_ctx *ctx)
 
 	return ret;
 }
+#endif
 EXPORT_SYMBOL_GPL(ww_mutex_lock_interruptible);
 
 #endif
@@ -1154,16 +1273,25 @@ static noinline void __sched __mutex_unlock_slowpath(struct mutex *lock, unsigne
 	}
 }
 
+#ifdef CONFIG_RUST_MUTEX
+void __sched rust_mutex_unlock_slow(struct mutex *lock)
+{
+	__mutex_unlock_slowpath(lock, _RET_IP_);
+}
+#endif
+
 #ifndef CONFIG_DEBUG_LOCK_ALLOC
 /*
  * Here come the less common (and hence less performance-critical) APIs:
  * mutex_lock_interruptible() and mutex_trylock().
  */
+#ifndef CONFIG_RUST_MUTEX
 static noinline int __sched
 __mutex_lock_killable_slowpath(struct mutex *lock);
 
 static noinline int __sched
 __mutex_lock_interruptible_slowpath(struct mutex *lock);
+#endif
 
 /**
  * mutex_lock_interruptible() - Acquire the mutex, interruptible by signals.
@@ -1177,6 +1305,7 @@ __mutex_lock_interruptible_slowpath(struct mutex *lock);
  * Return: 0 if the lock was successfully acquired or %-EINTR if a
  * signal arrived.
  */
+#ifndef CONFIG_RUST_MUTEX
 int __sched mutex_lock_interruptible(struct mutex *lock)
 {
 	might_sleep();
@@ -1186,6 +1315,7 @@ int __sched mutex_lock_interruptible(struct mutex *lock)
 
 	return __mutex_lock_interruptible_slowpath(lock);
 }
+#endif
 
 EXPORT_SYMBOL(mutex_lock_interruptible);
 
@@ -1201,6 +1331,7 @@ EXPORT_SYMBOL(mutex_lock_interruptible);
  * Return: 0 if the lock was successfully acquired or %-EINTR if a
  * fatal signal arrived.
  */
+#ifndef CONFIG_RUST_MUTEX
 int __sched mutex_lock_killable(struct mutex *lock)
 {
 	might_sleep();
@@ -1210,6 +1341,7 @@ int __sched mutex_lock_killable(struct mutex *lock)
 
 	return __mutex_lock_killable_slowpath(lock);
 }
+#endif
 EXPORT_SYMBOL(mutex_lock_killable);
 
 /**
@@ -1222,6 +1354,7 @@ EXPORT_SYMBOL(mutex_lock_killable);
  *
  * Context: Process context.
  */
+#ifndef CONFIG_RUST_MUTEX
 void __sched mutex_lock_io(struct mutex *lock)
 {
 	int token;
@@ -1230,8 +1363,10 @@ void __sched mutex_lock_io(struct mutex *lock)
 	mutex_lock(lock);
 	io_schedule_finish(token);
 }
+#endif
 EXPORT_SYMBOL_GPL(mutex_lock_io);
 
+#ifndef CONFIG_RUST_MUTEX
 static noinline void __sched
 __mutex_lock_slowpath(struct mutex *lock)
 	__acquires(lock)
@@ -1270,6 +1405,7 @@ __ww_mutex_lock_interruptible_slowpath(struct ww_mutex *lock,
 	return __ww_mutex_lock(&lock->base, TASK_INTERRUPTIBLE, 0,
 			       _RET_IP_, ctx);
 }
+#endif
 
 #endif
 
@@ -1288,13 +1424,16 @@ __ww_mutex_lock_interruptible_slowpath(struct ww_mutex *lock,
  * This function must not be used in interrupt context. The
  * mutex must be released by the same task that acquired it.
  */
+#ifndef CONFIG_RUST_MUTEX
 int __sched mutex_trylock(struct mutex *lock)
 {
 	MUTEX_WARN_ON(lock->magic != lock);
 	return __mutex_trylock(lock);
 }
+#endif
 EXPORT_SYMBOL(mutex_trylock);
 #else
+#ifndef CONFIG_RUST_MUTEX
 int __sched _mutex_trylock_nest_lock(struct mutex *lock, struct lockdep_map *nest_lock)
 {
 	bool locked;
@@ -1306,10 +1445,12 @@ int __sched _mutex_trylock_nest_lock(struct mutex *lock, struct lockdep_map *nes
 
 	return locked;
 }
+#endif
 EXPORT_SYMBOL(_mutex_trylock_nest_lock);
 #endif
 
 #ifndef CONFIG_DEBUG_LOCK_ALLOC
+#ifndef CONFIG_RUST_MUTEX
 int __sched
 ww_mutex_lock(struct ww_mutex *lock, struct ww_acquire_ctx *ctx)
 {
@@ -1323,8 +1464,10 @@ ww_mutex_lock(struct ww_mutex *lock, struct ww_acquire_ctx *ctx)
 
 	return __ww_mutex_lock_slowpath(lock, ctx);
 }
+#endif
 EXPORT_SYMBOL(ww_mutex_lock);
 
+#ifndef CONFIG_RUST_MUTEX
 int __sched
 ww_mutex_lock_interruptible(struct ww_mutex *lock, struct ww_acquire_ctx *ctx)
 {
@@ -1338,6 +1481,7 @@ ww_mutex_lock_interruptible(struct ww_mutex *lock, struct ww_acquire_ctx *ctx)
 
 	return __ww_mutex_lock_interruptible_slowpath(lock, ctx);
 }
+#endif
 EXPORT_SYMBOL(ww_mutex_lock_interruptible);
 
 #endif /* !CONFIG_DEBUG_LOCK_ALLOC */

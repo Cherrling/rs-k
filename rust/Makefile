@@ -646,6 +646,17 @@ rust_non_gpl_exports := \
 	down_write_nested \
 	down_write_killable_nested \
 	up_read_non_owner \
+	mutex_init_generic \
+	mutex_init_lockdep \
+	mutex_is_locked \
+	mutex_lock \
+	mutex_lock_interruptible \
+	mutex_lock_killable \
+	mutex_trylock \
+	mutex_unlock \
+	_mutex_trylock_nest_lock \
+	ww_mutex_trylock \
+	ww_mutex_unlock \
 	kobject_init \
 	kobject_get \
 	kobject_get_unless_zero \
@@ -810,7 +821,30 @@ rust_unexported_symbols := \
 	rust_rwsem_is_reader_owned \
 	rust_rwsem_up_read \
 	rust_rwsem_up_write \
-	rust_rwsem_downgrade_write
+	rust_rwsem_downgrade_write \
+	mutex_get_owner \
+	mutex_lock_io \
+	mutex_lock_nested \
+	_mutex_lock_nest_lock \
+	_mutex_lock_killable \
+	mutex_lock_interruptible_nested \
+	mutex_lock_io_nested \
+	ww_mutex_lock \
+	ww_mutex_lock_interruptible \
+	rust_mutex_is_locked \
+	rust_mutex_get_owner \
+	rust_mutex_trylock_fast \
+	rust_mutex_unlock_fast \
+	rust_mutex_trylock_common \
+	rust_mutex_unlock_prepare \
+	rust_mutex_handoff_if_requested \
+	rust_mutex_read_owner \
+	rust_mutex_try_cmpxchg_owner_acquire \
+	rust_mutex_try_cmpxchg_owner_release \
+	rust_mutex_current \
+	rust_mutex_warn_bad_trylock_flags \
+	rust_mutex_warn_bad_unlock \
+	rust_mutex_force_handoff
 
 rust_exports = $(NM) -p --defined-only $(1) | awk '$$2~/(T|R|D|B)/ && $$3!~/__(pfx|cfi|odr_asan)/ { printf $(2),$$3 }'
 rust_auto_export_skip := $(rust_non_gpl_exports) $(rust_unexported_symbols)

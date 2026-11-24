@@ -141,6 +141,23 @@ Counting semaphore state machine
   49 of 49 cases, and the non-GPL module ABI test linked all six ordinary
   exports.
 
+Mutex protocol and public entries
+  Status: ``migrated``.
+
+  Evidence: :doc:`mutex`.
+
+  Rust directly defines thirteen non-debug initialization, query, lock,
+  trylock, I/O wait, unlock, and wait/wound entry points. With
+  ``CONFIG_DEBUG_LOCK_ALLOC`` it defines fourteen nested and nest-lock
+  entries. Rust owns owner encoding, fast acquisition and release,
+  contention trylock, wait/wound context checks, handoff requests, direct
+  pickup, slow-path selection, and slow-unlock state preparation. C retains
+  the shared layouts, atomics and memory ordering, lockdep and lock-stat
+  delivery, tracing, debug validation, optimistic spinning, intrusive
+  waiters, task state, scheduling, wakeups, scheduler proxy policy,
+  wait/wound ordering, and ordinary export metadata. C fallback
+  configurations retain the complete entry implementations.
+
 Read-write semaphore state machine and public entries
   Status: ``migrated``.
 
@@ -485,7 +502,8 @@ Public ABI
   ``include/linux/bitmap.h``, ``include/linux/maple_tree.h``,
   ``include/linux/kfifo.h``, ``include/linux/completion.h``,
   ``include/linux/task_work.h``, ``include/linux/irq_work.h``,
-  ``include/linux/timerqueue.h``, and ``include/linux/rwsem.h``.
+  ``include/linux/timerqueue.h``, ``include/linux/mutex.h``,
+  ``include/linux/ww_mutex.h``, and ``include/linux/rwsem.h``.
 
   Reason: Existing callers and loadable modules use the stable C ABI.
 
@@ -546,6 +564,32 @@ Timer queue tree primitives
 
   Exit condition: Rust owns compatible timer queue tree primitives without a
   shared C call boundary.
+
+Mutex scheduler, tracing, and locking-debug boundary
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/mutex.h``, ``include/linux/mutex-rust.h``,
+  ``include/linux/mutex_types.h``, ``include/linux/ww_mutex.h``,
+  ``kernel/locking/mutex.c``, ``kernel/locking/ww_mutex.h``, and
+  ``rust/kernel/mutex_core.rs``.
+
+  Reason: Native Rust entries select lock state, but intrusive waiters,
+  optimistic spinning, scheduler proxy execution, task state, scheduling,
+  wake queues, lockdep and lock-stat delivery, tracing, debug validation,
+  wait/wound ordering, and PREEMPT_RT use locking and scheduler internals
+  that remain in C.
+
+  Test: Native, fallback, and C-only KUnit runs exercise fast paths, signal
+  cancellation, handoff, FIFO ownership, wait/wound blocking and trylock,
+  nested classes, nest locks, I/O waits, and concurrent exclusion.
+
+  Risk: An owner transition or debug-delivery mismatch can lose a waiter,
+  violate wait/wound ordering, or make lockdep and lock-stat report a
+  different acquisition or release site.
+
+  Exit condition: Rust owns equivalent atomics, preemption, wake queue,
+  scheduler proxy, lockdep, lock-stat, tracing, wait/wound, and
+  context-analysis interfaces.
 
 Read-write semaphore scheduler and locking-debug boundary
   Status: ``boundary-retained``.
