@@ -7,41 +7,43 @@ Status and scope
 ----------------
 
 The ``CONFIG_RUST_SWAIT`` option selects an experimental native Rust
-implementation of simple wait queues.  The migration keeps the existing
+implementation of simple wait queues. The migration keeps the existing
 ``swait_queue_head`` and ``swait_queue`` layouts and caller-facing API.
 
-The Rust code owns these production decisions:
+Rust directly defines all ten production entry points:
+
+* ``__init_swait_queue_head()``
+* ``swake_up_locked()``
+* ``swake_up_all_locked()``
+* ``swake_up_one()``
+* ``swake_up_all()``
+* ``__prepare_to_swait()``
+* ``prepare_to_swait_exclusive()``
+* ``prepare_to_swait_event()``
+* ``__finish_swait()``
+* ``finish_swait()``
+
+Seven public entry points retain ordinary exports. The three internal locked
+wake, preparation, and completion entry points remain unexported. Rust
+automatic export generation omits all ten names.
+
+The original C state machine remains complete under ``#ifndef
+CONFIG_RUST_SWAIT``.
+
+Ownership
+---------
+
+Rust owns:
 
 * Queue initialization and membership.
 * FIFO selection for a single wakeup.
 * Wake-all traversal and bounded lock release.
-* Exclusive and event wait preparation.
+* Exclusive and event wait preparation and task-state ordering.
 * Signal rejection before a task enters the queue.
 * Completion cleanup and current task state restoration.
+* Internal wake-all selection used by completion code.
 
-The original C state machine remains the fallback when the option is disabled.
-
-Entry points and ownership
---------------------------
-
-The public entry points retain their names and ordinary export classes.  The
-internal ``__prepare_to_swait()``, ``__finish_swait()``, and
-``swake_up_all_locked()`` entry points remain available to the completion
-code.
-
-The production state machine is in ``rust/kernel/swait_core.rs``.  The
-``kernel/sched/swait.c`` file provides exported C ABI adapters and the narrow
-primitive boundary.
-
-The migration does not preserve inline expansion.  Each public entry crosses
-the C ABI into Rust.  This unit validates semantics and lifetime rules before
-performance work.
-
-Retained C boundary
--------------------
-
-The following operations stay in C because they directly use scheduler,
-architecture, or lock debugging internals:
+C helpers retain:
 
 * Raw spinlock initialization, lock, unlock, and IRQ state restoration.
 * Lock dependency class initialization.
@@ -50,8 +52,13 @@ architecture, or lock debugging internals:
 * Task wakeup calls with scheduler flags.
 * Intrusive list insertion, deletion, splice, and empty checks.
 
-These helpers do not select a waiter, decide whether to wake, or control the
-wait and wake privacy protocol.
+The native ``kernel/sched/swait.c`` object retains the seven ordinary export
+records and the helper bodies. It contains none of the ten production
+function bodies. The helpers do not select a waiter, decide whether to wake,
+or control the wait and wake privacy protocol.
+
+The production state machine is in ``rust/kernel/swait_core.rs``. The shared
+layouts, initializers, and wait macros remain in ``include/linux/swait.h``.
 
 Important invariants
 --------------------
@@ -82,40 +89,62 @@ Validation gate
 
 The migration unit must pass these checks before integration:
 
-* Rust-enabled and C fallback x86_64 builds.
-* Rust-enabled generic inline KASAN build.
-* One-vCPU and repeated four-vCPU Rust KUnit runs.
-* Four-vCPU C fallback and KASAN KUnit runs.
+* Native Rust, Rust fallback, and C-only x86_64 builds.
+* Native Rust with one vCPU and repeated four-vCPU KUnit runs.
+* Fallback, C-only, KASAN, lockdep, and PREEMPT_RT KUnit runs.
 * FIFO single-wake ordering with queued kernel threads.
 * Internal locked wake-all behavior used by completions.
 * Public wake-all behavior and lock release between wakeups.
 * Prepare, signal rejection with a queued entry, and finish state
   restoration.
-* Export and module unresolved-symbol checks.
-* Rustfmt, Clippy, checkpatch, and ``git diff --check``.
+* Native SMP4 ``completion``, ``rcuwait``, and ``task_work`` suites.
+* Symbol ownership, export class, and module unresolved-symbol checks.
+* Rustfmt, Clippy, Rustdoc, focused Sphinx generation, strict checkpatch, and
+  ``git diff --check``.
 
 Validation record
 -----------------
 
-The final tree passed the following x86_64 checks with ``LLVM=1``:
+Validation on 2026-11-24 used base commit ``b490e17c3874``. Six x86_64
+configurations were built: native Rust, Rust fallback, C-only, generic inline
+KASAN, lockdep, and PREEMPT_RT. Each configuration passed one SMP1 boot and
+one SMP4 boot with five of five cases. Native also passed three earlier SMP4
+runs.
 
-* Rust, one vCPU: five tests passed, once.
-* Rust, four vCPUs: five tests passed, three consecutive runs.
-* C fallback, four vCPUs: five tests passed.
-* Generic inline KASAN, four vCPUs: five tests passed.
-* ``PROVE_LOCKING``, ``DEBUG_LOCK_ALLOC``, ``LOCKDEP``,
-  ``DEBUG_SPINLOCK``, and ``DEBUG_LIST`` enabled, four vCPUs: five tests
-  passed.
+KASAN used Clang and LLD and initialized generic
+KernelAddressSanitizer. The lockdep image enabled ``PROVE_LOCKING``,
+``DEBUG_LOCK_ALLOC``, ``LOCKDEP``, ``DEBUG_SPINLOCK``, and ``DEBUG_LIST``.
+The PREEMPT_RT image reported ``PREEMPT_RT`` in its kernel banner.
 
 The five cases cover queue lifecycle, signal rejection, FIFO single wakeup,
-public wake-all, and internal locked wake-all.  The logs contain no unexpected
-``WARNING``, ``BUG``, ``Oops``, KASAN report, failed test, or kernel panic.
+public wake-all, and internal locked wake-all. The logs contain no
+``WARNING``, ``BUG``, Oops, failed test, kernel panic, KASAN report, lockdep
+complaint, or RCU stall.
 
-The production ABI check confirmed that each public C adapter tail-calls its
-Rust implementation and retains an ordinary export.  The Rust-enabled image
-contains the ``rust_swait_*`` production symbols.  The C fallback image has no
-such symbols, and no loadable module has an unresolved ``rust_swait_*``
-symbol.
+The native SMP4 image also passed three adjacent suites: ``completion`` with
+six cases, ``rcuwait`` with eight, and ``task_work`` with six. All 20 cases
+passed. The native configuration was rebuilt with
+``CONFIG_RCUWAIT_KUNIT_TEST=y`` before these final adjacent runs.
+
+In native, KASAN, lockdep, and PREEMPT_RT configurations, ``rust/kernel.o``
+defined all ten entry points. The native ``kernel/sched/swait.c`` object
+contained only the ``rust_swait_*`` primitive helpers. The fallback and C-only
+images defined the ten production entry points in C and none in Rust.
+
+Every configuration recorded exactly seven ordinary ``EXPORT_SYMBOL`` entries
+and no entry for the three internal names. Rust automatic export generation
+omitted all ten production names.
+
+The native, fallback, and C-only module builds passed modpost. A temporary
+external module referenced all seven ordinary exports and linked successfully
+against each of those three configurations.
+
+Rustfmt, Clippy, Rustdoc, focused Sphinx generation, and
+``git diff --check`` passed. A strict Sphinx build stopped only on the
+existing ``kernel-docs`` and ``getting_llvm`` cross-directory warnings.
+Strict checkpatch reported 0 errors, 0 warnings, and 0 checks with targeted
+ignores for ``EXPORT_SYMBOL`` and ``FUNCTION_ARGUMENTS`` placement false
+positives.
 
 Pre-validation found that the temporary wake-all list was initialized in a
 ``MaybeUninit`` value and then moved.  The copied list head retained the old
@@ -134,5 +163,4 @@ Reopen the C boundary decision if any of these conditions changes:
 * The swait protocol changes FIFO order, signal handling, or lock-release
   rules.
 * Completion starts using a different internal swait entry point.
-* Benchmarks show that the out-of-line ABI transition is too costly for a
-  scheduler hot path.
+* The shared queue or wait layout changes.

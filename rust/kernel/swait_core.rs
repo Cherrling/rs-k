@@ -11,7 +11,6 @@ use crate::{
     ffi::{c_char, c_int, c_long, c_uint},
 };
 use core::{mem::MaybeUninit, ptr};
-use macros::export;
 
 type Head = bindings::swait_queue_head;
 type Wait = bindings::swait_queue;
@@ -144,8 +143,8 @@ unsafe fn prepare_locked(q: *mut Head, wait: *mut Wait) {
 /// # Safety
 ///
 /// `q`, `name`, and `key` must be valid for the lifetime of the queue.
-#[export]
-unsafe extern "C" fn rust_swait_init_queue_head(
+#[no_mangle]
+unsafe extern "C" fn __init_swait_queue_head(
     q: *mut Head,
     name: *const c_char,
     key: *mut LockClassKey,
@@ -165,8 +164,8 @@ unsafe extern "C" fn rust_swait_init_queue_head(
 /// # Safety
 ///
 /// `q` must be valid and its lock must be held.
-#[export]
-unsafe extern "C" fn rust_swait_wake_locked(q: *mut Head, wake_flags: c_int) {
+#[no_mangle]
+unsafe extern "C" fn swake_up_locked(q: *mut Head, wake_flags: c_int) {
     // SAFETY: The caller guarantees that the queue lock is held.
     unsafe { wake_locked(q, wake_flags) };
 }
@@ -176,8 +175,8 @@ unsafe extern "C" fn rust_swait_wake_locked(q: *mut Head, wake_flags: c_int) {
 /// # Safety
 ///
 /// `q` must be valid and its lock must be held.
-#[export]
-unsafe extern "C" fn rust_swait_wake_all_locked(q: *mut Head) {
+#[no_mangle]
+unsafe extern "C" fn swake_up_all_locked(q: *mut Head) {
     // SAFETY: The caller guarantees that the queue lock is held.
     while !unsafe { list_empty(queue_list(q)) } {
         // SAFETY: The queue lock remains held.
@@ -190,8 +189,8 @@ unsafe extern "C" fn rust_swait_wake_all_locked(q: *mut Head) {
 /// # Safety
 ///
 /// `q` must be valid.
-#[export]
-unsafe extern "C" fn rust_swait_wake_one(q: *mut Head) {
+#[no_mangle]
+unsafe extern "C" fn swake_up_one(q: *mut Head) {
     let mut flags: usize = 0;
     // SAFETY: The caller guarantees that `q` and its lock are valid.
     let lock = unsafe { lock(q) };
@@ -208,8 +207,8 @@ unsafe extern "C" fn rust_swait_wake_one(q: *mut Head) {
 /// # Safety
 ///
 /// `q` must be valid and the caller must permit interrupt disabling.
-#[export]
-unsafe extern "C" fn rust_swait_wake_all(q: *mut Head) {
+#[no_mangle]
+unsafe extern "C" fn swake_up_all(q: *mut Head) {
     let mut tmp = MaybeUninit::<ListHead>::uninit();
     // SAFETY: The temporary list is initialized in place before use.
     unsafe { bindings::rust_swait_list_init(tmp.as_mut_ptr()) };
@@ -259,8 +258,8 @@ unsafe extern "C" fn rust_swait_wake_all(q: *mut Head) {
 /// # Safety
 ///
 /// `q` and `wait` must be valid.  The queue lock must be held.
-#[export]
-unsafe extern "C" fn rust_swait_prepare_locked(q: *mut Head, wait: *mut Wait) {
+#[no_mangle]
+unsafe extern "C" fn __prepare_to_swait(q: *mut Head, wait: *mut Wait) {
     // SAFETY: The caller guarantees that the queue lock is held.
     unsafe { prepare_locked(q, wait) };
 }
@@ -271,8 +270,8 @@ unsafe extern "C" fn rust_swait_prepare_locked(q: *mut Head, wait: *mut Wait) {
 ///
 /// `q` and `wait` must be valid and the caller must permit interrupt
 /// disabling.
-#[export]
-unsafe extern "C" fn rust_swait_prepare_exclusive(q: *mut Head, wait: *mut Wait, state: c_int) {
+#[no_mangle]
+unsafe extern "C" fn prepare_to_swait_exclusive(q: *mut Head, wait: *mut Wait, state: c_int) {
     let mut flags: usize = 0;
     // SAFETY: The caller guarantees that `q` and its lock are valid.
     let lock = unsafe { lock(q) };
@@ -292,12 +291,8 @@ unsafe extern "C" fn rust_swait_prepare_exclusive(q: *mut Head, wait: *mut Wait,
 ///
 /// `q` and `wait` must be valid and the caller must permit interrupt
 /// disabling.
-#[export]
-unsafe extern "C" fn rust_swait_prepare_event(
-    q: *mut Head,
-    wait: *mut Wait,
-    state: c_int,
-) -> c_long {
+#[no_mangle]
+unsafe extern "C" fn prepare_to_swait_event(q: *mut Head, wait: *mut Wait, state: c_int) -> c_long {
     let mut flags: usize = 0;
     // SAFETY: The caller guarantees that `q` and its lock are valid.
     let lock = unsafe { lock(q) };
@@ -330,8 +325,8 @@ unsafe extern "C" fn rust_swait_prepare_event(
 /// # Safety
 ///
 /// `q` and `wait` must be valid and the caller must hold the queue lock.
-#[export]
-unsafe extern "C" fn rust_swait_finish_locked(q: *mut Head, wait: *mut Wait) {
+#[no_mangle]
+unsafe extern "C" fn __finish_swait(q: *mut Head, wait: *mut Wait) {
     let _ = q;
     // SAFETY: The caller guarantees that changing current is valid.
     unsafe { bindings::rust_swait_set_current_state_relaxed(bindings::TASK_RUNNING) };
@@ -347,8 +342,8 @@ unsafe extern "C" fn rust_swait_finish_locked(q: *mut Head, wait: *mut Wait) {
 /// # Safety
 ///
 /// `q` and `wait` must be valid.
-#[export]
-unsafe extern "C" fn rust_swait_finish(q: *mut Head, wait: *mut Wait) {
+#[no_mangle]
+unsafe extern "C" fn finish_swait(q: *mut Head, wait: *mut Wait) {
     // SAFETY: The caller guarantees that changing current is valid.
     unsafe { bindings::rust_swait_set_current_state_relaxed(bindings::TASK_RUNNING) };
 

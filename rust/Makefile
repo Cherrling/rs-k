@@ -576,6 +576,13 @@ rust_non_gpl_exports := \
 	prepare_to_rcuwait \
 	finish_rcuwait \
 	rcuwait_wake_up \
+	__init_swait_queue_head \
+	swake_up_locked \
+	swake_up_one \
+	swake_up_all \
+	prepare_to_swait_exclusive \
+	prepare_to_swait_event \
+	finish_swait \
 	kobject_init \
 	kobject_get \
 	kobject_get_unless_zero \
@@ -720,7 +727,10 @@ rust_unexported_symbols := \
 	check_irq_resend \
 	clear_irq_resend \
 	irq_resend_init \
-	resend_irqs
+	resend_irqs \
+	swake_up_all_locked \
+	__prepare_to_swait \
+	__finish_swait
 
 rust_exports = $(NM) -p --defined-only $(1) | awk '$$2~/(T|R|D|B)/ && $$3!~/__(pfx|cfi|odr_asan)/ { printf $(2),$$3 }'
 rust_auto_export_skip := $(rust_non_gpl_exports) $(rust_unexported_symbols)

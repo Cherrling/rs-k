@@ -241,64 +241,12 @@ int rust_swait_signal_pending_state(unsigned int state,
 	return signal_pending_state(state, task);
 }
 
-void __init_swait_queue_head(struct swait_queue_head *q, const char *name,
-			     struct lock_class_key *key)
-{
-	rust_swait_init_queue_head(q, name, key);
-}
 EXPORT_SYMBOL(__init_swait_queue_head);
-
-void swake_up_locked(struct swait_queue_head *q, int wake_flags)
-{
-	rust_swait_wake_locked(q, wake_flags);
-}
 EXPORT_SYMBOL(swake_up_locked);
-
-void swake_up_all_locked(struct swait_queue_head *q)
-{
-	rust_swait_wake_all_locked(q);
-}
-
-void swake_up_one(struct swait_queue_head *q)
-{
-	rust_swait_wake_one(q);
-}
 EXPORT_SYMBOL(swake_up_one);
-
-void swake_up_all(struct swait_queue_head *q)
-{
-	rust_swait_wake_all(q);
-}
 EXPORT_SYMBOL(swake_up_all);
-
-void __prepare_to_swait(struct swait_queue_head *q, struct swait_queue *wait)
-{
-	rust_swait_prepare_locked(q, wait);
-}
-
-void prepare_to_swait_exclusive(struct swait_queue_head *q,
-				struct swait_queue *wait, int state)
-{
-	rust_swait_prepare_exclusive(q, wait, state);
-}
 EXPORT_SYMBOL(prepare_to_swait_exclusive);
-
-long prepare_to_swait_event(struct swait_queue_head *q,
-			    struct swait_queue *wait, int state)
-{
-	return rust_swait_prepare_event(q, wait, state);
-}
 EXPORT_SYMBOL(prepare_to_swait_event);
-
-void __finish_swait(struct swait_queue_head *q, struct swait_queue *wait)
-{
-	rust_swait_finish_locked(q, wait);
-}
-
-void finish_swait(struct swait_queue_head *q, struct swait_queue *wait)
-{
-	rust_swait_finish(q, wait);
-}
 EXPORT_SYMBOL(finish_swait);
 
 #endif /* CONFIG_RUST_SWAIT */

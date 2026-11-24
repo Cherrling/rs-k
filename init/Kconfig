@@ -899,8 +899,9 @@ config RUST_SWAIT
 	  includes queue membership, wake selection, signal handling, and
 	  completion of a wait.
 
-	  Raw locking, task state changes, wakeups, and intrusive list
-	  primitives remain in C because they depend on scheduler and
+	  Rust directly defines every production entry point. Raw locking, task
+	  state changes, wakeups, intrusive list primitives, and the original
+	  export records remain in C because they depend on scheduler and
 	  architecture internals.
 
 	  This is part of the experimental native Rust kernel migration.

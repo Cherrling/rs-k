@@ -98,6 +98,21 @@ Completion state machine
   simple-wait, and ordinary export boundaries. C fallback configurations
   retain the complete implementations.
 
+Simple wait queue state machine
+  Status: ``migrated``.
+
+  Evidence: :doc:`swait`.
+
+  Rust directly defines the ten public initialization, wake, preparation,
+  signal, and completion entry points. Rust owns queue membership, FIFO wake
+  selection, bounded wake-all traversal, task-state ordering, signal
+  rejection, cleanup, and internal locked wake-all decisions. C retains the
+  shared layouts and construction macros, raw lock and list helpers, task,
+  signal, and scheduler primitives, and the original export classes. C
+  fallback configurations retain the complete implementations. All 12 KUnit
+  boots passed 5 of 5 cases, the adjacent SMP4 suites passed 20 of 20 cases,
+  and the module ABI test linked all seven ordinary exports.
+
 RCU wait lifecycle
   Status: ``migrated``.
 
@@ -766,6 +781,62 @@ Kref export metadata
 
   Exit condition: Rust export metadata supports the ordinary class without C
   export entries.
+
+Simple wait queue layout and wait macros
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/swait.h``.
+
+  Reason: C and Rust share the raw lock, queue, wait, task pointer, and
+  intrusive list layouts. The public macros also expand the caller-provided C
+  condition and scheduling command after Rust prepares the wait.
+
+  Test: Native, fallback, and C-only KUnit boots exercise queue
+  initialization, stack wait entries, signal rejection, and FIFO wakeup.
+
+  Risk: A layout or macro expansion mismatch can miss a wakeup, corrupt queue
+  membership, or evaluate the condition with the wrong task state.
+
+  Exit condition: Rust owns an equivalent queue and wait layout and a
+  condition-callback interface.
+
+Simple wait raw lock, task, and list helpers
+  Status: ``boundary-retained``.
+
+  Owner: ``kernel/sched/swait.c`` and the Rust bindings.
+
+  Reason: Raw lock acquisition, lock dependency classes, interrupt state
+  restoration, current task access, task-state stores, signal queries, task
+  wakeup, and intrusive list mutation retain scheduler, lock, and
+  architecture contracts.
+
+  Test: Native SMP1/SMP4, KASAN, lockdep, and PREEMPT_RT boots exercise queue
+  lifecycle, bounded wake-all, FIFO wake, signal, and locked wake-all paths.
+
+  Risk: Incorrect lock, barrier, task-state, or list ordering can lose a
+  wakeup, leave a stale waiter, or restore the wrong interrupt state.
+
+  Exit condition: Approved Rust lock, task, signal, scheduler, and list
+  abstractions preserve the complete helper contracts.
+
+Simple wait export metadata
+  Status: ``boundary-retained``.
+
+  Owner: ``kernel/sched/swait.c`` and ``rust/Makefile``.
+
+  Reason: Seven public symbols retain ordinary non-GPL exports, while
+  ``swake_up_all_locked()``, ``__prepare_to_swait()``, and ``__finish_swait()``
+  remain unexported and generated Rust exports use the GPL class.
+
+  Test: ``vmlinux.symvers`` records seven ``EXPORT_SYMBOL`` entries, no entry
+  for the three internal names, and the generated Rust export lists exclude
+  all ten names.
+
+  Risk: A duplicate export or class change can expose an internal interface
+  or break module compatibility.
+
+  Exit condition: Rust export metadata supports the ordinary and unexported
+  classes without C export records.
 
 RCU wait layout and wait macros
   Status: ``boundary-retained``.
@@ -1653,6 +1724,12 @@ inline initialization, task and signal primitives, scheduler timeout calls,
 simple-wait operations, PREEMPT_RT assertion, and export metadata remain named
 C boundaries. Rust defines every public entry and owns every count, wait,
 timeout, signal, wake, and consumption decision.
+
+The simple wait queue boundary is valid only while the shared queue and wait
+layouts, construction macros, raw lock and list helpers, task-state and signal
+queries, scheduler wakeup, and export metadata remain named C boundaries.
+Rust defines every public entry and owns every initialization, membership,
+wake-selection, wake-all, signal, cleanup, and state-order decision.
 
 The RCU wait boundary is valid only while the shared wait layout, caller
 condition expansion, RCU and task-state primitives, signal queries, scheduler
