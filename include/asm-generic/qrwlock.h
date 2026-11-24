@@ -25,6 +25,14 @@
 /*
  * External function declarations
  */
+#ifdef CONFIG_RUST_RWLOCK
+bool rust_qrwlock_read_lock(struct qrwlock *lock);
+bool rust_qrwlock_read_trylock(struct qrwlock *lock);
+bool rust_qrwlock_write_lock(struct qrwlock *lock);
+bool rust_qrwlock_write_trylock(struct qrwlock *lock);
+void rust_qrwlock_read_unlock(struct qrwlock *lock);
+void rust_qrwlock_write_unlock(struct qrwlock *lock);
+#endif
 extern void queued_read_lock_slowpath(struct qrwlock *lock);
 extern void queued_write_lock_slowpath(struct qrwlock *lock);
 

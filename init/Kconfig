@@ -1013,14 +1013,16 @@ config RUST_RWLOCK
 	default y
 	help
 	  Use Rust for the queued read-write spinlock count and handoff state
-	  machine. This includes reader and writer fast acquisition,
-	  non-blocking acquisition, reader and writer slow-path count
-	  transitions, writer waiting and handoff, and unlock transitions.
+	  machine and directly define its public entry points. This includes
+	  reader and writer fast acquisition, non-blocking acquisition, reader
+	  and writer slow-path count transitions, writer waiting and handoff,
+	  and unlock transitions.
 
 	  Raw atomics and memory ordering, the architecture spinlock protecting
-	  the wait queue, interrupt-context detection, tracing, and module ABI
-	  adapters remain in C. Preemption-disabled spin semantics remain in
-	  the queued read-write lock interface.
+	  the wait queue, interrupt-context detection, tracing, lockdep wrappers,
+	  preemption-disabled inline semantics, and ordinary export metadata
+	  remain in C. The complete C implementation remains available when this
+	  option is disabled.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

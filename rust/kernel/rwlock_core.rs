@@ -4,11 +4,12 @@
 //!
 //! Rust owns reader and writer fast acquisition, non-blocking acquisition,
 //! slow-path count transitions, writer waiting and handoff, and unlock state
-//! transitions. C helpers retain architecture atomics, the architecture
-//! spinlock protecting the wait queue, interrupt-context detection, tracing,
-//! and module-visible ABI adapters.
+//! transitions. Rust directly defines the public production entries. C helpers
+//! retain architecture atomics, the architecture spinlock protecting the wait
+//! queue, interrupt-context detection, tracing, and export metadata.
 
 use crate::{bindings, ffi::c_int};
+use macros::export;
 type Rwlock = bindings::qrwlock;
 
 const WAITING: c_int = bindings::QRW_WAITING as c_int;
@@ -122,11 +123,23 @@ unsafe fn wait_waiting_relaxed(lock: *mut Rwlock) -> c_int {
 /// # Safety
 ///
 /// `lock` must point to a valid queued read-write lock.
-#[no_mangle]
-unsafe extern "C" fn rust_qrwlock_read_fast(lock: *mut Rwlock) -> bool {
+unsafe fn read_fast(lock: *mut Rwlock) -> bool {
     // SAFETY: The caller guarantees that `lock` is valid.
     let count = unsafe { add_return_acquire(lock, BIAS) };
     count & WMASK == 0
+}
+
+/// Attempts the reader fast path.
+///
+/// Returns false when the inline API must run `queued_read_lock_slowpath()`.
+///
+/// # Safety
+///
+/// `lock` must point to a valid queued read-write lock.
+#[export]
+unsafe extern "C" fn rust_qrwlock_read_lock(lock: *mut Rwlock) -> bool {
+    // SAFETY: The caller guarantees that `lock` is valid.
+    unsafe { read_fast(lock) }
 }
 
 /// Attempts a non-blocking reader acquisition.
@@ -134,8 +147,7 @@ unsafe extern "C" fn rust_qrwlock_read_fast(lock: *mut Rwlock) -> bool {
 /// # Safety
 ///
 /// `lock` must point to a valid queued read-write lock.
-#[no_mangle]
-unsafe extern "C" fn rust_qrwlock_read_trylock_fast(lock: *mut Rwlock) -> bool {
+unsafe fn read_trylock_fast(lock: *mut Rwlock) -> bool {
     // SAFETY: The caller guarantees that `lock` is valid.
     let mut count = unsafe { read_count(lock) };
     if count & WMASK != 0 {
@@ -154,6 +166,17 @@ unsafe extern "C" fn rust_qrwlock_read_trylock_fast(lock: *mut Rwlock) -> bool {
     false
 }
 
+/// Attempts a non-blocking reader acquisition.
+///
+/// # Safety
+///
+/// `lock` must point to a valid queued read-write lock.
+#[export]
+unsafe extern "C" fn rust_qrwlock_read_trylock(lock: *mut Rwlock) -> bool {
+    // SAFETY: The caller guarantees that `lock` is valid.
+    unsafe { read_trylock_fast(lock) }
+}
+
 /// Attempts the writer fast path.
 ///
 /// Returns false when the caller must run `queued_write_lock_slowpath()`.
@@ -161,11 +184,23 @@ unsafe extern "C" fn rust_qrwlock_read_trylock_fast(lock: *mut Rwlock) -> bool {
 /// # Safety
 ///
 /// `lock` must point to a valid queued read-write lock.
-#[no_mangle]
-unsafe extern "C" fn rust_qrwlock_write_fast(lock: *mut Rwlock) -> bool {
+unsafe fn write_fast(lock: *mut Rwlock) -> bool {
     let mut expected = 0;
     // SAFETY: The caller guarantees that `lock` is valid.
     unsafe { try_cmpxchg_acquire(lock, &mut expected, LOCKED) }
+}
+
+/// Attempts the writer fast path.
+///
+/// Returns false when the inline API must run `queued_write_lock_slowpath()`.
+///
+/// # Safety
+///
+/// `lock` must point to a valid queued read-write lock.
+#[export]
+unsafe extern "C" fn rust_qrwlock_write_lock(lock: *mut Rwlock) -> bool {
+    // SAFETY: The caller guarantees that `lock` is valid.
+    unsafe { write_fast(lock) }
 }
 
 /// Attempts a non-blocking writer acquisition.
@@ -173,8 +208,7 @@ unsafe extern "C" fn rust_qrwlock_write_fast(lock: *mut Rwlock) -> bool {
 /// # Safety
 ///
 /// `lock` must point to a valid queued read-write lock.
-#[no_mangle]
-unsafe extern "C" fn rust_qrwlock_write_trylock_fast(lock: *mut Rwlock) -> bool {
+unsafe fn write_trylock_fast(lock: *mut Rwlock) -> bool {
     // SAFETY: The caller guarantees that `lock` is valid.
     let mut count = unsafe { read_count(lock) };
     if count != 0 {
@@ -185,15 +219,36 @@ unsafe extern "C" fn rust_qrwlock_write_trylock_fast(lock: *mut Rwlock) -> bool 
     unsafe { try_cmpxchg_acquire(lock, &mut count, LOCKED) }
 }
 
+/// Attempts a non-blocking writer acquisition.
+///
+/// # Safety
+///
+/// `lock` must point to a valid queued read-write lock.
+#[export]
+unsafe extern "C" fn rust_qrwlock_write_trylock(lock: *mut Rwlock) -> bool {
+    // SAFETY: The caller guarantees that `lock` is valid.
+    unsafe { write_trylock_fast(lock) }
+}
+
 /// Releases one reader.
 ///
 /// # Safety
 ///
 /// `lock` must be valid and reader-held.
-#[no_mangle]
-unsafe extern "C" fn rust_qrwlock_read_unlock_fast(lock: *mut Rwlock) {
+unsafe fn read_unlock_fast(lock: *mut Rwlock) {
     // SAFETY: The caller guarantees that `lock` is reader-held.
     unsafe { sub_return_release(lock, BIAS) };
+}
+
+/// Releases one reader.
+///
+/// # Safety
+///
+/// `lock` must be valid and reader-held.
+#[export]
+unsafe extern "C" fn rust_qrwlock_read_unlock(lock: *mut Rwlock) {
+    // SAFETY: The caller guarantees that `lock` is reader-held.
+    unsafe { read_unlock_fast(lock) };
 }
 
 /// Releases the writer.
@@ -201,10 +256,20 @@ unsafe extern "C" fn rust_qrwlock_read_unlock_fast(lock: *mut Rwlock) {
 /// # Safety
 ///
 /// `lock` must be valid and writer-held.
-#[no_mangle]
-unsafe extern "C" fn rust_qrwlock_write_unlock_fast(lock: *mut Rwlock) {
+unsafe fn write_unlock_fast(lock: *mut Rwlock) {
     // SAFETY: The caller guarantees that `lock` is writer-held.
     unsafe { bindings::rust_qrwlock_store_release_unlock(lock) };
+}
+
+/// Releases the writer.
+///
+/// # Safety
+///
+/// `lock` must be valid and writer-held.
+#[export]
+unsafe extern "C" fn rust_qrwlock_write_unlock(lock: *mut Rwlock) {
+    // SAFETY: The caller guarantees that `lock` is writer-held.
+    unsafe { write_unlock_fast(lock) };
 }
 
 /// Runs the contended reader slow path.
@@ -212,8 +277,9 @@ unsafe extern "C" fn rust_qrwlock_write_unlock_fast(lock: *mut Rwlock) {
 /// # Safety
 ///
 /// `lock` must be valid and the caller must permit spinning.
-#[no_mangle]
-unsafe extern "C" fn rust_qrwlock_read_lock_slowpath(lock: *mut Rwlock) {
+#[export]
+#[link_section = ".spinlock.text"]
+unsafe extern "C" fn queued_read_lock_slowpath(lock: *mut Rwlock) {
     // SAFETY: This helper only checks whether the caller is in interrupt context.
     if unsafe { bindings::rust_qrwlock_in_interrupt() } {
         // SAFETY: The caller guarantees that `lock` is valid.
@@ -242,8 +308,9 @@ unsafe extern "C" fn rust_qrwlock_read_lock_slowpath(lock: *mut Rwlock) {
 /// # Safety
 ///
 /// `lock` must be valid and the caller must permit spinning.
-#[no_mangle]
-unsafe extern "C" fn rust_qrwlock_write_lock_slowpath(lock: *mut Rwlock) {
+#[export]
+#[link_section = ".spinlock.text"]
+unsafe extern "C" fn queued_write_lock_slowpath(lock: *mut Rwlock) {
     // SAFETY: The caller guarantees that `lock` is valid.
     unsafe { bindings::rust_qrwlock_trace_write_begin(lock) };
     // SAFETY: The caller guarantees that `lock` is valid.

@@ -174,6 +174,21 @@ Read-write semaphore state machine and public entries
   export metadata. C fallback configurations retain the complete entry
   implementations.
 
+Queued read-write spinlock state machine and public entries
+  Status: ``migrated``.
+
+  Evidence: :doc:`rwlock`.
+
+  Rust directly defines the six entry points used by the inline queued-lock
+  API and the two public slow-path entries. Rust owns reader and writer fast
+  acquisition, non-blocking acquisition, provisional count handling, writer
+  waiting and handoff, slow-path count transitions, and unlock transitions.
+  C retains the shared layout, atomics and memory ordering, architecture wait
+  queue lock, interrupt-context detection, tracing, preemption and lockdep
+  wrappers, and ordinary non-GPL export metadata. The Rust slow paths remain
+  in ``.spinlock.text``. C fallback and C-only configurations retain the
+  complete slow-path implementations.
+
 Simple wait queue state machine
   Status: ``migrated``.
 
@@ -612,6 +627,31 @@ Read-write semaphore scheduler and locking-debug boundary
 
   Exit condition: Rust owns equivalent preemption, wake queue, scheduler,
   lockdep, lock-stat, and context-analysis interfaces.
+
+Queued read-write spinlock architecture and tracing boundary
+  Status: ``boundary-retained``.
+
+  Owner: ``include/asm-generic/qrwlock.h``, ``include/linux/rwlock-rust.h``,
+  ``kernel/locking/qrwlock.c``, and ``rust/kernel/rwlock_core.rs``.
+
+  Reason: Native Rust entries select and update lock state, but architecture
+  atomics and memory ordering, the architecture wait queue lock,
+  interrupt-context detection, contention tracepoints, preemption and lockdep
+  wrappers, and ordinary exports use inline locking, tracing, and
+  architecture interfaces that remain in C.
+
+  Test: Native, fallback, and C-only KUnit runs exercise fast paths, trylock,
+  reader and writer slow paths, writer preference, handoff, and concurrent
+  reader/writer exclusion. Native KASAN, lockdep, and adjacent lock and wait
+  suites pass.
+
+  Risk: A count transition or memory-ordering mismatch can lose a waiting
+  writer, admit a reader behind a waiting writer, or expose critical-section
+  accesses before the corresponding acquire ordering.
+
+  Exit condition: Rust owns equivalent architecture atomics, wait queue
+  operations, interrupt-context checks, tracing, preemption, lockdep, and
+  context-analysis interfaces.
 
 Generic bitmap storage and inline interface
   Status: ``boundary-retained``.

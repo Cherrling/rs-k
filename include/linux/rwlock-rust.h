@@ -21,28 +21,8 @@ struct qrwlock;
 #ifdef CONFIG_RUST_RWLOCK
 
 /*
- * Production state-machine entries implemented in Rust. The fast entries are
- * called through C ABI adapters because the queued read-write lock API remains
- * inline in modules.
- */
-bool rust_qrwlock_read_lock(struct qrwlock *lock);
-bool rust_qrwlock_read_trylock(struct qrwlock *lock);
-bool rust_qrwlock_write_lock(struct qrwlock *lock);
-bool rust_qrwlock_write_trylock(struct qrwlock *lock);
-void rust_qrwlock_read_unlock(struct qrwlock *lock);
-void rust_qrwlock_write_unlock(struct qrwlock *lock);
-void rust_qrwlock_read_lock_slowpath(struct qrwlock *lock);
-void rust_qrwlock_write_lock_slowpath(struct qrwlock *lock);
-
-/*
  * Narrow C helpers used by the Rust state machine.
  */
-bool rust_qrwlock_read_fast(struct qrwlock *lock);
-bool rust_qrwlock_read_trylock_fast(struct qrwlock *lock);
-bool rust_qrwlock_write_fast(struct qrwlock *lock);
-bool rust_qrwlock_write_trylock_fast(struct qrwlock *lock);
-void rust_qrwlock_read_unlock_fast(struct qrwlock *lock);
-void rust_qrwlock_write_unlock_fast(struct qrwlock *lock);
 int rust_qrwlock_read_count(struct qrwlock *lock);
 int rust_qrwlock_add_return_acquire(struct qrwlock *lock, int value);
 int rust_qrwlock_sub_return_release(struct qrwlock *lock, int value);

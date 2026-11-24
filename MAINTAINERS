@@ -24148,6 +24148,7 @@ F:	Documentation/rust/native-port-coverage.rst
 F:	Documentation/rust/native-rbtree.rst
 F:	Documentation/rust/native-rcuwait.rst
 F:	Documentation/rust/native-task-work.rst
+F:	Documentation/rust/rwlock.rst
 F:	Documentation/rust/rwsem.rst
 F:	Documentation/rust/semaphore.rst
 F:	Documentation/rust/wait-bit.rst
@@ -24217,6 +24218,7 @@ F:	include/linux/wait-rust.h
 F:	include/linux/xarray-rust.h
 F:	include/trace/events/rust_sample.h
 F:	kernel/locking/mutex.c
+F:	kernel/locking/qrwlock.c
 F:	kernel/locking/rwsem.c
 F:	kernel/locking/semaphore.c
 F:	kernel/sched/wait.c
@@ -24307,6 +24309,7 @@ F:	rust/kernel/lockref.rs
 F:	rust/kernel/mutex_core.rs
 F:	rust/kernel/percpu_refcount.rs
 F:	rust/kernel/rcuwait.rs
+F:	rust/kernel/rwlock_core.rs
 F:	rust/kernel/rwsem_core.rs
 F:	rust/kernel/semaphore_core.rs
 F:	rust/kernel/task_work.rs

@@ -657,6 +657,14 @@ rust_non_gpl_exports := \
 	_mutex_trylock_nest_lock \
 	ww_mutex_trylock \
 	ww_mutex_unlock \
+	rust_qrwlock_read_lock \
+	rust_qrwlock_read_trylock \
+	rust_qrwlock_read_unlock \
+	rust_qrwlock_write_lock \
+	rust_qrwlock_write_trylock \
+	rust_qrwlock_write_unlock \
+	queued_read_lock_slowpath \
+	queued_write_lock_slowpath \
 	kobject_init \
 	kobject_get \
 	kobject_get_unless_zero \

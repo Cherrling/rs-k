@@ -99,55 +99,32 @@ void rust_qrwlock_trace_end(struct qrwlock *lock)
 }
 
 /*
- * The queued read-write lock API remains inline in modules. These adapters
- * preserve the non-GPL export class of the existing lock interface.
+ * The queued read-write lock API remains inline in modules. Rust defines its
+ * production entries. Preserve the non-GPL export class here.
  */
-bool rust_qrwlock_read_lock(struct qrwlock *lock)
-{
-	return rust_qrwlock_read_fast(lock);
-}
 EXPORT_SYMBOL(rust_qrwlock_read_lock);
-
-bool rust_qrwlock_read_trylock(struct qrwlock *lock)
-{
-	return rust_qrwlock_read_trylock_fast(lock);
-}
 EXPORT_SYMBOL(rust_qrwlock_read_trylock);
-
-void rust_qrwlock_read_unlock(struct qrwlock *lock)
-{
-	rust_qrwlock_read_unlock_fast(lock);
-}
 EXPORT_SYMBOL(rust_qrwlock_read_unlock);
-
-bool rust_qrwlock_write_lock(struct qrwlock *lock)
-{
-	return rust_qrwlock_write_fast(lock);
-}
 EXPORT_SYMBOL(rust_qrwlock_write_lock);
-
-bool rust_qrwlock_write_trylock(struct qrwlock *lock)
-{
-	return rust_qrwlock_write_trylock_fast(lock);
-}
 EXPORT_SYMBOL(rust_qrwlock_write_trylock);
-
-void rust_qrwlock_write_unlock(struct qrwlock *lock)
-{
-	rust_qrwlock_write_unlock_fast(lock);
-}
 EXPORT_SYMBOL(rust_qrwlock_write_unlock);
+
+/*
+ * Rust defines queued_read_lock_slowpath() and
+ * queued_write_lock_slowpath().
+ */
+EXPORT_SYMBOL(queued_read_lock_slowpath);
+/* Rust defines queued_write_lock_slowpath(). */
+EXPORT_SYMBOL(queued_write_lock_slowpath);
 #endif /* CONFIG_RUST_RWLOCK */
 
+#ifndef CONFIG_RUST_RWLOCK
 /**
  * queued_read_lock_slowpath - acquire read lock of a queued rwlock
  * @lock: Pointer to queued rwlock structure
  */
 void __lockfunc queued_read_lock_slowpath(struct qrwlock *lock)
 {
-#ifdef CONFIG_RUST_RWLOCK
-	rust_qrwlock_read_lock_slowpath(lock);
-#else
 	/*
 	 * Readers come here when they cannot get the lock without waiting
 	 */
@@ -184,7 +161,6 @@ void __lockfunc queued_read_lock_slowpath(struct qrwlock *lock)
 	arch_spin_unlock(&lock->wait_lock);
 
 	trace_contention_end(lock, 0);
-#endif
 }
 EXPORT_SYMBOL(queued_read_lock_slowpath);
 
@@ -194,9 +170,6 @@ EXPORT_SYMBOL(queued_read_lock_slowpath);
  */
 void __lockfunc queued_write_lock_slowpath(struct qrwlock *lock)
 {
-#ifdef CONFIG_RUST_RWLOCK
-	rust_qrwlock_write_lock_slowpath(lock);
-#else
 	int cnts;
 
 	trace_contention_begin(lock, LCB_F_SPIN | LCB_F_WRITE);
@@ -221,6 +194,6 @@ unlock:
 	arch_spin_unlock(&lock->wait_lock);
 
 	trace_contention_end(lock, 0);
-#endif
 }
 EXPORT_SYMBOL(queued_write_lock_slowpath);
+#endif /* !CONFIG_RUST_RWLOCK */
