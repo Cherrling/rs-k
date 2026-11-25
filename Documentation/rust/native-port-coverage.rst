@@ -1231,6 +1231,44 @@ Scheduler previous-task balance entry
   cases. The production symbol table defines ``prev_balance`` in Rust, omits
   the old adapter and its exports, and has no unresolved reference.
 
+Scheduler core task pick entry
+  Status: ``migrated``.
+
+  Evidence: :doc:`sched`.
+
+  Rust directly defines ``pick_task()``. The native C object compiles out the
+  original static implementation. Rust owns the deferred-server clear,
+  highest-to-lowest active-class traversal, scheduling-class callback lookup
+  and invocation, retry-sentinel propagation, selected-task return, and the
+  fatal idle-class invariant decision. C retains the scheduling-class callback
+  implementations, class anchors and order, generated runqueue field offsets,
+  retry sentinel, and the narrow fatal ``BUG()`` helper. C fallback and C-only
+  configurations retain the complete C implementation.
+
+  Test: Native, KASAN, lockdep, and PREEMPT_RT four-vCPU SMT runs each passed
+  all 39 scheduler cases. Their one-vCPU runs passed 36 cases and skipped 3
+  cases that require multiple CPUs or SMT. The C core-pick fallback passed 38
+  four-vCPU cases and 35 one-vCPU cases with 3 skips. The C-only configuration
+  passed 4 four-vCPU cases and 2 one-vCPU cases with 2 skips. All six
+  configurations passed all 25 hrtimer cases. Native, C fallback, and C-only
+  also passed all 6 CPU-priority cases. No run reported an unexpected
+  scheduler ``BUG``, warning, KASAN report, lock dependency diagnosis, Oops,
+  or panic.
+
+  Native ``rust/kernel.o`` defines ``pick_task``. Native
+  ``kernel/sched/core.o`` has only an undefined reference to it. Every native
+  debug configuration links one strong definition, omits the old adapter
+  name, and has no ``Module.symvers`` entry or unresolved scheduler symbol.
+  The production build enabled all sixteen scheduler Rust options and passed
+  Clippy, Rustdoc, rustfmt, strict checkpatch, and an SMT boot to the expected
+  missing-root-filesystem panic.
+
+  Risk: A changed class order, callback ABI, retry sentinel, or exhaustion
+  decision can select the wrong task or return an invalid task through the
+  scheduler. The current exit condition is one correct production entry,
+  complete focused and adjacent test coverage, and clean symbol ownership in
+  every configuration class.
+
 Scheduler task runqueue transition entries
   Status: ``migrated``.
 

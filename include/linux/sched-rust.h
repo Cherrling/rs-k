@@ -492,8 +492,7 @@ unsigned int rust_sched_pick_class_result_select(bool retry, bool has_task);
 #define RUST_SCHED_CORE_PICK_ACTION_RETURN	0x01
 #define RUST_SCHED_CORE_PICK_ACTION_CONTINUE	0x02
 
-struct task_struct *rust_sched_core_pick_task(struct rq *rq,
-					      struct rq_flags *rf);
+struct task_struct *pick_task(struct rq *rq, struct rq_flags *rf);
 
 #ifdef CONFIG_KUNIT
 unsigned int rust_sched_core_pick_result_select(bool retry, bool has_task);

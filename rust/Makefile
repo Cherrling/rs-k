@@ -834,6 +834,7 @@ rust_unexported_symbols := \
 	set_next_task \
 	put_prev_set_next_task \
 	prev_balance \
+	pick_task \
 	task_state_match \
 	ttwu_state_match \
 	ttwu_runnable \

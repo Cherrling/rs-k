@@ -1308,9 +1308,10 @@ config RUST_SCHED_CORE_PICK_TASK
 	depends on RUST && SCHED_CORE
 	default y
 	help
-	  Use Rust for the production core-scheduling task pick path. Rust owns
-	  the deferred-server clear, active-class traversal, pick_task callback
-	  dispatch, and retry-sentinel propagation.
+	  Use Rust to directly define the production pick_task() entry. Rust
+	  owns the deferred-server clear, active-class traversal, pick_task
+	  callback dispatch, and retry-sentinel propagation. The original C
+	  implementation is compiled out.
 
 	  The scheduling-class anchors and order, runqueue field offsets,
 	  retry sentinel, and fatal invariant report remain in C.

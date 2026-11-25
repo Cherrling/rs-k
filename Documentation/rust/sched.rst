@@ -48,9 +48,10 @@ machine directly.
 The ``CONFIG_RUST_SCHED_PICK_NEXT_TASK`` option selects Rust for the production
 next-task selection path, fair-class fast path, active-class scan, retry
 decision, class callback dispatch, and final class transition.
-The ``CONFIG_RUST_SCHED_CORE_PICK_TASK`` option selects Rust for the production
-core-scheduling task pick, deferred-server clear, active-class traversal,
-pick-callback dispatch, and retry-sentinel propagation.
+The ``CONFIG_RUST_SCHED_CORE_PICK_TASK`` option selects a direct Rust
+definition of ``pick_task()``. Rust owns the deferred-server clear,
+active-class traversal, pick-callback dispatch, retry-sentinel propagation,
+and fatal idle-class invariant. The native C implementation is compiled out.
 The ``CONFIG_RUST_SCHED_BLOCK_TASK`` option selects a native Rust definition of
 ``block_task()``.
 The ``CONFIG_RUST_SCHED_RQ_TRANSITION`` option selects direct Rust definitions
@@ -117,9 +118,10 @@ Rust owns these production decisions:
   fast path, invoking the fair and idle pick functions, traversing active
   scheduling classes, restarting after a retry request, invoking class
   ``pick_task`` callbacks in order, and transitioning to the selected task.
-* Clearing the core-scheduling deferred server, traversing active scheduling
-  classes, invoking each class ``pick_task`` callback in order, returning the
-  selected task or retry sentinel, and returning class exhaustion to C.
+* Defining the production core-scheduling ``pick_task()`` entry, clearing the
+  deferred server, traversing active scheduling classes, invoking each class
+  callback in order, returning the selected task or retry sentinel, and
+  reporting the fatal idle-class invariant after class exhaustion.
 * Reading task load and I/O wait state, updating the runqueue
   ``nr_uninterruptible`` and ``nr_iowait`` counts, ending delay accounting,
   constructing enqueue flags, calling task activation directly, selecting
@@ -211,8 +213,8 @@ The Rust-to-C calls are:
   and fatal invariant reporting used by next-task selection.
 * The highest and lowest scheduling-class anchors, the fair and optional
   sched_ext anchors, the class size, the sched_ext static-key state, the
-  retry-task sentinel, and scheduling-class ``pick_task`` implementations used
-  by core-scheduling task picking.
+  retry-task sentinel, scheduling-class ``pick_task`` implementations, and
+  fatal invariant helper used by core-scheduling task picking.
 * Scheduling-class ``task_woken`` callback implementations reached through
   an indirect call from Rust.
 * Blocking dequeue with selected sleep and special flags, and block
@@ -227,7 +229,7 @@ Other C-to-Rust production entries are:
 * ``put_prev_set_next_task()``.
 * ``prev_balance()``.
 * ``rust_sched_pick_next_task()``.
-* ``rust_sched_core_pick_task()``.
+* ``pick_task()``.
 
 ``task_state_match()`` acquires ``p->pi_lock`` with interrupts disabled and
 releases it before returning. The caller of ``ttwu_state_match()`` holds
@@ -286,11 +288,12 @@ retry sentinel, fair and idle pick implementations, transition helper, and
 fatal invariant report.
 
 For core-scheduling task picking, the caller holds the runqueue lock across the
-complete Rust call. Rust clears ``rq->dl_server``, reads the fixed class
-anchors and class size, traverses active classes, and invokes each class
-``pick_task`` callback. Rust returns a selected task, passes ``RETRY_TASK``
-unchanged to its caller, or returns null after class exhaustion. C reports the
-original fatal idle-class invariant only for the null result.
+complete Rust call. Rust directly defines ``pick_task()``. It clears
+``rq->dl_server``, reads the fixed class anchors and class size, traverses
+active classes, and invokes each class ``pick_task`` callback. Rust returns a
+selected task or passes ``RETRY_TASK`` unchanged to its caller. If class
+traversal exhausts, Rust calls the narrow C ``BUG()`` helper and reports the
+original fatal idle-class invariant.
 
 For the activation entry, C validates that it holds the runqueue lock and
 passes the matching lock context to Rust. Rust selects and orders all state
@@ -447,11 +450,12 @@ anchors bound the linker-ordered class array.
 
 The core-scheduling task-pick path retains runqueue lock ownership,
 scheduling-class pick implementations, class anchors, class size, sched_ext
-static-key state, the retry sentinel, generated field offsets, and fatal
-invariant reporting in C. Rust owns the deferred-server clear, active-class
-iteration, callback lookup and invocation, and result precedence. A non-null
-result, including ``RETRY_TASK``, returns immediately. A null result advances
-to the next active class.
+static-key state, the retry sentinel, generated field offsets, and the fatal
+``BUG()`` delivery helper in C. Rust directly defines ``pick_task()`` and owns
+the deferred-server clear, active-class iteration, callback lookup and
+invocation, result precedence, and the decision to report class exhaustion. A
+non-null result, including ``RETRY_TASK``, returns immediately. A null result
+advances to the next active class.
 
 Rust directly defines ``ttwu_do_activate()``. The caller holds the runqueue
 lock. Rust owns wake-flag decoding, the runqueue ``nr_uninterruptible`` and
@@ -611,8 +615,8 @@ callback. It scans from the highest class toward the lowest class with the
 same sched_ext skip rules as the C iterator. A selected task returns
 immediately. ``RETRY_TASK`` also returns immediately because the outer
 core-scheduling retry loop owns the retry. An empty class continues to the
-next active class. Reaching the lowest class without a result returns null so
-the C caller reports the original fatal idle-class invariant.
+next active class. Reaching the lowest class without a result reports the
+original fatal idle-class invariant through the narrow C ``BUG()`` helper.
 
 Under ``CONFIG_DEBUG_PREEMPT``, a wake mask that contains
 ``TASK_RTLOCK_WAIT`` with any other state bit presents an invalid
@@ -1759,60 +1763,58 @@ image booted to the expected missing-root-filesystem panic without another
 scheduler ``BUG``, warning, KASAN report, lock dependency diagnosis, Oops, or
 unexpected panic. Rustfmt, strict checkpatch, and ``git diff --check`` passed.
 
-The core-scheduling task-pick ownership unit was validated on 2026-11-13 with
-x86_64 ``LLVM=1`` builds and QEMU 11.1.3. Each configuration used a real SMT
-topology with four vCPUs, two threads per core, two cores, and one socket.
-Each configuration passed three consecutive runs for the applicable scheduler
-and hrtimer suites.
+The core-scheduling task-pick entry unit was validated on 2026-11-26 with
+x86_64 ``LLVM=1`` builds and QEMU 11.1.3. Four-vCPU runs used a real SMT
+topology with one socket, two cores, and two threads per core. One-vCPU runs
+covered the single-CPU path.
 
 .. list-table::
    :header-rows: 1
-   :widths: 45 25 25
+   :widths: 40 20 20 20
 
    * - Configuration
-     - Scheduler cases
-     - hrtimer cases
+     - SMP4 scheduler
+     - SMP1 scheduler
+     - hrtimer
    * - Full Rust
-     - 39
-     - 25
+     - 39 pass
+     - 36 pass, 3 skip
+     - 25 pass
    * - C core-pick fallback
-     - 38
-     - 25
-   * - Core-pick only
-     - 6
-     - 25
+     - 38 pass
+     - 35 pass, 3 skip
+     - 25 pass
+   * - C-only
+     - 4 pass
+     - 2 pass, 2 skip
+     - 25 pass
    * - PREEMPT_RT
-     - 39
-     - 25
+     - 39 pass
+     - 36 pass, 3 skip
+     - 25 pass
    * - KASAN
-     - 39
-     - 25
+     - 39 pass
+     - 36 pass, 3 skip
+     - 25 pass
    * - lockdep
-     - 39
-     - 25
-   * - sched_ext and BTF
-     - 39
-     - 25
+     - 39 pass
+     - 36 pass, 3 skip
+     - 25 pass
 
 The real-path case checks that SMT is active, creates a core-scheduling cookie
 with ``PR_SCHED_CORE_CREATE``, and schedules a one-millisecond timeout. The
-full Rust, C fallback, and core-pick-only images all execute this case and all
-three runs pass. The core-pick-only image passes six applicable scheduler
-cases and all twenty-five hrtimer cases.
+full Rust, C fallback, and C-only images execute this case. The native,
+C-fallback, and C-only CPU-priority suites passed all six cases.
 
-The no-KUnit production configuration enabled all fifteen scheduler Rust
-options and built with ``CLIPPY=1``. Its symbol table contains
-``rust_sched_core_pick_task()``, the highest and lowest class anchors, the fair
-and sched_ext anchors, the class-size, sched_ext-state, and retry-sentinel
-helpers. It contains neither the core-pick KUnit selector nor an unresolved
-symbol.
-
-Disassembly shows the deferred-server clear, highest-to-lowest class scan,
-optional sched_ext slot skip, indirect ``pick_task`` callback, retry-sentinel
-comparison, selected-task return, and null return used by C for the fatal
-idle-class invariant. The production image booted on the same SMT topology to
-the expected missing-root-filesystem panic without another scheduler ``BUG``,
+The no-KUnit production configuration enabled all sixteen scheduler Rust
+options and built with ``CLIPPY=1``. Native ``rust/kernel.o`` defines
+``pick_task()``. Native ``kernel/sched/core.o`` has an undefined reference to
+that entry and no production definition. The linked image has one strong
+definition, no old adapter symbol, no export metadata, and no unresolved
+scheduler symbol. The production image booted on the same SMT topology to the
+expected missing-root-filesystem panic without another scheduler ``BUG``,
 warning, KASAN report, lock dependency diagnosis, Oops, or unexpected panic.
+Rustdoc, rustfmt, strict checkpatch, and ``git diff --check`` passed.
 
 Review conditions
 -----------------

@@ -2022,18 +2022,19 @@ unsafe fn core_pick_task_locked(rq: *mut Rq, rf: *mut RqFlags) -> *mut Task {
         class = unsafe { next_active_class(class, fair_class, ext_class, class_size) };
     }
 
-    // The C caller owns the fatal idle-class invariant report.
-    core::ptr::null_mut()
+    // SAFETY: The idle class must always provide a task. Preserve the original
+    // fatal invariant report if class traversal exhausts the active classes.
+    unsafe { bindings::BUG() }
 }
 
-/// Implements the production core-scheduling task pick path.
+/// Defines the production core-scheduling task pick entry.
 ///
 /// # Safety
 ///
 /// `rq` and `rf` must remain live and the caller must hold the runqueue lock.
 #[cfg(CONFIG_RUST_SCHED_CORE_PICK_TASK)]
 #[export]
-unsafe extern "C" fn rust_sched_core_pick_task(rq: *mut Rq, rf: *mut RqFlags) -> *mut Task {
+unsafe extern "C" fn pick_task(rq: *mut Rq, rf: *mut RqFlags) -> *mut Task {
     // SAFETY: The caller satisfies the exported entry-point contract.
     unsafe { core_pick_task_locked(rq, rf) }
 }

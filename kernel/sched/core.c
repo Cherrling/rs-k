@@ -6906,14 +6906,9 @@ static inline bool cookie_match(struct task_struct *a, struct task_struct *b)
  * Careful; this can return RETRY_TASK, it does not include the retry-loop
  * itself due to the whole SMT pick retry thing below.
  */
+#ifndef CONFIG_RUST_SCHED_CORE_PICK_TASK
 static inline struct task_struct *pick_task(struct rq *rq, struct rq_flags *rf)
 {
-#ifdef CONFIG_RUST_SCHED_CORE_PICK_TASK
-	struct task_struct *p = rust_sched_core_pick_task(rq, rf);
-
-	if (likely(p))
-		return p;
-#else
 	const struct sched_class *class;
 	struct task_struct *p;
 
@@ -6924,10 +6919,10 @@ static inline struct task_struct *pick_task(struct rq *rq, struct rq_flags *rf)
 		if (p)
 			return p;
 	}
-#endif
 
 	BUG(); /* The idle class should always have a runnable task. */
 }
+#endif /* !CONFIG_RUST_SCHED_CORE_PICK_TASK */
 
 extern void task_vruntime_update(struct rq *rq, struct task_struct *p, bool in_fi);
 
