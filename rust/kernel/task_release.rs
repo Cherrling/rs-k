@@ -85,16 +85,16 @@ unsafe fn unhash_process(pids: &mut [*mut Pid; PID_TYPE_MAX], task: *mut Task, g
     // SAFETY: The caller holds the locks required by the original sequence.
     unsafe { bindings::rust_helper_task_release_dec_nr_threads() };
     // SAFETY: The caller provides the PID stash and holds tasklist_lock.
-    unsafe { bindings::rust_pid_detach(pids.as_mut_ptr(), task, PIDTYPE_PID) };
+    unsafe { bindings::detach_pid(pids.as_mut_ptr(), task, PIDTYPE_PID) };
     // SAFETY: The task PID remains live until it is released after unlock.
     unsafe { bindings::rust_helper_task_release_wake_pidfd(pid) };
 
     if group_dead {
         // SAFETY: The caller provides the PID stash and holds tasklist_lock.
         unsafe {
-            bindings::rust_pid_detach(pids.as_mut_ptr(), task, PIDTYPE_TGID);
-            bindings::rust_pid_detach(pids.as_mut_ptr(), task, PIDTYPE_PGID);
-            bindings::rust_pid_detach(pids.as_mut_ptr(), task, PIDTYPE_SID);
+            bindings::detach_pid(pids.as_mut_ptr(), task, PIDTYPE_TGID);
+            bindings::detach_pid(pids.as_mut_ptr(), task, PIDTYPE_PGID);
+            bindings::detach_pid(pids.as_mut_ptr(), task, PIDTYPE_SID);
             bindings::rust_helper_task_release_del_tasks(task);
             bindings::rust_helper_task_release_del_sibling(task);
             bindings::rust_helper_task_release_dec_process_count();

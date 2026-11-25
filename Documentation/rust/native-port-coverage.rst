@@ -321,6 +321,44 @@ Native PID allocation
   class, preserved error-pointer semantics, and a clean focused and adjacent
   matrix.
 
+Native PID task association
+  Status: ``migrated``.
+
+  Evidence: :doc:`pid-association`.
+
+  Rust directly defines the production ``attach_pid()``, ``detach_pid()``,
+  ``change_pid()``, ``exchange_tids()``, and ``transfer_pid()`` entries.
+  Rust owns attachment ordering, detachment and replacement transitions,
+  orphan scanning and stash decisions, TID exchange updates, and transfer
+  warnings. C retains the shared task and PID layouts, task-list locking,
+  lockdep assertions, RCU list operations, task PID slot access, PID number
+  reads, and diagnostics. All five entries remain unexported. C fallback and
+  C-only configurations retain the complete implementation.
+
+  Test: Native completed three SMP4 and one SMP1 boot with all five focused
+  cases passing. Fallback and C-only each passed five cases at SMP4 and SMP1.
+  KASAN, lockdep, and PREEMPT_RT each passed all five cases at SMP4 and SMP1.
+  All focused logs are free of failures and diagnostics. The native SMP4
+  adjacent PID lifecycle, allocation, number, task release, signal exit, and
+  task exit notification suites passed 25 of 25 cases.
+
+  Symbol inspection shows that native ``rust/kernel.o`` defines all five
+  entries and native ``kernel/pid.o`` defines none. The linked image contains
+  one definition of each entry, no ``rust_pid_*`` wrapper, no export entry,
+  and no unresolved symbol.
+
+  The production Clippy build produced ``bzImage`` and modules. Its four-vCPU
+  KVM boot reached the expected missing-root-filesystem panic without an
+  unexpected diagnostic. A second production build disabled
+  ``CONFIG_PID_NS``, retained the same Rust entries, and reached the same
+  expected panic.
+
+  Risk: A wrong list operation, orphan decision, pointer update, or transfer
+  order can expose a stale association, free a live PID, or lose a retained
+  PID. The exit condition is one production definition in every
+  configuration class, preserved unexported symbols, and a clean focused and
+  adjacent matrix.
+
 Native PID lifecycle release
   Status: ``migrated``.
 

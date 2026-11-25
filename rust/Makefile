@@ -786,6 +786,10 @@ rust_non_gpl_exports := \
 # Rust-defined production symbols that must not receive automatic exports.
 rust_unexported_symbols := \
 	alloc_pid \
+	attach_pid \
+	change_pid \
+	detach_pid \
+	exchange_tids \
 	free_pid \
 	free_pids \
 	idr_alloc \
@@ -807,6 +811,7 @@ rust_unexported_symbols := \
 	task_work_cancel_func \
 	task_work_cancel_match \
 	task_work_run \
+	transfer_pid \
 	rust_task_work_test_run_task \
 	itimer_get \
 	itimer_set \

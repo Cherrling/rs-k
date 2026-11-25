@@ -429,33 +429,6 @@ void rust_helper_pid_assoc_assert_tasklist_write(void)
 	lockdep_assert_held_write(&tasklist_lock);
 }
 
-void attach_pid(struct task_struct *task, enum pid_type type)
-{
-	rust_pid_attach(task, type);
-}
-
-void detach_pid(struct pid **pids, struct task_struct *task, enum pid_type type)
-{
-	rust_pid_detach(pids, task, type);
-}
-
-void change_pid(struct pid **pids, struct task_struct *task, enum pid_type type,
-		struct pid *pid)
-{
-	rust_pid_change(pids, task, type, pid);
-}
-
-void exchange_tids(struct task_struct *left, struct task_struct *right)
-{
-	rust_pid_exchange_tids(left, right);
-}
-
-void transfer_pid(struct task_struct *old, struct task_struct *new,
-		  enum pid_type type)
-{
-	rust_pid_transfer(old, new, type);
-}
-
 #else /* !CONFIG_RUST_PID_ASSOCIATION */
 
 /*

@@ -26,10 +26,10 @@ The Rust code owns these state transitions and decisions:
 Entry points and ownership
 --------------------------
 
-The public C functions ``attach_pid()``, ``detach_pid()``, ``change_pid()``,
-``exchange_tids()``, and ``transfer_pid()`` remain in ``kernel/pid.c``.  When
-the option is enabled, these functions call the matching Rust production
-entry point and the original C state machine is compiled out.
+Rust directly defines the production ``attach_pid()``, ``detach_pid()``,
+``change_pid()``, ``exchange_tids()``, and ``transfer_pid()`` entries.  The
+native build compiles the original C state machine out of ``kernel/pid.c``.
+The C fallback and C-only configurations retain the complete implementation.
 
 The Rust module keeps all state-transition policy.  C helpers perform only
 primitive operations on kernel structures.
@@ -80,26 +80,39 @@ diagnostic decision, Rust replaces the old task RCU list node with the new node.
 Validation record
 -----------------
 
-Each KUnit configuration ran three consecutive times with four vCPUs.
+The x86_64 validation used the final source for every KUnit configuration.
+KASAN used Clang, ``LLVM=1``, and generic inline KASAN.
 
 .. list-table::
-   :widths: 42 16 16 26
+   :widths: 38 24 16 22
    :header-rows: 1
 
    * - Configuration
-     - Runs
+     - Boots
      - Cases
      - Result
-   * - Rust with PREEMPT_RT and lockdep
-     - 3
+   * - Native
+     - 3 SMP4, 1 SMP1
      - 5 of 5
      - Pass
-   * - C fallback with PREEMPT_RT and lockdep
-     - 3
+   * - Rust fallback
+     - SMP4, SMP1
      - 5 of 5
      - Pass
-   * - Generic inline KASAN with Rust
-     - 3
+   * - C-only
+     - SMP4, SMP1
+     - 5 of 5
+     - Pass
+   * - KASAN with native
+     - SMP4, SMP1
+     - 5 of 5
+     - Pass
+   * - Lockdep with native
+     - SMP4, SMP1
+     - 5 of 5
+     - Pass
+   * - PREEMPT_RT with native
+     - SMP4, SMP1
      - 5 of 5
      - Pass
 
@@ -110,12 +123,15 @@ transfer.
 Every KUnit log reported zero failures and no BUG, warning, KASAN report,
 Oops, refcount report, or lockdep complaint.
 
-The production build used Clippy with KUnit, KASAN, and ``PROVE_LOCKING``
-disabled.  The enabled ``PREEMPT_RT`` configuration still selected
-``LOCKDEP``.  The C adapters contain direct relocations to all five Rust entry
-points.  The Rust symbols are present, test symbols are absent, and
-``llvm-nm -u vmlinux`` reports no unresolved symbols.
+The native SMP4 regression image enabled the PID lifecycle, PID allocation,
+PID number, zombie task release, signal-aware exit, and task exit notification
+suites.  The adjacent suites passed 25 of 25 cases.
 
+Native ``rust/kernel.o`` defines all five entries and native ``kernel/pid.o``
+defines none.  The linked image contains one definition of each entry, no
+``rust_pid_*`` wrapper, no export-table entry, and no unresolved symbol.
+
+The production build used Clippy and produced both ``bzImage`` and modules.
 The production image starts with four vCPUs under KVM.  PID allocation, task
 association, process setup, and early scheduling complete before the image
 reaches the expected missing-root-filesystem panic.  The boot log contains no
@@ -123,8 +139,8 @@ unexpected BUG, warning, KASAN report, Oops, refcount report, or lockdep
 complaint.
 
 A second production configuration disabled ``CONFIG_PID_NS`` while it kept the
-Rust association implementation enabled.  It passed the full build, linked
-with no unresolved symbols, kept all five C adapters calling Rust, and reached
+Rust association implementation enabled.  It passed the Clippy build, linked
+with no unresolved symbols, kept all five entries defined by Rust, and reached
 the same expected missing-root-filesystem panic without an unexpected
 diagnostic.
 

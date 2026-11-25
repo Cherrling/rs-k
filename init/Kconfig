@@ -2324,9 +2324,10 @@ config RUST_PID_ASSOCIATION
 	depends on RUST
 	default y
 	help
-	  Use Rust for the production PID and task association state machine.
-	  Rust owns attach, detach, change, transfer, TID exchange, orphan
-	  detection, and warning decisions.
+	  Use Rust to directly define the production attach_pid(), detach_pid(),
+	  change_pid(), exchange_tids(), and transfer_pid() entries. Rust owns
+	  attach, detach, change, transfer, TID exchange, orphan detection, and
+	  warning decisions. The original C implementation is compiled out.
 
 	  Task-list locking, RCU list primitives, task PID pointer access, and
 	  lockdep assertions remain in C.

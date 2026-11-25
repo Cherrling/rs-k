@@ -84,7 +84,7 @@ unsafe fn change(pids: *mut *mut Pid, task: *mut Task, pid_type: PidType, new: *
 ///
 /// The same requirements as [`attach`] apply.
 #[export]
-unsafe extern "C" fn rust_pid_attach(task: *mut Task, pid_type: PidType) {
+unsafe extern "C" fn attach_pid(task: *mut Task, pid_type: PidType) {
     // SAFETY: The caller upholds the function requirements.
     unsafe { attach(task, pid_type) };
 }
@@ -96,7 +96,7 @@ unsafe extern "C" fn rust_pid_attach(task: *mut Task, pid_type: PidType) {
 /// The same requirements as [`change`] apply. `tasklist_lock` must be
 /// write-held.
 #[export]
-unsafe extern "C" fn rust_pid_detach(pids: *mut *mut Pid, task: *mut Task, pid_type: PidType) {
+unsafe extern "C" fn detach_pid(pids: *mut *mut Pid, task: *mut Task, pid_type: PidType) {
     // SAFETY: The caller upholds the function requirements.
     unsafe { change(pids, task, pid_type, core::ptr::null_mut()) };
 }
@@ -107,7 +107,7 @@ unsafe extern "C" fn rust_pid_detach(pids: *mut *mut Pid, task: *mut Task, pid_t
 ///
 /// The same requirements as [`change`] and [`attach`] apply.
 #[export]
-unsafe extern "C" fn rust_pid_change(
+unsafe extern "C" fn change_pid(
     pids: *mut *mut Pid,
     task: *mut Task,
     pid_type: PidType,
@@ -127,7 +127,7 @@ unsafe extern "C" fn rust_pid_change(
 /// Both tasks must be live, both must have a current PID, and `tasklist_lock`
 /// must be write-held.
 #[export]
-unsafe extern "C" fn rust_pid_exchange_tids(left: *mut Task, right: *mut Task) {
+unsafe extern "C" fn exchange_tids(left: *mut Task, right: *mut Task) {
     assert_tasklist_write();
 
     // SAFETY: The caller guarantees live tasks with PID associations.
@@ -179,7 +179,7 @@ unsafe extern "C" fn rust_pid_exchange_tids(left: *mut Task, right: *mut Task) {
 /// must be linked and the new task node must be unlinked. `tasklist_lock` must
 /// be write-held.
 #[export]
-unsafe extern "C" fn rust_pid_transfer(old: *mut Task, new: *mut Task, pid_type: PidType) {
+unsafe extern "C" fn transfer_pid(old: *mut Task, new: *mut Task, pid_type: PidType) {
     if pid_type == bindings::pid_type_PIDTYPE_PID {
         // SAFETY: This preserves the original invalid-PID-type diagnostic.
         unsafe { bindings::rust_helper_pid_assoc_warn_transfer_pid_type(pid_type) };

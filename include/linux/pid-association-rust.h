@@ -41,16 +41,6 @@ void rust_helper_pid_assoc_stash_set(struct pid **pids, enum pid_type type,
 void rust_helper_pid_assoc_warn_transfer_pid_type(enum pid_type type);
 void rust_helper_pid_assoc_assert_tasklist_write(void);
 
-void rust_pid_attach(struct task_struct *task, enum pid_type type);
-void rust_pid_detach(struct pid **pids, struct task_struct *task,
-		     enum pid_type type);
-void rust_pid_change(struct pid **pids, struct task_struct *task,
-		     enum pid_type type, struct pid *pid);
-void rust_pid_exchange_tids(struct task_struct *left,
-			    struct task_struct *right);
-void rust_pid_transfer(struct task_struct *old, struct task_struct *new,
-		       enum pid_type type);
-
 #endif /* CONFIG_RUST_PID_ASSOCIATION */
 
 #endif /* _LINUX_PID_ASSOCIATION_RUST_H */
