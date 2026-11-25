@@ -677,6 +677,8 @@ rust_non_gpl_exports := \
 	kobject_get \
 	kobject_get_unless_zero \
 	kobject_put \
+	kset_register \
+	kset_unregister \
 	lockref_get \
 	lockref_get_not_zero \
 	lockref_put_return \
@@ -834,6 +836,7 @@ rust_unexported_symbols := \
 	wake_q_add_safe \
 	wake_up_q \
 	wake_up_state \
+	kset_init \
 	enqueue_task \
 	dequeue_task \
 	put_prev_task \

@@ -240,6 +240,7 @@ void rust_kobject_warn_uninitialized(const struct kobject *kobj, bool is_put)
 }
 #endif /* CONFIG_RUST_KOBJECT */
 
+#if !defined(CONFIG_RUST_KOBJECT) || !defined(CONFIG_RUST_KSET)
 static void kobject_init_internal(struct kobject *kobj)
 {
 	if (!kobj)
@@ -255,6 +256,7 @@ static void kobject_init_internal(struct kobject *kobj)
 	kobj->state_initialized = 1;
 #endif /* CONFIG_RUST_KOBJECT */
 }
+#endif /* !CONFIG_RUST_KOBJECT || !CONFIG_RUST_KSET */
 
 
 static int kobject_add_internal(struct kobject *kobj)
@@ -874,12 +876,22 @@ EXPORT_SYMBOL_GPL(kobject_create_and_add);
  * kset_init() - Initialize a kset for use.
  * @k: kset
  */
+#ifndef CONFIG_RUST_KSET
 void kset_init(struct kset *k)
 {
 	kobject_init_internal(&k->kobj);
 	INIT_LIST_HEAD(&k->list);
 	spin_lock_init(&k->list_lock);
 }
+#endif /* !CONFIG_RUST_KSET */
+
+#ifdef CONFIG_RUST_KSET
+void rust_helper_kset_init_objects(struct kset *k)
+{
+	INIT_LIST_HEAD(&k->list);
+	spin_lock_init(&k->list_lock);
+}
+#endif /* CONFIG_RUST_KSET */
 
 /* default kobject attribute operations */
 static ssize_t kobj_attr_show(struct kobject *kobj, struct attribute *attr,
@@ -923,6 +935,7 @@ EXPORT_SYMBOL_GPL(kobj_sysfs_ops);
  * NOTE: On error, the kset.kobj.name allocated by() kobj_set_name()
  * is freed, it can not be used any more.
  */
+#ifndef CONFIG_RUST_KSET
 int kset_register(struct kset *k)
 {
 	int err;
@@ -946,12 +959,14 @@ int kset_register(struct kset *k)
 	kobject_uevent(&k->kobj, KOBJ_ADD);
 	return 0;
 }
+#endif /* !CONFIG_RUST_KSET */
 EXPORT_SYMBOL(kset_register);
 
 /**
  * kset_unregister() - Remove a kset.
  * @k: kset.
  */
+#ifndef CONFIG_RUST_KSET
 void kset_unregister(struct kset *k)
 {
 	if (!k)
@@ -959,6 +974,7 @@ void kset_unregister(struct kset *k)
 	kobject_del(&k->kobj);
 	kobject_put(&k->kobj);
 }
+#endif /* !CONFIG_RUST_KSET */
 EXPORT_SYMBOL(kset_unregister);
 
 /**
@@ -970,6 +986,7 @@ EXPORT_SYMBOL(kset_unregister);
  * looking for a matching kobject. If matching object is found
  * take a reference and return the object.
  */
+#ifndef CONFIG_RUST_KSET
 struct kobject *kset_find_obj(struct kset *kset, const char *name)
 {
 	struct kobject *k;
@@ -988,6 +1005,7 @@ struct kobject *kset_find_obj(struct kset *kset, const char *name)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(kset_find_obj);
+#endif /* !CONFIG_RUST_KSET */
 
 static void kset_release(struct kobject *kobj)
 {
@@ -1009,6 +1027,59 @@ static const struct kobj_type kset_ktype = {
 	.get_ownership	= kset_get_ownership,
 };
 
+#ifdef CONFIG_RUST_KSET
+int rust_helper_kset_add(struct kset *k)
+{
+	return kobject_add_internal(&k->kobj);
+}
+
+void rust_helper_kset_warn_missing_ktype(void)
+{
+	pr_err("must have a ktype to be initialized properly!\n");
+}
+
+void rust_helper_kset_free_name(struct kset *k)
+{
+	kfree_const(k->kobj.name);
+	k->kobj.name = NULL;
+}
+
+void rust_helper_kset_uevent_add(struct kset *k)
+{
+	kobject_uevent(&k->kobj, KOBJ_ADD);
+}
+
+void rust_helper_kset_lock(struct kset *k)
+{
+	spin_lock(&k->list_lock);
+}
+
+void rust_helper_kset_unlock(struct kset *k)
+{
+	spin_unlock(&k->list_lock);
+}
+
+struct kset *rust_helper_kset_alloc(void)
+{
+	return kzalloc_obj(struct kset);
+}
+
+void rust_helper_kset_free(struct kset *k)
+{
+	kfree(k);
+}
+
+int rust_helper_kset_set_name(struct kset *k, const char *name)
+{
+	return kobject_set_name(&k->kobj, "%s", name);
+}
+
+const struct kobj_type *rust_helper_kset_ktype(void)
+{
+	return &kset_ktype;
+}
+#endif /* CONFIG_RUST_KSET */
+
 /**
  * kset_create() - Create a struct kset dynamically.
  *
@@ -1024,6 +1095,7 @@ static const struct kobj_type kset_ktype = {
  *
  * If the kset was not able to be created, NULL will be returned.
  */
+#ifndef CONFIG_RUST_KSET
 static struct kset *kset_create(const char *name,
 				const struct kset_uevent_ops *uevent_ops,
 				struct kobject *parent_kobj)
@@ -1052,6 +1124,7 @@ static struct kset *kset_create(const char *name,
 
 	return kset;
 }
+#endif /* !CONFIG_RUST_KSET */
 
 /**
  * kset_create_and_add() - Create a struct kset dynamically and add it to sysfs.
@@ -1067,6 +1140,7 @@ static struct kset *kset_create(const char *name,
  *
  * If the kset was not able to be created, NULL will be returned.
  */
+#ifndef CONFIG_RUST_KSET
 struct kset *kset_create_and_add(const char *name,
 				 const struct kset_uevent_ops *uevent_ops,
 				 struct kobject *parent_kobj)
@@ -1085,6 +1159,7 @@ struct kset *kset_create_and_add(const char *name,
 	return kset;
 }
 EXPORT_SYMBOL_GPL(kset_create_and_add);
+#endif /* !CONFIG_RUST_KSET */
 
 
 static DEFINE_SPINLOCK(kobj_ns_type_lock);

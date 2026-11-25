@@ -128,6 +128,7 @@ more details.
     native-dmapool
     native-llist
     native-kobject
+    native-kset
     native-list-lru
     native-kfifo
     native-genradix

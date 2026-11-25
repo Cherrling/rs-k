@@ -24139,6 +24139,7 @@ F:	Documentation/rust/native-irq-work.rst
 F:	Documentation/rust/native-kref.rst
 F:	Documentation/rust/native-klist.rst
 F:	Documentation/rust/native-kobject.rst
+F:	Documentation/rust/native-kset.rst
 F:	Documentation/rust/native-list-lru.rst
 F:	Documentation/rust/native-list-sort.rst
 F:	Documentation/rust/native-llist.rst
@@ -24309,6 +24310,7 @@ F:	rust/kernel/irq_work.rs
 F:	rust/kernel/kobject.rs
 F:	rust/kernel/kref.rs
 F:	rust/kernel/klist.rs
+F:	rust/kernel/kset.rs
 F:	rust/kernel/llist.rs
 F:	rust/kernel/list_lru.rs
 F:	rust/kernel/lockref.rs

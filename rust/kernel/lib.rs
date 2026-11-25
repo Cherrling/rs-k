@@ -150,6 +150,8 @@ mod klist;
 mod kobject;
 #[cfg(CONFIG_RUST_KREF)]
 mod kref;
+#[cfg(CONFIG_RUST_KSET)]
+mod kset;
 #[cfg(CONFIG_KUNIT)]
 pub mod kunit;
 pub mod list;

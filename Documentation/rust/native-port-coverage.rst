@@ -824,6 +824,26 @@ Kobject lifecycle
   metadata. C also retains bitfield accessors, diagnostics, the release
   callback bridge, and final cleanup.
 
+Kset lifecycle
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-kset`.
+
+  Rust defines the five public initialization, registration, unregistration,
+  lookup, and dynamic creation entry points. Rust owns validation,
+  initialization and registration order, rollback, dynamic creation, locked
+  lookup, name comparison, reference acquisition, and unregistration order.
+  C retains the shared layout, embedded kobject hierarchy, list and spinlock
+  initialization, internal kobject registration, sysfs and uevent delivery,
+  name and allocation helpers, the static kset type, release callback, and
+  original export metadata. C fallback and C-only configurations retain the
+  complete implementation.
+
+  Test: All nine QEMU runs passed 9 of 9 focused cases. Native, fallback, and
+  C-only each ran at one and four virtual CPUs. Four workers completed 8000
+  concurrent lookup and reference cycles. The adjacent object and list suites
+  passed 92 cases.
+
 Interval tree operations
   Status: ``migrated``.
 
@@ -3289,6 +3309,61 @@ Kobject export metadata
   Exit condition: Rust export metadata supports the original non-GPL class
   without C export entries.
 
+Kset layout and embedded state
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/kobject.h`` and ``lib/kobject.c``.
+
+  Reason: C callers share the kset layout, embedded kobject, intrusive list,
+  spinlock, uevent operations, parent hierarchy, and static kobject type.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT runs exercise
+  initialization, registration, lookup, unregistration, and concurrent
+  lookup.
+
+  Risk: A layout or ordering mismatch can corrupt the kobject hierarchy,
+  release a live object, or leak a failed registration.
+
+  Exit condition: A Rust-owned kset type and safe embedded-object interface
+  replace direct C field access.
+
+Kset C primitive helpers
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/kobject.c`` and ``include/linux/kobject-rust.h``.
+
+  Reason: Kset lifecycle policy needs narrow access to list and spinlock
+  initialization, internal kobject registration, sysfs and uevent delivery,
+  naming and allocation, and the static kset type.
+
+  Test: Duplicate-name creation verifies failed sysfs registration and
+  rollback. Concurrent lookup verifies locked traversal and conditional
+  reference acquisition.
+
+  Risk: A helper can change lock scope, initialization order, ownership, or
+  sysfs behavior and invalidate the Rust lifecycle.
+
+  Exit condition: Safe reusable Rust abstractions replace these helpers
+  without adding a C lifecycle adapter.
+
+Kset export metadata and unexported init
+  Status: ``boundary-retained``.
+
+  Owner: ``lib/kobject.c`` and ``rust/Makefile``.
+
+  Reason: ``kset_register()`` and ``kset_unregister()`` retain non-GPL
+  exports, Rust generates GPL exports for lookup and dynamic creation, and
+  ``kset_init()`` remains internal.
+
+  Test: Native, fallback, and C-only ``Module.symvers`` files preserve the
+  four public export classes and omit ``kset_init()``.
+
+  Risk: A duplicate export or class change can break module compatibility or
+  expose an internal entry.
+
+  Exit condition: Rust export metadata supports ordinary, GPL, and internal
+  entries without C export entries or skip lists.
+
 Interval tree layout and iterator state
   Status: ``boundary-retained``.
 
@@ -4141,7 +4216,7 @@ Remaining core object lifecycles
   Status: ``pending``.
 
   Complete the direct-entry and ownership review for object types beyond
-  kobject.
+  kobject and kset.
 
 Lock and wait lifecycles
   Status: ``pending``.

@@ -805,6 +805,27 @@ config RUST_KOBJECT
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_KSET
+	bool "Rust implementation of kset lifecycle"
+	depends on RUST_KOBJECT && RUST_KLIST
+	default y
+	help
+	  Use Rust for the production kset initialization, registration,
+	  unregistration, object lookup, and dynamic creation lifecycle.
+
+	  Rust directly defines the public kset entry points. It owns argument
+	  validation, initialization and registration order, rollback, locked
+	  list traversal, name matching, reference acquisition, and dynamic
+	  object error paths. C retains the kset layout, spinlock, kobject
+	  hierarchy and sysfs operations, uevent delivery, allocation, and the
+	  static kset release callback.
+
+	  The complete C kset implementation remains available when this option
+	  is disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_LOCKREF
 	bool "Rust implementation of lockref operations"
 	depends on RUST && X86_64 && SMP

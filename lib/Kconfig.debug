@@ -2357,8 +2357,8 @@ config KOBJECT_KUNIT_TEST
 	default KUNIT_ALL_TESTS
 	help
 	  This option enables KUnit tests for kobject initialization,
-	  references, conditional references, final release, and concurrent
-	  reference transitions.
+	  references, conditional references, final release, kset lifecycle
+	  and error paths, and concurrent reference and lookup transitions.
 
 	  The same tests run with either the C implementation or the native
 	  Rust implementation selected.
