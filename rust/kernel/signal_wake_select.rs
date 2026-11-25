@@ -108,7 +108,7 @@ pub(crate) unsafe fn signal_wake_up(task: *mut Task, fatal: bool) {
     LAST_STATE.store(state, Ordering::Relaxed);
 
     // SAFETY: The caller guarantees that the task is live under the lock.
-    unsafe { signal_wake_state::signal_wake_up_state(task, state) };
+    unsafe { signal_wake_state::signal_wake_up_state_for_task(task, state) };
 }
 
 /// Selects and applies the ptrace wake state.
@@ -133,7 +133,7 @@ unsafe fn ptrace_signal_wake_up(task: *mut Task, resume: bool) {
     LAST_STATE.store(state, Ordering::Relaxed);
 
     // SAFETY: The caller guarantees that the task is live under the lock.
-    unsafe { signal_wake_state::signal_wake_up_state(task, state) };
+    unsafe { signal_wake_state::signal_wake_up_state_for_task(task, state) };
 }
 
 /// Wakes a task for a fatal or non-fatal signal.

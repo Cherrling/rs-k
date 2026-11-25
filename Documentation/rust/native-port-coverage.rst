@@ -1089,6 +1089,38 @@ Pending signal recalculation
   every configuration class and a clean pass of the focused, concurrency,
   KASAN, lockdep, PREEMPT_RT, and adjacent signal matrices.
 
+Signal wakeup state
+  Status: ``migrated``.
+
+  Evidence: :doc:`signal-wake-state`.
+
+  Rust directly defines ``signal_wake_up_state()``. Rust owns the
+  signal-handler lock assertion, pending-flag publication,
+  ``TASK_INTERRUPTIBLE`` mask construction, scheduler wakeup attempt, and
+  process-kick selection. C retains the shared task and signal-handler
+  layouts, thread-flag storage, scheduler wakeup, process kick, lock
+  assertion helper, and the fallback implementation.
+
+  Test: Native completed three SMP4 and one SMP1 boot. Fallback and C-only
+  each passed SMP4 and SMP1. KASAN, lockdep, and PREEMPT_RT each passed SMP4
+  and SMP1. All seven configurations passed nine signal groups and twelve
+  signal cases without a BUG, warning, KASAN report, lockdep complaint, oops,
+  or panic.
+
+  Symbol inspection shows that native ``rust/kernel.o`` defines
+  ``signal_wake_up_state()`` and native ``kernel/signal.o`` defines no
+  implementation. ``kernel/ptrace.o`` has an undefined reference to the Rust
+  entry. The production image contains no ``rust_signal_wake_up_state``
+  wrapper. The entry has no export table entry, which preserves its original
+  unexported class. The production image has no unresolved symbol.
+
+  Risk: A wrong lock assertion, pending-flag order, wake mask, or kick
+  decision can leave a task asleep with a deliverable signal or wake an
+  ineligible task. The exit condition is one production definition in every
+  configuration class, preserved export metadata, and a clean pass of the
+  focused, concurrency, KASAN, lockdep, PREEMPT_RT, and adjacent signal
+  matrices.
+
 Boundary-retained inventory
 ---------------------------
 
@@ -3185,6 +3217,27 @@ Pending signal recalculation shared boundary
   Exit condition: Rust owns the referenced task and signal state, thread-flag
   operations, freezer queries, signal-handler locking, and export metadata.
 
+Signal wakeup state shared boundary
+  Status: ``boundary-retained``.
+
+  Owner: ``kernel/signal.c``, ``rust/helpers/signal_wake_state.c``,
+  ``include/linux/sched/signal.h``,
+  ``include/linux/signal-wake-state-rust.h``, and ``rust/Makefile``.
+
+  Reason: C and Rust access the same task and signal-handler state. Task
+  thread flags, the scheduler wakeup, the cross-CPU process kick, the
+  lockdep assertion, and export metadata remain C boundaries.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT runs exercise
+  sleeping and running targets, successful scheduler wakeup, the kick
+  fallback, and adjacent signal state machines at SMP1 and SMP4.
+
+  Risk: A thread-flag, scheduler, kick, or lock-contract change can make Rust
+  publish pending state without waking the target or wake the wrong state.
+
+  Exit condition: Rust owns the referenced task state, thread flags,
+  scheduler wakeup, process kick, lock assertion, and export metadata.
+
 The lock-less list boundary is valid only while the inline producer paths,
 intrusive layouts, and atomic semantics remain shared ABI. A boundary entry
 does not transfer policy, retry decisions, state transitions, or exported
@@ -3280,6 +3333,12 @@ and signal layouts, job-control state, thread-flag operations, cgroup and
 freezer queries, signal-handler locking, and ordinary export metadata remain
 named C boundaries. Rust defines all three production entries and owns every
 pending-set, freezer, stale-flag, current-task, and fork lock decision.
+
+The signal wakeup state boundary is valid only while the shared task and
+signal-handler state, lock assertion, thread-flag operation, scheduler
+wakeup, process kick, and unexported symbol policy remain named C boundaries.
+Rust defines the production entry and owns every pending-state publication,
+wake-mask, wake-attempt, and kick decision.
 
 The address-space lifetime boundary is valid only while the shared
 ``mm_users`` layout, task flags, task lock, task-mm access, sleep diagnostic,

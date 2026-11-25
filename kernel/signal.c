@@ -820,13 +820,11 @@ int signal_dequeue_test_queue_sync(int sig, int code)
  * No need to set need_resched since signal event passing
  * goes through ->blocked
  */
+#ifndef CONFIG_RUST_SIGNAL_WAKE_STATE
 void signal_wake_up_state(struct task_struct *t, unsigned int state)
 {
 	lockdep_assert_held(&t->sighand->siglock);
 
-#ifdef CONFIG_RUST_SIGNAL_WAKE_STATE
-	rust_signal_wake_up_state(t, state);
-#else
 	set_tsk_thread_flag(t, TIF_SIGPENDING);
 
 	/*
@@ -838,8 +836,8 @@ void signal_wake_up_state(struct task_struct *t, unsigned int state)
 	 */
 	if (!wake_up_state(t, state | TASK_INTERRUPTIBLE))
 		kick_process(t);
-#endif /* !CONFIG_RUST_SIGNAL_WAKE_STATE */
 }
+#endif /* !CONFIG_RUST_SIGNAL_WAKE_STATE */
 
 static inline void posixtimer_sig_ignore(struct task_struct *tsk, struct sigqueue *q);
 

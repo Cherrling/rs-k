@@ -2140,12 +2140,12 @@ config RUST_SIGNAL_WAKE_STATE
 	depends on RUST
 	default y
 	help
-	  Use Rust for the production signal wakeup state machine. Rust sets
-	  the pending flag, derives the scheduler wake mask, attempts to wake
-	  the target, and selects the process-kick fallback.
+	  Use Rust to directly define the production signal_wake_up_state()
+	  entry. Rust sets the pending flag, derives the scheduler wake mask,
+	  attempts to wake the target, and selects the process-kick fallback.
 
 	  The signal-handler lock assertion, thread-flag bit operation,
-	  scheduler wakeup, process kick, and public ABI adapter remain in C.
+	  scheduler wakeup, and process kick remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

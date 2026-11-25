@@ -7,8 +7,8 @@ Status and scope
 ----------------
 
 The ``CONFIG_RUST_SIGNAL_WAKE_STATE`` option selects native Rust for the
-production ``signal_wake_up_state()`` function in ``kernel/signal.c``. The
-original C implementation remains available as a fallback.
+production ``signal_wake_up_state()`` function. The original C implementation
+remains available as a fallback.
 
 This unit covers the ordered wakeup sequence for a task that must process a
 signal. Fatal-signal state selection in ``signal_wake_up()`` and ptrace state
@@ -25,23 +25,20 @@ The Rust code owns these decisions and transitions:
 Entry points and ownership
 --------------------------
 
-The production ``signal_wake_up_state()`` function remains the public C entry.
-When the option is enabled, its body calls
-``rust_signal_wake_up_state()`` and the original state machine is compiled out.
-
-Rust owns the operation order and the wake-or-kick decision. It does not call
-the original C state machine.
+Rust directly defines ``signal_wake_up_state()``. The native build compiles
+the original C implementation out of ``kernel/signal.c``. Rust owns the
+operation order, the lock-contract assertion, and the wake-or-kick decision.
+The C fallback and C-only configurations retain the complete implementation.
 
 Retained C boundary
 -------------------
 
 The following operations remain in C:
 
-* ``lockdep_assert_held()`` for the signal-handler lock contract.
+* A ``lockdep_assert_held()`` helper for the signal-handler lock contract.
 * ``set_tsk_thread_flag()`` for the architecture thread-flag operation.
 * ``wake_up_state()`` for scheduler wakeup.
 * ``kick_process()`` for the cross-CPU reschedule fallback.
-* The public ``signal_wake_up_state()`` ABI adapter.
 
 The caller must hold ``task->sighand->siglock`` with local interrupts disabled.
 Rust preserves that requirement and does not sleep.
@@ -57,36 +54,48 @@ signal delivery path.
 Validation record
 -----------------
 
-Each configuration runs three consecutive times with four vCPUs and 1536 MiB
-of guest memory.
+Each boot used 1536 MiB of guest memory. Native completed three four-vCPU
+runs and one single-vCPU run. Every other configuration completed one run at
+each CPU count.
 
 .. list-table::
-   :widths: 44 12 14 30
+   :widths: 34 16 14 12 24
    :header-rows: 1
 
    * - Configuration
-     - Runs
+     - Boots
+     - Signal groups
      - Cases
      - Result
    * - Rust signal wakeup state
-     - 3
-     - 2 of 2
+     - 3 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
      - Pass
    * - C signal wakeup state fallback
-     - 3
-     - 2 of 2
+     - 1 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
+     - Pass
+   * - C-only
+     - 1 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
      - Pass
    * - Rust signal wakeup state with KASAN
-     - 3
-     - 2 of 2
-     - Pass
-   * - Rust signal wakeup state with PREEMPT_RT
-     - 3
-     - 2 of 2
+     - 1 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
      - Pass
    * - Rust signal wakeup state with lockdep
-     - 3
-     - 2 of 2
+     - 1 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
+     - Pass
+   * - Rust signal wakeup state with PREEMPT_RT
+     - 1 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
      - Pass
 
 The sleeping-task case verifies pending-state publication, the wake-mask
@@ -98,21 +107,34 @@ The policy counters run only with the native Rust implementation. The real
 sleeping and running task behavior runs with either the C or Rust
 implementation.
 
+Every boot also ran ``complete_signal``, ``send_signal``,
+``prepare_signal``, ``signal_dequeue``, ``signal_pending_recalc``,
+``signal_struct_copy``, ``signal_retarget``, and ``signal_wake_select``.
+Every log reported no failed case, BUG, warning, KASAN report, lockdep
+complaint, oops, or panic.
+
 Build and production checks
 ---------------------------
 
-The final Rust source passed Clippy and ``rustfmtcheck``. The complete change
-passed strict ``checkpatch`` and ``git diff --check``.
+The production build passed with ``CONFIG_WERROR=y`` and Clippy. The module
+build completed modpost without an error. The Rust source passed
+``rustfmtcheck`` and Rustdoc. Focused Sphinx generated this page with only the
+existing ``kernel-docs`` and ``getting_llvm`` reference warnings. The complete
+change passed ``git diff --check`` and strict ``checkpatch`` with zero errors,
+warnings, or checks.
 
-The production image disabled KUnit, KASAN, and lockdep. Disassembly of
-``kernel/signal.o`` showed ``signal_wake_up_state()`` as a direct adapter to
-``rust_signal_wake_up_state()``. Production signal callers also contained
-direct relocations to the Rust entry.
+The production image disabled KUnit, KASAN, lockdep, and PREEMPT_RT.
+``rust/kernel.o`` defines ``signal_wake_up_state()``. Native
+``kernel/signal.o`` contains neither a definition nor a direct reference to
+the entry. ``kernel/ptrace.o`` contains an undefined reference to the entry.
+Disassembly shows the Rust entry calls the lock assertion, pending-state,
+scheduler wakeup, and process-kick helpers.
 
-The production ``vmlinux`` contained the Rust wakeup entry and its three C
-helpers, contained no signal wakeup test symbols, and had no undefined
-symbols. The image booted to the expected missing root-filesystem panic and
-reported no earlier failure.
+The production image contains no ``rust_signal_wake_up_state`` wrapper. The
+``signal_wake_up_state`` entry has no export table entry, which preserves the
+original unexported class. The production image has no unresolved symbol and
+boots to the expected missing root-filesystem panic without an earlier
+failure.
 
 Review conditions
 -----------------

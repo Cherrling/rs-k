@@ -81,7 +81,10 @@ extern "C" fn rust_signal_wake_state_test_last_wake_state() -> u32 {
 /// # Safety
 ///
 /// `task` must be live and the caller must hold `task->sighand->siglock`.
-pub(crate) unsafe fn signal_wake_up_state(task: *mut Task, state: u32) {
+pub(crate) unsafe fn signal_wake_up_state_for_task(task: *mut Task, state: u32) {
+    // SAFETY: The caller guarantees that the task is live under the lock.
+    unsafe { bindings::rust_helper_signal_wake_state_assert_locked(task) };
+
     #[cfg(CONFIG_SIGNAL_WAKE_STATE_KUNIT_TEST)]
     ENTRY_COUNT.fetch_add(1, Ordering::Relaxed);
 
@@ -114,9 +117,9 @@ pub(crate) unsafe fn signal_wake_up_state(task: *mut Task, state: u32) {
 ///
 /// # Safety
 ///
-/// The same requirements as [`signal_wake_up_state`] apply.
+/// `task` must be live and the caller must hold `task->sighand->siglock`.
 #[export]
-unsafe extern "C" fn rust_signal_wake_up_state(task: *mut Task, state: u32) {
+unsafe extern "C" fn signal_wake_up_state(task: *mut Task, state: u32) {
     // SAFETY: The caller upholds the function requirements.
-    unsafe { signal_wake_up_state(task, state) };
+    unsafe { signal_wake_up_state_for_task(task, state) };
 }

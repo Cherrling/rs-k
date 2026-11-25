@@ -4,6 +4,12 @@
 #include <linux/sched/signal.h>
 
 __rust_helper void
+rust_helper_signal_wake_state_assert_locked(struct task_struct *task)
+{
+	lockdep_assert_held(&task->sighand->siglock);
+}
+
+__rust_helper void
 rust_helper_signal_wake_state_set_pending(struct task_struct *task)
 {
 	set_tsk_thread_flag(task, TIF_SIGPENDING);

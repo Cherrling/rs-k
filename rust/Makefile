@@ -850,6 +850,7 @@ rust_unexported_symbols := \
 	dequeue_synchronous_signal \
 	recalc_sigpending_tsk \
 	calculate_sigpending \
+	signal_wake_up_state \
 	irq_work_needs_cpu \
 	irq_work_queue_on \
 	irq_work_single \

@@ -8,7 +8,7 @@ struct task_struct;
 
 #ifdef CONFIG_RUST_SIGNAL_WAKE_STATE
 
-void rust_signal_wake_up_state(struct task_struct *task, unsigned int state);
+void rust_helper_signal_wake_state_assert_locked(struct task_struct *task);
 void rust_helper_signal_wake_state_set_pending(struct task_struct *task);
 bool rust_helper_signal_wake_state_wake_up(struct task_struct *task,
 					   unsigned int state);
