@@ -6,15 +6,16 @@
 //! CPU selection, runqueue enqueue and dequeue routing, wake activation, wake
 //! preemption, scheduler-class transition routing, previous-task balancing,
 //! next-task selection, core-scheduling task picking, and task blocking
-//! decisions. C retains task and runqueue locking, warning delivery,
-//! scheduling-class implementations, class ordering anchors, cpumask
-//! operations, CPU eligibility queries, fallback placement, and fatal
-//! scheduler invariant reporting. Rust directly defines the current-task and
-//! per-CPU reschedule request entry points.
+//! decisions. Rust also directly defines the top-level task wakeup entry and
+//! owns its lock, retry, migration, and queue decisions. C retains raw task and
+//! runqueue locking, warning delivery, scheduling-class implementations, class
+//! ordering anchors, cpumask operations, CPU eligibility queries, fallback
+//! placement, and fatal scheduler invariant reporting.
 
 use crate::bindings;
 #[cfg(any(
     CONFIG_RUST_SCHED_WAKE_STATE,
+    CONFIG_RUST_SCHED_TRY_WAKEUP,
     CONFIG_RUST_SCHED_WAKE_PREEMPT,
     CONFIG_RUST_SCHED_RESCHED_CURR,
     CONFIG_RUST_SCHED_RESCHED_CPU,
@@ -38,12 +39,15 @@ use crate::ffi::c_int;
 use crate::ffi::c_ulong;
 #[cfg(any(
     CONFIG_RUST_SCHED_TTWU_RUNNABLE,
+    CONFIG_RUST_SCHED_TRY_WAKEUP,
     CONFIG_RUST_SCHED_RQ_TRANSITION,
     CONFIG_RUST_SCHED_WAKE_PREEMPT
 ))]
 use crate::sync::atomic::atomic_load;
 #[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
 use crate::sync::atomic::atomic_store;
+#[cfg(CONFIG_RUST_SCHED_TRY_WAKEUP)]
+use crate::sync::atomic::Acquire;
 #[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
 use crate::sync::atomic::Atomic;
 #[cfg(any(
@@ -57,6 +61,7 @@ use macros::export;
 
 #[cfg(any(
     CONFIG_RUST_SCHED_WAKE_STATE,
+    CONFIG_RUST_SCHED_TRY_WAKEUP,
     CONFIG_RUST_SCHED_WAKE_PREEMPT,
     CONFIG_RUST_SCHED_RESCHED_CURR,
     CONFIG_RUST_SCHED_WAKE_IF_IDLE,
@@ -74,6 +79,7 @@ use macros::export;
 type Task = bindings::task_struct;
 #[cfg(any(
     CONFIG_RUST_SCHED_BLOCK_TASK,
+    CONFIG_RUST_SCHED_TRY_WAKEUP,
     CONFIG_RUST_SCHED_RQ_TRANSITION,
     CONFIG_RUST_SCHED_TTWU_ACTIVATE,
     CONFIG_RUST_SCHED_TTWU_RUNNABLE,
@@ -127,6 +133,8 @@ type PickTaskCallback = unsafe extern "C" fn(rq: *mut Rq, rf: *mut RqFlags) -> *
 const TASK_ON_RQ_QUEUED: i8 = bindings::RUST_SCHED_TASK_ON_RQ_QUEUED as i8;
 #[cfg(CONFIG_RUST_SCHED_RQ_TRANSITION)]
 const TASK_ON_RQ_MIGRATING: i8 = bindings::RUST_SCHED_TASK_ON_RQ_MIGRATING as i8;
+#[cfg(CONFIG_RUST_SCHED_TRY_WAKEUP)]
+const WF_TTWU: c_int = bindings::RUST_SCHED_WF_TTWU as c_int;
 #[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
 const PREEMPT_CLASS_SAME: u32 = bindings::RUST_SCHED_WAKE_PREEMPT_CLASS_SAME;
 #[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
@@ -311,6 +319,43 @@ unsafe fn set_task_running(task: *mut Task) {
     unsafe { core::ptr::addr_of_mut!((*task).__state).write_volatile(bindings::TASK_RUNNING) };
 }
 
+/// Publishes the waking task state.
+///
+/// # Safety
+///
+/// `task` must remain live and the caller must serialize the state update with
+/// the task pi lock or disabled preemption.
+#[cfg(CONFIG_RUST_SCHED_TRY_WAKEUP)]
+unsafe fn set_task_waking(task: *mut Task) {
+    // SAFETY: The caller guarantees that the task remains live. Use a volatile
+    // store so this has the single-store behavior of WRITE_ONCE().
+    unsafe { core::ptr::addr_of_mut!((*task).__state).write_volatile(bindings::TASK_WAKING) };
+}
+
+/// Reads the CPU from which a task was last woken.
+///
+/// # Safety
+///
+/// `task` must remain live and the caller must hold its pi lock.
+#[cfg(CONFIG_RUST_SCHED_TRY_WAKEUP)]
+unsafe fn task_wake_cpu(task: *const Task) -> c_int {
+    // SAFETY: The caller guarantees that the task remains live. Use a volatile
+    // load so this has the single-read behavior of the C field access.
+    unsafe { core::ptr::addr_of!((*task).wake_cpu).read_volatile() }
+}
+
+/// Updates the CPU from which a task was last woken.
+///
+/// # Safety
+///
+/// `task` must remain live and the caller must hold its pi lock.
+#[cfg(CONFIG_RUST_SCHED_TRY_WAKEUP)]
+unsafe fn set_task_wake_cpu(task: *mut Task, cpu: c_int) {
+    // SAFETY: The caller guarantees that the task remains live. Use a volatile
+    // store so this has the single-store behavior of the C field update.
+    unsafe { core::ptr::addr_of_mut!((*task).wake_cpu).write_volatile(cpu) };
+}
+
 /// Returns whether a task is currently running on a CPU.
 ///
 /// # Safety
@@ -321,6 +366,21 @@ unsafe fn task_on_cpu_state(task: *mut Task) -> bool {
     // SAFETY: The caller guarantees that the task remains live. Use a volatile
     // load so this has the single-read behavior of the C scalar access.
     unsafe { core::ptr::addr_of!((*task).on_cpu).read_volatile() != 0 }
+}
+
+/// Acquire-loads whether a task is currently running on a CPU.
+///
+/// # Safety
+///
+/// `task` must remain live.
+#[cfg(CONFIG_RUST_SCHED_TRY_WAKEUP)]
+unsafe fn task_on_cpu_acquire(task: *mut Task) -> bool {
+    // SAFETY: The caller guarantees that the task remains live. The field has
+    // one-byte alignment, and all other accesses use the same atomic access.
+    let on_cpu = unsafe { core::ptr::addr_of_mut!((*task).on_cpu) }.cast::<i8>();
+    // SAFETY: The pointer is valid, aligned, and all concurrent accesses are
+    // atomic. Acquire matches smp_load_acquire().
+    unsafe { atomic_load(on_cpu, Acquire) != 0 }
 }
 
 /// Returns whether a task has delayed scheduler state.
@@ -1007,6 +1067,166 @@ unsafe extern "C" fn select_task_rq(task: *mut Task, cpu: c_int, wake_flags: *mu
     };
     // SAFETY: The caller satisfies the exported entry-point contract.
     unsafe { select_task_rq_with_callback(task, cpu, wake_flags, path, callback) }
+}
+
+/// Implements the production task wakeup entry point.
+///
+/// Rust owns the preemption-disabled region, current-task and pi-lock paths,
+/// state-match retry, runnable wake, on-CPU wait, CPU selection, migration,
+/// wake-list attempt, final queue decision, and lock release ordering.
+///
+/// # Safety
+///
+/// `task` must remain live during the call. The caller must satisfy
+/// `try_to_wake_up()`.
+#[cfg(CONFIG_RUST_SCHED_TRY_WAKEUP)]
+#[export]
+unsafe extern "C" fn try_to_wake_up(task: *mut Task, state: u32, mut wake_flags: c_int) -> c_int {
+    let mut success = 0;
+    wake_flags |= WF_TTWU;
+
+    // SAFETY: The helper changes only the preemption count.
+    unsafe { bindings::rust_helper_sched_try_wakeup_preempt_disable() };
+
+    // SAFETY: The task pointer and current task remain live for the complete
+    // preemption-disabled region.
+    if task == unsafe { bindings::get_current() } {
+        // SAFETY: The caller and current-task path satisfy the blocked-state
+        // serialization contract.
+        unsafe { bindings::rust_helper_sched_try_wakeup_current_preamble(task) };
+
+        // SAFETY: Disabled preemption serializes the current task's state.
+        if unsafe { ttwu_state_match(task, state, &mut success) } {
+            // SAFETY: The current task state matched and remains live.
+            unsafe { bindings::rust_helper_sched_try_wakeup_trace_waking(task) };
+            // SAFETY: Disabled preemption serializes the wake-state update.
+            unsafe { publish_task_wakeup_state(task) };
+            // SAFETY: The wake state is published and the task remains live.
+            unsafe { bindings::rust_helper_sched_ttwu_trace_wakeup(task) };
+        }
+    } else {
+        // SAFETY: The helper acquires the task pi lock and returns its matching
+        // interrupt state.
+        let irq_flags = unsafe { bindings::rust_helper_sched_pi_lock_irqsave(task) };
+
+        // SAFETY: The helper emits the barrier paired with the spinlock
+        // acquisition and the task remains live.
+        unsafe { bindings::rust_helper_sched_try_wakeup_mb_after_spinlock() };
+
+        // SAFETY: The task pi lock is held and enables the state-match retry.
+        if unsafe { ttwu_state_match(task, state, &mut success) } {
+            // SAFETY: The task state matched and remains live.
+            unsafe { bindings::rust_helper_sched_try_wakeup_trace_waking(task) };
+
+            // SAFETY: This read barrier orders the state check before the
+            // runqueue membership load.
+            unsafe { bindings::rust_helper_sched_try_wakeup_rmb() };
+
+            let mut wake_done = false;
+            // SAFETY: The task pi lock keeps the task and its runqueue
+            // membership stable across the runnable path.
+            if unsafe { task_on_rq_state(task) } != 0
+                // SAFETY: The task pi lock keeps the task and its runqueue
+                // membership stable across the runnable path.
+                && unsafe { ttwu_runnable(task, wake_flags) } != 0
+            {
+                wake_done = true;
+            }
+
+            if !wake_done {
+                // SAFETY: This acquire barrier follows the failed runnable
+                // control dependency and preserves schedule() ordering.
+                unsafe {
+                    bindings::rust_helper_sched_try_wakeup_acquire_after_ctrl_dep();
+                }
+                // SAFETY: The task pi lock serializes this state update.
+                unsafe { set_task_waking(task) };
+
+                // SAFETY: The task remains live and the acquire load matches
+                // the scheduler's release store.
+                if unsafe { task_on_cpu_acquire(task) }
+                    // SAFETY: The task pi lock keeps the task and its current
+                    // CPU stable across the wake-list attempt.
+                    && unsafe {
+                        let cpu = bindings::rust_helper_sched_select_task_rq_task_cpu(task);
+                        bindings::rust_helper_sched_try_wakeup_queue_wakelist(task, cpu, wake_flags)
+                    }
+                {
+                    wake_done = true;
+                }
+
+                if !wake_done {
+                    // SAFETY: The helper waits for the previous CPU to stop
+                    // referencing the task.
+                    unsafe { bindings::rust_helper_sched_try_wakeup_wait_on_cpu(task) };
+
+                    // SAFETY: The caller holds the task pi lock and the task
+                    // remains live.
+                    let cpu = unsafe { select_task_rq(task, task_wake_cpu(task), &mut wake_flags) };
+                    // SAFETY: The task remains live under the pi lock.
+                    let task_cpu =
+                        unsafe { bindings::rust_helper_sched_select_task_rq_task_cpu(task) };
+
+                    if task_cpu != cpu {
+                        // SAFETY: The task remains live under the pi lock.
+                        if unsafe { task_in_iowait(task) } {
+                            // SAFETY: The helper completes I/O wait accounting.
+                            unsafe {
+                                bindings::rust_helper_sched_ttwu_delayacct_blkio_end(task);
+                            }
+                            // SAFETY: The task remains live under the pi lock.
+                            let rq =
+                                unsafe { bindings::rust_helper_sched_try_wakeup_task_rq(task) };
+                            // SAFETY: The runqueue remains live under the pi
+                            // lock and the I/O wait count is atomic.
+                            unsafe { dec_rq_iowait(rq) };
+                        }
+
+                        wake_flags |= WF_MIGRATED;
+                        // SAFETY: The task remains live under the pi lock.
+                        unsafe {
+                            bindings::rust_helper_sched_try_wakeup_psi_dequeue(task);
+                            bindings::set_task_cpu(task, cpu as u32);
+                        }
+                    } else {
+                        // SAFETY: The task remains live under the pi lock.
+                        let wake_cpu = unsafe { task_wake_cpu(task) };
+                        if cpu != wake_cpu {
+                            // SAFETY: The task remains live under the pi lock.
+                            unsafe { set_task_wake_cpu(task, cpu) };
+                        }
+                    }
+
+                    // SAFETY: The task remains live and the selected runqueue
+                    // becomes stable under the pi lock.
+                    unsafe {
+                        bindings::rust_helper_sched_try_wakeup_queue(task, cpu, wake_flags);
+                    }
+                }
+            }
+        }
+
+        // SAFETY: This releases the pi lock acquired above with the matching
+        // interrupt state.
+        unsafe { bindings::rust_helper_sched_pi_unlock_irqrestore(task, irq_flags) };
+    }
+
+    if success != 0 {
+        // SAFETY: The task remains live and the helper updates only scheduler
+        // statistics.
+        unsafe {
+            bindings::rust_helper_sched_try_wakeup_stat(
+                task,
+                bindings::rust_helper_sched_select_task_rq_task_cpu(task),
+                wake_flags,
+            );
+        }
+    }
+
+    // SAFETY: This enables preemption inside the original scope. The helper
+    // may run pending reschedule work.
+    unsafe { bindings::rust_helper_sched_try_wakeup_preempt_enable() };
+    success
 }
 
 /// Selects the task CPU routing path for KUnit.

@@ -9,6 +9,11 @@ Status and scope
 The ``CONFIG_RUST_SCHED_WAKE_STATE`` option selects native Rust definitions of
 ``task_state_match()`` and ``ttwu_state_match()`` for task wakeups and
 inactive-task waits.
+The ``CONFIG_RUST_SCHED_TRY_WAKEUP`` option selects a direct Rust definition
+of ``try_to_wake_up()``. Rust owns the complete preemption-disabled wakeup
+entry, including its current-task and pi-lock paths, retry decision,
+runnable-wake short circuit, on-CPU and wake-list decision, migration policy,
+final queue decision, success accounting, and lock release order.
 The ``CONFIG_RUST_SCHED_TTWU_RUNNABLE`` option selects a native Rust
 definition of ``ttwu_runnable()``. Rust acquires and releases the task
 runqueue lock and owns the complete queued-wake path.
@@ -60,6 +65,15 @@ Rust owns these production decisions:
 * Giving a current-state match precedence over a saved-state match.
 * Reporting wake success independently from whether the task can run now.
 * Publishing a matched saved state as ``TASK_RUNNING``.
+* Defining the complete task wakeup entry and owning its preemption-disabled
+  lifetime, wake-flag decoration, and current-task fast path.
+* Acquiring and releasing the task pi lock for a non-current target, ordering
+  the state-match and runqueue-membership reads, and selecting the runnable
+  wake, on-CPU wait, or final queue path.
+* Publishing ``TASK_WAKING`` before the on-CPU and wake-list decision,
+  selecting the task CPU after the previous CPU releases the task, applying
+  migration and I/O wait policy, and ordering the final queue and success
+  accounting.
 * Checking whether the wake target remains queued after the runqueue lock is
   acquired.
 * Updating the runqueue clock through a direct ``update_rq_clock()`` call,
@@ -143,15 +157,20 @@ Entry points and ownership
 --------------------------
 
 ``rust/kernel/sched_core.rs`` directly defines ``task_state_match()``,
-``ttwu_state_match()``, ``ttwu_runnable()``, ``ttwu_do_activate()``,
-``block_task()``, and ``wakeup_preempt()``. Each corresponding C fallback is
-compiled only when its Rust option is disabled. The native C object retains
-undefined references to the six Rust entries.
+``ttwu_state_match()``, ``try_to_wake_up()``, ``ttwu_runnable()``,
+``ttwu_do_activate()``, ``block_task()``, and ``wakeup_preempt()``. Each
+corresponding C fallback is compiled only when its Rust option is disabled.
+The native C object retains undefined references to the seven Rust entries.
 
 The Rust-to-C calls are:
 
 * The invalid debug-preemption wake-mask warning.
 * The task pi-lock acquisition and release used by ``task_state_match()``.
+* The task pi-lock acquisition and release, preemption-count changes, memory
+  barriers, conditional on-CPU wait, current-task blocked-state preamble,
+  wake-list attempt, final runqueue queue, PSI dequeue, task CPU read and
+  migration primitive, scheduler-statistics update, and wake tracepoints used
+  by ``try_to_wake_up()``.
 * The task runqueue lock and unlock used by ``ttwu_runnable()``.
 * The proxy state query used by the runnable path. Rust calls
   ``update_rq_clock()`` and ``enqueue_task()`` directly.
@@ -212,10 +231,12 @@ Other C-to-Rust production entries are:
 
 ``task_state_match()`` acquires ``p->pi_lock`` with interrupts disabled and
 releases it before returning. The caller of ``ttwu_state_match()`` holds
-``p->pi_lock`` across the complete Rust call. ``ttwu_runnable()`` calls the
-narrow C ``__task_rq_lock()`` and ``__task_rq_unlock()`` helpers, so Rust owns
-the runqueue lock lifetime and all operations between acquisition and
-release.
+``p->pi_lock`` across the complete Rust call. ``try_to_wake_up()`` disables
+preemption for its complete body. It uses only disabled preemption on the
+current-task path and acquires ``p->pi_lock`` with interrupts disabled on the
+non-current path. ``ttwu_runnable()`` calls the narrow C ``__task_rq_lock()``
+and ``__task_rq_unlock()`` helpers, so Rust owns the runqueue lock lifetime and
+all operations between acquisition and release.
 
 The callers of ``ttwu_do_activate()``, ``block_task()``, and
 ``wakeup_preempt()`` hold the runqueue lock across the complete Rust call.
@@ -299,6 +320,19 @@ when the first check succeeds. Rust rechecks the current task under the
 runqueue lock, calls ``resched_curr()`` only when both checks see an idle task,
 and releases the runqueue and RCU locks in order.
 
+For the production task wakeup entry, Rust directly defines
+``try_to_wake_up()``. Rust disables preemption for the complete call, adds
+``WF_TTWU``, and takes the lock-free current-task path when the target is
+current. Otherwise it acquires the pi lock with interrupts disabled, applies
+the lock-acquisition barrier, matches the requested state, checks runqueue
+membership, and calls the runnable wake path when possible. If the task is not
+runnable, Rust publishes ``TASK_WAKING``, attempts a wake-list queue after an
+acquire load of ``on_cpu``, waits for a previous CPU when necessary, selects a
+CPU, applies migration and I/O wait policy, and queues the task. It releases
+the pi lock before success accounting and enables preemption last.
+C retains the lock, barrier, preemption, conditional-load, trace, PSI,
+migration, wake-list, queue, and statistics primitives.
+
 For the blocking entry, C validates that the task runqueue lock is held and
 passes the task state to Rust. Rust classifies the state and calls the bitfield,
 dequeue, and accounting helpers in order. C retains ownership of the runqueue
@@ -327,9 +361,13 @@ task layout and supplies the task pointer. Rust acquires and releases
 depend on kernel diagnostics. Rust decides whether the debug-preemption state
 mask is invalid.
 
-``try_to_wake_up()`` keeps its memory barriers, wake-list handling, CPU
-selection, migration, full enqueue, statistics, and accounting in C. The
-runnable unit changes only the path inside the task runqueue lock.
+``try_to_wake_up()`` is a Rust production entry. Rust owns its preemption
+lifetime, lock and retry decisions, runnable short circuit, on-CPU wait and
+wake-list decision, CPU selection and migration policy, final queue decision,
+success accounting decision, and lock release order. C retains the memory
+barrier and conditional-load helpers, raw pi lock and preemption primitives,
+wake-list and runqueue queue mechanics, task migration and I/O accounting
+primitives, tracepoints, and scheduler statistics.
 
 Rust directly defines ``ttwu_runnable()`` and owns the task runqueue lock
 lifetime through the narrow C ``__task_rq_lock()`` and ``__task_rq_unlock()``
@@ -655,12 +693,14 @@ thread, waking a queued runnable task, waking a ``SCHED_FIFO`` task to invoke
 its scheduling-class callback, real activation and deactivation traffic with
 both the Rust and C implementations, and an idle CPU wake request against the
 current CPU to execute the Rust ``wake_up_if_idle()`` entry. The same real
-traffic enters the Rust runqueue enqueue and dequeue entries. Every real
-context switch and scheduler task-selection transition enters the Rust
-scheduler-class transition entries. Scheduling attempts that take the general
-class scan also enter the Rust previous-task balance pass. Real scheduling
-traffic enters the Rust next-task selection entry for every non-core
-scheduling pick.
+traffic enters the Rust ``try_to_wake_up()`` entry, including its
+current-task, runnable, and queued-wake paths, when that option is enabled.
+The same real traffic enters the Rust runqueue enqueue and dequeue entries.
+Every real context switch and scheduler task-selection transition enters the
+Rust scheduler-class transition entries. Scheduling attempts that take the
+general class scan also enter the Rust previous-task balance pass. Real
+scheduling traffic enters the Rust next-task selection entry for every
+non-core scheduling pick.
 On an SMT machine, the core-scheduling path case creates a core-scheduling
 cookie and schedules real tasks while the Rust core-pick entry is active.
 
@@ -672,6 +712,40 @@ include Rustfmt, Clippy, Rustdoc, Sphinx, strict checkpatch, and
 
 Validation evidence
 -------------------
+
+The task wakeup direct-entry unit was validated on 2026-11-25 with x86_64
+``LLVM=1`` builds and QEMU 11.1.3:
+
+* Three consecutive native four-vCPU runs each passed all 37 scheduler cases.
+  The native one-vCPU run passed 35 cases and skipped 2 cases that require
+  multiple CPUs. The native hrtimer regression passed all 25 cases.
+* The fallback run disabled only ``CONFIG_RUST_SCHED_TRY_WAKEUP`` while
+  retaining the other Rust wake paths. Its four-vCPU scheduler run passed all
+  37 cases, its one-vCPU run passed 35 cases with 2 skips, and its hrtimer
+  regression passed all 25 cases.
+* The C-only run disabled all ``CONFIG_RUST_SCHED_*`` options. Its four-vCPU
+  scheduler run passed all 3 applicable cases, its one-vCPU run passed 2 cases
+  with 1 skip, and its hrtimer regression passed all 25 cases.
+* KASAN, lockdep, and PREEMPT_RT four-vCPU runs each passed all 37 cases. Their
+  one-vCPU runs each passed 35 cases and skipped 2 cases. Their hrtimer
+  regressions each passed all 25 cases.
+* No run reported a ``BUG``, warning, KASAN report, lock dependency diagnosis,
+  Oops, unexpected panic, or atomic-scheduling violation. The only panic was
+  the expected missing-root-filesystem panic after KUnit completion.
+
+Native ``rust/kernel.o`` defines ``try_to_wake_up()`` and the other six
+scheduler wake entries. Native ``kernel/sched/core.o`` has only an undefined
+reference to ``try_to_wake_up()``. In the fallback build,
+``kernel/sched/core.o`` defines ``try_to_wake_up()`` and the Rust object does
+not. In the C-only build, neither the Rust scheduled-entry set nor the other
+Rust scheduler entries are present. Every linked image has one strong
+``try_to_wake_up()`` definition, and it has no export metadata.
+
+The no-KUnit production configuration enabled the new entry and its four
+dependencies. It built with ``CLIPPY=1`` and booted to the expected
+missing-root-filesystem panic. Rustfmt, Clippy, Rustdoc, strict checkpatch,
+and ``git diff --check`` passed. Focused Sphinx completed with existing
+cross-directory reference warnings that do not name a changed page.
 
 The direct scheduler wake and blocking entry unit was validated on 2026-11-25
 with x86_64 ``LLVM=1`` builds and QEMU 11.1.3:
@@ -691,7 +765,7 @@ with x86_64 ``LLVM=1`` builds and QEMU 11.1.3:
 * No run reported a ``BUG``, warning, KASAN report, lock dependency diagnosis,
   Oops, panic, or atomic-scheduling violation.
 
-Native ``rust/kernel.o`` defines all six entries. Native
+Native ``rust/kernel.o`` defines all six entries covered by that unit. Native
 ``kernel/sched/core.o`` has no definition and only unresolved references to
 them. The KASAN, lockdep, and PREEMPT_RT objects have the same ownership. The
 native linked image has one strong definition of each entry, and none of the
@@ -1823,6 +1897,14 @@ Reopen this boundary decision if any of these conditions changes:
 * The runnable path changes its runqueue lock, delayed-enqueue condition,
   enqueue flags, direct enqueue call, proxy return, preemption, or
   wake-publication ordering.
+* The task wakeup entry changes its preemption lifetime, prelude warning or
+  blocked-state clear, pi-lock scope, state-match retry, runqueue-membership
+  barrier, waking-state publication, on-CPU acquire load, wake-list attempt,
+  conditional wait, CPU selection, migration and I/O wait policy, wake-CPU
+  repair, final queue order, success accounting, or lock release order.
+* The task wakeup helper contract changes for preemption, pi locking, memory
+  barriers, conditional loads, tracing, PSI or delay accounting, task CPU
+  reads, migration, wake-list queueing, runqueue queueing, or statistics.
 * The activation path changes load or I/O wait accounting, enqueue flags,
   activation ordering, preemption ordering, wake publication, or the
   scheduling-class callback contract.

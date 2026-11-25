@@ -4785,6 +4785,82 @@ bool ttwu_state_match(struct task_struct *p, unsigned int state, int *success)
  * accesses to the task state; see try_to_wake_up() and set_current_state().
  */
 
+#ifdef CONFIG_RUST_SCHED_TRY_WAKEUP
+
+void rust_helper_sched_try_wakeup_preempt_disable(void)
+{
+	preempt_disable();
+}
+
+void rust_helper_sched_try_wakeup_preempt_enable(void)
+{
+	preempt_enable();
+}
+
+void rust_helper_sched_try_wakeup_current_preamble(struct task_struct *p)
+{
+	WARN_ON_ONCE(p->se.sched_delayed);
+	WARN_ON_ONCE(p->is_blocked);
+	/* If p is current, we know we can run here, so clear blocked_on. */
+	clear_task_blocked_on(p, NULL);
+}
+
+void rust_helper_sched_try_wakeup_mb_after_spinlock(void)
+{
+	smp_mb__after_spinlock();
+}
+
+void rust_helper_sched_try_wakeup_rmb(void)
+{
+	/* Order the task-state check before the runqueue-membership load. */
+	smp_rmb();
+}
+
+void rust_helper_sched_try_wakeup_acquire_after_ctrl_dep(void)
+{
+	smp_acquire__after_ctrl_dep();
+}
+
+void rust_helper_sched_try_wakeup_wait_on_cpu(struct task_struct *p)
+{
+	smp_cond_load_acquire(&p->on_cpu, !VAL);
+}
+
+void rust_helper_sched_try_wakeup_trace_waking(struct task_struct *p)
+{
+	trace_sched_waking(p);
+}
+
+void rust_helper_sched_try_wakeup_psi_dequeue(struct task_struct *p)
+{
+	psi_ttwu_dequeue(p);
+}
+
+struct rq *rust_helper_sched_try_wakeup_task_rq(struct task_struct *p)
+{
+	return task_rq(p);
+}
+
+bool rust_helper_sched_try_wakeup_queue_wakelist(struct task_struct *p, int cpu,
+						 int wake_flags)
+{
+	return ttwu_queue_wakelist(p, cpu, wake_flags);
+}
+
+void rust_helper_sched_try_wakeup_queue(struct task_struct *p, int cpu,
+					int wake_flags)
+{
+	ttwu_queue(p, cpu, wake_flags);
+}
+
+void rust_helper_sched_try_wakeup_stat(struct task_struct *p, int cpu,
+				       int wake_flags)
+{
+	ttwu_stat(p, cpu, wake_flags);
+}
+
+#endif /* CONFIG_RUST_SCHED_TRY_WAKEUP */
+
 /**
  * try_to_wake_up - wake up a thread
  * @p: the thread to be awakened
@@ -4822,6 +4898,7 @@ bool ttwu_state_match(struct task_struct *p, unsigned int state, int *success)
  * Return: %true if @p->state changes (an actual wakeup was done),
  *	   %false otherwise.
  */
+#ifndef CONFIG_RUST_SCHED_TRY_WAKEUP
 int try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 {
 	guard(preempt)();
@@ -4994,6 +5071,7 @@ out:
 
 	return success;
 }
+#endif
 
 static bool __task_needs_rq_lock(struct task_struct *p)
 {

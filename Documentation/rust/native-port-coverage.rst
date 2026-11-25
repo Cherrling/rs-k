@@ -593,12 +593,12 @@ Scheduler wake and blocking entry points
   cases. No run reported a ``BUG``, warning, KASAN report, lock dependency
   diagnosis, Oops, panic, or atomic-scheduling violation.
 
-  Native ``rust/kernel.o`` defines all six entries, and native
-  ``kernel/sched/core.o`` has only undefined references to them. The KASAN,
-  lockdep, and PREEMPT_RT objects have the same ownership. Each entry has one
-  strong definition in the linked native image and no ``Module.symvers``
-  entry. Fallback and C-only Rust objects define none of the six entries, and
-  their C fallback bodies are selected at compile time.
+  Native ``rust/kernel.o`` defines all six entries covered by that unit, and
+  native ``kernel/sched/core.o`` has only undefined references to them. The
+  KASAN, lockdep, and PREEMPT_RT objects have the same ownership. Each entry
+  has one strong definition in the linked native image and no
+  ``Module.symvers`` entry. Fallback and C-only Rust objects define none of
+  the six entries, and their C fallback bodies are selected at compile time.
 
   Risk: A wrong lock owner, a mismatched unpin and repin context, or an
   undersized ``struct rq_flags`` object can corrupt scheduler state. Such a
@@ -606,6 +606,43 @@ Scheduler wake and blocking entry points
   sleep-in-atomic failure. The current exit condition is one production
   definition per entry in every configuration class and a clean pass of the
   native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT matrices.
+
+Scheduler task wakeup entry
+  Status: ``migrated``.
+
+  Evidence: :doc:`sched`.
+
+  Rust directly defines ``try_to_wake_up()``. Rust owns the preemption-disabled
+  lifetime, current-task fast path, task pi-lock path, state-match retry
+  decision, runnable-wake short circuit, waking-state publication, on-CPU
+  wait and wake-list decision, task CPU selection, migration and I/O wait
+  policy, wake-CPU repair, final queue decision, success accounting, and lock
+  release order. C retains the task and runqueue layouts, raw pi-lock and
+  preemption primitives, memory barriers and conditional load, wake-list and
+  runqueue queue mechanics, scheduling-class selection implementations, task
+  CPU migration primitive, I/O and PSI accounting primitives, tracepoints,
+  scheduler statistics, and the fallback definition.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT
+  configurations passed the complete SMP1, SMP4, and hrtimer matrix. Native
+  SMP4 passed 37 of 37 cases in three consecutive runs. Native SMP1 passed 35
+  cases and skipped 2 cases that require multiple CPUs. Native hrtimer passed
+  25 of 25 cases. The fallback configuration disabled only the new entry and
+  passed the same cases with the other Rust scheduler paths enabled. C-only
+  passed 3 cases at SMP4, 2 cases with 1 skip at SMP1, and 25 hrtimer cases.
+  KASAN, lockdep, and PREEMPT_RT each passed 37 cases at SMP4, 35 cases with 2
+  skips at SMP1, and 25 hrtimer cases. No run reported a ``BUG``, warning,
+  KASAN report, lock dependency diagnosis, Oops, unexpected panic, or
+  atomic-scheduling violation. The only panic was the expected
+  missing-root-filesystem panic.
+
+  Native ``rust/kernel.o`` defines ``try_to_wake_up()`` while native
+  ``kernel/sched/core.o`` has only an undefined reference. The fallback
+  ``kernel/sched/core.o`` defines the entry and the Rust object does not. The
+  C-only objects contain no Rust scheduler entry definitions. Each linked
+  image has one strong definition, and the entry has no export metadata. The
+  no-KUnit production configuration built with Clippy and booted to the
+  expected missing-root-filesystem panic without another diagnostic.
 
 Scheduler reschedule request entries
   Status: ``migrated``.
@@ -979,25 +1016,30 @@ Scheduler wake and blocking primitive boundary
   ``kernel/sched/rq-offsets.c``, ``rust/kernel/sched_core.rs``, and the
   scheduler wake helpers.
 
-  Reason: Rust owns all six production entries, but task and runqueue layouts,
-  raw ``pi_lock`` and task-runqueue lock operations, runqueue lock pin and
-  repin, scheduling-class callbacks, queue and proxy operations, tracing,
-  delay accounting, and the C size of ``struct rq_flags`` depend on scheduler
-  internals. Bindgen exposes ``struct rq_flags`` as a zero-length opaque type,
-  so C must export ``sizeof(struct rq_flags)`` to Rust.
+  Reason: Rust owns all seven production entries, including
+  ``try_to_wake_up()``, but task and runqueue layouts, raw ``pi_lock`` and
+  task-runqueue lock operations, preemption control, memory barriers and
+  conditional loads, runqueue lock pin and repin, scheduling-class callbacks,
+  queue and proxy operations, tracing, delay accounting, and the C size of
+  ``struct rq_flags`` depend on scheduler internals. Bindgen exposes
+  ``struct rq_flags`` as a zero-length opaque type, so C must export
+  ``sizeof(struct rq_flags)`` to Rust.
 
   Test: Native, fallback, C-only, KASAN, lockdep, PREEMPT_RT, SMP1, and SMP4
-  builds exercise each lock owner, all six direct entries, both fallback
+  builds exercise each lock owner, all seven direct entries, both fallback
   paths, and the oversized opaque-structure storage used by
-  ``ttwu_runnable()`` and ``wake_up_if_idle()``.
+  ``ttwu_runnable()`` and ``wake_up_if_idle()``. The fallback run disables
+  only ``try_to_wake_up()`` while retaining the other Rust wake paths.
 
-  Risk: A lock-owner error can race task state or runqueue state. An
-  undersized or misaligned ``struct rq_flags`` object can corrupt adjacent
-  stack data and fault when a C lock helper writes the structure.
+  Risk: A lock-owner, preemption-lifetime, barrier, retry, or queue-order
+  error can race task state or runqueue state. An undersized or misaligned
+  ``struct rq_flags`` object can corrupt adjacent stack data and fault when a
+  C lock helper writes the structure.
 
   Exit condition: Rust owns compatible task and runqueue locking,
-  scheduling-class callback invocation, queue and proxy operations, tracing,
-  delay accounting, and lock context storage without shared C helper entries.
+  preemption and barrier operations, scheduling-class callback invocation,
+  queue and proxy operations, tracing, delay accounting, and lock context
+  storage without shared C helper entries.
 
 Scheduler reschedule primitive boundary
   Status: ``boundary-retained``.

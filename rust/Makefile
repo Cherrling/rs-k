@@ -827,6 +827,7 @@ rust_unexported_symbols := \
 	ttwu_do_activate \
 	block_task \
 	wakeup_preempt \
+	try_to_wake_up \
 	dma_pool_create_node \
 	dma_pool_destroy \
 	dma_pool_alloc \

@@ -1046,6 +1046,29 @@ config RUST_SCHED_WAKE_STATE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SCHED_TRY_WAKEUP
+	bool "Rust implementation of the scheduler task wakeup entry"
+	depends on RUST
+	depends on RUST_SCHED_WAKE_STATE
+	depends on RUST_SCHED_SELECT_TASK_RQ
+	depends on RUST_SCHED_TTWU_RUNNABLE
+	depends on RUST_SCHED_TTWU_ACTIVATE
+	default y
+	help
+	  Use Rust to directly define the production task wakeup entry. Rust
+	  owns the preemption-disabled region, current-task and pi-lock paths,
+	  state-match retry decision, runnable wake decision, on-CPU wait ordering,
+	  CPU selection and migration decision, wake-list attempt, final queue
+	  decision, success accounting decision, and lock release ordering.
+
+	  Raw memory barriers and conditional loads, pi-lock and runqueue lock
+	  primitives, task-to-runqueue mapping, PSI and migration accounting,
+	  wake-list and runqueue queue mechanics, delay accounting, tracepoints,
+	  scheduler statistics, and the fallback definition remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_SCHED_WAKE_PREEMPT
 	bool "Rust implementation of scheduler wake preemption"
 	depends on RUST

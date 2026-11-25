@@ -65,6 +65,31 @@ int rust_sched_state_match_select(unsigned int task_state,
 
 #endif /* CONFIG_RUST_SCHED_WAKE_STATE */
 
+#ifdef CONFIG_RUST_SCHED_TRY_WAKEUP
+
+#define RUST_SCHED_WF_TTWU			0x08
+
+void rust_helper_sched_try_wakeup_preempt_disable(void);
+void rust_helper_sched_try_wakeup_preempt_enable(void);
+void rust_helper_sched_try_wakeup_current_preamble(struct task_struct *task);
+void rust_helper_sched_try_wakeup_mb_after_spinlock(void);
+void rust_helper_sched_try_wakeup_rmb(void);
+void rust_helper_sched_try_wakeup_acquire_after_ctrl_dep(void);
+void rust_helper_sched_try_wakeup_wait_on_cpu(struct task_struct *task);
+void rust_helper_sched_try_wakeup_trace_waking(struct task_struct *task);
+void rust_helper_sched_try_wakeup_psi_dequeue(struct task_struct *task);
+struct rq *rust_helper_sched_try_wakeup_task_rq(struct task_struct *task);
+bool rust_helper_sched_try_wakeup_queue_wakelist(struct task_struct *task,
+						 int cpu, int wake_flags);
+void rust_helper_sched_try_wakeup_queue(struct task_struct *task, int cpu,
+					int wake_flags);
+void rust_helper_sched_try_wakeup_stat(struct task_struct *task, int cpu,
+				       int wake_flags);
+
+int try_to_wake_up(struct task_struct *task, unsigned int state, int wake_flags);
+
+#endif /* CONFIG_RUST_SCHED_TRY_WAKEUP */
+
 #ifdef CONFIG_RUST_SCHED_WAKE_PREEMPT
 
 #define RUST_SCHED_WAKE_PREEMPT_CLASS_SAME	0
