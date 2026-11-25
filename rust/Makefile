@@ -830,6 +830,7 @@ rust_unexported_symbols := \
 	try_to_wake_up \
 	exit_mmap \
 	dup_mmap \
+	do_vmi_align_munmap \
 	do_vmi_munmap \
 	__vm_munmap \
 	copy_mm \

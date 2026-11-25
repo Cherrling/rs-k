@@ -28,9 +28,18 @@ struct rust_vma_munmap_align_state;
 
 #ifdef CONFIG_RUST_VMA_MUNMAP_COMPLETE
 
+int do_vmi_align_munmap(struct vma_iterator *vmi, struct vm_area_struct *vma,
+			struct mm_struct *mm, unsigned long start,
+			unsigned long end, struct list_head *uf, bool unlock);
+
 void rust_vma_munmap_complete(struct rust_vma_munmap_complete_state *state);
 void rust_vma_munmap_reattach(struct ma_state *mas_detach);
-int rust_do_vmi_align_munmap(struct rust_vma_munmap_align_state *state);
+int rust_helper_vma_munmap_align_run(struct vma_iterator *vmi,
+				     struct vm_area_struct *vma,
+				     struct mm_struct *mm,
+				     unsigned long start, unsigned long end,
+				     struct list_head *uf, bool unlock,
+				     int (*run)(struct rust_vma_munmap_align_state *state));
 
 void rust_helper_vma_munmap_adjust_counts(struct mm_struct *mm,
 					  int vma_count,

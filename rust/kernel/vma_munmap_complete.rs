@@ -15,6 +15,9 @@ use macros::export;
 type AlignState = bindings::rust_vma_munmap_align_state;
 type CompleteState = bindings::rust_vma_munmap_complete_state;
 type MapleState = bindings::ma_state;
+type Mm = bindings::mm_struct;
+type Vma = bindings::vm_area_struct;
+type VmaIterator = bindings::vma_iterator;
 
 /// Completes one aligned unmap from an initialized snapshot.
 ///
@@ -121,14 +124,13 @@ unsafe extern "C" fn rust_vma_munmap_reattach(mas_detach: *mut MapleState) {
     unsafe { reattach(mas_detach) }
 }
 
-/// Runs the aligned unmap sequence for one address range.
+/// Runs the aligned unmap sequence for one initialized range.
 ///
 /// # Safety
 ///
-/// The caller must hold the mmap write lock and initialize the opaque state
-/// with a live address space and detached tree.
-#[export]
-unsafe extern "C" fn rust_do_vmi_align_munmap(state: *mut AlignState) -> c_int {
+/// The state must describe an active mmap write lock, address space, and
+/// populated detached tree.
+unsafe fn run(state: *mut AlignState) -> c_int {
     // SAFETY: The caller initializes the opaque state for this operation.
     let error = unsafe { bindings::rust_helper_vma_munmap_align_gather(state) };
     if error != 0 {
@@ -156,4 +158,47 @@ unsafe extern "C" fn rust_do_vmi_align_munmap(state: *mut AlignState) -> c_int {
     // detached tree.
     unsafe { complete(snapshot) };
     0
+}
+
+/// Runs the aligned unmap sequence with the helper-provided state.
+///
+/// # Safety
+///
+/// The C helper calls this callback once with a private state object that
+/// meets the requirements of [`run`].
+unsafe extern "C" fn run_with_state(state: *mut AlignState) -> c_int {
+    // SAFETY: The caller upholds the function requirements.
+    unsafe { run(state) }
+}
+
+/// Unmaps one aligned range through the VMA tree.
+///
+/// # Safety
+///
+/// The caller must hold the mmap write lock. `vmi`, `vma`, and `uf` must remain
+/// valid for the entire call. `unlock` must select the caller's lock-release
+/// contract.
+#[export]
+unsafe extern "C" fn do_vmi_align_munmap(
+    vmi: *mut VmaIterator,
+    vma: *mut Vma,
+    mm: *mut Mm,
+    start: usize,
+    end: usize,
+    uf: *mut bindings::list_head,
+    unlock: bool,
+) -> c_int {
+    // SAFETY: The helper provides one private state object for this call.
+    unsafe {
+        bindings::rust_helper_vma_munmap_align_run(
+            vmi,
+            vma,
+            mm,
+            start,
+            end,
+            uf,
+            unlock,
+            Some(run_with_state),
+        )
+    }
 }

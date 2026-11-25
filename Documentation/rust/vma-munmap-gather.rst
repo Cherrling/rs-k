@@ -118,46 +118,46 @@ Verification results
 The final validation matrix passed:
 
 .. list-table::
+   :widths: 34 20 20 26
    :header-rows: 1
 
    * - Configuration
-     - Production path
-     - Userspace result
+     - KUnit runs
      - KUnit result
-   * - Native Rust production
-     - Rust
-     - 3 of 3
-     - Not built
-   * - Native Rust KUnit
-     - Rust
-     - 3 of 3
-     - 3 of 3
+     - Userspace
+   * - Native Rust
+     - SMP4: 3, SMP1: 1
+     - 1 of 1 pass
+     - 1 pass
    * - C fallback
-     - C
-     - 3 of 3
      - Not built
-   * - KASAN and DEBUG_VM
-     - Rust
-     - 3 of 3
-     - 3 of 3
+     - Not built
+     - 1 pass
+   * - C-only fallback
+     - Not built
+     - Not built
+     - 1 pass
+   * - KASAN
+     - SMP4: 1, SMP1: 1
+     - 1 of 1 pass
+     - 1 pass
    * - lockdep
-     - Rust
-     - 3 of 3
-     - 3 of 3
+     - SMP4: 1, SMP1: 1
+     - 1 of 1 pass
+     - 1 pass
    * - PREEMPT_RT
-     - Rust
-     - 3 of 3
-     - 3 of 3
+     - SMP4: 1, SMP1: 1
+     - 1 of 1 pass
+     - 1 pass
 
-All QEMU runs used four vCPUs. Userspace runs used 1536 MiB of RAM. KUnit runs
-used 1024 MiB of RAM, except for KASAN, which used 1536 MiB. KVM was the
-accelerator.
+Userspace runs used 1536 MiB of RAM. KUnit runs used 1024 MiB of RAM, except
+for KASAN, which used 1536 MiB. KVM was the primary accelerator and TCG was
+the fallback. Every userspace run completed all 64 rounds, including 4096
+gate-synchronized map and unmap cycles.
 
-Every userspace run completed all 64 rounds, including 4096 gate-synchronized
-map and unmap cycles. The KASAN configuration also enabled
-``CONFIG_DEBUG_VM_MAPLE_TREE`` and ``CONFIG_DEBUG_MAPLE_TREE``. This compiled
-and exercised the retained fatal VMA range checks and the main-tree versus
-detached-tree comparison.
+An adjacent native SMP4 boot passed ``copy_mm`` 5 of 5 cases,
+``mm_lifetime`` 6 of 6 cases, ``exit_mmap`` 2 of 2 cases, ``dup_mmap``
+2 of 2 cases, and ``vma_unmap`` 1 of 1 case.
 
 No gather-specific KUnit selector was added because constructing a real address
 space, VMA iterator, and detached tree requires user-task state. The userspace
@@ -168,20 +168,22 @@ Build and production checks:
 
 * Production Clippy and all five diagnostic builds completed with
   ``CONFIG_WERROR=y``.
-* ``rustfmtcheck``, ``git diff --check``, and shell syntax validation passed.
-* Strict checkpatch reported zero errors, zero warnings, and zero checks after
-  ignoring the expected ``FILE_PATH_CHANGES`` and ``AVOID_BUG`` advisories.
-* The Rust Sphinx build passed with only existing cross-reference and missing
-  Graphviz warnings.
-* The production image contains ``rust_vma_munmap_gather`` and
-  ``rust_do_vmi_align_munmap``.
-* The production image omits the VMA-unmap KUnit selector symbols and reports
-  no undefined symbols.
-* Disassembly shows ``do_vmi_align_munmap()`` calling
-  ``rust_do_vmi_align_munmap()``, which calls the Rust gather entry through the
-  opaque state wrapper.
-* The C fallback image contains no Rust gather or completion entry symbols and
-  no Rust call in the aligned unmap entry.
+* ``rustfmtcheck`` and ``git diff --check`` passed.
+* Strict checkpatch reported zero errors, zero warnings, and zero checks.
+* The Rust Sphinx build passed with only existing cross-reference warnings.
+* The native Rust object directly defines ``do_vmi_align_munmap()`` and the
+  Rust gather entry. Native C caller objects contain only undefined references
+  to the aligned entry.
+* Fallback and C-only objects define the aligned entry in ``mm/vma.o`` and no
+  Rust gather entry.
+* Each linked image has one definition of the aligned entry. The production
+  image omits the old adapter, test-only symbols, and VMA-unmap KUnit symbols.
+* ``Module.symvers`` and the generated Rust export header omit the production
+  entry.
+* ``llvm-nm -u vmlinux`` reports no undefined symbols.
+* Disassembly shows the Rust-defined aligned entry calling the stack helper
+  once. The Rust gather body then calls the gather, split, detached-tree,
+  userfaultfd, and debug-validation helpers in the documented order.
 * The final production image boots to the expected missing-root-filesystem
   panic. The kernel is not tainted, and no earlier BUG, kernel warning, KASAN
   report, RCU stall, lockdep complaint, or oops occurs.

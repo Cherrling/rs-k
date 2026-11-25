@@ -3231,22 +3231,11 @@ static void init_vma_munmap(struct vma_munmap_struct *vms,
  * Return: 0 on success and drops the lock if so directed, error and leaves the
  * lock held otherwise.
  */
+#ifndef CONFIG_RUST_VMA_MUNMAP_COMPLETE
 int do_vmi_align_munmap(struct vma_iterator *vmi, struct vm_area_struct *vma,
 		struct mm_struct *mm, unsigned long start, unsigned long end,
 		struct list_head *uf, bool unlock)
 {
-#ifdef CONFIG_RUST_VMA_MUNMAP_COMPLETE
-	struct rust_vma_munmap_align_state state = {
-		.mm = mm,
-	};
-
-	mt_init_flags(&state.mt_detach,
-		      vmi->mas.tree->ma_flags & MT_FLAGS_LOCK_MASK);
-	mt_on_stack(state.mt_detach);
-	mas_init(&state.mas_detach, &state.mt_detach, 0);
-	init_vma_munmap(&state.vms, vmi, vma, start, end, uf, unlock);
-	return rust_do_vmi_align_munmap(&state);
-#else
 	struct maple_tree mt_detach;
 	MA_STATE(mas_detach, &mt_detach, 0, 0);
 	mt_init_flags(&mt_detach, vmi->mas.tree->ma_flags & MT_FLAGS_LOCK_MASK);
@@ -3272,10 +3261,29 @@ clear_tree_failed:
 gather_failed:
 	validate_mm(mm);
 	return error;
-#endif /* CONFIG_RUST_VMA_MUNMAP_COMPLETE */
 }
+#endif /* !CONFIG_RUST_VMA_MUNMAP_COMPLETE */
 
 #ifdef CONFIG_RUST_VMA_MUNMAP_COMPLETE
+
+int rust_helper_vma_munmap_align_run(struct vma_iterator *vmi,
+				     struct vm_area_struct *vma,
+				     struct mm_struct *mm,
+				     unsigned long start, unsigned long end,
+				     struct list_head *uf, bool unlock,
+				     int (*run)(struct rust_vma_munmap_align_state *state))
+{
+	struct rust_vma_munmap_align_state state = {
+		.mm = mm,
+	};
+
+	mt_init_flags(&state.mt_detach,
+		      vmi->mas.tree->ma_flags & MT_FLAGS_LOCK_MASK);
+	mt_on_stack(state.mt_detach);
+	mas_init(&state.mas_detach, &state.mt_detach, 0);
+	init_vma_munmap(&state.vms, vmi, vma, start, end, uf, unlock);
+	return run(&state);
+}
 
 void rust_helper_vma_munmap_adjust_counts(struct mm_struct *mm, int vma_count,
 					  unsigned long locked_vm)

@@ -1393,12 +1393,15 @@ config RUST_VMA_MUNMAP_COMPLETE
 	depends on RUST_VMA_UNMAP
 	default y
 	help
-	  Use Rust for aligned unmapping orchestration, address-space
-	  accounting, detached-VMA cleanup, and rollback.
+	  Use Rust for the direct definition of do_vmi_align_munmap(). Rust owns
+	  aligned unmapping orchestration, address-space accounting,
+	  detached-VMA cleanup, and rollback.
 
 	  Split decisions use the separate Rust VMA gather implementation.
 	  Individual split, detached-tree insertion, page-table and reverse-map
-	  removal, maple-tree operations, and lock primitives remain in C.
+	  removal, maple-tree operations, lock primitives, and private state
+	  layout remain in C. The original C entry definition is selected only
+	  when this option is disabled.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

@@ -418,6 +418,37 @@ Address-space range unmapping
   focused, concurrency, KASAN, lockdep, PREEMPT_RT, and adjacent munmap
   matrices.
 
+Aligned address-space range unmapping
+  Status: ``migrated``.
+
+  Evidence: :doc:`vma-munmap-complete` and :doc:`vma-munmap-gather`.
+
+  Rust directly defines ``do_vmi_align_munmap()``. Rust owns detached-tree
+  gather sequencing, completion snapshots, main-tree clearing, rollback,
+  lock downgrade, address-space accounting, VMA removal, validation, final
+  unlock, and detached-tree destruction. C retains opaque stack storage,
+  private maple-tree and VMA-operation layouts, and the named primitive
+  helpers. C fallback and C-only configurations retain the complete
+  implementation.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT
+  configurations exercise successful alignment, gather, clear, completion,
+  rollback, concurrent unmapping, ``MAP_FIXED`` replacement, ``brk`` shrink,
+  and SysV shared-memory detach.
+
+  Symbol inspection shows that native ``rust/kernel.o`` defines
+  ``do_vmi_align_munmap()`` and C caller objects contain only undefined
+  references. Fallback and C-only objects define the entry in ``mm/vma.o`` and
+  none in Rust. The entry remains unexported, each linked image has one
+  definition, no old ``rust_do_vmi_align_munmap`` symbol remains, and the
+  production image has no unresolved symbol.
+
+  Risk: A gather, snapshot, clear, rollback, accounting, or callback-lifetime
+  mistake can lose a VMA, release the mmap lock in the wrong state, or expose
+  a partially changed address space. The exit condition is one production
+  definition in every configuration class and a clean pass of the focused,
+  concurrency, diagnostic, and adjacent lifecycle matrices.
+
 Address-space construction and copy
   Status: ``migrated``.
 
@@ -2335,6 +2366,29 @@ Address-space range-unmapping primitive boundary
   aligned-unmap, userfaultfd, iterator, and list layouts without changing the
   lock or completion contracts.
 
+Aligned range-unmapping state and callback boundary
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/vma-munmap-complete-rust.h``, ``mm/vma.c``, and
+  ``rust/kernel/vma_munmap_complete.rs``.
+
+  Reason: C owns the stack storage, initialization, and private layout of the
+  aligned-unmap state. The state contains a detached maple tree, a maple-tree
+  cursor, a VMA-unmap state, and userfaultfd state. C invokes one Rust callback
+  synchronously while that storage remains live.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT runs exercise
+  gather, main-tree clear, rollback, completion, lock release, and concurrent
+  unmapping. Symbol inspection checks the direct entry and removal of the old
+  state-pointer adapter.
+
+  Risk: A layout, callback, or lifetime mismatch can corrupt the detached tree,
+  use state after the helper stack frame exits, or skip rollback.
+
+  Exit condition: Rust can allocate and own the aligned-unmap state and every
+  contained private layout without changing gather, rollback, lock, or
+  completion contracts.
+
 IRQ work layout and callback ABI
   Status: ``boundary-retained``.
 
@@ -3124,6 +3178,12 @@ access, mmap locking, ``TASK_SIZE``, maple-tree lookup, aligned unmapping,
 userfaultfd completion, and the iterator and list layouts remain named C
 boundaries. Rust defines both production entries and owns every validation,
 alignment, lookup, unlock, dispatch, and completion-order decision.
+
+The aligned range-unmapping boundary is valid only while C stack storage,
+initialization, the private detached-tree and VMA-unmap layouts, the
+synchronous callback contract, and the named primitive helpers remain
+boundaries. Rust defines the production entry and owns every gather, clear,
+rollback, accounting, cleanup, validation, and release decision.
 
 The IRQ work boundary is valid only while the shared work and callback layout,
 per-CPU lists, interrupt delivery, hotplug and PREEMPT_RT worker lifecycle,

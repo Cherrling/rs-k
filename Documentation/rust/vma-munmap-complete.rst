@@ -6,10 +6,11 @@ Native Rust Completion of Aligned VMA Unmapping
 Status and scope
 ----------------
 
-The ``CONFIG_RUST_VMA_MUNMAP_COMPLETE`` option selects native Rust for aligned
-VMA unmap orchestration, completion, and rollback. The option depends on
-``CONFIG_RUST_VMA_UNMAP``. The original C implementation remains available as
-a fallback.
+The ``CONFIG_RUST_VMA_MUNMAP_COMPLETE`` option selects the direct Rust
+definition of ``do_vmi_align_munmap()``. The option depends on
+``CONFIG_RUST_VMA_UNMAP``. Rust also owns aligned unmap orchestration,
+completion, and rollback. The complete C implementation is selected only when
+the option is disabled.
 
 This unit covers the production ``do_vmi_align_munmap()`` entry point. It also
 replaces the shared completion and reattachment routines used by overlapping
@@ -33,9 +34,10 @@ Rust owns these decisions:
 Retained C boundary
 -------------------
 
-The C adapter allocates the opaque aligned-unmap state because it contains
-private maple-tree and VMA-operation layouts. Rust receives no ownership of
-those layouts beyond the operation lifetime.
+The C stack-storage helper allocates the opaque aligned-unmap state because it
+contains private maple-tree and VMA-operation layouts. The helper initializes
+the state and calls one Rust callback. Rust receives no ownership of those
+layouts beyond the operation lifetime.
 
 The C boundary contains:
 
@@ -59,10 +61,13 @@ is described in :doc:`vma-split`. The shared ``unmap_region()`` and
 Entry points and ownership
 --------------------------
 
-The C ``do_vmi_align_munmap()`` entry initializes an opaque state object and
-calls ``rust_do_vmi_align_munmap()``. Rust gathers the VMA set, snapshots the
-completion values, clears the main tree, and either completes the operation or
-reattaches the detached VMAs.
+``rust/kernel/vma_munmap_complete.rs`` directly defines
+``do_vmi_align_munmap()``. The entry sends its public arguments to the C
+stack-storage helper. The helper initializes the opaque state and calls the
+Rust runner. Rust gathers the VMA set, snapshots the completion values, clears
+the main tree, and either completes the operation or reattaches the detached
+VMAs. The original C entry in ``mm/vma.c`` compiles only when the option is
+disabled.
 
 The C ``vms_complete_munmap_vmas()`` wrapper snapshots a shared VMA-unmap
 state and calls ``rust_vma_munmap_complete()``. This routes direct ``munmap()``,
@@ -123,47 +128,51 @@ configuration.
 Validation record
 -----------------
 
-Each configuration ran the userspace suite three consecutive times. The
-native Rust, KASAN, lockdep, and PREEMPT_RT configurations also ran the
-VMA-unmap KUnit case three times.
+The native KUnit configuration ran three times at four vCPUs and once at one
+vCPU. KASAN, lockdep, and PREEMPT_RT each ran KUnit once at four vCPUs and once
+at one vCPU. Every configuration ran the userspace suite once.
 
 .. list-table::
-   :widths: 30 20 20 20
+   :widths: 34 20 20 26
    :header-rows: 1
 
    * - Configuration
-     - Production path
-     - Userspace result
+     - KUnit runs
      - KUnit result
-   * - Native Rust production
-     - Rust
-     - 3 of 3
-     - Not built
-   * - Native Rust KUnit
-     - Rust
-     - 3 of 3
-     - 3 of 3
+     - Userspace
+   * - Native Rust
+     - SMP4: 3, SMP1: 1
+     - 1 of 1 pass
+     - 1 pass
    * - C fallback
-     - C
-     - 3 of 3
      - Not built
+     - Not built
+     - 1 pass
+   * - C-only fallback
+     - Not built
+     - Not built
+     - 1 pass
    * - KASAN
-     - Rust
-     - 3 of 3
-     - 3 of 3
+     - SMP4: 1, SMP1: 1
+     - 1 of 1 pass
+     - 1 pass
    * - lockdep
-     - Rust
-     - 3 of 3
-     - 3 of 3
+     - SMP4: 1, SMP1: 1
+     - 1 of 1 pass
+     - 1 pass
    * - PREEMPT_RT
-     - Rust
-     - 3 of 3
-     - 3 of 3
+     - SMP4: 1, SMP1: 1
+     - 1 of 1 pass
+     - 1 pass
 
-All QEMU runs used four vCPUs. Userspace runs used 1536 MiB of RAM. KUnit
-runs used 1024 MiB of RAM. KVM was the primary accelerator and TCG was the
-fallback. Every final userspace run completed all 64 rounds, including 4096
-gate-synchronized map and unmap cycles.
+Userspace runs used 1536 MiB of RAM. KUnit runs used 1024 MiB of RAM, except
+for KASAN, which used 1536 MiB. KVM was the primary accelerator and TCG was
+the fallback. Every final userspace run completed all 64 rounds, including
+4096 gate-synchronized map and unmap cycles.
+
+An adjacent native SMP4 boot passed ``copy_mm`` 5 of 5 cases,
+``mm_lifetime`` 6 of 6 cases, ``exit_mmap`` 2 of 2 cases, ``dup_mmap``
+2 of 2 cases, and ``vma_unmap`` 1 of 1 case.
 
 No completion-specific KUnit selector was added because constructing a real
 address space, VMA iterator, and detached tree requires user-task state.
@@ -181,18 +190,20 @@ Build and production checks:
   passed.
 * Strict checkpatch reported zero errors, zero warnings, and zero checks.
 * ``scripts/get_maintainer.pl`` matched every added file.
-* The Rust Sphinx build passed with only existing cross-reference and missing
-  Graphviz warnings.
-* The production image contains ``rust_do_vmi_align_munmap``,
-  ``rust_vma_munmap_complete``, and ``rust_vma_munmap_reattach``.
-* The production image omits the VMA-unmap KUnit test selector symbols and
-  reports no undefined symbols.
-* Disassembly shows ``do_vmi_align_munmap()`` calling
-  ``rust_do_vmi_align_munmap()`` after opaque state initialization.
-* Rust disassembly calls the gather, snapshot, main-tree clear, accounting,
-  PTE cleanup, VMA removal, validation, unlock, and tree-destroy helpers in
-  the documented order.
-* The C fallback contains none of the Rust completion entry symbols.
+* The Rust Sphinx build passed with only existing cross-reference warnings.
+* The native Rust object directly defines ``do_vmi_align_munmap()``. Native C
+  caller objects contain only undefined references to the entry.
+* Fallback and C-only objects define the entry in ``mm/vma.o`` and none in
+  Rust.
+* Each linked image has one definition of the entry. The production image
+  omits ``rust_do_vmi_align_munmap``, test-only symbols, and the VMA-unmap
+  KUnit symbols.
+* ``Module.symvers`` and the generated Rust export header omit the production
+  entry.
+* ``llvm-nm -u vmlinux`` reports no undefined symbols.
+* Rust disassembly calls the stack helper once. The Rust body then calls the
+  gather, snapshot, main-tree clear, accounting, PTE cleanup, VMA removal,
+  validation, unlock, and tree-destroy helpers in the documented order.
 * The final production image boots to the expected missing-root-filesystem
   panic. The kernel is not tainted, and no earlier BUG, warning, KASAN report,
   RCU stall, lockdep complaint, or oops occurs.
