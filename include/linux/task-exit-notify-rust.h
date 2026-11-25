@@ -14,7 +14,7 @@ struct task_struct;
 #define RUST_TASK_EXIT_NOTIFY_LEADER	2
 #define RUST_TASK_EXIT_NOTIFY_THREAD	3
 
-void rust_task_exit_notify(struct task_struct *task, bool group_dead);
+void exit_notify(struct task_struct *task, bool group_dead);
 void
 rust_helper_task_exit_notify_kill_orphaned_pgrp(struct task_struct *task,
 						struct task_struct *parent);

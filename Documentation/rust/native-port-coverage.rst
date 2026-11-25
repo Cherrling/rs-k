@@ -317,6 +317,39 @@ Zombie task release
   configuration class, preserved export metadata, and a clean pass of the
   focused, diagnostic, PREEMPT_RT, and adjacent lifecycle matrices.
 
+Task exit parent notification
+  Status: ``migrated``.
+
+  Evidence: :doc:`task-exit-notify`.
+
+  Rust directly defines ``exit_notify()``. Rust owns child-reaper selection,
+  child reparenting, parent-death signal decisions, zombie notification,
+  autoreap selection, and dead-task release ordering. C retains tasklist
+  locking, intrusive lists, ptrace transfer, parent consistency checks,
+  signal delivery, PID namespace teardown, process-group cleanup, and the
+  fallback implementation. The dead-task list enters the native Rust task
+  release state machine directly.
+
+  Test: Native completed three SMP4 and one SMP1 boot with all four focused
+  cases passing. Fallback and C-only each passed two cases at SMP4 and SMP1.
+  KASAN, lockdep, and PREEMPT_RT each passed all four cases at SMP4 and SMP1.
+  Every focused boot reported no failed case, BUG, warning, KASAN report,
+  lockdep complaint, Oops, refcount report, or panic. Native adjacent
+  signal-aware exit, task thread-group exit synchronization, and zombie task
+  release suites also passed.
+
+  Symbol inspection shows that native ``rust/kernel.o`` defines
+  ``exit_notify()`` and native ``kernel/exit.o`` contains only an undefined
+  reference. The production image contains no ``rust_task_exit_notify``
+  wrapper. The entry has no export table entry, which preserves its original
+  unexported class. The production image has no unresolved symbol.
+
+  Risk: A wrong reaper, parent, ptrace, signal, autoreap, or release-order
+  decision can leak a zombie, notify the wrong parent, or release a task
+  twice. The exit condition is one production definition in every
+  configuration class, preserved export metadata, and a clean pass of the
+  focused, diagnostic, PREEMPT_RT, and adjacent lifecycle matrices.
+
 Address-space user lifetime
   Status: ``migrated``.
 

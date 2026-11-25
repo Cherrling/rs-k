@@ -400,7 +400,11 @@ unsafe fn forget_original_parent(father: *mut Task, dead: *mut ListHead) {
 ///
 /// `task` must satisfy the production requirements of the original
 /// `exit_notify()` function.
-unsafe fn exit_notify(task: *mut Task, group_dead: bool) {
+#[export]
+unsafe extern "C" fn exit_notify(task: *mut Task, group_dead: bool) {
+    #[cfg(CONFIG_TASK_EXIT_NOTIFY_KUNIT_TEST)]
+    EXIT_NOTIFY_COUNT.fetch_add(1, Ordering::Relaxed);
+
     let mut dead = MaybeUninit::<ListHead>::uninit();
     // SAFETY: `dead` provides writable storage for a list sentinel.
     let dead = unsafe {
@@ -491,18 +495,4 @@ unsafe fn exit_notify(task: *mut Task, group_dead: bool) {
 
     // SAFETY: The local dead list is initialized and tasklist_lock is released.
     unsafe { release_dead(dead) };
-}
-
-/// Notifies the parent and reparents children through the C ABI.
-///
-/// # Safety
-///
-/// The same requirements as [`exit_notify`] apply.
-#[export]
-unsafe extern "C" fn rust_task_exit_notify(task: *mut Task, group_dead: bool) {
-    #[cfg(CONFIG_TASK_EXIT_NOTIFY_KUNIT_TEST)]
-    EXIT_NOTIFY_COUNT.fetch_add(1, Ordering::Relaxed);
-
-    // SAFETY: The caller upholds the function requirements.
-    unsafe { exit_notify(task, group_dead) };
 }

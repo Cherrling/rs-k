@@ -29,13 +29,12 @@ The Rust code owns these decisions and transitions:
 Entry points and ownership
 --------------------------
 
-The local ``exit_notify()`` entry point remains in ``kernel/exit.c``. When the
-option is enabled, it calls ``rust_task_exit_notify()`` and the original C
-state machine is compiled out.
+Rust directly defines ``exit_notify()``. The native build compiles the
+original C state machine out of ``kernel/exit.c``. The C fallback and C-only
+configurations retain the complete implementation.
 
-Rust runs the complete production state machine. The C adapter contains one
-direct call to Rust. Rust does not call the original ``exit_notify()`` or any
-of its local helper functions.
+Rust runs the complete production state machine. Rust does not call the
+original ``exit_notify()`` or any of its local helper functions.
 
 The Rust module uses narrow C helpers for individual operations. A helper
 performs one lock, RCU, intrusive list, signal, ptrace, notification, wakeup,
@@ -56,11 +55,14 @@ architecture, or subsystem primitives:
 * Ptrace transfer, notification, and parent consistency checks.
 * Parent-death and zombie signal delivery through ``do_notify_parent()``.
 * Orphaned process-group cleanup.
-* Dead-task release through ``release_task()``.
 
 Rust selects when each operation runs and whether each conditional branch is
 entered. The retained helpers preserve the lock, RCU, signal, and process
 hierarchy contracts of the original C implementation.
+
+The dead-task list enters the Rust task-release state machine directly. C does
+not provide an adapter or policy decision between exit notification and final
+task release.
 
 Ordering and invariants
 -----------------------
@@ -83,28 +85,47 @@ path. Tasks marked for autoreap join the dead-task list. Rust releases
 Validation record
 -----------------
 
-Each KUnit configuration ran three consecutive times with four vCPUs,
-PREEMPT_RT, and lockdep. The Rust and KASAN configurations ran four cases.
-The C fallback ran the two shared cases.
+Each boot used 1536 MiB of guest memory. Native completed three four-vCPU
+runs and one single-vCPU run. Every other configuration completed one run at
+each CPU count.
 
 .. list-table::
-   :widths: 44 12 14 30
+   :widths: 38 18 14 12 18
    :header-rows: 1
 
    * - Configuration
-     - Runs
+     - Boots
+     - Groups
      - Cases
      - Result
    * - Rust task exit notification
-     - 3
+     - 3 SMP4, 1 SMP1
+     - 1 of 1
      - 4 of 4
      - Pass
    * - C task exit notification fallback
-     - 3
+     - 1 SMP4, 1 SMP1
+     - 1 of 1
      - 2 of 2
      - Pass
-   * - Generic inline KASAN with Rust
-     - 3
+   * - C-only
+     - 1 SMP4, 1 SMP1
+     - 1 of 1
+     - 2 of 2
+     - Pass
+   * - Rust task exit notification with KASAN
+     - 1 SMP4, 1 SMP1
+     - 1 of 1
+     - 4 of 4
+     - Pass
+   * - Rust task exit notification with lockdep
+     - 1 SMP4, 1 SMP1
+     - 1 of 1
+     - 4 of 4
+     - Pass
+   * - Rust task exit notification with PREEMPT_RT
+     - 1 SMP4, 1 SMP1
+     - 1 of 1
      - 4 of 4
      - Pass
 
@@ -121,22 +142,33 @@ teardown path. The test reaps the namespace init and checks both production
 transitions.
 
 The policy tests cover all autoreap branch selections and the ptrace
-death-signal choices. Every KUnit log reported no BUG, warning, KASAN report,
-Oops, refcount report, lockdep complaint, or kernel panic.
+death-signal choices. Native adjacent runs also passed signal-aware exit,
+task thread-group exit synchronization, and zombie task release.
 
-The production build used Clippy with KUnit, KASAN, and ``PROVE_LOCKING``
-disabled. PREEMPT_RT remained enabled. The C adapter contains a direct
-relocation to ``rust_task_exit_notify``. The Rust symbol is present, KUnit
-symbols are absent, and ``llvm-nm -u vmlinux`` reports no unresolved symbols.
+Every focused log reported no failed case, BUG, warning, KASAN report, Oops,
+refcount report, lockdep complaint, or kernel panic.
+
+The production build passed with ``CONFIG_WERROR=y`` and Clippy. The module
+build completed modpost without an error. The Rust source passed
+``rustfmtcheck`` and Rustdoc. Focused Sphinx generated this page with only the
+existing ``kernel-docs`` and ``getting_llvm`` reference warnings. The complete
+change passed ``git diff --check`` and strict ``checkpatch``.
+
+The production image disabled KUnit, KASAN, lockdep, and PREEMPT_RT.
+``rust/kernel.o`` defines ``exit_notify()``. Native ``kernel/exit.o``
+contains only an undefined reference. The production image contains no
+``rust_task_exit_notify`` wrapper. The entry has no export table entry, which
+preserves its original unexported class. The production image has no
+unresolved symbol.
 
 The production image starts with four vCPUs under KVM. Task creation and early
 process setup complete before the image reaches the expected missing
 root-filesystem panic. The boot log contains no additional diagnostic.
 
-A second production build disabled ``CONFIG_PID_NS``. It passed Clippy,
-linked without objtool warnings, kept the direct Rust call, and had no
-unresolved symbols. The image reached the same expected boot panic without an
-additional diagnostic.
+A second production build disabled ``CONFIG_PID_NS``. It passed
+``CONFIG_WERROR=y`` and Clippy, preserved the same symbol ownership, linked
+without unresolved symbols, and reached the same expected boot panic without
+an additional diagnostic.
 
 Review conditions
 -----------------
@@ -148,5 +180,5 @@ Reopen the retained C boundary decision if any of these conditions changes:
 * A helper starts to select exit policy or operation order.
 * Process hierarchy, thread-group, or child-subreaper rules change.
 * The PID namespace teardown lock-drop protocol changes.
-* ``do_notify_parent()`` or ``release_task()`` gains a Rust-native
-  implementation.
+* The dead-task list stops entering the native Rust ``release_task()`` state
+  machine.

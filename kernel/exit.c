@@ -614,12 +614,9 @@ rust_helper_task_exit_notify_kill_orphaned_pgrp(struct task_struct *task,
 	kill_orphaned_pgrp(task, parent);
 }
 
-static void exit_notify(struct task_struct *tsk, int group_dead)
-{
-	rust_task_exit_notify(tsk, group_dead);
-}
+#endif /* CONFIG_RUST_TASK_EXIT_NOTIFY */
 
-#else /* !CONFIG_RUST_TASK_EXIT_NOTIFY */
+#ifndef CONFIG_RUST_TASK_EXIT_NOTIFY
 
 static struct task_struct *find_alive_thread(struct task_struct *p)
 {

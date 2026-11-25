@@ -2273,7 +2273,7 @@ config RUST_TASK_EXIT_NOTIFY
 	depends on RUST && RUST_TASK_RELEASE
 	default y
 	help
-	  Use Rust for the production task-exit notification state machine.
+	  Use Rust to directly define the production exit_notify() entry.
 	  Rust owns child-reaper selection, child reparenting, parent-death
 	  signals, zombie notification, self-reaping decisions, and dead-task
 	  release ordering.
