@@ -131,7 +131,7 @@ extern "C" fn rust_signal_retarget_test_complete_count() -> u32 {
 ///
 /// `task` must be live, `which` must point to a valid signal set, and the
 /// caller must hold `task->sighand->siglock`.
-unsafe fn retarget_shared_pending(task: *mut Task, which: *mut Sigset) {
+pub(crate) unsafe fn retarget_shared_pending(task: *mut Task, which: *mut Sigset) {
     #[cfg(CONFIG_SIGNAL_RETARGET_KUNIT_TEST)]
     ENTRY_COUNT.fetch_add(1, Ordering::Relaxed);
 

@@ -31,7 +31,9 @@ Entry points and ownership
 
 The local ``retarget_shared_pending()`` function remains in ``kernel/signal.c``.
 When the option is enabled, it calls ``rust_signal_retarget_pending()`` and the
-original C state machine is compiled out.
+original C state machine is compiled out. The native
+:doc:`signal-exit` implementation calls the internal Rust retarget state
+machine directly.
 
 Rust owns the complete production algorithm. The C adapter contains one direct
 call to Rust. Rust does not call the original state machine.
@@ -141,5 +143,5 @@ Reopen the retained C boundary decision if any of these conditions changes:
 * A helper starts to select retarget policy or operation order.
 * Thread-group list or signal pending-flag rules change.
 * The ``sighand->siglock`` contract changes.
-* ``exit_signals()`` or ``__set_task_blocked()`` gains a Rust-native
-  implementation.
+* The ``exit_signals()`` or ``__set_task_blocked()`` interface to the retarget
+  state machine changes.

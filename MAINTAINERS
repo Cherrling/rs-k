@@ -24151,6 +24151,7 @@ F:	Documentation/rust/native-task-work.rst
 F:	Documentation/rust/rwlock.rst
 F:	Documentation/rust/rwsem.rst
 F:	Documentation/rust/semaphore.rst
+F:	Documentation/rust/signal-exit.rst
 F:	Documentation/rust/wait-bit.rst
 F:	Documentation/rust/waitqueue.rst
 F:	include/linux/btree-rust.h
@@ -24191,6 +24192,7 @@ F:	include/linux/sched-rust.h
 F:	include/linux/semaphore-rust.h
 F:	include/linux/send-signal-rust.h
 F:	include/linux/signal-dequeue-rust.h
+F:	include/linux/signal-exit-rust.h
 F:	include/linux/signal-pending-recalc-rust.h
 F:	include/linux/signal-struct-copy-rust.h
 F:	include/linux/signal-retarget-rust.h
@@ -24275,6 +24277,7 @@ F:	lib/tests/test_sched_wake.c
 F:	lib/tests/test_semaphore.c
 F:	lib/tests/test_send_signal.c
 F:	lib/tests/test_signal_dequeue.c
+F:	lib/tests/test_signal_exit.c
 F:	lib/tests/test_signal_pending_recalc.c
 F:	lib/tests/test_signal_struct_copy.c
 F:	lib/tests/test_signal_retarget.c
@@ -24294,8 +24297,10 @@ F:	rust/helpers/klist.c
 F:	rust/helpers/list_lru.c
 F:	rust/helpers/lockref.c
 F:	rust/helpers/rcuwait.c
+F:	rust/helpers/signal_exit.c
 F:	rust/kernel/btree.rs
 F:	rust/kernel/dec_and_lock.rs
+F:	rust/kernel/exit_signals.rs
 F:	rust/kernel/interval_tree.rs
 F:	rust/kernel/irq_event.rs
 F:	rust/kernel/irq_spurious.rs

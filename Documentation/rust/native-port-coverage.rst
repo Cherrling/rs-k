@@ -1215,6 +1215,42 @@ Locked signal queue insertion
   clean pass of the focused, KASAN, lockdep, PREEMPT_RT, and adjacent signal
   matrices.
 
+Signal-aware task exit
+  Status: ``migrated``.
+
+  Evidence: :doc:`signal-exit`.
+
+  Rust directly defines ``exit_signals()``. Rust owns the cgroup thread-group
+  guard lifetime, ``PF_EXITING`` publication, task-local queue retirement,
+  shared pending retarget selection, group-stop participation, queue
+  destruction order, and parent notification selection. Rust calls the
+  internal Rust retarget state machine directly. C retains the signal-handler
+  lock, static queue operations, pending and thread-group queries, unblocked
+  mask construction, group-stop accounting, and parent notification
+  primitives.
+
+  Test: Native completed three SMP4 and one SMP1 boot with all ten signal
+  groups passing. Fallback and C-only each passed SMP4 and SMP1. KASAN,
+  lockdep, and PREEMPT_RT each passed SMP4 and SMP1. All ten groups and
+  thirteen cases passed without a BUG, warning, KASAN report, lockdep
+  complaint, oops, or panic. Native adjacent task thread-group exit
+  synchronization passed 3 of 3 cases and task exit notification passed 4 of
+  4 cases.
+
+  Symbol inspection shows that native ``rust/kernel.o`` defines
+  ``exit_signals()`` and native ``kernel/signal.o`` contains neither an
+  implementation nor a reference. Native ``kernel/exit.o`` has a direct
+  reference from ``do_exit()`` to the Rust entry. The production image
+  contains no ``rust_exit_signals`` wrapper. The entry has no export table
+  entry, which preserves its original unexported class. The production image
+  has no unresolved symbol.
+
+  Risk: A wrong exit-state, retarget, group-stop, lock, or notification
+  decision can strand a shared signal, leak a queued signal, or notify the
+  wrong parent. The exit condition is one production definition in every
+  configuration class, a lock-free queue destruction order, preserved export
+  metadata, and a clean pass of the focused and adjacent exit matrices.
+
 Boundary-retained inventory
 ---------------------------
 

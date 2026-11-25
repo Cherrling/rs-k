@@ -2135,6 +2135,22 @@ config RUST_SIGNAL_RETARGET
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_EXIT_SIGNALS
+	bool "Rust implementation of signal-aware task exit"
+	depends on RUST && RUST_SIGNAL_RETARGET
+	default y
+	help
+	  Use Rust to directly define the production exit_signals() entry.
+	  Rust owns the exit transition order, local pending queue retirement,
+	  shared pending signal retargeting, and group-stop notification
+	  selection.
+
+	  The signal-handler lock, static queue operations, cgroup
+	  thread-group protection, and parent notification remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_SIGNAL_WAKE_STATE
 	bool "Rust implementation of signal wakeup state"
 	depends on RUST

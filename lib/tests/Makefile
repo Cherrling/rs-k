@@ -43,6 +43,7 @@ obj-$(CONFIG_SIGNAL_DEQUEUE_KUNIT_TEST) += test_signal_dequeue.o
 obj-$(CONFIG_SIGNAL_PENDING_RECALC_KUNIT_TEST) += test_signal_pending_recalc.o
 obj-$(CONFIG_SIGNAL_STRUCT_COPY_KUNIT_TEST) += test_signal_struct_copy.o
 obj-$(CONFIG_SIGNAL_RETARGET_KUNIT_TEST) += test_signal_retarget.o
+obj-$(CONFIG_SIGNAL_EXIT_KUNIT_TEST) += test_signal_exit.o
 obj-$(CONFIG_SIGNAL_WAKE_SELECT_KUNIT_TEST) += test_signal_wake_select.o
 obj-$(CONFIG_SIGNAL_WAKE_STATE_KUNIT_TEST) += test_signal_wake_state.o
 obj-$(CONFIG_TASK_EXIT_NOTIFY_KUNIT_TEST) += test_task_exit_notify.o

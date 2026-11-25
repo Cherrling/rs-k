@@ -46,6 +46,7 @@
 #include <linux/complete-signal-rust.h>
 #include <linux/prepare-signal-rust.h>
 #include <linux/send-signal-rust.h>
+#include <linux/signal-exit-rust.h>
 #include <linux/signal-dequeue-rust.h>
 #include <linux/signal-pending-recalc-rust.h>
 #include <linux/cn_proc.h>
@@ -3384,6 +3385,35 @@ void signal_retarget_test_call(struct task_struct *tsk, sigset_t *which)
 }
 #endif
 
+#ifdef CONFIG_RUST_EXIT_SIGNALS
+void rust_helper_signal_exit_init_queue(struct list_head *queue)
+{
+	INIT_LIST_HEAD(queue);
+}
+
+void rust_helper_signal_exit_dequeue_pending(struct sigpending *pending,
+					     struct list_head *queue)
+{
+	sigqueue_dequeue_pending(pending, queue);
+}
+
+void rust_helper_signal_exit_flush_queue(struct list_head *queue)
+{
+	flush_sigqueue_list(queue);
+}
+
+bool rust_helper_signal_exit_participate_group_stop(struct task_struct *tsk)
+{
+	return task_participate_group_stop(tsk);
+}
+
+void rust_helper_signal_exit_notify_group_stop(struct task_struct *tsk, int group_stop)
+{
+	read_lock(&tasklist_lock);
+	do_notify_parent_cldstop(tsk, false, group_stop);
+	read_unlock(&tasklist_lock);
+}
+#else
 void exit_signals(struct task_struct *tsk)
 {
 	LIST_HEAD(sigq_list);
@@ -3427,6 +3457,7 @@ void exit_signals(struct task_struct *tsk)
 		read_unlock(&tasklist_lock);
 	}
 }
+#endif /* !CONFIG_RUST_EXIT_SIGNALS */
 
 /*
  * System call entry points.

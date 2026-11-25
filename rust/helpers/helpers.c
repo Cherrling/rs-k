@@ -127,6 +127,9 @@
 #ifdef CONFIG_RUST_SIGNAL_PENDING_RECALC
 #include "signal_pending_recalc.c"
 #endif
+#ifdef CONFIG_RUST_EXIT_SIGNALS
+#include "signal_exit.c"
+#endif
 #include "signal.c"
 #include "signal_retarget.c"
 #include "signal_wake_state.c"

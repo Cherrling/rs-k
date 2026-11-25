@@ -155,6 +155,7 @@
 #include <linux/send-signal-rust.h>
 #include <linux/prepare-signal-rust.h>
 #include <linux/signal-dequeue-rust.h>
+#include <linux/signal-exit-rust.h>
 #include <linux/signal-pending-recalc-rust.h>
 #include <linux/signal-struct-copy-rust.h>
 #include <linux/signal-retarget-rust.h>

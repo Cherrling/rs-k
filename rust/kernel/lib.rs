@@ -95,6 +95,8 @@ mod dup_task_struct;
 pub mod error;
 #[cfg(CONFIG_RUST_EXIT_MMAP)]
 mod exit_mmap;
+#[cfg(CONFIG_RUST_EXIT_SIGNALS)]
+mod exit_signals;
 pub mod faux;
 #[cfg(CONFIG_RUST_FIND_BIT)]
 mod find_bit;

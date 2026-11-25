@@ -2783,6 +2783,22 @@ config SIGNAL_RETARGET_KUNIT_TEST
 
 	  If unsure, say N.
 
+config SIGNAL_EXIT_KUNIT_TEST
+	bool "KUnit test for signal-aware task exit" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for the production signal-aware
+	  task exit path. The test creates a real shared thread group, queues
+	  a local signal, retargets a shared pending signal, and selects a
+	  group-stop notification as one worker exits.
+
+	  The behavior case runs with either the C implementation or the
+	  native Rust implementation selected. The transition counters run
+	  only with the native Rust implementation.
+
+	  If unsure, say N.
+
 config SIGNAL_WAKE_STATE_KUNIT_TEST
 	bool "KUnit test for signal wakeup state" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y
