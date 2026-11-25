@@ -102,6 +102,30 @@ unsafe fn out_free(
     unsafe { abort(pid, ns, retval) }
 }
 
+/// Releases a published PID that failed pidfs insertion.
+///
+/// # Safety
+///
+/// `pid` must be fully published and must own one reference. It must not be
+/// associated with a task.
+#[cfg(CONFIG_RUST_PID_LIFECYCLE)]
+unsafe fn release_published_pid(pid: *mut Pid) {
+    // SAFETY: The caller satisfies the native Rust release requirements.
+    unsafe { crate::pid_lifecycle::free_pid_for_pid(pid) };
+}
+
+/// Releases a published PID that failed pidfs insertion.
+///
+/// # Safety
+///
+/// `pid` must be fully published and must own one reference. It must not be
+/// associated with a task.
+#[cfg(not(CONFIG_RUST_PID_LIFECYCLE))]
+unsafe fn release_published_pid(pid: *mut Pid) {
+    // SAFETY: The caller satisfies the C release requirements.
+    unsafe { bindings::free_pid(pid) };
+}
+
 /// Allocates one PID in a namespace hierarchy.
 ///
 /// # Safety
@@ -288,7 +312,7 @@ unsafe extern "C" fn rust_pid_alloc(
     let retval = unsafe { bindings::rust_helper_pid_alloc_pidfs_add(pid) };
     if retval != 0 {
         // SAFETY: This consumes the published PID and defers its release.
-        unsafe { bindings::free_pid(pid) };
+        unsafe { release_published_pid(pid) };
         return -errno(bindings::ENOMEM);
     }
 

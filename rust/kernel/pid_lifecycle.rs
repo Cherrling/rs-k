@@ -135,7 +135,7 @@ unsafe fn decrement_namespace_count(ns: *mut PidNamespace) {
 ///
 /// `pid` must be live and must no longer be associated with a task. The caller
 /// must not hold `tasklist_lock`.
-unsafe fn release(pid: *mut Pid) {
+pub(crate) unsafe fn free_pid_for_pid(pid: *mut Pid) {
     // SAFETY: The caller satisfies the retained lock assertion.
     unsafe { bindings::rust_helper_pid_assert_tasklist_not_held() };
 
@@ -180,7 +180,7 @@ unsafe fn release(pid: *mut Pid) {
 /// # Safety
 ///
 /// A non-NULL `pid` must be live and the caller must own one reference.
-unsafe fn put(pid: *mut Pid) {
+pub(crate) unsafe fn put_pid_for_ref(pid: *mut Pid) {
     if pid.is_null() {
         return;
     }
@@ -211,43 +211,53 @@ unsafe extern "C" fn put_rcu(head: *mut bindings::callback_head) {
 
     // SAFETY: The embedded callback head belongs to a live PID with one
     // deferred reference.
-    unsafe { put(pid) };
+    unsafe { put_pid_for_ref(pid) };
 }
 
-/// Releases one PID reference through the C ABI.
+/// Releases one PID reference.
 ///
 /// # Safety
 ///
-/// The same requirements as [`put`] apply.
+/// The same requirements as [`put_pid_for_ref`] apply.
 #[export]
-unsafe extern "C" fn rust_pid_put(pid: *mut Pid) {
+unsafe extern "C" fn put_pid(pid: *mut Pid) {
     // SAFETY: The caller upholds the function requirements.
-    unsafe { put(pid) };
+    unsafe { put_pid_for_ref(pid) };
 }
 
-/// Releases one detached PID through the C ABI.
+/// Releases one detached PID.
 ///
 /// # Safety
 ///
-/// The same requirements as [`release`] apply.
+/// The same requirements as [`free_pid_for_pid`] apply.
 #[export]
-unsafe extern "C" fn rust_pid_free(pid: *mut Pid) {
+unsafe extern "C" fn free_pid(pid: *mut Pid) {
     // SAFETY: The caller upholds the function requirements.
-    unsafe { release(pid) };
+    unsafe { free_pid_for_pid(pid) };
 }
 
-/// Releases each non-NULL PID in a PID type array through the C ABI.
+/// Releases each non-NULL PID in a PID type array.
 ///
 /// # Safety
 ///
 /// `pids` must point to an array of `PIDTYPE_MAX` live pointer slots. Each
-/// non-NULL PID must satisfy the [`release`] requirements.
-#[export]
-unsafe extern "C" fn rust_pid_free_all(pids: *mut *mut Pid) {
+/// non-NULL PID must satisfy the [`free_pid_for_pid`] requirements.
+pub(crate) unsafe fn free_pids_for_array(pids: *mut *mut Pid) {
     // SAFETY: The caller supplies the PID type array and owns every entry.
     unsafe {
         visit_present_reverse(pids, |_, pid| {
-            release(pid);
+            free_pid_for_pid(pid);
         })
     };
+}
+
+/// Releases each non-NULL PID in a PID type array.
+///
+/// # Safety
+///
+/// The same requirements as [`free_pids_for_array`] apply.
+#[export]
+unsafe extern "C" fn free_pids(pids: *mut *mut Pid) {
+    // SAFETY: The caller upholds the function requirements.
+    unsafe { free_pids_for_array(pids) };
 }

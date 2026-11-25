@@ -284,6 +284,46 @@ Task work queues
   entries remain unexported. C fallback configurations retain the complete
   implementations.
 
+Native PID lifecycle release
+  Status: ``migrated``.
+
+  Evidence: :doc:`pid-lifecycle`.
+
+  Rust directly defines ``put_pid()``, ``free_pid()``, and ``free_pids()``.
+  Rust owns the final-reference decision, pidfs and cache release order,
+  namespace count transitions, child-reaper wake decisions, PID array
+  traversal, and the deferred RCU release callback. C retains atomic
+  reference operations, lock assertions, IDR and pidfs primitives, cache and
+  namespace release helpers, and RCU queueing. ``put_pid()`` remains a
+  GPL-only export, while ``free_pid()`` and ``free_pids()`` remain
+  unexported. C fallback and C-only configurations retain the complete
+  implementations.
+
+  Test: Native completed three SMP4 and one SMP1 boot with all six focused
+  cases passing. Fallback and C-only each passed four cases at SMP4 and SMP1.
+  KASAN, lockdep, and PREEMPT_RT each passed all six cases at SMP4 and SMP1.
+  All focused logs are free of failures and diagnostics. The native SMP4
+  adjacent PID allocation, association, number, task release, signal exit,
+  and task exit notification suites passed 24 of 24 cases.
+
+  Symbol inspection shows that native ``rust/kernel.o`` defines all three
+  entries and native ``kernel/pid.o`` defines none. The linked image contains
+  one definition of each entry, no ``rust_pid_*`` wrapper, and no unresolved
+  symbol. ``put_pid()`` remains GPL-only in ``vmlinux.symvers``, while
+  ``free_pid()`` and ``free_pids()`` have no export entry.
+
+  The production Clippy build produced ``bzImage`` and modules. Its four-vCPU
+  KVM boot reached the expected missing-root-filesystem panic without an
+  unexpected diagnostic. A second production build disabled
+  ``CONFIG_PID_NS``, retained the same Rust entries, and reached the same
+  expected panic.
+
+  Risk: A wrong reference decision, lock, namespace count, traversal, or
+  release order can cause a use-after-free, leak a PID, or wake a stale child
+  reaper. The exit condition is one production definition in every
+  configuration class, preserved export metadata, and a clean pass of the
+  focused and adjacent PID lifecycle matrices.
+
 Zombie task release
   Status: ``migrated``.
 

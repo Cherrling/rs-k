@@ -28,17 +28,17 @@ The Rust code owns these operations:
 Entry points and ownership
 --------------------------
 
-The exported ``put_pid()`` entry point remains a C ABI adapter.  When the
-option is enabled, it calls ``rust_pid_put()`` and the original C release
-sequence is compiled out.  The ``EXPORT_SYMBOL_GPL()`` annotation remains next
-to the public adapter.
+Rust directly defines ``put_pid()``, ``free_pid()``, and ``free_pids()``. The
+native build compiles the original C implementations out of ``kernel/pid.c``.
+The C fallback and C-only configurations retain the complete implementations.
 
-The internal ``free_pid()`` and ``free_pids()`` entry points also remain C ABI
-adapters.  They call ``rust_pid_free()`` and ``rust_pid_free_all()``.
+Rust preserves the original export classes. ``put_pid()`` remains a GPL-only
+export, while ``free_pid()`` and ``free_pids()`` remain unexported.
 
-The C adapter for ``put_pid()`` and the Rust entry point are each a short
-function call.  Control flow, state selection, traversal, and operation order
-are in Rust.  The helpers perform one retained kernel primitive each.
+Control flow, state selection, traversal, and operation order are in Rust. The
+helpers perform one retained kernel primitive each. The Rust task-release
+state machine calls the Rust PID reference and array release functions
+directly.
 
 Retained C boundary
 -------------------
@@ -91,32 +91,44 @@ non-NULL entry must be checked independently.
 Validation record
 -----------------
 
-The x86_64 validation used PREEMPT_RT and lockdep for every KUnit
-configuration.  The KASAN configuration also used generic inline KASAN.
+The x86_64 validation used the final source for every KUnit configuration.
+KASAN used Clang, ``LLVM=1``, and generic inline KASAN.
 
 .. list-table::
-   :widths: 42 16 16 26
+   :widths: 38 24 16 22
    :header-rows: 1
 
    * - Configuration
-     - Runs
+     - Boots
      - Cases
      - Result
-   * - Rust PID lifecycle
-     - 3
+   * - Native
+     - 3 SMP4, 1 SMP1
      - 6 of 6
      - Pass
-   * - C PID lifecycle fallback
-     - 3
+   * - C lifecycle fallback
+     - SMP4, SMP1
      - 4 of 4
      - Pass
-   * - KASAN with Rust PID lifecycle
-     - 3
+   * - C-only
+     - SMP4, SMP1
+     - 4 of 4
+     - Pass
+   * - KASAN with native
+     - SMP4, SMP1
+     - 6 of 6
+     - Pass
+   * - Lockdep with native
+     - SMP4, SMP1
+     - 6 of 6
+     - Pass
+   * - PREEMPT_RT with native
+     - SMP4, SMP1
      - 6 of 6
      - Pass
 
-The two Rust-only selector tests are absent from the C fallback run.  The four
-implementation-independent release tests ran in every configuration.
+The two Rust-only selector tests are absent from the fallback and C-only runs.
+The four implementation-independent release tests ran in every configuration.
 
 The release tests cover a NULL pointer, a non-final reference, a synthetic
 final reference, and 24 real kernel threads.  Each kernel thread starts,
@@ -124,26 +136,36 @@ allocates a PID, exits, is reaped by ``kthread_stop_put()``, and is followed by
 ``rcu_barrier()``.  The selector tests cover all count actions and every
 non-NULL ordering in a PID type array.
 
-Every log reported zero failures and no BUG, warning, KASAN report, Oops,
+The native SMP4 regression image enabled the PID allocation, PID association,
+PID number, zombie task release, signal-aware exit, and task exit notification
+suites.  The adjacent suites passed 24 of 24 cases.  These cover allocation
+and rollback, task association, namespace number lookup, real task release,
+signal exit, and parent notification.
+
+Every KUnit log reported zero failures and no BUG, warning, KASAN report, Oops,
 lockdep complaint, or kernel panic.
 
-The production build used Clippy with KUnit, PREEMPT_RT, and KASAN disabled.
-The image contains ``rust_pid_put``, ``rust_pid_free``, and
-``rust_pid_free_all``.  The C adapters branch directly to those Rust symbols.
-KUnit selector symbols are absent, and ``llvm-nm -u vmlinux`` reports no
-unresolved symbols.  ``put_pid`` remains GPL-only in ``Module.symvers``.
+Native ``rust/kernel.o`` defines ``put_pid()``, ``free_pid()``, and
+``free_pids()``.  Native ``kernel/pid.o`` contains no definition of those
+entries.  The linked image contains one definition of each entry, no
+``rust_pid_*`` wrapper, and no unresolved symbol.  ``vmlinux.symvers`` contains
+``put_pid`` as ``EXPORT_SYMBOL_GPL`` and no entry for the other two functions.
 
-The production image starts with four vCPUs under KVM.  PID setup, creation,
-fork, and early scheduler activity complete before the image reaches the
-expected missing-root-filesystem panic.  The boot log contains no unexpected
-BUG, warning, KASAN report, Oops, refcount report, or lockdep complaint.
+The production configuration disables KUnit, KASAN, lockdep, and PREEMPT_RT.
+It retains ``CONFIG_WERROR`` and ``CONFIG_RUST_PID_LIFECYCLE``.
+
+The production build used Clippy and produced both ``bzImage`` and modules.
+The four-vCPU KVM image completed PID setup, creation, and early fork activity
+before it reached the expected missing-root-filesystem panic.  The log
+contains no unexpected BUG, warning, KASAN report, Oops, refcount report, or
+lockdep complaint.
 
 A second production configuration disabled ``CONFIG_PID_NS`` while it kept the
 Rust PID lifecycle enabled.  It passed Clippy, linked with no unresolved
-symbols, kept the same Rust entry points, and reached the same expected
-missing-root-filesystem panic without an unexpected diagnostic.  This verifies
-that the Rust path does not depend on PID namespace inline functions that are
-absent from a non-namespace build.
+symbols, retained the same three Rust entry points, and reached the same
+expected panic without an unexpected diagnostic.  This verifies that the Rust
+path does not depend on PID namespace inline functions that are absent from a
+non-namespace build.
 
 Review conditions
 -----------------

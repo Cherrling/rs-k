@@ -785,6 +785,8 @@ rust_non_gpl_exports := \
 
 # Rust-defined production symbols that must not receive automatic exports.
 rust_unexported_symbols := \
+	free_pid \
+	free_pids \
 	idr_alloc \
 	idr_alloc_u32 \
 	idr_get_next_ul \

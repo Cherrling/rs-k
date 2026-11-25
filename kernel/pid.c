@@ -90,24 +90,7 @@ EXPORT_SYMBOL_GPL(init_pid_ns);
 
 static  __cacheline_aligned_in_smp DEFINE_SPINLOCK(pidmap_lock);
 
-#ifdef CONFIG_RUST_PID_LIFECYCLE
-
-void put_pid(struct pid *pid)
-{
-	rust_pid_put(pid);
-}
-EXPORT_SYMBOL_GPL(put_pid);
-
-void free_pid(struct pid *pid)
-{
-	rust_pid_free(pid);
-}
-
-void free_pids(struct pid **pids)
-{
-	rust_pid_free_all(pids);
-}
-
+#ifdef CONFIG_RUST
 void rust_helper_pidmap_lock(void)
 {
 	spin_lock(&pidmap_lock);
@@ -117,6 +100,9 @@ void rust_helper_pidmap_unlock(void)
 {
 	spin_unlock(&pidmap_lock);
 }
+#endif /* CONFIG_RUST */
+
+#ifdef CONFIG_RUST_PID_LIFECYCLE
 
 void rust_helper_pid_assert_tasklist_not_held(void)
 {

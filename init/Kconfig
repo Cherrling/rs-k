@@ -2290,10 +2290,11 @@ config RUST_PID_LIFECYCLE
 	depends on RUST
 	default y
 	help
-	  Use Rust for the production PID release orchestration. Rust owns the
-	  final-reference decision, reverse PID array traversal, PID namespace
-	  count transitions, child-reaper wake decisions, release ordering, and
-	  the deferred final-reference callback.
+	  Use Rust to directly define the production put_pid(), free_pid(),
+	  and free_pids() entries. Rust owns the final-reference decision,
+	  reverse PID array traversal, PID namespace count transitions,
+	  child-reaper wake decisions, release ordering, and the deferred
+	  final-reference callback.
 
 	  Atomic reference-count operations, locking, IDR and pidfs operations,
 	  child-reaper reads, cache release, namespace reference release, and

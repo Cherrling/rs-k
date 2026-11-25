@@ -260,10 +260,10 @@ unsafe fn release_one(task: *mut Task) -> (*mut Task, bool) {
     // SAFETY: The pinned PID reference remains live after unhashing.
     unsafe {
         bindings::rust_helper_task_release_proc_flush_pid(thread_pid);
-        bindings::rust_pid_put(thread_pid);
+        crate::pid_lifecycle::put_pid_for_ref(thread_pid);
         bindings::rust_helper_task_release_exit_cred_namespaces(task);
         bindings::rust_helper_task_release_randomness(task);
-        bindings::rust_pid_free_all(pids.as_mut_ptr());
+        crate::pid_lifecycle::free_pids_for_array(pids.as_mut_ptr());
         bindings::rust_helper_task_release_thread(task);
     }
 
