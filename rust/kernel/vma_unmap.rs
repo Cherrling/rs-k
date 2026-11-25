@@ -171,3 +171,34 @@ unsafe extern "C" fn __vm_munmap(start: usize, len: usize, unlock: bool) -> c_in
     // SAFETY: The caller upholds the function requirements.
     unsafe { unmap_range(mm, start, len, unlock) }
 }
+
+/// Unmaps a range from an address space that is already write locked.
+///
+/// # Safety
+///
+/// The caller must hold the mmap write lock for `mm`. `mm` and `uf` must remain
+/// valid for the entire call. `uf` may be null when the caller does not collect
+/// userfaultfd events.
+#[export]
+unsafe extern "C" fn do_munmap(mm: *mut Mm, start: usize, len: usize, uf: *mut ListHead) -> c_int {
+    let mut storage = MaybeUninit::<VmaIterator>::uninit();
+    let vmi = storage.as_mut_ptr();
+    // SAFETY: The private iterator storage is initialized before use.
+    unsafe { bindings::rust_helper_vma_unmap_iterator_init(vmi, mm, start) };
+    // SAFETY: The caller holds the write lock and upholds the range contract.
+    unsafe { do_vmi_munmap_range(vmi, mm, start, len, uf, false) }
+}
+
+/// Unmaps a range from the current address space without releasing the lock
+/// after a successful call.
+///
+/// # Safety
+///
+/// The current task must have a live address space. The call must occur in
+/// task context and allow this function to acquire and release the mmap write
+/// lock.
+#[export]
+unsafe extern "C" fn vm_munmap(start: usize, len: usize) -> c_int {
+    // SAFETY: The caller upholds the function requirements.
+    unsafe { __vm_munmap(start, len, false) }
+}

@@ -18,6 +18,9 @@ int do_vmi_munmap(struct vma_iterator *vmi, struct mm_struct *mm,
 		  bool unlock);
 
 struct mm_struct *rust_helper_vma_unmap_current_mm(void);
+void rust_helper_vma_unmap_iterator_init(struct vma_iterator *vmi,
+					 struct mm_struct *mm,
+					 unsigned long start);
 void rust_helper_vma_unmap_state_init(struct rust_vma_unmap_state *state,
 				      struct mm_struct *mm,
 				      unsigned long start);

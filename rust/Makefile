@@ -579,6 +579,7 @@ rust_non_gpl_exports := \
 	refcount_dec_and_mutex_lock \
 	refcount_dec_and_lock \
 	refcount_dec_and_lock_irqsave \
+	vm_munmap \
 	kref_init \
 	kref_read \
 	kref_get \
@@ -833,6 +834,7 @@ rust_unexported_symbols := \
 	do_vmi_align_munmap \
 	do_vmi_munmap \
 	__vm_munmap \
+	do_munmap \
 	copy_mm \
 	mm_init \
 	dma_pool_create_node \

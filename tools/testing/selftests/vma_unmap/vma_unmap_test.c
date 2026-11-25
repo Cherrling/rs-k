@@ -10,12 +10,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <linux/aio_abi.h>
 #include <sys/ipc.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
 #include <sys/reboot.h>
 #include <sys/shm.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -370,6 +372,86 @@ fail:
 	return 1;
 }
 
+static int test_mremap_fixed(size_t page_size, int round)
+{
+	const size_t size = UNMAP_PAGES * page_size;
+	unsigned char *source;
+	unsigned char *target;
+	void *moved;
+	size_t index;
+
+	source = mmap(NULL, size, PROT_READ | PROT_WRITE,
+		      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	if (source == MAP_FAILED)
+		return 1;
+	target = mmap(NULL, size, PROT_READ | PROT_WRITE,
+		      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	if (target == MAP_FAILED)
+		goto fail_source;
+
+	for (index = 0; index < UNMAP_PAGES; index++) {
+		source[index * page_size] = index + 1;
+		target[index * page_size] = 0xff;
+	}
+
+	moved = mremap(source, size, size, MREMAP_MAYMOVE | MREMAP_FIXED,
+		       target);
+	if (moved != target) {
+		fprintf(stderr,
+			"VMA_UNMAP fixed mremap failed in round %d: %s\n",
+			round, strerror(errno));
+		goto fail_target;
+	}
+	if (check_absent(source, size, page_size, round) ||
+	    check_present(target, size, page_size, round))
+		goto fail_target;
+	for (index = 0; index < UNMAP_PAGES; index++) {
+		if (target[index * page_size] != index + 1) {
+			fprintf(stderr,
+				"VMA_UNMAP fixed mremap changed page %zu in round %d\n",
+				index, round);
+			goto fail_target;
+		}
+	}
+
+	if (munmap(target, size)) {
+		fprintf(stderr,
+			"VMA_UNMAP fixed mremap cleanup failed in round %d: %s\n",
+			round, strerror(errno));
+		return 1;
+	}
+	return 0;
+
+fail_target:
+	munmap(target, size);
+fail_source:
+	munmap(source, size);
+	return 1;
+}
+
+static int test_aio_destroy(size_t page_size, int round)
+{
+	aio_context_t context = 0;
+	long result;
+
+	(void)page_size;
+	result = syscall(SYS_io_setup, 8, &context);
+	if (result) {
+		fprintf(stderr, "VMA_UNMAP io_setup failed in round %d: %s\n",
+			round, strerror(errno));
+		return 1;
+	}
+
+	result = syscall(SYS_io_destroy, context);
+	if (result) {
+		fprintf(stderr, "VMA_UNMAP io_destroy failed in round %d: %s\n",
+			round, strerror(errno));
+		return 1;
+	}
+
+	return 0;
+}
+
 struct unmap_gate {
 	pthread_mutex_t lock;
 	pthread_cond_t cond;
@@ -495,6 +577,8 @@ static int test_unmap_ranges(size_t page_size)
 		    test_fixed_overlap(page_size, round) ||
 		    test_brk_shrink(page_size, round) ||
 		    test_sysv_shm(page_size, round) ||
+		    test_mremap_fixed(page_size, round) ||
+		    test_aio_destroy(page_size, round) ||
 		    test_concurrent_ranges(page_size, round))
 			return 1;
 	}

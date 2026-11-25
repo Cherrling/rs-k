@@ -3569,11 +3569,18 @@ struct mm_struct *rust_helper_vma_unmap_current_mm(void)
 	return current->mm;
 }
 
+void rust_helper_vma_unmap_iterator_init(struct vma_iterator *vmi,
+					 struct mm_struct *mm,
+					 unsigned long start)
+{
+	vma_iter_init(vmi, mm, start);
+}
+
 void rust_helper_vma_unmap_state_init(struct rust_vma_unmap_state *state,
 				      struct mm_struct *mm,
 				      unsigned long start)
 {
-	vma_iter_init(&state->vmi, mm, start);
+	rust_helper_vma_unmap_iterator_init(&state->vmi, mm, start);
 	INIT_LIST_HEAD(&state->userfaultfd);
 }
 

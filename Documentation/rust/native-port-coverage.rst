@@ -390,26 +390,31 @@ Address-space range unmapping
 
   Evidence: :doc:`vma-unmap`.
 
-  Rust directly defines ``__vm_munmap()`` and ``do_vmi_munmap()``. Rust owns
-  page alignment, address-space limit validation, length rounding and
-  overflow, first-overlap lookup, empty-range lock handling, killable write
-  locking, conditional unlock, aligned unmap dispatch, and userfaultfd
+  Rust directly defines ``__vm_munmap()``, ``do_vmi_munmap()``,
+  ``do_munmap()``, and ``vm_munmap()``. Rust owns page alignment, address-space
+  limit validation, length rounding and overflow, first-overlap lookup,
+  empty-range lock handling, killable write locking, conditional unlock,
+  wrapper dispatch and lock contracts, aligned unmap dispatch, and userfaultfd
   completion order. C retains current-mm field access, mmap locking,
-  ``TASK_SIZE``, maple-tree lookup, aligned unmap, and userfaultfd completion.
-  C also retains the private VMA iterator and userfaultfd list layout. C
-  fallback and C-only configurations retain the complete implementations.
+  ``TASK_SIZE``, maple-tree lookup, iterator initialization, aligned unmap,
+  and userfaultfd completion. C also retains the private VMA iterator and
+  userfaultfd list layout. C fallback and C-only configurations retain the
+  complete implementations.
 
   Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT
   configurations exercise invalid boundaries, alignment, empty ranges,
   partial and multi-VMA unmapping, shared mappings, and concurrent map/unmap
-  workloads.
+  workloads. The userspace workload also covers ``MREMAP_FIXED`` replacement
+  and AIO context teardown.
 
-  Symbol inspection shows that native ``rust/kernel.o`` defines both entries
-  and C caller objects contain only undefined references. Fallback and C-only
-  objects define both entries in ``mm/vma.o`` and none in Rust. Both entries
-  remain unexported, each linked image has one definition, no old
-  ``rust_vma_unmap`` or ``rust_do_vmi_munmap`` symbols remain, and the
-  production image has no unresolved symbol.
+  Symbol inspection shows that native ``rust/kernel.o`` defines all four
+  entries. Native ``mm/mmap.o`` has no definition of ``do_munmap()`` or
+  ``vm_munmap()``, and native ``mm/vma.o`` has no definition of
+  ``__vm_munmap()`` or ``do_vmi_munmap()``. Fallback and C-only objects define
+  the wrappers in ``mm/mmap.o`` and the two range entries in ``mm/vma.o``.
+  ``vm_munmap()`` remains an ordinary export, and the other three entries
+  remain unexported. Each linked image has one definition, and the production
+  image has no unresolved symbol.
 
   Risk: A validation, lock, lookup, or completion mistake can unmap the wrong
   range, leave a write lock held, report userfaultfd events out of order, or
@@ -2350,14 +2355,15 @@ Address-space range-unmapping primitive boundary
   ``rust/kernel/vma_unmap.rs``.
 
   Reason: C and Rust share current-mm field access, mmap locking,
-  ``TASK_SIZE``, maple-tree lookup, aligned unmapping, and userfaultfd
-  completion contracts. The state object also contains an mm-private VMA
-  iterator and userfaultfd list.
+  ``TASK_SIZE``, maple-tree lookup, iterator initialization, aligned
+  unmapping, and userfaultfd completion contracts. The state object also
+  contains an mm-private VMA iterator and userfaultfd list.
 
   Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT runs exercise
-  range validation, empty and populated unmaps, lock release, userfaultfd
-  completion, and concurrent map/unmap workload. Symbol inspection checks
-  direct ownership and removal of both adapters.
+  range validation, empty and populated unmaps, wrapper lock contracts,
+  ``MREMAP_FIXED`` replacement, AIO teardown, userfaultfd completion, and
+  concurrent map/unmap workload. Symbol inspection checks direct ownership of
+  all four entries.
 
   Risk: A helper or layout mismatch can unmap the wrong pages, release the mmap
   lock in the wrong branch, or expose userfaultfd state to the next caller.

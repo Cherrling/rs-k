@@ -1518,6 +1518,7 @@ success:
 	return vma;
 }
 
+#ifndef CONFIG_RUST_VMA_UNMAP
 /* do_munmap() - Wrapper function for non-maple tree aware do_munmap() calls.
  * @mm: The mm_struct
  * @start: The start address to munmap
@@ -1538,6 +1539,8 @@ int vm_munmap(unsigned long start, size_t len)
 {
 	return __vm_munmap(start, len, false);
 }
+#endif /* !CONFIG_RUST_VMA_UNMAP */
+
 EXPORT_SYMBOL(vm_munmap);
 
 SYSCALL_DEFINE2(munmap, unsigned long, addr, size_t, len)

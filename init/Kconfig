@@ -1373,10 +1373,10 @@ config RUST_VMA_UNMAP
 	depends on RUST_EXIT_MMAP
 	default y
 	help
-	  Use Rust for direct definitions of __vm_munmap() and do_vmi_munmap().
-	  Rust owns range validation, page alignment, first-overlap lookup,
-	  empty-range lock handling, mmap write locking, and userfaultfd
-	  completion ordering.
+	  Use Rust for direct definitions of __vm_munmap(), do_vmi_munmap(),
+	  do_munmap(), and vm_munmap(). Rust owns range validation, page
+	  alignment, first-overlap lookup, empty-range lock handling, mmap write
+	  locking, and userfaultfd completion ordering.
 
 	  Partial VMA splitting, detached-tree gathering, rollback, and munmap
 	  completion use separate Rust implementations when their options are
