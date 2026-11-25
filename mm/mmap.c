@@ -1744,6 +1744,14 @@ struct rust_exit_mmap_state {
 	struct mmu_gather tlb;
 };
 
+void rust_helper_exit_mmap_run(struct mm_struct *mm,
+			       rust_exit_mmap_run_fn run)
+{
+	struct rust_exit_mmap_state state;
+
+	run(mm, &state);
+}
+
 void rust_helper_exit_mmap_notifier_release(struct mm_struct *mm)
 {
 	mmu_notifier_release(mm);
@@ -1943,13 +1951,9 @@ int rust_helper_exit_mmap_test_add_anon(struct mm_struct *mm,
 #endif /* CONFIG_RUST_EXIT_MMAP */
 
 /* Release all mmaps. */
+#ifndef CONFIG_RUST_EXIT_MMAP
 void exit_mmap(struct mm_struct *mm)
 {
-#ifdef CONFIG_RUST_EXIT_MMAP
-	struct rust_exit_mmap_state state;
-
-	rust_exit_mmap(mm, &state);
-#else
 	struct mmu_gather tlb;
 	struct vm_area_struct *vma;
 	unsigned long nr_accounted = 0;
@@ -2002,8 +2006,8 @@ destroy:
 	trace_exit_mmap(mm);
 	mmap_write_unlock(mm);
 	vm_unacct_memory(nr_accounted);
-#endif
 }
+#endif /* !CONFIG_RUST_EXIT_MMAP */
 
 /*
  * Return true if the calling process may expand its vm space by the passed

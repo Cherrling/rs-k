@@ -323,6 +323,37 @@ Address-space user lifetime
   clean pass of the complete lifetime, KASAN, lockdep, PREEMPT_RT, and adjacent
   lifecycle matrices.
 
+Address-space mapping teardown
+  Status: ``migrated``.
+
+  Evidence: :doc:`exit-mmap`.
+
+  Rust directly defines ``exit_mmap()``. Rust owns mmu-notifier release order,
+  the mmap read and write lock sequence, architecture exit placement, VMA
+  iteration, page-table teardown, OOM state publication, reverse-map removal,
+  accounting accumulation, and final accounting release. C retains mmu
+  notifier, map-tree, VMA, TLB, page-table, architecture, trace, and accounting
+  primitives. C also retains opaque stack storage for the private VMA iterator,
+  unmap descriptor, and TLB gather state. C fallback and C-only configurations
+  retain the complete implementation.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT
+  configurations exercise empty-tree exit, populated VMA teardown, accounting,
+  and the userspace fork-and-exit path.
+
+  Symbol inspection shows that native ``rust/kernel.o`` defines
+  ``exit_mmap()`` and ``kernel/fork.o`` contains only an undefined reference.
+  Fallback and C-only objects define the entry in ``mm/mmap.o`` and none in
+  Rust. The entry remains unexported, each linked image has one definition, no
+  old ``rust_exit_mmap`` symbol remains, and the production image has no
+  unresolved symbol.
+
+  Risk: A wrong lock transition, OOM ordering, VMA iteration, or accounting
+  decision can expose freed mappings, corrupt the maple tree, or release the
+  wrong accounting total. The exit condition is one production definition in
+  every configuration class and a clean pass of the focused KUnit, userspace,
+  KASAN, lockdep, PREEMPT_RT, and adjacent lifecycle matrices.
+
 Address-space construction and copy
   Status: ``migrated``.
 
@@ -2169,6 +2200,30 @@ Address-space construction and copy primitive boundary
   scheduler, RSS, VMA, module-reference, and scheduler-cache primitives
   without changing failure or ordering contracts.
 
+Address-space mapping teardown primitive boundary
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/exit-mmap-rust.h``, ``mm/mmap.c``, and
+  ``rust/kernel/exit_mmap.rs``.
+
+  Reason: C and Rust share mmu notifier, mmap lock, maple-tree, VMA, TLB,
+  page-table, architecture, trace, and accounting primitives. The private VMA
+  iterator, unmap descriptor, and TLB gather state also require C stack-storage
+  layout.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT runs exercise
+  the empty-tree path, populated VMA removal, accounted pages, and production
+  process exit. Symbol inspection checks direct ownership and the absence of
+  the old adapter.
+
+  Risk: A lock or layout mismatch can tear down live mappings, free page
+  tables in the wrong order, expose an incomplete address space to the OOM
+  reaper, or lose accounting.
+
+  Exit condition: Rust owns equivalent map-tree, VMA, TLB, page-table,
+  architecture, trace, accounting, and private state layouts without changing
+  lock or ordering contracts.
+
 IRQ work layout and callback ABI
   Status: ``boundary-retained``.
 
@@ -2938,6 +2993,13 @@ allocator, field constructors, architecture and scheduler hooks, RSS counters,
 VMA duplication, binary-format references, and scheduler-cache setup remain
 named C boundaries. Rust defines both production entries and owns every
 construction, failure, duplication, and publication decision.
+
+The address-space mapping teardown boundary is valid only while notifier
+release, mmap locking, maple-tree operations, VMA removal, TLB gathering,
+page-table removal, architecture hooks, tracing, accounting, and private state
+layout remain named C boundaries. Rust defines the production entry and owns
+every lock transition, iteration, teardown, OOM publication, and accounting
+decision.
 
 The IRQ work boundary is valid only while the shared work and callback layout,
 per-CPU lists, interrupt delivery, hotplug and PREEMPT_RT worker lifecycle,

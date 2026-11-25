@@ -6,9 +6,10 @@ Native Rust Address-Space Mapping Teardown
 Status and scope
 ----------------
 
-The ``CONFIG_RUST_EXIT_MMAP`` option selects native Rust for the production
-``exit_mmap()`` path. The option depends on ``CONFIG_RUST_MM_TEARDOWN``. The
-original C implementation remains available as a fallback.
+The ``CONFIG_RUST_EXIT_MMAP`` option selects the direct Rust definition of the
+production ``exit_mmap()`` entry. The option depends on
+``CONFIG_RUST_MM_TEARDOWN``. The complete C implementation is selected only
+when the option is disabled.
 
 This unit covers all user mappings in an address space after its final user
 reference has gone. It includes VMA removal, page-table removal, reverse-map
@@ -28,10 +29,14 @@ space.
 Entry points and ownership
 --------------------------
 
-The C ``exit_mmap()`` adapter allocates one private state object. The object
-contains the VMA iterator, unmap descriptor, and TLB gather state because those
-types use mm-private layout. The adapter then calls ``rust_exit_mmap()`` and
-performs no teardown policy itself.
+``rust/kernel/exit_mmap.rs`` directly defines ``exit_mmap()``. The original C
+definition in ``mm/mmap.c`` compiles only when ``CONFIG_RUST_EXIT_MMAP`` is
+disabled. The change does not expose a new public kernel ABI.
+
+Rust calls one narrow C helper to obtain private stack storage. The helper
+allocates a ``struct rust_exit_mmap_state`` object, then calls the Rust
+callback with that object. Rust defines the callback and owns every teardown
+decision. The C helper performs no teardown policy.
 
 Rust owns these production decisions:
 
@@ -65,9 +70,12 @@ The boundary contains:
   inspection.
 * ``cond_resched()`` and the final map-count diagnostic.
 * The mmap-exit tracepoint and VM accounting release.
+* The opaque stack storage for the VMA iterator, unmap descriptor, and TLB
+  gather state.
 
-The C adapter owns the private state layout because ``struct unmap_desc`` is an
-mm-private type. It does not select locks, ordering, iteration, rollback, or
+The C state helper owns the private state layout because several contained
+types have mm-private layout. Its callback interface exposes only an opaque
+pointer. It does not select locks, ordering, iteration, rollback, or
 accounting.
 
 Locking and invariants
@@ -114,39 +122,44 @@ The test reports through ``/dev/kmsg`` and powers off QEMU after reporting.
 Validation record
 -----------------
 
-All final runs used four vCPUs. KUnit used 1024 MiB of RAM. Each userspace run
-used 1536 MiB of RAM and performed 64 fork and exit rounds.
-
-Each table entry represents three final runs.
+Native KUnit ran three times at four vCPUs and once at one vCPU. KASAN,
+lockdep, and PREEMPT_RT each ran KUnit once at four vCPUs and once at one
+vCPU. Every configuration ran the userspace selftest once. KUnit used 1024 MiB
+of RAM. Each userspace run used 1536 MiB of RAM and performed 64 fork and exit
+rounds.
 
 .. list-table::
-   :widths: 34 12 24 30
+   :widths: 36 20 20 24
    :header-rows: 1
 
    * - Configuration
-     - Runs
+     - KUnit runs
      - KUnit result
-     - Userspace result
+     - Userspace
    * - Native Rust
-     - 3
+     - SMP4: 3, SMP1: 1
      - ``exit_mmap`` 2 of 2 pass
-     - 3 of 3 pass
+     - 1 pass
    * - C fallback
-     - 3
+     - Not built
      - ``exit_mmap`` suite not built
-     - 3 of 3 pass
+     - 1 pass
+   * - C-only fallback
+     - Not built
+     - ``exit_mmap`` suite not built
+     - 1 pass
    * - KASAN with native Rust
-     - 3
+     - SMP4: 1, SMP1: 1
      - ``exit_mmap`` 2 of 2 pass
-     - 3 of 3 pass
+     - 1 pass
    * - lockdep with native Rust
-     - 3
+     - SMP4: 1, SMP1: 1
      - ``exit_mmap`` 2 of 2 pass
-     - 3 of 3 pass
+     - 1 pass
    * - PREEMPT_RT with native Rust
-     - 3
+     - SMP4: 1, SMP1: 1
      - ``exit_mmap`` 2 of 2 pass
-     - 3 of 3 pass
+     - 1 pass
 
 The final logs contain no failed case, BUG, warning, KASAN report, lockdep
 report, suspicious RCU access, RCU stall, oops, or unexpected panic.
@@ -159,11 +172,13 @@ The production configuration enabled ``RUST_MM_TEARDOWN``,
 KUnit, KASAN, lockdep, and PREEMPT_RT were disabled.
 
 The production Clippy build completed with C warnings treated as errors. The
-resulting ``vmlinux`` contains ``exit_mmap`` and ``rust_exit_mmap`` but no
-failure-injection or KUnit symbols. It has no undefined symbols.
+resulting ``vmlinux`` contains one direct ``exit_mmap()`` definition and no
+``rust_exit_mmap`` symbol. It contains no failure-injection or KUnit symbols
+and has no undefined symbols.
 
-Disassembly shows the C ``exit_mmap()`` adapter calling ``rust_exit_mmap()``.
-The Rust function then follows the expected notifier, lock, unmap,
+Disassembly shows ``rust_helper_mm_final_exit_mmap()`` tail-calling the Rust
+``exit_mmap()`` definition. The Rust entry passes a local callback to the C
+state helper. The callback then follows the expected notifier, lock, unmap,
 page-table, VMA-removal, tree-destroy, trace, unlock, and accounting sequence.
 
 The production image reached the expected missing-root panic without an
@@ -183,7 +198,6 @@ Review conditions
 
 Reopen a retained C boundary if any of these conditions changes:
 
-* ``struct unmap_desc`` becomes a stable public Rust-callable layout.
 * Maple-tree or TLB operations gain safe Rust representations with the same
   locking contract.
 * Architecture mapping exit gains a suitable Rust interface.
@@ -191,5 +205,7 @@ Reopen a retained C boundary if any of these conditions changes:
   removal ordering changes.
 * ``exit_mmap()`` gains a new lock transition or failure path.
 * Reverse-map removal or page-table freeing changes its mmap-lock contract.
+* The private ``struct unmap_desc``, VMA iterator, or TLB gather layout becomes
+  available through a stable Rust-callable interface.
 * A helper starts selecting teardown policy instead of performing one
   primitive operation.

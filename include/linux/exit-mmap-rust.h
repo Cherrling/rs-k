@@ -8,8 +8,11 @@
 
 struct rust_exit_mmap_state;
 
-void rust_exit_mmap(struct mm_struct *mm,
-		    struct rust_exit_mmap_state *state);
+typedef void (*rust_exit_mmap_run_fn)(struct mm_struct *mm,
+				      struct rust_exit_mmap_state *state);
+
+void rust_helper_exit_mmap_run(struct mm_struct *mm,
+			       rust_exit_mmap_run_fn run);
 
 void rust_helper_exit_mmap_notifier_release(struct mm_struct *mm);
 void rust_helper_exit_mmap_state_init(struct rust_exit_mmap_state *state,

@@ -202,14 +202,25 @@ unsafe fn run(mm: *mut Mm, state: *mut State) {
     record_test(mm, vma_count, nr_accounted as u64);
 }
 
-/// Tears down all mappings through the stable C ABI.
+/// Runs address-space teardown with private C state storage.
 ///
 /// # Safety
 ///
-/// The same requirements as [`run`] apply. The C adapter allocates `state` on
-/// its stack and must provide a private object.
-#[export]
-unsafe extern "C" fn rust_exit_mmap(mm: *mut Mm, state: *mut State) {
+/// The C helper calls this callback once with the same requirements as
+/// [`run`] and a private state object.
+unsafe extern "C" fn run_with_state(mm: *mut Mm, state: *mut State) {
     // SAFETY: The caller upholds the function requirements.
     unsafe { run(mm, state) };
+}
+
+/// Tears down all user mappings in an address space.
+///
+/// # Safety
+///
+/// `mm` must have no users and must own the final user reference. The call
+/// must occur in sleepable context.
+#[export]
+unsafe extern "C" fn exit_mmap(mm: *mut Mm) {
+    // SAFETY: The helper provides one private state object for this call.
+    unsafe { bindings::rust_helper_exit_mmap_run(mm, Some(run_with_state)) };
 }
