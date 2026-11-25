@@ -9,8 +9,8 @@ struct task_struct;
 
 #ifdef CONFIG_RUST_COPY_MM
 
-struct mm_struct *rust_mm_init(struct mm_struct *mm, struct task_struct *p);
-int rust_copy_mm(u64 clone_flags, struct task_struct *tsk);
+struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p);
+int copy_mm(u64 clone_flags, struct task_struct *tsk);
 
 void rust_helper_copy_mm_mt_init(struct mm_struct *mm);
 void rust_helper_copy_mm_mt_set_external_lock(struct mm_struct *mm);

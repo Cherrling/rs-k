@@ -1316,11 +1316,9 @@ static void mmap_init_lock(struct mm_struct *mm)
 #endif
 }
 
+#ifndef CONFIG_RUST_COPY_MM
 static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p)
 {
-#ifdef CONFIG_RUST_COPY_MM
-	return rust_mm_init(mm, p);
-#else
 	mt_init_flags(&mm->mm_mt, MM_MT_FLAGS);
 	mt_set_external_lock(&mm->mm_mt, &mm->mmap_lock);
 	atomic_set(&mm->mm_users, 1);
@@ -1395,8 +1393,8 @@ fail_noid:
 fail_mm_init:
 	free_mm(mm);
 	return NULL;
-#endif /* !CONFIG_RUST_COPY_MM */
 }
+#endif /* !CONFIG_RUST_COPY_MM */
 
 #ifdef CONFIG_RUST_COPY_MM
 
@@ -2227,11 +2225,9 @@ fail_nomem:
 }
 #endif /* !CONFIG_RUST_COPY_MM */
 
+#ifndef CONFIG_RUST_COPY_MM
 static int copy_mm(u64 clone_flags, struct task_struct *tsk)
 {
-#ifdef CONFIG_RUST_COPY_MM
-	return rust_copy_mm(clone_flags, tsk);
-#else
 	struct mm_struct *mm, *oldmm;
 
 	tsk->min_flt = tsk->maj_flt = 0;
@@ -2266,8 +2262,8 @@ static int copy_mm(u64 clone_flags, struct task_struct *tsk)
 	tsk->active_mm = mm;
 	sched_cache_fork(tsk);
 	return 0;
-#endif /* !CONFIG_RUST_COPY_MM */
 }
+#endif /* !CONFIG_RUST_COPY_MM */
 
 static int copy_exec_state(u64 clone_flags, struct task_struct *tsk)
 {

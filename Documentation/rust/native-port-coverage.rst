@@ -323,6 +323,39 @@ Address-space user lifetime
   clean pass of the complete lifetime, KASAN, lockdep, PREEMPT_RT, and adjacent
   lifecycle matrices.
 
+Address-space construction and copy
+  Status: ``migrated``.
+
+  Evidence: :doc:`copy-mm`.
+
+  Rust directly defines ``mm_init()`` and ``copy_mm()``. Rust owns the complete
+  non-fallible construction order, inherited flag and default-VMA selection,
+  fallible resource acquisition and reverse cleanup, private address-space
+  duplication, binary-format reference handling, ``CLONE_VM`` sharing,
+  kernel-thread attachment, and task address-space publication. C retains
+  address-space slab allocation, field constructors, architecture hooks,
+  scheduler and RSS construction, VMA-tree duplication primitives,
+  binary-format helpers, and scheduler-cache setup. C fallback and C-only
+  configurations retain the complete implementations.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT
+  configurations exercise construction, constructor failure injection, private
+  duplication, VMA failure cleanup, and kernel-thread attachment. The
+  userspace fork and thread selftest covers the production private and
+  ``CLONE_VM`` decisions.
+
+  Symbol inspection shows that native ``rust/kernel.o`` defines both entries
+  and native ``kernel/fork.o`` contains only undefined references. Fallback
+  and C-only objects define both entries in C and none in Rust. The entries
+  remain unexported, each linked image has one definition, and the
+  production image has no unresolved symbol.
+
+  Risk: An ordering or cleanup mistake can leak architecture, scheduler, RSS,
+  VMA, or module resources. Publishing an address space before duplication
+  completes can expose partially initialized state. The exit condition is one
+  production definition per entry in every configuration class and a clean
+  pass of the KUnit, userspace, KASAN, lockdep, and PREEMPT_RT matrices.
+
 IRQ work execution
   Status: ``migrated``.
 
@@ -2112,6 +2145,30 @@ Address-space lifetime layout and primitive boundary
   Exit condition: Approved Rust task, lock, atomic-field, finalization, and
   workqueue abstractions preserve the complete helper contracts.
 
+Address-space construction and copy primitive boundary
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/copy-mm-rust.h``, ``kernel/fork.c``, and
+  ``rust/kernel/copy_mm.rs``.
+
+  Reason: C and Rust share address-space slab allocation, field construction,
+  architecture context and ID hooks, CPU-ID and scheduler accounting, RSS
+  counters, VMA duplication, binary-format module references, and scheduler
+  cache setup.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT runs exercise
+  every fallible construction stage, private duplication, failure cleanup, and
+  kernel-thread attachment. The userspace selftest exercises production
+  ``fork()`` and ``pthread_create()`` paths.
+
+  Risk: A constructor or cleanup mismatch can leak resources, release an
+  unfinished address space, or publish a task with invalid memory-management
+  state.
+
+  Exit condition: Approved Rust abstractions cover the slab, architecture,
+  scheduler, RSS, VMA, module-reference, and scheduler-cache primitives
+  without changing failure or ordering contracts.
+
 IRQ work layout and callback ABI
   Status: ``boundary-retained``.
 
@@ -2875,6 +2932,12 @@ The address-space lifetime boundary is valid only while the shared
 finalization destination, asynchronous work storage, and callback remain named
 C boundaries. Rust defines every public entry and owns every acquisition,
 count, release, and queue decision.
+
+The address-space construction and copy boundary is valid only while the slab
+allocator, field constructors, architecture and scheduler hooks, RSS counters,
+VMA duplication, binary-format references, and scheduler-cache setup remain
+named C boundaries. Rust defines both production entries and owns every
+construction, failure, duplication, and publication decision.
 
 The IRQ work boundary is valid only while the shared work and callback layout,
 per-CPU lists, interrupt delivery, hotplug and PREEMPT_RT worker lifecycle,

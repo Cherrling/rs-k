@@ -828,6 +828,8 @@ rust_unexported_symbols := \
 	block_task \
 	wakeup_preempt \
 	try_to_wake_up \
+	copy_mm \
+	mm_init \
 	dma_pool_create_node \
 	dma_pool_destroy \
 	dma_pool_alloc \

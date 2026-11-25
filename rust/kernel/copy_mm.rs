@@ -398,13 +398,13 @@ unsafe fn duplicate_mm(task: *mut Task, oldmm: *mut Mm) -> *mut Mm {
     mm
 }
 
-/// Initializes an allocated address space through the C ABI.
+/// Initializes an allocated address space.
 ///
 /// # Safety
 ///
 /// The requirements of [`init_mm_struct`] apply.
 #[export]
-unsafe extern "C" fn rust_mm_init(mm: *mut Mm, task: *mut Task) -> *mut Mm {
+unsafe extern "C" fn mm_init(mm: *mut Mm, task: *mut Task) -> *mut Mm {
     // SAFETY: The caller upholds the function requirements.
     if unsafe { init_mm_struct(mm, task) } {
         mm
@@ -465,14 +465,14 @@ unsafe fn copy_mm_state(clone_flags: u64, task: *mut Task, oldmm: *mut Mm) -> c_
     0
 }
 
-/// Copies address-space state to a new task through the C ABI.
+/// Copies address-space state to a new task.
 ///
 /// # Safety
 ///
 /// The requirements of [`copy_mm_state`] apply. The source address space is
 /// `current->mm`.
 #[export]
-unsafe extern "C" fn rust_copy_mm(clone_flags: u64, task: *mut Task) -> c_int {
+unsafe extern "C" fn copy_mm(clone_flags: u64, task: *mut Task) -> c_int {
     // SAFETY: The caller remains in task-creation context.
     let oldmm = unsafe { bindings::rust_helper_copy_mm_current_mm() };
     // SAFETY: The caller upholds the function requirements.

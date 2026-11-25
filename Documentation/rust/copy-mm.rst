@@ -6,10 +6,10 @@ Native Rust Address-Space Construction and Copying
 Status and scope
 ----------------
 
-The ``CONFIG_RUST_COPY_MM`` option selects native Rust for the production
-``mm_init()`` and ``copy_mm()`` paths in ``kernel/fork.c``. The configuration
-depends on the native Rust address-space lifetime and teardown units. The
-original C implementations remain available as fallbacks.
+The ``CONFIG_RUST_COPY_MM`` option selects direct Rust definitions of the
+production ``mm_init()`` and ``copy_mm()`` paths. The configuration depends on
+the native Rust address-space lifetime and teardown units. The complete C
+implementations are selected only when the Rust option is disabled.
 
 This unit covers:
 
@@ -31,10 +31,10 @@ original C VMA duplication implementation.
 Entry points and ownership
 --------------------------
 
-The static C ``mm_init()`` adapter calls ``rust_mm_init()`` when the option is
-enabled. The static C ``copy_mm()`` adapter calls ``rust_copy_mm()``. The
-original decision and cleanup sequences are compiled out for these paths.
-Neither change exposes a new public kernel ABI.
+``rust/kernel/copy_mm.rs`` directly defines ``mm_init()`` and ``copy_mm()``.
+The original static C decision and cleanup sequences compile only when
+``CONFIG_RUST_COPY_MM`` is disabled. Neither change exposes a new public
+kernel ABI.
 
 Rust owns these production decisions:
 
@@ -135,73 +135,100 @@ The KUnit suite has five Rust cases:
 * VMA-duplication and binary-format failure injection.
 * Kernel-thread attachment with null source address space.
 
-The C fallback runs the real ``mm_alloc()`` construction case.
+The C fallback and C-only configurations run the real ``mm_alloc()``
+construction case.
 
 The userspace selftest performs 32 private ``fork()`` operations and 32
 ``pthread_create()`` operations. It checks that private children do not modify
 parent memory and that threads share memory. It reports through
 ``/dev/kmsg`` and powers off only after reporting the result.
 
-All tests used four vCPUs and 1536 MiB of RAM in QEMU with KVM, with TCG as the
-fallback accelerator. Each entry in the table represents three final runs.
+All tests used QEMU with KVM and 1536 MiB of RAM. Native KUnit ran three times
+at four vCPUs and once at one vCPU. Every other configuration ran KUnit once
+at four vCPUs and once at one vCPU. Each configuration ran the userspace
+selftest once at four vCPUs.
 
 .. list-table::
-   :widths: 38 14 18 30
+   :widths: 34 20 14 14 14
    :header-rows: 1
 
    * - Configuration
-     - Runs
+     - KUnit runs
      - KUnit result
-     - Userspace result
+     - User runs
+     - Result
    * - Native Rust
-     - 3
+     - SMP4: 3, SMP1: 1
      - 5 of 5 pass
-     - 3 of 3 pass
+     - 1
+     - Pass
    * - C fallback
-     - 3
+     - SMP4: 1, SMP1: 1
      - 1 of 1 pass
-     - 3 of 3 pass
+     - 1
+     - Pass
+   * - C-only fallback
+     - SMP4: 1, SMP1: 1
+     - 1 of 1 pass
+     - 1
+     - Pass
    * - KASAN with native Rust
-     - 3
+     - SMP4: 1, SMP1: 1
      - 5 of 5 pass
-     - 3 of 3 pass
+     - 1
+     - Pass
    * - PREEMPT_RT with native Rust
-     - 3
+     - SMP4: 1, SMP1: 1
      - 5 of 5 pass
-     - 3 of 3 pass
+     - 1
+     - Pass
    * - lockdep with native Rust
-     - 3
+     - SMP4: 1, SMP1: 1
      - 5 of 5 pass
-     - 3 of 3 pass
+     - 1
+     - Pass
 
-The final logs contain no failed KUnit case, BUG, warning, KASAN report,
-lockdep complaint, RCU stall, oops, or unexpected panic.
+An adjacent native SMP4 boot passed ``mm_lifetime`` 6 of 6 cases,
+``dup_task_struct`` 2 of 2 cases, ``task_teardown`` 1 of 1 case, and
+``task_release`` 2 of 2 cases.
+
+No focused run reported a failed case, BUG, warning, KASAN report, lock
+dependency complaint, RCU stall, oops, or unexpected panic.
+
+Native ``rust/kernel.o`` defines ``mm_init()`` and ``copy_mm()`` as global
+text symbols. Native ``kernel/fork.o`` has only undefined references to both
+entries. In the C fallback and C-only configurations, ``kernel/fork.o``
+defines both entries as local text symbols and ``rust/kernel.o`` defines
+neither. Each linked image has one definition of each entry.
+
+Neither entry appears in ``vmlinux.symvers``, ``Module.symvers``, or the
+generated Rust export header in any configuration. No production
+``rust_mm_init`` or ``rust_copy_mm`` symbols remain. ``llvm-nm -u vmlinux``
+reports no unresolved symbols.
+
+Disassembly shows a direct call from ``copy_process()`` to ``copy_mm()`` and
+a direct jump from ``mm_alloc()`` to ``mm_init()``. The Rust constructor
+calls the field constructors and fallible resource operations in the
+documented order.
 
 Build and production checks
 ---------------------------
 
-Final local checks:
+The final production configuration built ``bzImage`` with LLVM and Clippy.
+The image contains the two direct entries and omits the KUnit and failure
+injection symbols. It boots to the expected missing-root-filesystem panic.
+The kernel is not tainted, and no earlier warning, BUG, KASAN report, RCU
+stall, or oops occurs.
 
-* The production configuration builds ``bzImage`` with LLVM.
-* Clippy and ``rustfmtcheck`` pass.
+Additional local checks:
+
+* Clippy, Rustdoc, and ``rustfmtcheck`` pass without warnings.
 * ``git diff --check`` passes.
-* Strict checkpatch reports zero errors and one expected
-  ``FILE_PATH_CHANGES`` warning because the patch adds files.
+* Strict checkpatch reports zero errors and zero warnings.
 * ``scripts/get_maintainer.pl`` identifies the Rust and memory-management
-  maintainers for every added file.
-* The Rust Sphinx build passes. It reports only the existing Graphviz and
-  unrelated Rust reference warnings.
-* The production image contains ``rust_copy_mm`` and ``rust_mm_init``.
-* KUnit and failure-injection symbols are absent from the production image.
-* ``llvm-nm -u vmlinux`` reports no undefined symbols.
-* Disassembly shows a direct call from ``copy_process()`` to
-  ``rust_copy_mm()``.
-* Disassembly shows ``mm_alloc()`` jumping directly to ``rust_mm_init()``.
-* The Rust constructor disassembly calls the field constructors and fallible
-  resource operations in the documented order.
-* The production image boots to the expected missing-root-filesystem panic.
-  The kernel is not tainted, and no earlier warning, BUG, KASAN report, RCU
-  stall, or oops occurs.
+  maintainers for every changed file.
+* The focused Rust Sphinx build passes. It reports only the existing
+  unrelated references to ``kernel-docs`` and ``getting_llvm``.
 
 Review conditions
 -----------------

@@ -1895,19 +1895,21 @@ config RUST_MOVE_PAGE_TABLES
 	  If unsure, say Y.
 
 config RUST_COPY_MM
-	bool "Rust implementation of address-space copying"
+	bool "Rust implementation of address-space construction and copying"
 	depends on RUST && MMU
 	depends on RUST_MM_LIFETIME && RUST_MM_TEARDOWN
 	default y
 	help
-	  Use Rust for the production address-space construction and copying
-	  path. Rust owns the initialization and failure-cleanup order, private
-	  address-space duplication, CLONE_VM sharing decision, and task pointer
+	  Use Rust for direct definitions of mm_init() and copy_mm(). Rust
+	  owns the initialization and failure-cleanup order, private address-
+	  space duplication, CLONE_VM sharing decision, and task pointer
 	  publication.
 
 	  Private allocators, architecture context hooks, scheduler cache
-	  setup, and subsystem constructors remain in C. The separate
-	  RUST_DUP_MMAP option selects native Rust VMA-tree duplication.
+	  setup, subsystem constructors, and VMA duplication primitives remain
+	  in C. The original C entry definitions are selected only when this
+	  option is disabled. The separate RUST_DUP_MMAP option selects native
+	  Rust VMA-tree duplication.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
