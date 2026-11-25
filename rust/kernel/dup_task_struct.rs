@@ -264,13 +264,13 @@ unsafe fn duplicate_task_struct(orig: *mut Task, node: c_int) -> *mut Task {
     task
 }
 
-/// Duplicates a task structure through the C ABI.
+/// Duplicates a task structure.
 ///
 /// # Safety
 ///
 /// The requirements of [`duplicate_task_struct`] apply.
 #[export]
-unsafe extern "C" fn rust_dup_task_struct(orig: *mut Task, node: c_int) -> *mut Task {
+unsafe extern "C" fn dup_task_struct(orig: *mut Task, node: c_int) -> *mut Task {
     // SAFETY: The caller upholds the function requirements.
     unsafe { duplicate_task_struct(orig, node) }
 }

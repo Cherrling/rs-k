@@ -9,7 +9,7 @@ struct task_struct;
 
 #ifdef CONFIG_RUST_SIGNAL_STRUCT_COPY
 
-int rust_signal_struct_copy(struct task_struct *task, u64 clone_flags);
+int copy_signal(u64 clone_flags, struct task_struct *task);
 
 struct signal_struct *
 rust_helper_signal_struct_copy_alloc(struct task_struct *task);

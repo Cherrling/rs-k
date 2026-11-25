@@ -34,9 +34,9 @@ Rust owns these decisions and transitions:
 Entry points and ownership
 --------------------------
 
-The static ``copy_signal()`` function remains in ``kernel/fork.c`` as an
-adapter. When the option is enabled, it calls
-``rust_signal_struct_copy()`` and the original C sequence is compiled out.
+Rust directly defines the production ``copy_signal()`` entry. The native build
+compiles the original C sequence out of ``kernel/fork.c``. C fallback builds
+retain the complete static C function.
 
 Rust owns the complete initialization order. It directly initializes simple
 field values and the circular thread-group links. It calls narrow C helpers
@@ -94,37 +94,43 @@ leader. OOM scores and limits are inherited before the new task can run.
 Validation record
 -----------------
 
-Each KUnit configuration runs three consecutive times with four vCPUs and
-1536 MiB of guest memory.
+The native configuration passed all three focused cases in three consecutive
+SMP4 boots and one SMP1 boot. The fallback and C-only configurations each
+passed both focused cases at SMP4 and SMP1. KASAN, lockdep, and PREEMPT_RT
+each passed all three focused cases at both CPU counts.
 
 .. list-table::
-   :widths: 44 12 14 30
+   :widths: 40 14 14 32
    :header-rows: 1
 
    * - Configuration
-     - Runs
-     - Cases
-     - Result
-   * - Rust signal structure copy
+     - SMP4
+     - SMP1
+     - Focused cases
+   * - Native Rust
      - 3
+     - 1
      - 3 of 3
-     - Pass
-   * - C signal structure copy fallback
-     - 3
+   * - C fallback
+     - 1
+     - 1
      - 2 of 2
-     - Pass
-   * - Rust signal structure copy with KASAN
-     - 3
+   * - C-only
+     - 1
+     - 1
+     - 2 of 2
+   * - KASAN
+     - 1
+     - 1
      - 3 of 3
-     - Pass
-   * - Rust signal structure copy with PREEMPT_RT
-     - 3
+   * - Lockdep
+     - 1
+     - 1
      - 3 of 3
-     - Pass
-   * - Rust signal structure copy with lockdep
-     - 3
+   * - PREEMPT_RT
+     - 1
+     - 1
      - 3 of 3
-     - Pass
 
 The kernel-thread integration case creates a new thread group through the
 production ``copy_process()`` path. It checks the initialized thread list,
@@ -139,18 +145,24 @@ Build and production checks
 ---------------------------
 
 The production configuration enables Rust and the new signal-structure path.
-It disables this KUnit suite. ``llvm-nm`` found the production
-``rust_signal_struct_copy`` symbol. It found no test symbols and no undefined
-symbols.
+It disables this KUnit suite. Native ``rust/kernel.o`` contains one strong
+``copy_signal()`` definition. Native ``kernel/fork.o`` contains only an
+undefined reference. The linked image contains one strong definition.
 
-Disassembly of the inlined ``copy_signal()`` path in ``copy_process()`` shows
-a direct call to ``rust_signal_struct_copy``. The production kernel boots to
-the expected missing-root-filesystem panic. No warning, BUG, or KASAN report
-occurs before that panic.
+The relocations in ``copy_process()`` contain a direct call to ``copy_signal``.
+``copy_signal()`` has no export-table entry. ``Module.symvers`` contains no
+old wrapper or signal-copy test symbol. ``nm -u vmlinux`` reports no undefined
+symbol.
 
-Rustfmt and Clippy pass. The Rust Sphinx build completes with only the
-existing missing Graphviz, Rust reference, and LLVM label warnings. Strict
-checkpatch reports no errors and one expected file-path warning.
+The production Clippy build produced ``bzImage`` and modules. The four-vCPU
+QEMU boot reached the expected missing-root-filesystem panic. The kernel is
+not tainted. No WARN, BUG, KASAN report, lockdep complaint, Oops, RCU stall,
+or unexpected panic occurs.
+
+Rustfmt and Clippy pass. Rustdoc passes. The focused Rust Sphinx build reports
+only the existing unknown ``kernel-docs`` document and undefined
+``getting_llvm`` label warnings. Strict checkpatch reports zero errors and
+zero warnings.
 
 Review conditions
 -----------------

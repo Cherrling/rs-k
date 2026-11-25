@@ -784,11 +784,9 @@ static inline void put_signal_struct(struct signal_struct *sig)
 		free_signal_struct(sig);
 }
 
+#ifndef CONFIG_RUST_TASK_TEARDOWN
 void __put_task_struct(struct task_struct *tsk)
 {
-#ifdef CONFIG_RUST_TASK_TEARDOWN
-	rust_task_put_final(tsk);
-#else
 	WARN_ON(!tsk->exit_state);
 	WARN_ON(refcount_read(&tsk->usage));
 	WARN_ON(tsk == current);
@@ -803,9 +801,9 @@ void __put_task_struct(struct task_struct *tsk)
 	put_signal_struct(tsk->signal);
 	sched_core_free(tsk);
 	free_task(tsk);
-#endif
 }
 EXPORT_SYMBOL_GPL(__put_task_struct);
+#endif /* !CONFIG_RUST_TASK_TEARDOWN */
 
 #ifdef CONFIG_RUST_TASK_TEARDOWN
 void rust_helper_task_final_check(struct task_struct *task)
@@ -1136,11 +1134,9 @@ void rust_helper_dup_task_struct_free_task(struct task_struct *task)
 
 #endif /* CONFIG_RUST_DUP_TASK_STRUCT */
 
+#ifndef CONFIG_RUST_DUP_TASK_STRUCT
 static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 {
-#ifdef CONFIG_RUST_DUP_TASK_STRUCT
-	return rust_dup_task_struct(orig, node);
-#else
 	struct task_struct *tsk;
 	int err;
 
@@ -1256,8 +1252,8 @@ free_stack:
 free_tsk:
 	free_task_struct(tsk);
 	return NULL;
-#endif /* !CONFIG_RUST_DUP_TASK_STRUCT */
 }
+#endif /* !CONFIG_RUST_DUP_TASK_STRUCT */
 
 __cacheline_aligned_in_smp DEFINE_SPINLOCK(mmlist_lock);
 
@@ -2503,11 +2499,9 @@ void rust_helper_signal_struct_copy_exec_update_lock(struct signal_struct *sig)
 
 #endif /* CONFIG_RUST_SIGNAL_STRUCT_COPY */
 
+#ifndef CONFIG_RUST_SIGNAL_STRUCT_COPY
 static int copy_signal(u64 clone_flags, struct task_struct *tsk)
 {
-#ifdef CONFIG_RUST_SIGNAL_STRUCT_COPY
-	return rust_signal_struct_copy(tsk, clone_flags);
-#else
 	struct signal_struct *sig;
 
 	if (clone_flags & CLONE_THREAD)
@@ -2560,8 +2554,8 @@ static int copy_signal(u64 clone_flags, struct task_struct *tsk)
 	init_rwsem(&sig->exec_update_lock);
 
 	return 0;
-#endif /* !CONFIG_RUST_SIGNAL_STRUCT_COPY */
 }
+#endif /* !CONFIG_RUST_SIGNAL_STRUCT_COPY */
 
 #ifdef CONFIG_SIGNAL_STRUCT_COPY_KUNIT_TEST
 bool signal_struct_copy_test_shared(void)

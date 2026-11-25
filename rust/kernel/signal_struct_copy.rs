@@ -169,7 +169,7 @@ unsafe fn copy_signal_struct(task: *mut Task, clone_flags: u64) -> c_int {
 ///
 /// The requirements of [`copy_signal_struct`] apply.
 #[export]
-unsafe extern "C" fn rust_signal_struct_copy(task: *mut Task, clone_flags: u64) -> c_int {
+unsafe extern "C" fn copy_signal(clone_flags: u64, task: *mut Task) -> c_int {
     // SAFETY: The caller upholds the function requirements.
     unsafe { copy_signal_struct(task, clone_flags) }
 }

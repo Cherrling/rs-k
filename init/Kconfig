@@ -1944,10 +1944,11 @@ config RUST_DUP_TASK_STRUCT
 	depends on RUST
 	default y
 	help
-	  Use Rust for the production task-structure duplication path. Rust
-	  owns the NUMA node decision, allocation failure handling, stack
-	  publication, inherited CPU state setup, task reference
-	  initialization, conditional field resets, and cleanup order.
+	  Use Rust to directly define the production dup_task_struct() entry.
+	  Rust owns the NUMA node decision, allocation failure handling, stack
+	  publication, inherited CPU state setup, task reference initialization,
+	  conditional field resets, and cleanup order. The original C
+	  implementation is compiled out.
 
 	  Task and stack allocation, architecture copying, stack-accounting,
 	  CPU-mask, random-canary, and subsystem initialization primitives
@@ -2060,9 +2061,9 @@ config RUST_TASK_TEARDOWN
 	depends on RUST
 	default y
 	help
-	  Use Rust for the production orchestration of final task resource
-	  teardown. Rust owns the cleanup order after the final task reference
-	  is released.
+	  Use Rust to directly define the production __put_task_struct() entry.
+	  Rust owns the cleanup order after the final task reference is released.
+	  The original C implementation is compiled out.
 
 	  Task invariant diagnostics, subsystem cleanup, and final task memory
 	  release remain in C.
@@ -2108,11 +2109,12 @@ config RUST_SIGNAL_STRUCT_COPY
 	depends on RUST
 	default y
 	help
-	  Use Rust for production creation of the signal structure for a new
-	  thread group. Rust owns the CLONE_THREAD decision and initialization
-	  order for counts, thread links, wait queue, shared pending state,
-	  statistics, timers, resource limits, audit state, autogroup state,
-	  cgroup locking, OOM scores, and execution locks.
+	  Use Rust to directly define the production copy_signal() entry. Rust
+	  owns the CLONE_THREAD decision and initialization order for counts,
+	  thread links, wait queue, shared pending state, statistics, timers,
+	  resource limits, audit state, autogroup state, cgroup locking, OOM
+	  scores, and execution locks. The original C implementation is compiled
+	  out.
 
 	  Allocation, subsystem constructors, locking primitives, and inherited
 	  value reads remain in C.

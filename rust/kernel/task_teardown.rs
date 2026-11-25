@@ -42,13 +42,13 @@ unsafe fn run(task: *mut Task) {
     unsafe { bindings::rust_helper_task_final_free_task(task) };
 }
 
-/// Performs final task resource teardown through the C ABI.
+/// Performs final task resource teardown.
 ///
 /// # Safety
 ///
 /// The same requirements as [`run`] apply.
 #[export]
-unsafe extern "C" fn rust_task_put_final(task: *mut Task) {
+unsafe extern "C" fn __put_task_struct(task: *mut Task) {
     // SAFETY: The caller upholds the function requirements.
     unsafe { run(task) };
 }

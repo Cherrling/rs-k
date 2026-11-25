@@ -29,13 +29,13 @@ The Rust code owns this cleanup order:
 Entry points and ownership
 --------------------------
 
-The exported C ``__put_task_struct()`` entry point remains in
-``kernel/fork.c``. When the option is enabled, its C ABI adapter calls
-``rust_task_put_final()`` and the original C cleanup sequence is compiled out.
+Rust directly defines the exported GPL ``__put_task_struct()`` entry. The
+native build compiles the original C cleanup sequence out of ``kernel/fork.c``.
+C fallback builds retain the complete C function and its GPL export metadata.
 
 The RCU callback ``__put_task_struct_rcu_cb()`` remains a C adapter. It
 recovers the ``task_struct`` from its embedded ``rcu_head`` and calls the
-existing ``__put_task_struct()`` entry point, which enters Rust.
+existing ``__put_task_struct()`` entry point, which Rust defines.
 
 The Rust implementation uses narrow C helpers for individual operations:
 
@@ -83,8 +83,13 @@ immediately after calling the final ``free_task()`` boundary.
 Validation record
 -----------------
 
-The x86_64 validation used four vCPUs, 1536 MiB of RAM, PREEMPT_RT, and
-lockdep. KVM was used when available, with TCG as the fallback accelerator.
+The native configuration passed the focused case in three consecutive SMP4
+boots and one SMP1 boot. Fallback, C-only, KASAN, lockdep, and PREEMPT_RT each
+passed the focused case at SMP4 and SMP1. KVM was used with TCG as the backup
+accelerator.
+
+The KASAN configuration used generic inline KASAN. PREEMPT_RT and lockdep
+were separate configurations.
 
 The test creates 16 kernel threads. It waits for each thread function to start,
 then takes the extra task reference required by ``kthread_stop_put()``. It stops
@@ -92,36 +97,57 @@ the thread, releases that reference, and calls ``rcu_barrier()`` to wait for
 deferred task teardown callbacks.
 
 .. list-table::
-   :widths: 42 16 16 26
+   :widths: 40 14 14 32
    :header-rows: 1
 
    * - Configuration
-     - Runs
-     - Cases
-     - Result
-   * - Rust task teardown
+     - SMP4
+     - SMP1
+     - Focused cases
+   * - Native Rust
      - 3
+     - 1
      - 1 of 1
-     - Pass
-   * - C task teardown fallback
-     - 3
+   * - C fallback
+     - 1
+     - 1
      - 1 of 1
-     - Pass
-   * - KASAN with Rust task teardown
-     - 3
+   * - C-only
+     - 1
+     - 1
      - 1 of 1
-     - Pass
+   * - KASAN
+     - 1
+     - 1
+     - 1 of 1
+   * - Lockdep
+     - 1
+     - 1
+     - 1 of 1
+   * - PREEMPT_RT
+     - 1
+     - 1
+     - 1 of 1
 
-The KASAN configuration used generic inline KASAN in addition to PREEMPT_RT
-and lockdep.
-
-Every log reported zero failures and no BUG, warning, KASAN report, Oops,
-lockdep complaint, or kernel panic.
+Every focused run reported no failed case, BUG, KASAN report, lockdep
+complaint, Oops, or unexpected panic.
 
 The production build used Clippy with KUnit, PREEMPT_RT, and KASAN disabled.
-The image contains ``rust_task_put_final``. KUnit selector symbols are absent,
-and ``llvm-nm -u vmlinux`` reports no unresolved symbols. The production image
-boots to the expected missing-root-filesystem panic.
+Native ``rust/kernel.o`` contains the only strong ``__put_task_struct()``
+definition. Native ``kernel/fork.o`` contains the C RCU callback and an
+undefined reference to the Rust entry. The RCU callback relocates directly to
+``__put_task_struct``.
+
+``__put_task_struct()`` and ``__put_task_struct_rcu_cb()`` both remain
+GPL-only exports. ``Module.symvers`` contains no old Rust wrapper or KUnit
+selector symbol. ``nm -u vmlinux`` reports no unresolved symbol. The four-vCPU
+production image boots to the expected missing-root-filesystem panic, is not
+tainted, and reports no WARN, BUG, KASAN report, lockdep complaint, Oops, RCU
+stall, or unexpected panic.
+
+Rustfmt, Clippy, and Rustdoc pass. The focused Rust Sphinx build reports only
+the existing unknown ``kernel-docs`` document and undefined ``getting_llvm``
+label warnings. Strict checkpatch reports zero errors and zero warnings.
 
 Review conditions
 -----------------

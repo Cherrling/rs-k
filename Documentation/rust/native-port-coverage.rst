@@ -506,6 +506,54 @@ Task exit parent notification
   configuration class, preserved export metadata, and a clean pass of the
   focused, diagnostic, PREEMPT_RT, and adjacent lifecycle matrices.
 
+Task lifecycle entry points
+  Status: ``migrated``.
+
+  Evidence: :doc:`dup-task-struct`, :doc:`signal-struct-copy`, and
+  :doc:`task-teardown`.
+
+  Rust directly defines the production ``dup_task_struct()``,
+  ``copy_signal()``, and ``__put_task_struct()`` entries. Rust owns task and
+  stack allocation sequencing, cleanup depth, inherited task initialization,
+  the ``CLONE_THREAD`` signal-copy decision and initialization order, and the
+  final task teardown order. C retains allocator and architecture primitives,
+  task and stack accounting, configuration-dependent initialization,
+  signal-structure constructors and inheritance reads, subsystem cleanup
+  functions, the RCU callback, and final task memory release.
+
+  ``dup_task_struct()`` and ``copy_signal()`` remain unexported.
+  ``__put_task_struct()`` remains a GPL-only export.
+  ``__put_task_struct_rcu_cb()`` remains a GPL-only C adapter. C fallback and
+  C-only configurations retain the complete implementations.
+
+  Test: Native completed three SMP4 and one SMP1 boot with all six focused
+  lifecycle cases passing. Fallback and C-only each passed four focused cases
+  at SMP4 and SMP1. KASAN, lockdep, and PREEMPT_RT each passed all six focused
+  cases at both CPU counts. No focused boot reported a failed case, BUG,
+  KASAN report, lockdep complaint, Oops, refcount report, or unexpected
+  panic. Native adjacent task release, signal exit, task exit notification,
+  and PID lifecycle suites passed 33 of 33 cases at SMP4 and SMP1.
+
+  Symbol inspection shows that native ``rust/kernel.o`` defines all three
+  entries and native ``kernel/fork.o`` contains only undefined references
+  plus the C RCU callback. The linked image contains one strong definition of
+  each entry. ``dup_task_struct()`` and ``copy_signal()`` have no export
+  entry. ``__put_task_struct()`` and ``__put_task_struct_rcu_cb()`` remain
+  GPL-only in ``Module.symvers``. No old Rust wrapper remains, and the image
+  has no unresolved symbol.
+
+  The production Clippy build produced ``bzImage`` and modules with LLVM.
+  Its four-vCPU KVM boot reached the expected missing-root-filesystem panic,
+  was not tainted, and reported no WARN, BUG, KASAN report, lockdep complaint,
+  Oops, RCU stall, or unexpected panic.
+
+  Risk: A wrong allocation stage, signal-group decision, initialization
+  order, or teardown order can leak a task or signal structure, expose
+  partially initialized state, or release resources twice. The exit condition
+  is one production definition per entry in every configuration class,
+  preserved export metadata, and a clean pass of the focused, diagnostic,
+  PREEMPT_RT, and adjacent lifecycle matrices.
+
 Address-space user lifetime
   Status: ``migrated``.
 

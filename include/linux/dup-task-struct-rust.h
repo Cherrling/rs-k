@@ -8,8 +8,7 @@ struct task_struct;
 
 #ifdef CONFIG_RUST_DUP_TASK_STRUCT
 
-struct task_struct *
-rust_dup_task_struct(struct task_struct *orig, int node);
+struct task_struct *dup_task_struct(struct task_struct *orig, int node);
 
 int rust_helper_dup_task_struct_resolve_node(struct task_struct *orig, int node);
 struct task_struct *rust_helper_dup_task_struct_alloc(int node);

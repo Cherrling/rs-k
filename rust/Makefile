@@ -789,7 +789,9 @@ rust_unexported_symbols := \
 	alloc_pid \
 	attach_pid \
 	change_pid \
+	copy_signal \
 	detach_pid \
+	dup_task_struct \
 	exchange_tids \
 	free_pid \
 	free_pids \

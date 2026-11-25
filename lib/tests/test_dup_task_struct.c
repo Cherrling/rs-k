@@ -79,7 +79,7 @@ static void dup_task_struct_test_cleanup(struct kunit *test)
 	for (i = 0; i < ARRAY_SIZE(stages); i++) {
 		rust_dup_task_struct_test_fail_next(stages[i]);
 		KUNIT_EXPECT_TRUE(test,
-				  !rust_dup_task_struct(current, NUMA_NO_NODE));
+				  !dup_task_struct(current, NUMA_NO_NODE));
 		KUNIT_EXPECT_EQ(test, failure_count + 1,
 				rust_dup_task_struct_test_failure_count());
 		failure_count++;

@@ -33,12 +33,12 @@ Rust owns these decisions and transitions:
 7. Invoking configuration-dependent field resets and subsystem hooks in the
    original order.
 
-Retained C boundary
--------------------
+Entry point and ownership
+-------------------------
 
-The C adapter remains in ``kernel/fork.c``. When the option is enabled,
-``dup_task_struct()`` delegates to ``rust_dup_task_struct()`` and the original
-C implementation is compiled out.
+Rust directly defines the production ``dup_task_struct()`` entry. The native
+build compiles the original C implementation out of ``kernel/fork.c``. C
+fallback builds retain the complete static C function.
 
 Rust calls narrow helpers for operations that need private allocator state,
 architecture hooks, generated configuration fields, or established kernel
@@ -77,72 +77,79 @@ creation fail when its internal allocation fails.
 Validation record
 -----------------
 
-The Rust and C configurations each run the real task-creation case three
-times. The test calls ``kthread_run()`` so the child passes through the
-production ``copy_process()`` and ``dup_task_struct()`` path.
-
-The child checks that task memory and the kernel stack exist, the stack-end
-magic is present, task usage is non-zero, ``rcu_users`` is two, the stack
-reference is live, and transient splice and page-frag references are clear.
-The test does not check ``worker_private`` because the kthread layer assigns
-that field after ``dup_task_struct()`` returns.
-
-The Rust configuration also checks transition counters for task allocation,
-stack allocation, successful completion, and the absence of failures.
-
-The Rust configuration also injects three failures after separate resources
-are acquired. These cases exercise task-only cleanup, stack cleanup, and
-IPI-mask cleanup. Each case verifies that the production state machine returns
-NULL and records exactly one failure.
+The native configuration passed both focused cases in three consecutive SMP4
+boots and one SMP1 boot. The fallback and C-only configurations each passed
+the focused case at SMP4 and SMP1. KASAN, lockdep, and PREEMPT_RT each passed
+both focused cases at both CPU counts.
 
 .. list-table::
-   :widths: 44 12 14 30
+   :widths: 40 14 14 32
    :header-rows: 1
 
    * - Configuration
-     - Runs
-     - Cases
-     - Result
-   * - Native Rust task duplication
+     - SMP4
+     - SMP1
+     - Focused cases
+   * - Native Rust
      - 3
+     - 1
      - 2 of 2
-     - Pass
-   * - C task duplication fallback
-     - 3
+   * - C fallback
+     - 1
+     - 1
      - 1 of 1
-     - Pass
-   * - Native Rust task duplication with KASAN
-     - 3
+   * - C-only
+     - 1
+     - 1
+     - 1 of 1
+   * - KASAN
+     - 1
+     - 1
      - 2 of 2
-     - Pass
-   * - Native Rust task duplication with PREEMPT_RT
-     - 3
+   * - Lockdep
+     - 1
+     - 1
      - 2 of 2
-     - Pass
-   * - Native Rust task duplication with lockdep
-     - 3
+   * - PREEMPT_RT
+     - 1
+     - 1
      - 2 of 2
-     - Pass
+
+The real task-creation case calls ``kthread_run()`` so the child passes
+through the production ``copy_process()`` and ``dup_task_struct()`` path.
+The child checks task memory, the kernel stack, the stack-end magic, task
+usage, ``rcu_users``, the stack reference, and the transient splice and
+page-frag references. It does not check ``worker_private`` because the kthread
+layer assigns that field after ``dup_task_struct()`` returns.
+
+The Rust configuration also checks transition counters for task allocation,
+stack allocation, successful completion, and the absence of failures. It
+injects three failures after separate resources are acquired. These cases
+exercise task-only cleanup, stack cleanup, and IPI-mask cleanup.
 
 Build and production checks
 ---------------------------
 
 Final local validation:
 
-* The production configuration builds ``bzImage`` with LLVM.
-* ``LLVM=1 rustfmtcheck`` and both Clippy and ``git diff --check`` pass.
-* The production image contains ``rust_dup_task_struct`` and no task
-  duplication test symbols.
-* ``llvm-nm -u vmlinux`` reports no undefined symbols.
-* ``copy_process()`` directly calls ``rust_dup_task_struct()``.
-* QEMU boots the production image to the expected missing-root-filesystem
-  panic. The kernel is not tainted, and no earlier warning, BUG, KASAN report,
-  RCU stall, or oops occurs.
-* The Rust Sphinx build passes. It reports only the existing Graphviz and
-  unrelated Rust reference warnings.
-* Strict checkpatch reports zero errors and one expected
-  ``FILE_PATH_CHANGES`` warning because the change adds files and updates
-  ``MAINTAINERS``.
+* The production configuration builds ``bzImage`` and modules with LLVM and
+  Clippy.
+* ``LLVM=1 rustfmtcheck`` and ``git diff --check`` pass.
+* Native ``rust/kernel.o`` contains one strong ``dup_task_struct()``
+  definition. Native ``kernel/fork.o`` contains only an undefined reference.
+  The linked image contains one strong definition.
+* The relocations in ``copy_process()`` contain a direct call to
+  ``dup_task_struct``.
+* ``dup_task_struct()`` has no export-table entry. ``Module.symvers``
+  contains no old wrapper or task duplication test symbol. ``nm -u vmlinux``
+  reports no undefined symbol.
+* QEMU boots the four-vCPU production image to the expected
+  missing-root-filesystem panic. The kernel is not tainted. No WARN, BUG,
+  KASAN report, lockdep complaint, Oops, RCU stall, or unexpected panic occurs.
+* Rustdoc passes. The focused Rust Sphinx build reports only the existing
+  unknown ``kernel-docs`` document and undefined ``getting_llvm`` label
+  warnings.
+* Strict checkpatch reports zero errors and zero warnings.
 
 Review conditions
 -----------------
