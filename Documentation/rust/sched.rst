@@ -10,6 +10,10 @@ The ``CONFIG_RUST_SCHED_WAKE_Q`` option selects direct Rust definitions of
 ``wake_q_add()``, ``wake_q_add_safe()``, and ``wake_up_q()``. Rust owns queue
 membership, duplicate insertion, task-reference acquisition and transfer,
 queue traversal, node clearing, and wake order.
+The ``CONFIG_RUST_SCHED_WAKE_API`` option selects direct Rust definitions of
+``wake_up_process()``, ``wake_up_state()``, and ``default_wake_function()``.
+Rust owns normal-state mask selection, caller state-mask forwarding, wait-queue
+callback validation, warning selection, and wake-result propagation.
 The ``CONFIG_RUST_SCHED_WAKE_STATE`` option selects native Rust definitions of
 ``task_state_match()`` and ``ttwu_state_match()`` for task wakeups and
 inactive-task waits.
@@ -78,6 +82,13 @@ Rust owns these production decisions:
 * Traversing queued tasks in insertion order, clearing each embedded node
   before waking its task, and releasing the queue-owned task reference after
   each wake.
+* Defining the direct process, caller-state-mask, and default wait-queue wake
+  entries and selecting the normal task-state mask.
+* Validating default wait-queue wake flags, requesting the exact original
+  invalid-flag warning, forwarding the wait entry's private task, and
+  propagating the task wakeup result.
+* Calling the Rust ``wake_up_process()`` entry directly from ``wake_up_q()``
+  when the direct wake option is enabled.
 * Defining the complete task wakeup entry and owning its preemption-disabled
   lifetime, wake-flag decoration, and current-task fast path.
 * Acquiring and releasing the task pi lock for a non-current target, ordering
@@ -167,14 +178,17 @@ Blocking dequeue and block accounting primitives also remain in C. The KCSAN
 runqueue membership writer assertion, warnings, and queue operations also
 remain in C.
 The wake-queue and wake-node layouts, tail sentinel, compare-exchange and
-pre-atomic memory barrier, node-to-task conversion, task reference operations,
-and ``wake_up_process()`` remain in C.
+pre-atomic memory barrier, node-to-task conversion, and task reference
+operations remain in C. The normal wake-state mask, supported default
+callback flags, wait-queue layout, warning formatting, ordinary export
+metadata, and ``try_to_wake_up()`` fallback also remain in C.
 
 Entry points and ownership
 --------------------------
 
 ``rust/kernel/sched_core.rs`` directly defines ``wake_q_add()``,
-``wake_q_add_safe()``, ``wake_up_q()``, ``task_state_match()``,
+``wake_q_add_safe()``, ``wake_up_q()``, ``wake_up_process()``,
+``wake_up_state()``, ``default_wake_function()``, ``task_state_match()``,
 ``ttwu_state_match()``, ``try_to_wake_up()``, ``ttwu_runnable()``,
 ``ttwu_do_activate()``, ``block_task()``, and ``wakeup_preempt()``. Each
 corresponding C fallback is compiled only when its Rust option is disabled.
@@ -182,8 +196,11 @@ corresponding C fallback is compiled only when its Rust option is disabled.
 The Rust-to-C calls are:
 
 * The wake-node compare-exchange and pre-atomic barrier, node-to-task
-  conversion, task reference acquisition and release, and
-  ``wake_up_process()`` used by deferred wake queues.
+  conversion, and task reference acquisition and release used by deferred
+  wake queues.
+* The normal wake-state and supported wake-flag constants, invalid default
+  callback warning delivery, and the task wakeup implementation or C fallback
+  used by the direct wake entries.
 * The invalid debug-preemption wake-mask warning.
 * The task pi-lock acquisition and release used by ``task_state_match()``.
 * The task pi-lock acquisition and release, preemption-count changes, memory
@@ -245,6 +262,9 @@ Other C-to-Rust production entries are:
 * ``wake_q_add()``.
 * ``wake_q_add_safe()``.
 * ``wake_up_q()``.
+* ``wake_up_process()``.
+* ``wake_up_state()``.
+* ``default_wake_function()``.
 * ``put_prev_task()``.
 * ``set_next_task()``.
 * ``put_prev_set_next_task()``.
@@ -265,6 +285,18 @@ reads the next pointer, clears the current node, calls ``wake_up_process()``,
 and releases the queue-owned reference. The head remains at its previous
 value after traversal, matching the original contract. Callers that reuse a
 head call the existing inline ``wake_q_init()`` helper.
+When ``CONFIG_RUST_SCHED_WAKE_API`` is enabled, that call stays in Rust.
+Otherwise it uses the C fallback directly.
+
+For the direct wake entries, Rust defines ``wake_up_process()``,
+``wake_up_state()``, and ``default_wake_function()``. The first always passes
+``TASK_NORMAL`` and no wake flags. The second passes the caller's state mask
+and no wake flags. The default wait-queue callback validates that its flags
+contain only ``WF_SYNC`` and ``WF_CURRENT_CPU``, requests the original warning
+when they do not, and wakes the entry's private task with the supplied mode
+and flags. Each entry propagates the result unchanged. The constant and
+layout checks, warning formatting, wait-queue layout, ordinary export
+metadata, and task wakeup fallback stay in C.
 
 ``task_state_match()`` acquires ``p->pi_lock`` with interrupts disabled and
 releases it before returning. The caller of ``ttwu_state_match()`` holds
@@ -1841,7 +1873,7 @@ with ``PR_SCHED_CORE_CREATE``, and schedules a one-millisecond timeout. The
 full Rust, C fallback, and C-only images execute this case. The native,
 C-fallback, and C-only CPU-priority suites passed all six cases.
 
-The no-KUnit production configuration enabled all sixteen scheduler Rust
+The no-KUnit production configuration enabled all eighteen scheduler Rust
 options and built with ``CLIPPY=1``. Native ``rust/kernel.o`` defines
 ``pick_task()``. Native ``kernel/sched/core.o`` has an undefined reference to
 that entry and no production definition. The linked image has one strong
@@ -1851,9 +1883,11 @@ expected missing-root-filesystem panic without another scheduler ``BUG``,
 warning, KASAN report, lock dependency diagnosis, Oops, or unexpected panic.
 Rustdoc, rustfmt, strict checkpatch, and ``git diff --check`` passed.
 
-The deferred wake-queue ownership unit was validated on 2026-11-26 with
-x86_64 ``LLVM=1`` builds and QEMU 11.1.3. Four-vCPU runs used one socket, two
-cores, and two threads per core. One-vCPU runs covered the single-CPU path.
+The deferred wake-queue and direct wake-entry unit was validated on 2026-11-26
+with x86_64 builds for native, fallback, C-only, and PREEMPT_RT
+configurations. KASAN used ``LLVM=1``. QEMU 11.1.3 ran the tests. Four-vCPU
+runs used one socket, two cores, and two threads per core. One-vCPU runs
+covered the single-CPU path.
 
 .. list-table::
    :header-rows: 1
@@ -1865,48 +1899,62 @@ cores, and two threads per core. One-vCPU runs covered the single-CPU path.
      - hrtimer
      - cpupri
    * - Full Rust
-     - 41 pass
-     - 38 pass, 3 skip
+     - 44 pass
+     - 41 pass, 3 skip
      - 25 pass
      - 6 pass
-   * - Wake-queue fallback
-     - 39 pass
-     - 36 pass, 3 skip
+   * - Rust wake / C ttwu
+     - 44 pass
+     - not run
+     - 25 pass
+     - 6 pass
+   * - Direct-wake fallback
+     - 43 pass
+     - 40 pass, 3 skip
      - 25 pass
      - 6 pass
    * - C-only
-     - 4 pass
-     - 2 pass, 2 skip
+     - 6 pass
+     - 4 pass, 2 skip
      - 25 pass
      - 6 pass
    * - PREEMPT_RT
-     - 41 pass
-     - 38 pass, 3 skip
+     - 44 pass
+     - 41 pass, 3 skip
      - 25 pass
      - not run
    * - KASAN
-     - 41 pass
-     - 38 pass, 3 skip
+     - 44 pass
+     - 41 pass, 3 skip
      - 25 pass
      - not run
    * - lockdep
-     - 41 pass
-     - 38 pass, 3 skip
+     - 44 pass
+     - 41 pass, 3 skip
      - 25 pass
-     - not run
+     - 6 pass
 
-The two new lifecycle cases verify queue membership, duplicate insertion,
-reference counts, safe-reference transfer, failed safe insertion, node
-clearing, and wake delivery with a sleeping kernel thread. Every focused boot
+The wake-queue cases verify queue membership, duplicate insertion, reference
+counts, safe-reference transfer, failed safe insertion, node clearing, and
+wake delivery with a sleeping kernel thread. The direct entry cases verify a
+mismatched state mask, a matching state mask, the default wait-queue callback,
+and the supported and rejected callback flag combinations. Every focused boot
 reported no failed case, unexpected ``BUG`` or warning, KASAN report, lock
 dependency diagnosis, Oops, or panic.
+A lockdep diagnostic configuration that used the Rust direct wake entries with
+the C ``try_to_wake_up()`` fallback also passed 44 four-vCPU scheduler cases,
+all 25 hrtimer cases, and all 6 CPU-priority cases.
 
-The no-KUnit production configuration enabled all seventeen scheduler Rust
+The no-KUnit production configuration enabled all eighteen scheduler Rust
 options and built with ``CLIPPY=1``. Native ``rust/kernel.o`` defines all
-three wake-queue entries. Native ``kernel/sched/core.o`` contains no
-production definition for them. The linked image contains one strong
-definition of each entry, no Rust adapter name, no export entry, and no
-unresolved symbol.
+three wake-queue entries and all three direct wake entries. Native
+``kernel/sched/core.o`` contains no production definition for the queue
+entries, ``wake_up_process()``, or ``default_wake_function()``. It retains
+the C fallback for ``wake_up_state()`` only in configurations that disable
+the direct wake option. The linked native image has one strong definition for
+each enabled entry, no Rust adapter name, no unresolved reference, an ordinary
+export for ``wake_up_process()`` and ``default_wake_function()``, and no export
+for ``wake_up_state()``.
 Rustdoc, rustfmt, strict checkpatch, and ``git diff --check`` passed. Focused
 Sphinx completed with only pre-existing unrelated reference warnings.
 
@@ -1917,7 +1965,9 @@ Reopen this boundary decision if any of these conditions changes:
 
 * The wake-queue head, node, or task layout changes.
 * The wake-queue tail sentinel, compare-exchange ordering, task-reference
-  ownership, or ``wake_up_process()`` contract changes.
+  ownership, or direct wake-entry contract changes.
+* The normal task-state mask, supported default wait-queue flags, warning
+  formatting, wait-queue layout, or ordinary export metadata changes.
 * Task current-state or saved-state representation changes.
 * ``try_to_wake_up()`` changes the state-match gate or saved-state protocol.
 * Debug-preemption wake-mask validation changes.

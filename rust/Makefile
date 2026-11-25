@@ -615,6 +615,8 @@ rust_non_gpl_exports := \
 	wait_woken \
 	woken_wake_function \
 	woken_wake_bit_function \
+	wake_up_process \
+	default_wake_function \
 	bit_waitqueue \
 	wake_bit_function \
 	__wait_on_bit \
@@ -831,6 +833,7 @@ rust_unexported_symbols := \
 	wake_q_add \
 	wake_q_add_safe \
 	wake_up_q \
+	wake_up_state \
 	enqueue_task \
 	dequeue_task \
 	put_prev_task \

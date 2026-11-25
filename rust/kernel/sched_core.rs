@@ -16,6 +16,7 @@
 use crate::bindings;
 #[cfg(any(
     CONFIG_RUST_SCHED_WAKE_Q,
+    CONFIG_RUST_SCHED_WAKE_API,
     CONFIG_RUST_SCHED_WAKE_STATE,
     CONFIG_RUST_SCHED_TRY_WAKEUP,
     CONFIG_RUST_SCHED_WAKE_PREEMPT,
@@ -63,6 +64,7 @@ use macros::export;
 
 #[cfg(any(
     CONFIG_RUST_SCHED_WAKE_STATE,
+    CONFIG_RUST_SCHED_WAKE_API,
     CONFIG_RUST_SCHED_TRY_WAKEUP,
     CONFIG_RUST_SCHED_WAKE_PREEMPT,
     CONFIG_RUST_SCHED_RESCHED_CURR,
@@ -83,6 +85,8 @@ type Task = bindings::task_struct;
 type WakeQHead = bindings::wake_q_head;
 #[cfg(CONFIG_RUST_SCHED_WAKE_Q)]
 type WakeQNode = bindings::wake_q_node;
+#[cfg(CONFIG_RUST_SCHED_WAKE_API)]
+type WaitQueueEntry = bindings::wait_queue_entry;
 #[cfg(any(
     CONFIG_RUST_SCHED_BLOCK_TASK,
     CONFIG_RUST_SCHED_TRY_WAKEUP,
@@ -133,6 +137,12 @@ type PickTaskCallback = unsafe extern "C" fn(rq: *mut Rq, rf: *mut RqFlags) -> *
 
 #[cfg(CONFIG_RUST_SCHED_WAKE_Q)]
 const WAKE_Q_TAIL: *mut WakeQNode = bindings::RUST_SCHED_WAKE_Q_TAIL as usize as *mut WakeQNode;
+#[cfg(CONFIG_RUST_SCHED_WAKE_API)]
+const TASK_NORMAL: u32 = bindings::RUST_SCHED_TASK_NORMAL;
+#[cfg(CONFIG_RUST_SCHED_WAKE_API)]
+const WF_SYNC: c_int = bindings::RUST_SCHED_WF_SYNC as c_int;
+#[cfg(CONFIG_RUST_SCHED_WAKE_API)]
+const WF_CURRENT_CPU: c_int = bindings::RUST_SCHED_WF_CURRENT_CPU as c_int;
 
 #[cfg(any(
     CONFIG_RUST_SCHED_TTWU_RUNNABLE,
@@ -326,11 +336,96 @@ unsafe extern "C" fn wake_up_q(head: *mut WakeQHead) {
         unsafe { core::ptr::addr_of_mut!((*node).next).write_volatile(core::ptr::null_mut()) };
 
         // SAFETY: The task is live and a wake was published before queueing.
-        unsafe { bindings::wake_up_process(task) };
+        #[cfg(CONFIG_RUST_SCHED_WAKE_API)]
+        unsafe {
+            wake_up_process(task);
+        }
+        // SAFETY: The task is live and a wake was published before queueing.
+        #[cfg(not(CONFIG_RUST_SCHED_WAKE_API))]
+        unsafe {
+            bindings::wake_up_process(task);
+        }
         // SAFETY: This releases the reference acquired for the queue entry.
         unsafe { bindings::put_task_struct(task) };
         node = next;
     }
+}
+
+/// Forwards a scheduler wake request through the direct task wakeup entry.
+///
+/// # Safety
+///
+/// `task` must remain live and satisfy the `try_to_wake_up()` contract.
+#[cfg(CONFIG_RUST_SCHED_WAKE_API)]
+unsafe fn wake_task(task: *mut Task, state: u32, wake_flags: c_int) -> c_int {
+    // SAFETY: The caller guarantees the task and wake-entry contracts.
+    #[cfg(CONFIG_RUST_SCHED_TRY_WAKEUP)]
+    return unsafe { try_to_wake_up(task, state, wake_flags) };
+    // SAFETY: The caller guarantees the task and wake-entry contracts.
+    #[cfg(not(CONFIG_RUST_SCHED_TRY_WAKEUP))]
+    return unsafe { bindings::try_to_wake_up(task, state, wake_flags) };
+}
+
+/// Returns whether a default wait-queue callback received supported flags.
+#[cfg(CONFIG_RUST_SCHED_WAKE_API)]
+fn default_wake_flags_valid(wake_flags: c_int) -> bool {
+    wake_flags & !(WF_SYNC | WF_CURRENT_CPU) == 0
+}
+
+/// Wakes a specific process with the normal wake-state mask.
+///
+/// # Safety
+///
+/// `task` must remain live and satisfy the `wake_up_process()` contract.
+#[cfg(CONFIG_RUST_SCHED_WAKE_API)]
+#[export]
+unsafe extern "C" fn wake_up_process(task: *mut Task) -> c_int {
+    // SAFETY: The caller satisfies the direct wake-entry contract.
+    unsafe { wake_task(task, TASK_NORMAL, 0) }
+}
+
+/// Wakes a process whose state matches the supplied mask.
+///
+/// # Safety
+///
+/// `task` must remain live and satisfy the `wake_up_state()` contract.
+#[cfg(CONFIG_RUST_SCHED_WAKE_API)]
+#[export]
+unsafe extern "C" fn wake_up_state(task: *mut Task, state: u32) -> c_int {
+    // SAFETY: The caller satisfies the direct wake-entry contract.
+    unsafe { wake_task(task, state, 0) }
+}
+
+/// Wakes the task associated with a default wait-queue entry.
+///
+/// # Safety
+///
+/// `entry` must point to a valid wait-queue entry whose private task pointer
+/// remains live across the call.
+#[cfg(CONFIG_RUST_SCHED_WAKE_API)]
+#[export]
+unsafe extern "C" fn default_wake_function(
+    entry: *mut WaitQueueEntry,
+    mode: u32,
+    wake_flags: c_int,
+    _key: *mut core::ffi::c_void,
+) -> c_int {
+    if !default_wake_flags_valid(wake_flags) {
+        // SAFETY: The helper only reports the invalid callback flags.
+        unsafe { bindings::rust_helper_sched_wake_api_warn_invalid() };
+    }
+
+    // SAFETY: The caller guarantees a valid entry and a live private task.
+    let task = unsafe { (*entry).private.cast::<Task>() };
+    // SAFETY: The entry contract supplies the direct wake-entry guarantee.
+    unsafe { wake_task(task, mode, wake_flags) }
+}
+
+/// Selects default wait-queue callback flag validity for KUnit.
+#[cfg(all(CONFIG_KUNIT, CONFIG_RUST_SCHED_WAKE_API))]
+#[export]
+extern "C" fn rust_sched_wake_api_default_flags_select(wake_flags: c_int) -> bool {
+    default_wake_flags_valid(wake_flags)
 }
 
 /// Reads the current task wake state.

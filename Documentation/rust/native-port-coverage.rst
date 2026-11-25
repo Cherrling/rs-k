@@ -1259,7 +1259,7 @@ Scheduler core task pick entry
   ``kernel/sched/core.o`` has only an undefined reference to it. Every native
   debug configuration links one strong definition, omits the old adapter
   name, and has no ``Module.symvers`` entry or unresolved scheduler symbol.
-  The production build enabled all sixteen scheduler Rust options and passed
+  The production build enabled all eighteen scheduler Rust options and passed
   Clippy, Rustdoc, rustfmt, strict checkpatch, and an SMT boot to the expected
   missing-root-filesystem panic.
 
@@ -1268,6 +1268,51 @@ Scheduler core task pick entry
   scheduler. The current exit condition is one correct production entry,
   complete focused and adjacent test coverage, and clean symbol ownership in
   every configuration class.
+
+Scheduler direct wake entries
+  Status: ``migrated``.
+
+  Evidence: :doc:`sched`.
+
+  Rust directly defines ``wake_up_process()``, ``wake_up_state()``, and
+  ``default_wake_function()``. Rust owns the normal task-state mask, caller
+  state-mask forwarding, default wait-queue callback validation, invalid-flag
+  warning selection, private-task extraction, wake invocation, and result
+  propagation. C retains the mask and flag values, compile-time checks,
+  warning formatting, wait-queue layout, ordinary export metadata, and the
+  ``try_to_wake_up()`` implementation or fallback. C fallback configurations
+  retain the complete direct wake entries.
+
+  Test: Full Rust, direct-wake fallback, C-only, KASAN, lockdep, and
+  PREEMPT_RT configurations passed the focused suite at one and four virtual
+  CPUs. Full Rust, KASAN, lockdep, and PREEMPT_RT passed 44 four-vCPU cases
+  and 41 one-vCPU cases with 3 skips. Direct-wake fallback passed 43 and 40
+  cases with 3 one-vCPU skips. C-only passed 6 and 4 cases with 2 one-vCPU
+  skips. The direct cases cover a mismatched caller mask, a matching caller
+  mask, the default wait-queue callback, and every accepted and rejected flag
+  combination. All six configurations passed all 25 hrtimer cases.
+  Full Rust, fallback, C-only, and lockdep passed all 6 CPU-priority cases.
+  A separate lockdep configuration combined the Rust direct wake entries with
+  the C ``try_to_wake_up()`` fallback and passed all 44 four-vCPU scheduler
+  cases, all 25 hrtimer cases, and all 6 CPU-priority cases.
+  No run reported an unexpected scheduler ``BUG``, warning, KASAN report,
+  lock dependency diagnosis, Oops, or panic.
+
+  Native ``rust/kernel.o`` defines all three entries. Native
+  ``kernel/sched/core.o`` has no production definition for them and retains
+  undefined references from its export metadata to ``wake_up_process()`` and
+  ``default_wake_function()``. ``wake_up_process()`` and
+  ``default_wake_function()`` preserve their ordinary exports.
+  ``wake_up_state()`` remains unexported. The linked image has one strong
+  definition of each entry, no Rust adapter name, and no unresolved symbol.
+  ``wake_up_q()`` calls the Rust ``wake_up_process()`` directly in the native
+  image and uses the C fallback when the direct wake option is disabled.
+
+  Risk: A wrong normal-state mask, caller-mask forward, callback flag test, or
+  warning decision can omit a wake or report an invalid callback. The exit
+  condition is one production definition per entry in every configuration
+  class, preserved exports, and a clean focused, diagnostic, PREEMPT_RT, and
+  adjacent regression matrix.
 
 Scheduler deferred wake queues
   Status: ``migrated``.
@@ -1280,15 +1325,16 @@ Scheduler deferred wake queues
   safe-insertion release, insertion-order traversal, node clearing, wake
   ordering, and final reference release. C retains the wake-head and
   wake-node layouts, tail sentinel, pre-atomic barrier and compare-exchange,
-  node-to-task conversion, task reference primitives, ``wake_up_process()``,
-  and the complete fallback implementation.
+  node-to-task conversion, task reference primitives, and the complete
+  fallback implementation. ``wake_up_q()`` calls Rust ``wake_up_process()``
+  directly when the direct wake option is enabled.
 
-  Test: Native, wake-queue fallback, C-only, KASAN, lockdep, and PREEMPT_RT
-  configurations passed the focused suite at one and four virtual CPUs.
-  Native, KASAN, lockdep, and PREEMPT_RT passed 41 four-vCPU cases and 38
-  one-vCPU cases with 3 skips. The wake-queue fallback passed 39 and 36 cases
-  with 3 one-vCPU skips. C-only passed 4 and 2 cases with 2 one-vCPU skips.
-  The new lifecycle cases passed queue membership, duplicate insertion,
+  Test: Full Rust, direct-wake fallback, C-only, KASAN, lockdep, and
+  PREEMPT_RT configurations passed the focused suite at one and four virtual
+  CPUs. Full Rust, KASAN, lockdep, and PREEMPT_RT passed 44 four-vCPU cases
+  and 41 one-vCPU cases with 3 skips. Direct-wake fallback passed 43 and 40
+  cases with 3 one-vCPU skips. C-only passed 6 and 4 cases with 2 one-vCPU
+  skips. The lifecycle cases passed queue membership, duplicate insertion,
   reference counts, safe-reference transfer, failed safe insertion, node
   clearing, and wake delivery. All six configurations passed all 25 hrtimer
   cases, and native, fallback, and C-only passed all 6 CPU-priority cases.
@@ -1299,7 +1345,7 @@ Scheduler deferred wake queues
   ``kernel/sched/core.o`` has no production definition for them. The linked
   image has one strong definition of each entry, no Rust adapter name, no
   export entry, and no unresolved symbol. The production build enabled all
-  seventeen scheduler Rust options and passed Clippy, Rustdoc, rustfmt,
+  eighteen scheduler Rust options and passed Clippy, Rustdoc, rustfmt,
   strict checkpatch, focused Sphinx, and an SMT boot to the expected
   missing-root-filesystem panic.
 
@@ -3883,6 +3929,12 @@ condition expansion, RCU and task-state primitives, signal queries, scheduler
 selection, wakeup, and ordinary and GPL export metadata remain named C
 boundaries. Rust defines every public entry and owns every publication,
 condition, timeout, signal, scheduling, cleanup, and wake-order decision.
+
+The scheduler wake boundary is valid only while the wake-queue head, node, and
+task layouts, normal-state and wake-flag constants, wait-queue layout, warning
+formatting, ordinary export metadata, and task wakeup fallback remain named C
+boundaries. Rust defines all direct wake and deferred queue entries and owns
+every mask, validation, queue, reference, and wake-order decision.
 
 The task work boundary is valid only while the shared task work-list and
 callback layout, task PI lock, atomic primitives, notification flags,

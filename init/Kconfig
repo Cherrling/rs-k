@@ -1045,6 +1045,23 @@ config RUST_SCHED_WAKE_Q
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SCHED_WAKE_API
+	bool "Rust implementation of scheduler direct wake entry points"
+	depends on RUST
+	default y
+	help
+	  Use Rust to directly define the production process, state-mask, and
+	  wait-queue wake entries. Rust owns task-state mask selection, wake
+	  forwarding, default wait-queue callback validation, warning delivery
+	  selection, and wake-result propagation.
+
+	  The normal task-state mask and wake-flag values, warning formatting,
+	  the task wakeup implementation or C fallback, wait-queue layout, and
+	  ordinary export metadata remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_SCHED_WAKE_STATE
 	bool "Rust implementation of scheduler wake-state matching"
 	depends on RUST

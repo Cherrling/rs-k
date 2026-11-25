@@ -310,6 +310,12 @@ static_assert(offsetof(struct task_struct, wake_q) %
 	      __alignof__(((struct task_struct *)0)->wake_q) == 0);
 #endif
 
+#ifdef CONFIG_RUST_SCHED_WAKE_API
+static_assert(RUST_SCHED_TASK_NORMAL == TASK_NORMAL);
+static_assert(RUST_SCHED_WF_SYNC == WF_SYNC);
+static_assert(RUST_SCHED_WF_CURRENT_CPU == WF_CURRENT_CPU);
+#endif
+
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 DEFINE_PER_CPU(struct rnd_state, sched_rnd_state);
 
@@ -4884,6 +4890,13 @@ void rust_helper_sched_try_wakeup_stat(struct task_struct *p, int cpu,
 
 #endif /* CONFIG_RUST_SCHED_TRY_WAKEUP */
 
+#ifdef CONFIG_RUST_SCHED_WAKE_API
+void rust_helper_sched_wake_api_warn_invalid(void)
+{
+	WARN_ON_ONCE(1);
+}
+#endif
+
 /**
  * try_to_wake_up - wake up a thread
  * @p: the thread to be awakened
@@ -5206,6 +5219,7 @@ struct task_struct *cpu_curr_snapshot(int cpu)
 	return t;
 }
 
+#ifndef CONFIG_RUST_SCHED_WAKE_API
 /**
  * wake_up_process - Wake up a specific process
  * @p: The process to be woken up.
@@ -5227,6 +5241,9 @@ int wake_up_state(struct task_struct *p, unsigned int state)
 {
 	return try_to_wake_up(p, state, 0);
 }
+#else
+EXPORT_SYMBOL(wake_up_process);
+#endif
 
 /*
  * Perform scheduler related setup for a newly forked process p.
@@ -8321,6 +8338,7 @@ asmlinkage __visible void __sched preempt_schedule_irq(void)
 	exception_exit(prev_state);
 }
 
+#ifndef CONFIG_RUST_SCHED_WAKE_API
 int default_wake_function(wait_queue_entry_t *curr, unsigned mode, int wake_flags,
 			  void *key)
 {
@@ -8328,6 +8346,9 @@ int default_wake_function(wait_queue_entry_t *curr, unsigned mode, int wake_flag
 	return try_to_wake_up(curr->private, mode, wake_flags);
 }
 EXPORT_SYMBOL(default_wake_function);
+#else
+EXPORT_SYMBOL(default_wake_function);
+#endif
 
 const struct sched_class *__setscheduler_class(int policy, int prio)
 {

@@ -23,6 +23,20 @@ struct task_struct *rust_helper_sched_wake_q_task(struct wake_q_node *node);
 
 #endif /* CONFIG_RUST_SCHED_WAKE_Q */
 
+#ifdef CONFIG_RUST_SCHED_WAKE_API
+
+#define RUST_SCHED_TASK_NORMAL			3U
+#define RUST_SCHED_WF_SYNC			0x10
+#define RUST_SCHED_WF_CURRENT_CPU		0x40
+
+void rust_helper_sched_wake_api_warn_invalid(void);
+
+#ifdef CONFIG_KUNIT
+bool rust_sched_wake_api_default_flags_select(int wake_flags);
+#endif
+
+#endif /* CONFIG_RUST_SCHED_WAKE_API */
+
 #ifdef CONFIG_RUST_SCHED_RESCHED_CURR
 void resched_curr_lazy(struct rq *rq);
 #endif
@@ -97,9 +111,12 @@ void rust_helper_sched_try_wakeup_queue(struct task_struct *task, int cpu,
 void rust_helper_sched_try_wakeup_stat(struct task_struct *task, int cpu,
 				       int wake_flags);
 
-int try_to_wake_up(struct task_struct *task, unsigned int state, int wake_flags);
-
 #endif /* CONFIG_RUST_SCHED_TRY_WAKEUP */
+
+#if defined(CONFIG_RUST_SCHED_TRY_WAKEUP) || \
+	defined(CONFIG_RUST_SCHED_WAKE_API)
+int try_to_wake_up(struct task_struct *task, unsigned int state, int wake_flags);
+#endif
 
 #ifdef CONFIG_RUST_SCHED_WAKE_PREEMPT
 

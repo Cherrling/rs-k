@@ -16,6 +16,7 @@
 #include <linux/sched-rust.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
+#include <linux/wait.h>
 
 static int sched_wake_test_thread(void *data)
 {
@@ -41,6 +42,35 @@ static int sched_wake_test_runnable_thread(void *data)
 	preempt_enable();
 
 	return 0;
+}
+
+static int sched_wake_api_test_thread(void *data)
+{
+	struct completion *started = data;
+
+	set_current_state(TASK_INTERRUPTIBLE);
+	complete(started);
+	schedule();
+	__set_current_state(TASK_RUNNING);
+
+	return 0;
+}
+
+static struct task_struct *
+sched_wake_api_test_start(struct kunit *test, struct completion *started)
+{
+	struct task_struct *task;
+
+	init_completion(started);
+	task = kthread_create(sched_wake_api_test_thread, started,
+			      "sched-wake-api-test");
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, task);
+	KUNIT_ASSERT_EQ(test, 1, wake_up_process(task));
+	wait_for_completion(started);
+	KUNIT_ASSERT_GT(test,
+			wait_task_inactive(task, TASK_INTERRUPTIBLE), 0);
+
+	return task;
 }
 
 #ifdef CONFIG_RUST_SCHED_WAKE_Q
@@ -903,6 +933,45 @@ static void sched_wake_test_runnable_task(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, 0, kthread_stop(task));
 }
 
+static void sched_wake_test_wake_up_state(struct kunit *test)
+{
+	struct task_struct *task;
+	struct completion started;
+
+	task = sched_wake_api_test_start(test, &started);
+	KUNIT_EXPECT_EQ(test, 0,
+			wake_up_state(task, TASK_UNINTERRUPTIBLE));
+	KUNIT_EXPECT_EQ(test, 1, wake_up_state(task, TASK_INTERRUPTIBLE));
+	KUNIT_EXPECT_EQ(test, 0, kthread_stop(task));
+}
+
+static void sched_wake_test_default_wake_function(struct kunit *test)
+{
+	struct task_struct *task;
+	struct completion started;
+	struct wait_queue_entry entry = { };
+
+	task = sched_wake_api_test_start(test, &started);
+	entry.private = task;
+	KUNIT_EXPECT_EQ(test, 1,
+			default_wake_function(&entry, TASK_INTERRUPTIBLE, 0, NULL));
+	KUNIT_EXPECT_EQ(test, 0, kthread_stop(task));
+}
+
+#ifdef CONFIG_RUST_SCHED_WAKE_API
+static void sched_wake_test_default_wake_flags(struct kunit *test)
+{
+	bool (*valid)(int) = rust_sched_wake_api_default_flags_select;
+
+	KUNIT_EXPECT_TRUE(test, valid(0));
+	KUNIT_EXPECT_TRUE(test, valid(RUST_SCHED_WF_SYNC));
+	KUNIT_EXPECT_TRUE(test, valid(RUST_SCHED_WF_CURRENT_CPU));
+	KUNIT_EXPECT_TRUE(test, valid(RUST_SCHED_WF_SYNC |
+				      RUST_SCHED_WF_CURRENT_CPU));
+	KUNIT_EXPECT_FALSE(test, valid(RUST_SCHED_WF_SYNC | 0x100));
+}
+#endif
+
 static struct kunit_case sched_wake_test_cases[] = {
 #ifdef CONFIG_RUST_SCHED_WAKE_Q
 	KUNIT_CASE(sched_wake_test_wake_q_refs),
@@ -983,6 +1052,11 @@ static struct kunit_case sched_wake_test_cases[] = {
 	KUNIT_CASE(sched_wake_test_current),
 	KUNIT_CASE(sched_wake_test_stopped_task),
 	KUNIT_CASE(sched_wake_test_runnable_task),
+	KUNIT_CASE(sched_wake_test_wake_up_state),
+	KUNIT_CASE(sched_wake_test_default_wake_function),
+#ifdef CONFIG_RUST_SCHED_WAKE_API
+	KUNIT_CASE(sched_wake_test_default_wake_flags),
+#endif
 #ifdef CONFIG_SCHED_CORE
 	KUNIT_CASE(sched_wake_test_core_pick_path),
 #endif
