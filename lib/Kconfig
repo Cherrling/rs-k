@@ -829,6 +829,27 @@ config RUST_KSET
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_CLASS
+	bool "Rust implementation of device class lifecycle"
+	depends on RUST_KSET
+	default y
+	help
+	  Use Rust for the production device class registration,
+	  unregistration, dynamic creation, and destruction lifecycle.
+
+	  Rust directly defines the public class entry points. It owns argument
+	  validation, class-private initialization order, registration rollback,
+	  dynamic allocation, and unregistration order. C retains the shared
+	  class and subsystem layouts, sysfs and klist primitives, hierarchy and
+	  lock initialization primitives, diagnostics, the static class kset and
+	  kobject types, the final release callback, and export metadata.
+
+	  The complete C class lifecycle remains available when this option is
+	  disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_LOCKREF
 	bool "Rust implementation of lockref operations"
 	depends on RUST && X86_64 && SMP

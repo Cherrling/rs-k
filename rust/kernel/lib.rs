@@ -60,6 +60,8 @@ mod brk;
 mod btree;
 pub mod bug;
 pub mod build_assert;
+#[cfg(CONFIG_RUST_CLASS)]
+mod class;
 pub mod clk;
 #[cfg(CONFIG_RUST_COMPLETE_SIGNAL)]
 mod complete_signal;

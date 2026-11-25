@@ -854,6 +854,27 @@ Kset lifecycle
   concurrent lookup and reference cycles. The adjacent object and list suites
   passed 92 cases.
 
+Class lifecycle
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-class`.
+
+  Rust defines the four public ``class_register()``, ``class_unregister()``,
+  ``class_create()``, and ``class_destroy()`` GPL symbols. Rust owns namespace
+  validation, private-object allocation and initialization order,
+  registration rollback, embedded class and glue kset initialization, dynamic
+  creation, null and error-pointer handling, and unregistration order. C
+  retains the shared class and subsystem layouts, class lookup and reference
+  accounting, sysfs, klist and lock primitives, static class kset and kobject
+  types, diagnostics, final release callback, and original export metadata.
+  C fallback and C-only configurations retain the complete implementation.
+
+  Test: Nine QEMU configurations passed 4 of 4 focused cases. Native,
+  fallback, and C-only each ran at one and four virtual CPUs. KASAN fallback,
+  native lockdep, and native PREEMPT_RT runs used four virtual CPUs.
+  Device-model smoke tests passed 51 cases. The adjacent object and list
+  suites passed 96 cases.
+
 Interval tree operations
   Status: ``migrated``.
 
@@ -4251,7 +4272,7 @@ Remaining core object lifecycles
   Status: ``pending``.
 
   Complete the direct-entry and ownership review for object types beyond
-  kobject and kset.
+  kobject, kset, and class.
 
 Lock and wait lifecycles
   Status: ``pending``.

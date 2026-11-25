@@ -24130,6 +24130,7 @@ F:	Documentation/rust/native-btree-entry.rst
 F:	Documentation/rust/native-btree-structural.rst
 F:	Documentation/rust/native-btree-traversal.rst
 F:	Documentation/rust/native-btree-visitors.rst
+F:	Documentation/rust/native-class.rst
 F:	Documentation/rust/native-dec-and-lock.rst
 F:	Documentation/rust/native-irq-event.rst
 F:	Documentation/rust/native-irq-spurious.rst
@@ -24156,6 +24157,7 @@ F:	Documentation/rust/signal-exit.rst
 F:	Documentation/rust/wait-bit.rst
 F:	Documentation/rust/waitqueue.rst
 F:	include/linux/btree-rust.h
+F:	include/linux/class-rust.h
 F:	include/linux/complete-signal-rust.h
 F:	include/linux/completion-rust.h
 F:	include/linux/copy-mm-rust.h
@@ -24300,6 +24302,7 @@ F:	rust/helpers/lockref.c
 F:	rust/helpers/rcuwait.c
 F:	rust/helpers/signal_exit.c
 F:	rust/kernel/btree.rs
+F:	rust/kernel/class.rs
 F:	rust/kernel/dec_and_lock.rs
 F:	rust/kernel/exit_signals.rs
 F:	rust/kernel/interval_tree.rs

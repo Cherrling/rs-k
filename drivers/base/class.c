@@ -17,6 +17,7 @@
 #include <linux/err.h>
 #include <linux/slab.h>
 #include <linux/blkdev.h>
+#include <linux/class-rust.h>
 #include <linux/mutex.h>
 #include "base.h"
 
@@ -126,6 +127,33 @@ static const struct kobj_type class_ktype = {
 	.child_ns_type	= class_child_ns_type,
 };
 
+#ifdef CONFIG_RUST_CLASS
+struct kset *rust_helper_class_kset(void)
+{
+	return class_kset;
+}
+
+const struct kobj_type *rust_helper_class_ktype(void)
+{
+	return &class_ktype;
+}
+
+int rust_helper_class_set_name(struct subsys_private *sp, const char *name)
+{
+	return kobject_set_name(&sp->subsys.kobj, "%s", name);
+}
+
+void rust_helper_class_warn_missing_namespace(const struct class *cls)
+{
+	pr_err("%s: class '%s' does not have namespace\n", __func__, cls->name);
+}
+
+void rust_helper_class_warn_missing_ns_type(const struct class *cls)
+{
+	pr_err("%s: class '%s' does not have ns_type\n", __func__, cls->name);
+}
+#endif /* CONFIG_RUST_CLASS */
+
 int class_create_file_ns(const struct class *cls, const struct class_attribute *attr,
 			 const struct ns_common *ns)
 {
@@ -161,6 +189,7 @@ static struct device *klist_class_to_dev(struct klist_node *n)
 	return p->device;
 }
 
+#ifndef CONFIG_RUST_CLASS
 static void klist_class_dev_get(struct klist_node *n)
 {
 	struct device *dev = klist_class_to_dev(n);
@@ -174,7 +203,9 @@ static void klist_class_dev_put(struct klist_node *n)
 
 	put_device(dev);
 }
+#endif /* !CONFIG_RUST_CLASS */
 
+#ifndef CONFIG_RUST_CLASS
 int class_register(const struct class *cls)
 {
 	struct subsys_private *cp;
@@ -228,8 +259,12 @@ err_out:
 	kfree(cp);
 	return error;
 }
+#endif /* !CONFIG_RUST_CLASS */
+#ifndef CONFIG_RUST_CLASS
 EXPORT_SYMBOL_GPL(class_register);
+#endif
 
+#ifndef CONFIG_RUST_CLASS
 void class_unregister(const struct class *cls)
 {
 	struct subsys_private *sp = class_to_subsys(cls);
@@ -243,13 +278,23 @@ void class_unregister(const struct class *cls)
 	kset_unregister(&sp->subsys);
 	subsys_put(sp);
 }
+#endif /* !CONFIG_RUST_CLASS */
+#ifndef CONFIG_RUST_CLASS
 EXPORT_SYMBOL_GPL(class_unregister);
+#endif
 
 static void class_create_release(const struct class *cls)
 {
 	pr_debug("%s called for %s\n", __func__, cls->name);
 	kfree(cls);
 }
+
+#ifdef CONFIG_RUST_CLASS
+void rust_helper_class_create_release(const struct class *cls)
+{
+	class_create_release(cls);
+}
+#endif /* CONFIG_RUST_CLASS */
 
 /**
  * class_create - create a struct class structure
@@ -263,6 +308,7 @@ static void class_create_release(const struct class *cls)
  * Note, the pointer created here is to be destroyed when finished by
  * making a call to class_destroy().
  */
+#ifndef CONFIG_RUST_CLASS
 struct class *class_create(const char *name)
 {
 	struct class *cls;
@@ -287,7 +333,10 @@ error:
 	kfree(cls);
 	return ERR_PTR(retval);
 }
+#endif /* !CONFIG_RUST_CLASS */
+#ifndef CONFIG_RUST_CLASS
 EXPORT_SYMBOL_GPL(class_create);
+#endif
 
 /**
  * class_destroy - destroys a struct class structure
@@ -296,6 +345,7 @@ EXPORT_SYMBOL_GPL(class_create);
  * Note, the pointer to be destroyed must have been created with a call
  * to class_create().
  */
+#ifndef CONFIG_RUST_CLASS
 void class_destroy(const struct class *cls)
 {
 	if (IS_ERR_OR_NULL(cls))
@@ -303,7 +353,10 @@ void class_destroy(const struct class *cls)
 
 	class_unregister(cls);
 }
+#endif /* !CONFIG_RUST_CLASS */
+#ifndef CONFIG_RUST_CLASS
 EXPORT_SYMBOL_GPL(class_destroy);
+#endif
 
 /**
  * class_dev_iter_init - initialize class device iterator

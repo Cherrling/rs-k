@@ -48,6 +48,7 @@
 #include <linux/brk-rust.h>
 #include <linux/btree.h>
 #include <linux/btree-rust.h>
+#include <linux/class-rust.h>
 #include <linux/clk.h>
 #include <linux/completion.h>
 #include <linux/completion-rust.h>

@@ -129,6 +129,7 @@ more details.
     native-llist
     native-kobject
     native-kset
+    native-class
     native-list-lru
     native-kfifo
     native-genradix
