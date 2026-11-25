@@ -904,8 +904,7 @@ static inline bool rwsem_try_write_lock_unqueued(struct rw_semaphore *sem)
 #ifdef CONFIG_RUST_RWSEM
 	bool acquired = rust_rwsem_write_unqueued(sem);
 
-	if (acquired)
-		lockevent_inc(rwsem_opt_lock);
+	lockevent_cond_inc(rwsem_opt_lock, acquired);
 	return acquired;
 #else
 	long count = atomic_long_read(&sem->count);
