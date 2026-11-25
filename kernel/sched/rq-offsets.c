@@ -18,6 +18,7 @@ int main(void)
 	DEFINE(RQ_nr_running, offsetof(struct rq, nr_running));
 	DEFINE(RQ_cfs_h_nr_queued, offsetof(struct rq, cfs.h_nr_queued));
 	DEFINE(RQ_clock_update_flags, offsetof(struct rq, clock_update_flags));
+	DEFINE(RQ_FLAGS_SIZE, sizeof(struct rq_flags));
 	DEFINE(TASK_STRUCT_dl_server,
 	       offsetof(struct task_struct, dl_server));
 	DEFINE(SCHED_CLASS_wakeup_preempt,

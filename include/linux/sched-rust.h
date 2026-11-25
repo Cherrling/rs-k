@@ -20,12 +20,17 @@ void resched_curr_lazy(struct rq *rq);
 void resched_cpu(int cpu);
 #endif
 
-#if (defined(CONFIG_RUST_SCHED_RESCHED_CURR) || \
+#if defined(CONFIG_LOCKDEP)
+#if defined(CONFIG_RUST_SCHED_RESCHED_CURR) || \
 	defined(CONFIG_RUST_SCHED_RESCHED_CPU) || \
 	defined(CONFIG_RUST_SCHED_WAKE_IF_IDLE) || \
 	defined(CONFIG_RUST_SCHED_RQ_OPS) || \
-	defined(CONFIG_RUST_SCHED_RQ_TRANSITION)) && defined(CONFIG_LOCKDEP)
+	defined(CONFIG_RUST_SCHED_RQ_TRANSITION) || \
+	defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
+	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE) || \
+	defined(CONFIG_RUST_SCHED_BLOCK_TASK)
 void rust_helper_sched_resched_assert_locked(struct rq *rq);
+#endif
 #endif
 
 #if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
@@ -44,10 +49,13 @@ void rust_helper_sched_resched_assert_locked(struct rq *rq);
 
 void rust_helper_sched_warn_ttwu_state(unsigned int state);
 
-int rust_sched_task_state_match(const struct task_struct *task,
-				unsigned int state);
-bool rust_sched_ttwu_state_match(struct task_struct *task, unsigned int state,
-				 int *success);
+unsigned long rust_helper_sched_pi_lock_irqsave(struct task_struct *task);
+void rust_helper_sched_pi_unlock_irqrestore(struct task_struct *task,
+					    unsigned long flags);
+
+int task_state_match(struct task_struct *task, unsigned int state);
+bool ttwu_state_match(struct task_struct *task, unsigned int state,
+		      int *success);
 
 #ifdef CONFIG_KUNIT
 int rust_sched_state_match_select(unsigned int task_state,
@@ -67,9 +75,6 @@ int rust_sched_state_match_select(unsigned int task_state,
 #define RUST_SCHED_WAKE_PREEMPT_UPDATE_NEXT	0x04
 #define RUST_SCHED_WAKE_PREEMPT_SKIP_CLOCK	0x08
 #define RUST_SCHED_RQCF_REQ_SKIP		0x01
-
-void rust_sched_wakeup_preempt(struct rq *rq, struct task_struct *task,
-			       int wake_flags);
 
 #ifdef CONFIG_KUNIT
 unsigned int rust_sched_wakeup_preempt_select(unsigned int class_relation,
@@ -188,8 +193,12 @@ bool rust_helper_sched_ttwu_proxy_return(struct rq *rq,
 
 void update_rq_clock(struct rq *rq);
 
-int rust_sched_ttwu_runnable_locked(struct rq *rq, struct task_struct *task,
-				    int wake_flags);
+struct rq *rust_helper_sched_ttwu_lock(struct task_struct *task,
+				       struct rq_flags *rf);
+void rust_helper_sched_ttwu_unlock(struct rq *rq, struct task_struct *task,
+				   struct rq_flags *rf);
+
+int ttwu_runnable(struct task_struct *task, int wake_flags);
 
 #ifdef CONFIG_KUNIT
 unsigned int rust_sched_ttwu_task_flags_select(struct task_struct *task);
@@ -262,8 +271,8 @@ void rust_helper_sched_ttwu_delayacct_blkio_end(struct task_struct *task);
 void rust_helper_sched_rq_unpin_lock(struct rq *rq, struct rq_flags *rf);
 void rust_helper_sched_rq_repin_lock(struct rq *rq, struct rq_flags *rf);
 
-void rust_sched_ttwu_activate_locked(struct rq *rq, struct task_struct *task,
-				     int wake_flags, struct rq_flags *rf);
+void ttwu_do_activate(struct rq *rq, struct task_struct *task, int wake_flags,
+		      struct rq_flags *rf);
 
 #ifdef CONFIG_KUNIT
 unsigned int rust_sched_ttwu_activate_select(bool contributes_load,
@@ -289,8 +298,8 @@ bool rust_helper_sched_block_dequeue(struct rq *rq,
 void rust_helper_sched_block_finish(struct rq *rq,
 				    struct task_struct *task);
 
-void rust_sched_block_task_locked(struct rq *rq, struct task_struct *task,
-				  unsigned int task_state);
+void block_task(struct rq *rq, struct task_struct *task,
+		unsigned long task_state);
 
 #ifdef CONFIG_KUNIT
 unsigned int rust_sched_block_task_select(unsigned int task_state);

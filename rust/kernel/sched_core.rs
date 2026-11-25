@@ -29,6 +29,8 @@ use crate::bindings;
 use crate::ffi::c_int;
 #[cfg(any(
     CONFIG_RUST_SCHED_TTWU_ACTIVATE,
+    CONFIG_RUST_SCHED_WAKE_STATE,
+    CONFIG_RUST_SCHED_BLOCK_TASK,
     CONFIG_RUST_SCHED_WAKE_PREEMPT,
     CONFIG_RUST_SCHED_RESCHED_CURR,
     CONFIG_RUST_SCHED_RESCHED_CPU
@@ -90,7 +92,9 @@ type Rq = bindings::rq;
     CONFIG_RUST_SCHED_PREV_BALANCE,
     CONFIG_RUST_SCHED_PICK_NEXT_TASK,
     CONFIG_RUST_SCHED_CORE_PICK_TASK,
-    CONFIG_RUST_SCHED_WAKE_IF_IDLE
+    CONFIG_RUST_SCHED_WAKE_IF_IDLE,
+    CONFIG_RUST_SCHED_TTWU_RUNNABLE,
+    CONFIG_RUST_SCHED_TTWU_ACTIVATE
 ))]
 type RqFlags = bindings::rq_flags;
 #[cfg(CONFIG_RUST_SCHED_SELECT_TASK_RQ)]
@@ -433,7 +437,7 @@ fn state_match(task_state: u32, saved_state: u32, requested_state: u32) -> c_int
     }
 }
 
-/// Returns the task-state match result for the scheduler.
+/// Returns the task-state match result while the task pi lock is held.
 ///
 /// A positive result matches the task's current state. A negative result
 /// matches its saved state and requires the caller to wait for a lock or
@@ -443,13 +447,30 @@ fn state_match(task_state: u32, saved_state: u32, requested_state: u32) -> c_int
 ///
 /// `task` must remain live for the duration of the call.
 #[cfg(CONFIG_RUST_SCHED_WAKE_STATE)]
-#[export]
-unsafe extern "C" fn rust_sched_task_state_match(task: *const Task, state: u32) -> c_int {
+unsafe fn task_state_match_locked(task: *const Task, state: u32) -> c_int {
     // SAFETY: The caller guarantees that the task remains live.
     let task_state = unsafe { task_state(task) };
     // SAFETY: The caller guarantees that the task remains live.
     let saved_state = unsafe { task_saved_state(task) };
     state_match(task_state, saved_state, state)
+}
+
+/// Matches a task state while serializing against RT-lock and freezer state.
+///
+/// # Safety
+///
+/// `task` must remain live for the duration of the call.
+#[cfg(CONFIG_RUST_SCHED_WAKE_STATE)]
+#[export]
+unsafe extern "C" fn task_state_match(task: *mut Task, state: u32) -> c_int {
+    // SAFETY: The helper acquires the task pi lock and returns its matching
+    // interrupt state.
+    let flags = unsafe { bindings::rust_helper_sched_pi_lock_irqsave(task) };
+    // SAFETY: The task remains live and the pi lock is held.
+    let matched = unsafe { task_state_match_locked(task.cast_const(), state) };
+    // SAFETY: This releases the pi lock acquired above.
+    unsafe { bindings::rust_helper_sched_pi_unlock_irqrestore(task, flags) };
+    matched
 }
 
 /// Runs the scheduler wake-state match and updates the saved state.
@@ -464,11 +485,7 @@ unsafe extern "C" fn rust_sched_task_state_match(task: *const Task, state: u32) 
 /// caller must serialize access as required by `try_to_wake_up()`.
 #[cfg(CONFIG_RUST_SCHED_WAKE_STATE)]
 #[export]
-unsafe extern "C" fn rust_sched_ttwu_state_match(
-    task: *mut Task,
-    state: u32,
-    success: *mut c_int,
-) -> bool {
+unsafe extern "C" fn ttwu_state_match(task: *mut Task, state: u32, success: *mut c_int) -> bool {
     if cfg!(CONFIG_DEBUG_PREEMPT)
         && state & bindings::TASK_RTLOCK_WAIT != 0
         && state != bindings::TASK_RTLOCK_WAIT
@@ -478,7 +495,7 @@ unsafe extern "C" fn rust_sched_ttwu_state_match(
     }
 
     // SAFETY: The caller guarantees that the task remains live.
-    let matched = unsafe { rust_sched_task_state_match(task.cast_const(), state) };
+    let matched = unsafe { task_state_match_locked(task.cast_const(), state) };
     // SAFETY: The caller guarantees writable success storage.
     unsafe { *success = c_int::from(matched != 0) };
 
@@ -512,12 +529,7 @@ extern "C" fn rust_sched_state_match_select(
 /// `task` must remain live, `rq` must be its current runqueue, and the caller
 /// must hold the task runqueue lock required by `ttwu_runnable()`.
 #[cfg(CONFIG_RUST_SCHED_TTWU_RUNNABLE)]
-#[export]
-unsafe extern "C" fn rust_sched_ttwu_runnable_locked(
-    rq: *mut Rq,
-    task: *mut Task,
-    wake_flags: c_int,
-) -> c_int {
+unsafe fn ttwu_runnable_locked(rq: *mut Rq, task: *mut Task, wake_flags: c_int) -> c_int {
     // SAFETY: The caller holds the task runqueue lock.
     if !unsafe { task_on_rq_queued(task) } {
         return 0;
@@ -544,7 +556,7 @@ unsafe extern "C" fn rust_sched_ttwu_runnable_locked(
     // SAFETY: The caller holds the task runqueue lock.
     if !unsafe { task_on_cpu_state(task) } {
         // SAFETY: The caller holds the task runqueue lock.
-        unsafe { wakeup_preempt(rq, task, wake_flags) };
+        unsafe { ttwu_wakeup_preempt(rq, task, wake_flags) };
     }
 
     // SAFETY: The caller holds the task runqueue lock.
@@ -552,6 +564,33 @@ unsafe extern "C" fn rust_sched_ttwu_runnable_locked(
     // SAFETY: The task state is published and the task remains live.
     unsafe { bindings::rust_helper_sched_ttwu_trace_wakeup(task) };
     1
+}
+
+/// Handles a queued wake target.
+///
+/// # Safety
+///
+/// `task` must remain live and the caller must hold `task->pi_lock`, or must
+/// disable preemption when `task` is current.
+#[cfg(CONFIG_RUST_SCHED_TTWU_RUNNABLE)]
+#[export]
+unsafe extern "C" fn ttwu_runnable(task: *mut Task, wake_flags: c_int) -> c_int {
+    let mut storage = [0_usize; RQ_FLAGS_STORAGE_WORDS];
+    let rf = storage.as_mut_ptr().cast::<RqFlags>();
+    // SAFETY: The caller satisfies the pi-lock or preemption contract. The
+    // helper initializes `rf` and acquires the task runqueue lock.
+    let rq = unsafe { bindings::rust_helper_sched_ttwu_lock(task, rf) };
+    // SAFETY: The helper acquired the runqueue lock and initialized `rf`.
+    #[cfg(CONFIG_LOCKDEP)]
+    unsafe {
+        bindings::rust_helper_sched_resched_assert_locked(rq)
+    };
+    // SAFETY: The runqueue lock protects the task and its runqueue state.
+    let ret = unsafe { ttwu_runnable_locked(rq, task, wake_flags) };
+    // SAFETY: This releases the runqueue lock acquired above with the matching
+    // lock context.
+    unsafe { bindings::rust_helper_sched_ttwu_unlock(rq, task, rf) };
+    ret
 }
 
 /// Returns the scalar task flags used by the runnable wake path.
@@ -638,6 +677,9 @@ const ENQUEUE_RESTORE: c_int = bindings::RUST_SCHED_ENQUEUE_RESTORE as c_int;
 const DEQUEUE_SAVE: c_int = bindings::RUST_SCHED_DEQUEUE_SAVE as c_int;
 #[cfg(CONFIG_RUST_SCHED_RQ_OPS)]
 const DEQUEUE_NOCLOCK: c_int = bindings::RUST_SCHED_DEQUEUE_NOCLOCK as c_int;
+#[cfg(any(CONFIG_RUST_SCHED_TTWU_RUNNABLE, CONFIG_RUST_SCHED_WAKE_IF_IDLE))]
+const RQ_FLAGS_STORAGE_WORDS: usize =
+    (bindings::RQ_FLAGS_SIZE as usize).div_ceil(core::mem::size_of::<usize>());
 
 /// Returns a pointer to the runqueue's uninterruptible task count.
 ///
@@ -2256,9 +2298,10 @@ unsafe extern "C" fn wake_up_if_idle(cpu: c_int) {
     unsafe { bindings::rust_helper_sched_wake_if_idle_rcu_read_lock() };
     // SAFETY: The RCU read lock protects the first current-task check.
     if unsafe { wake_if_idle_needs_lock(rq) } {
-        let mut rf = core::mem::MaybeUninit::<RqFlags>::uninit();
+        let mut storage = [0_usize; RQ_FLAGS_STORAGE_WORDS];
+        let rf = storage.as_mut_ptr().cast::<RqFlags>();
         // SAFETY: The helper initializes `rf` and acquires the runqueue lock.
-        unsafe { bindings::rust_helper_sched_wake_if_idle_lock(rq, rf.as_mut_ptr()) };
+        unsafe { bindings::rust_helper_sched_wake_if_idle_lock(rq, rf) };
         // SAFETY: The runqueue lock is held.
         #[cfg(CONFIG_LOCKDEP)]
         unsafe {
@@ -2268,7 +2311,7 @@ unsafe extern "C" fn wake_up_if_idle(cpu: c_int) {
         unsafe { wake_if_idle_locked(rq) };
         // SAFETY: The matching helper releases the runqueue lock with the
         // saved interrupt state.
-        unsafe { bindings::rust_helper_sched_wake_if_idle_unlock(rq, rf.as_mut_ptr()) };
+        unsafe { bindings::rust_helper_sched_wake_if_idle_unlock(rq, rf) };
     }
     // SAFETY: This matches the read lock acquired above.
     unsafe { bindings::rust_helper_sched_wake_if_idle_rcu_read_unlock() };
@@ -2364,7 +2407,7 @@ unsafe fn wakeup_preempt_locked(rq: *mut Rq, task: *mut Task, wake_flags: c_int)
 /// caller must hold the runqueue lock.
 #[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
 #[export]
-unsafe extern "C" fn rust_sched_wakeup_preempt(rq: *mut Rq, task: *mut Task, wake_flags: c_int) {
+unsafe extern "C" fn wakeup_preempt(rq: *mut Rq, task: *mut Task, wake_flags: c_int) {
     // SAFETY: The caller satisfies the exported entry-point contract.
     unsafe { wakeup_preempt_locked(rq, task, wake_flags) };
 }
@@ -2386,7 +2429,7 @@ extern "C" fn rust_sched_wakeup_preempt_select(
 ///
 /// The caller must hold the runqueue lock and satisfy `wakeup_preempt()`.
 #[cfg(any(CONFIG_RUST_SCHED_TTWU_RUNNABLE, CONFIG_RUST_SCHED_TTWU_ACTIVATE))]
-unsafe fn wakeup_preempt(rq: *mut Rq, task: *mut Task, wake_flags: c_int) {
+unsafe fn ttwu_wakeup_preempt(rq: *mut Rq, task: *mut Task, wake_flags: c_int) {
     #[cfg(CONFIG_RUST_SCHED_WAKE_PREEMPT)]
     // SAFETY: The caller provides the runqueue lock contract.
     unsafe {
@@ -2558,12 +2601,17 @@ extern "C" fn rust_sched_ttwu_dec_iowait_select(initial: c_int) -> c_int {
 /// the matching lock context, and the caller must hold the runqueue lock.
 #[cfg(CONFIG_RUST_SCHED_TTWU_ACTIVATE)]
 #[export]
-unsafe extern "C" fn rust_sched_ttwu_activate_locked(
+unsafe extern "C" fn ttwu_do_activate(
     rq: *mut Rq,
     task: *mut Task,
     wake_flags: c_int,
     rf: *mut bindings::rq_flags,
 ) {
+    // SAFETY: The caller holds the task runqueue lock.
+    #[cfg(CONFIG_LOCKDEP)]
+    unsafe {
+        bindings::rust_helper_sched_resched_assert_locked(rq)
+    };
     let decoded_wake_flags = decode_wake_flags(wake_flags);
     let plan = activate_plan(
         // SAFETY: The caller holds the task runqueue lock.
@@ -2592,7 +2640,7 @@ unsafe extern "C" fn rust_sched_ttwu_activate_locked(
     // SAFETY: The task is locked and ready to enter its runqueue.
     unsafe { bindings::activate_task(rq, task, enqueue_flags) };
     // SAFETY: The caller holds the task runqueue lock.
-    unsafe { wakeup_preempt(rq, task, wake_flags) };
+    unsafe { ttwu_wakeup_preempt(rq, task, wake_flags) };
     // SAFETY: The caller holds the task runqueue lock.
     unsafe { publish_task_wakeup_state(task) };
     // SAFETY: The task state is published and the task remains live.
@@ -2674,8 +2722,13 @@ unsafe extern "C" fn rust_sched_block_task_set_contributes_load_select(
 /// must hold the runqueue lock.
 #[cfg(CONFIG_RUST_SCHED_BLOCK_TASK)]
 #[export]
-unsafe extern "C" fn rust_sched_block_task_locked(rq: *mut Rq, task: *mut Task, task_state: u32) {
-    let plan = block_plan(task_state);
+unsafe extern "C" fn block_task(rq: *mut Rq, task: *mut Task, task_state: c_ulong) {
+    // SAFETY: The caller holds the task runqueue lock.
+    #[cfg(CONFIG_LOCKDEP)]
+    unsafe {
+        bindings::rust_helper_sched_resched_assert_locked(rq)
+    };
+    let plan = block_plan(task_state as u32);
 
     // SAFETY: The caller holds the task runqueue lock.
     unsafe { set_task_contributes_to_load(task, plan & BLOCK_CONTRIBUTES_LOAD != 0) };

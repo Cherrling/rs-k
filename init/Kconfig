@@ -1032,15 +1032,16 @@ config RUST_SCHED_WAKE_STATE
 	depends on RUST
 	default y
 	help
-	  Use Rust for the production task-state match used by task wakeups
-	  and inactive-task waits. Rust reads the current and saved task states,
-	  distinguishes a current-state match from a saved-state match, reports
-	  wake success, and clears a matched saved state before the task restores
-	  its blocking state.
+	  Use Rust to directly define the production task-state match entries
+	  used by task wakeups and inactive-task waits. Rust acquires the task
+	  pi lock for inactive-task waits, reads the current and saved task
+	  states, distinguishes a current-state match from a saved-state match,
+	  reports wake success, and clears a matched saved state before the task
+	  restores its blocking state.
 
-	  Warning delivery, task and run-queue locking, wake-list handling, other
-	  task-state updates, CPU selection, enqueue, and public scheduler ABI
-	  adapters remain in C.
+	  The raw task pi lock and interrupt-state primitives, warning delivery,
+	  runqueue locking, wake-list handling, other task-state updates, CPU
+	  selection, enqueue, and fallback definitions remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -1050,15 +1051,15 @@ config RUST_SCHED_WAKE_PREEMPT
 	depends on RUST
 	default y
 	help
-	  Use Rust for the production wakeup preemption state machine. Rust
-	  compares the woken task scheduling class with the selected class,
+	  Use Rust to directly define the production wakeup preemption entry.
+	  Rust compares the woken task scheduling class with the selected class,
 	  invokes the selected class wakeup-preemption callback, requests
 	  rescheduling, updates the selected class, and requests the redundant
 	  clock update skip.
 
 	  Task and runqueue locking, scheduling-class callback implementations,
-	  reschedule delivery, tracepoints, and public scheduler ABI adapters
-	  remain in C.
+	  reschedule delivery, tracepoints, and the fallback definition remain
+	  in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -1136,16 +1137,17 @@ config RUST_SCHED_TTWU_RUNNABLE
 	depends on RUST
 	default y
 	help
-	  Use Rust for the production task_rq-locked runnable wake path. Rust
-	  owns the queued check, direct runqueue clock update, delayed-enqueue
-	  flags and direct enqueue call, proxy-return ordering, task blocked,
-	  on-CPU, and delayed state reads, preemption decision and direct
-	  wakeup_preempt() call, and final wake-state publication, including
-	  clearing the blocked marker and publishing the running state.
+	  Use Rust to directly define the production task_rq-locked runnable
+	  wake entry. Rust acquires and releases the task runqueue lock, owns the
+	  queued check, direct runqueue clock update, delayed-enqueue flags and
+	  direct enqueue call, proxy-return ordering, task blocked, on-CPU, and
+	  delayed state reads, preemption decision and direct wakeup_preempt()
+	  call, and final wake-state publication, including clearing the blocked
+	  marker and publishing the running state.
 
-	  Task runqueue lock acquisition and release, the scheduler queue
-	  implementation and proxy operations, scheduling-class preemption
-	  callbacks, tracing, and public scheduler ABI adapters remain in C.
+	  The raw task runqueue lock and interrupt-state primitives, scheduler
+	  queue implementation and proxy operations, scheduling-class preemption
+	  callbacks, tracing, and fallback definition remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -1155,13 +1157,13 @@ config RUST_SCHED_TTWU_ACTIVATE
 	depends on RUST
 	default y
 	help
-	  Use Rust for the production woke-task activation state machine. Rust
-	  owns task load and I/O wait state reads, wake-flag decoding, load
+	  Use Rust to directly define the production woke-task activation entry.
+	  Rust owns task load and I/O wait state reads, wake-flag decoding, load
 	  accounting, the delay-accounting completion call, the atomic I/O wait
 	  count update, enqueue-flag construction, the direct task activation
-	  call, preemption ordering and direct wakeup_preempt() call,
-	  wake-state publication, and the optional scheduling-class callback
-	  decision and direct invocation.
+	  call, preemption ordering and direct wakeup_preempt() call, wake-state
+	  publication, and the optional scheduling-class callback decision and
+	  direct invocation.
 
 	  Wake-state publication includes clearing the blocked marker and
 	  publishing the running state.
@@ -1169,8 +1171,8 @@ config RUST_SCHED_TTWU_ACTIVATE
 	  Task runqueue locking and pinning, scheduling-class queue operations
 	  invoked by the activation call, the delay accounting primitive, the
 	  scheduling-class preemption callbacks, tracing, scheduling-class
-	  callback implementations, lock pin primitives, and public scheduler
-	  ABI adapters remain in C.
+	  callback implementations, lock pin primitives, and the fallback
+	  definition remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
@@ -1180,14 +1182,14 @@ config RUST_SCHED_BLOCK_TASK
 	depends on RUST
 	default y
 	help
-	  Use Rust for the production task blocking state machine. Rust owns
-	  load-state classification, special-state classification, the
+	  Use Rust to directly define the production task blocking entry. Rust
+	  owns load-state classification, special-state classification, the
 	  contributes-to-load bitfield update, dequeue-flag selection, and the
 	  decision and order of dequeue and block accounting.
 
 	  Task-state storage outside the wake-state path, runqueue locking,
 	  scheduler queue operations, blocking accounting primitives,
-	  tracepoints, and public scheduler ABI adapters remain in C.
+	  tracepoints, and the fallback definition remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

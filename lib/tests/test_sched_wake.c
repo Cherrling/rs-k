@@ -81,12 +81,17 @@ static void sched_wake_test_saved_state_transition(struct kunit *test)
 
 	task = kzalloc_obj(*task);
 	KUNIT_ASSERT_NOT_NULL(test, task);
+	raw_spin_lock_init(&task->pi_lock);
+
+	task->__state = TASK_INTERRUPTIBLE;
+	task->saved_state = TASK_RUNNING;
+	KUNIT_EXPECT_EQ(test, 1, task_state_match(task, TASK_NORMAL));
 
 	task->__state = TASK_RTLOCK_WAIT;
 	task->saved_state = TASK_INTERRUPTIBLE;
 	success = 0;
 	KUNIT_EXPECT_FALSE(test,
-			   rust_sched_ttwu_state_match(task, TASK_NORMAL, &success));
+			   ttwu_state_match(task, TASK_NORMAL, &success));
 	KUNIT_EXPECT_EQ(test, 1, success);
 	KUNIT_EXPECT_EQ(test, TASK_RUNNING, task->saved_state);
 
@@ -94,14 +99,14 @@ static void sched_wake_test_saved_state_transition(struct kunit *test)
 	task->saved_state = TASK_RUNNING;
 	success = 0;
 	KUNIT_EXPECT_TRUE(test,
-			  rust_sched_ttwu_state_match(task, TASK_NORMAL, &success));
+			  ttwu_state_match(task, TASK_NORMAL, &success));
 	KUNIT_EXPECT_EQ(test, 1, success);
 	KUNIT_EXPECT_EQ(test, TASK_RUNNING, task->saved_state);
 
 	task->__state = TASK_WAKING;
 	success = 1;
 	KUNIT_EXPECT_FALSE(test,
-			   rust_sched_ttwu_state_match(task, TASK_NORMAL, &success));
+			   ttwu_state_match(task, TASK_NORMAL, &success));
 	KUNIT_EXPECT_EQ(test, 0, success);
 
 	kfree(task);

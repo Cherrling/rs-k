@@ -821,6 +821,12 @@ rust_unexported_symbols := \
 	set_next_task \
 	put_prev_set_next_task \
 	prev_balance \
+	task_state_match \
+	ttwu_state_match \
+	ttwu_runnable \
+	ttwu_do_activate \
+	block_task \
+	wakeup_preempt \
 	dma_pool_create_node \
 	dma_pool_destroy \
 	dma_pool_alloc \

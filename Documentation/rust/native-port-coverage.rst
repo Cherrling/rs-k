@@ -557,6 +557,56 @@ CPU-priority scheduler state machine and entry points
   and off-stack cpumask boots passed all applicable cases, including three
   consecutive native four-vCPU runs.
 
+Scheduler wake and blocking entry points
+  Status: ``migrated``.
+
+  Evidence: :doc:`sched`.
+
+  Rust directly defines ``task_state_match()``, ``ttwu_state_match()``,
+  ``ttwu_runnable()``, ``ttwu_do_activate()``, ``block_task()``, and
+  ``wakeup_preempt()``. Rust owns state matching, saved-state publication, the
+  queued-wake state machine, the wake activation state machine, blocking
+  dequeue policy, and wakeup-preemption ordering. Each C fallback is compiled
+  only when the corresponding Rust option is disabled.
+
+  Lock ownership is part of the migrated contract. Rust acquires and releases
+  ``p->pi_lock`` in ``task_state_match()``. The caller holds that lock across
+  ``ttwu_state_match()``. Rust acquires and releases the task runqueue lock in
+  ``ttwu_runnable()``. The caller holds the runqueue lock across
+  ``ttwu_do_activate()``, ``block_task()``, and ``wakeup_preempt()``.
+
+  C retains the task and runqueue layouts, raw pi-lock and task-runqueue lock
+  primitives, scheduling-class callback implementations, queue and proxy
+  operations, reschedule delivery, wakeup tracing, delay accounting, and lock
+  pin and repin helpers. C also owns ``RQ_FLAGS_SIZE`` because bindgen exposes
+  ``struct rq_flags`` as an opaque zero-length type. Rust allocates
+  ``usize``-aligned storage rounded up from the C size before the lock helpers
+  write that structure.
+
+  Test: Native four-vCPU runs passed all 37 scheduler cases. Native one-vCPU
+  runs passed 35 cases and skipped 2 cases that require multiple CPUs. The
+  all-options-disabled fallback passed 21 of 21 four-vCPU cases, 19 of 21
+  one-vCPU cases with 2 skips, and 25 of 25 hrtimer cases. C-only passed 3 of
+  3 four-vCPU cases, 2 of 3 one-vCPU cases with 1 skip, and 5 of 5 applicable
+  hrtimer cases. KASAN, lockdep, and PREEMPT_RT each passed 37 of 37
+  four-vCPU cases, 35 of 37 one-vCPU cases with 2 skips, and 25 of 25 hrtimer
+  cases. No run reported a ``BUG``, warning, KASAN report, lock dependency
+  diagnosis, Oops, panic, or atomic-scheduling violation.
+
+  Native ``rust/kernel.o`` defines all six entries, and native
+  ``kernel/sched/core.o`` has only undefined references to them. The KASAN,
+  lockdep, and PREEMPT_RT objects have the same ownership. Each entry has one
+  strong definition in the linked native image and no ``Module.symvers``
+  entry. Fallback and C-only Rust objects define none of the six entries, and
+  their C fallback bodies are selected at compile time.
+
+  Risk: A wrong lock owner, a mismatched unpin and repin context, or an
+  undersized ``struct rq_flags`` object can corrupt scheduler state. Such a
+  defect can also trigger a KASAN report, lockdep cycle, or PREEMPT_RT
+  sleep-in-atomic failure. The current exit condition is one production
+  definition per entry in every configuration class and a clean pass of the
+  native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT matrices.
+
 Scheduler reschedule request entries
   Status: ``migrated``.
 
@@ -921,6 +971,33 @@ CPU-priority scheduler shared entry boundary
   Exit condition: Rust owns compatible cpumasks, atomic and barrier
   primitives, scheduler locking, initialization, diagnostics, and lifecycle
   operations without shared C helper entries.
+
+Scheduler wake and blocking primitive boundary
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/sched-rust.h``, ``kernel/sched/core.c``,
+  ``kernel/sched/rq-offsets.c``, ``rust/kernel/sched_core.rs``, and the
+  scheduler wake helpers.
+
+  Reason: Rust owns all six production entries, but task and runqueue layouts,
+  raw ``pi_lock`` and task-runqueue lock operations, runqueue lock pin and
+  repin, scheduling-class callbacks, queue and proxy operations, tracing,
+  delay accounting, and the C size of ``struct rq_flags`` depend on scheduler
+  internals. Bindgen exposes ``struct rq_flags`` as a zero-length opaque type,
+  so C must export ``sizeof(struct rq_flags)`` to Rust.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, PREEMPT_RT, SMP1, and SMP4
+  builds exercise each lock owner, all six direct entries, both fallback
+  paths, and the oversized opaque-structure storage used by
+  ``ttwu_runnable()`` and ``wake_up_if_idle()``.
+
+  Risk: A lock-owner error can race task state or runqueue state. An
+  undersized or misaligned ``struct rq_flags`` object can corrupt adjacent
+  stack data and fault when a C lock helper writes the structure.
+
+  Exit condition: Rust owns compatible task and runqueue locking,
+  scheduling-class callback invocation, queue and proxy operations, tracing,
+  delay accounting, and lock context storage without shared C helper entries.
 
 Scheduler reschedule primitive boundary
   Status: ``boundary-retained``.

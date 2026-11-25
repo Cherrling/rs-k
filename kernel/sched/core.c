@@ -1484,15 +1484,20 @@ int rust_helper_sched_resched_lazy_tif(void)
 }
 #endif
 
-#if (defined(CONFIG_RUST_SCHED_RESCHED_CURR) || \
+#if defined(CONFIG_LOCKDEP)
+#if defined(CONFIG_RUST_SCHED_RESCHED_CURR) || \
 	defined(CONFIG_RUST_SCHED_RESCHED_CPU) || \
 	defined(CONFIG_RUST_SCHED_WAKE_IF_IDLE) || \
 	defined(CONFIG_RUST_SCHED_RQ_OPS) || \
-	defined(CONFIG_RUST_SCHED_RQ_TRANSITION)) && defined(CONFIG_LOCKDEP)
+	defined(CONFIG_RUST_SCHED_RQ_TRANSITION) || \
+	defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
+	defined(CONFIG_RUST_SCHED_TTWU_ACTIVATE) || \
+	defined(CONFIG_RUST_SCHED_BLOCK_TASK)
 void rust_helper_sched_resched_assert_locked(struct rq *rq)
 {
 	lockdep_assert_rq_held(rq);
 }
+#endif
 #endif
 
 #ifndef CONFIG_RUST_SCHED_RESCHED_CURR
@@ -2653,12 +2658,9 @@ void rust_helper_sched_block_finish(struct rq *rq, struct task_struct *task)
 }
 #endif
 
+#ifndef CONFIG_RUST_SCHED_BLOCK_TASK
 static void block_task(struct rq *rq, struct task_struct *p, unsigned long task_state)
 {
-#ifdef CONFIG_RUST_SCHED_BLOCK_TASK
-	lockdep_assert_rq_held(rq);
-	rust_sched_block_task_locked(rq, p, (unsigned int)task_state);
-#else
 	int flags = DEQUEUE_NOCLOCK;
 
 	p->sched_contributes_to_load =
@@ -2682,8 +2684,8 @@ static void block_task(struct rq *rq, struct task_struct *p, unsigned long task_
 	 */
 	if (dequeue_task(rq, p, DEQUEUE_SLEEP | flags))
 		__block_task(rq, p);
-#endif
 }
+#endif
 
 /**
  * task_curr - is this task currently executing on a CPU?
@@ -2696,11 +2698,9 @@ inline int task_curr(const struct task_struct *p)
 	return cpu_curr(task_cpu(p)) == p;
 }
 
+#ifndef CONFIG_RUST_SCHED_WAKE_PREEMPT
 void wakeup_preempt(struct rq *rq, struct task_struct *p, int flags)
 {
-#ifdef CONFIG_RUST_SCHED_WAKE_PREEMPT
-	rust_sched_wakeup_preempt(rq, p, flags);
-#else
 	struct task_struct *donor = rq->donor;
 
 	if (p->sched_class == rq->next_class) {
@@ -2718,8 +2718,8 @@ void wakeup_preempt(struct rq *rq, struct task_struct *p, int flags)
 	 */
 	if (task_on_rq_queued(donor) && test_tsk_need_resched(rq->curr))
 		rq_clock_skip_update(rq);
-#endif
 }
+#endif
 
 #ifdef CONFIG_RUST_SCHED_WAKE_STATE
 void rust_helper_sched_warn_ttwu_state(unsigned int state)
@@ -2727,14 +2727,25 @@ void rust_helper_sched_warn_ttwu_state(unsigned int state)
 	WARN_ON_ONCE((state & TASK_RTLOCK_WAIT) &&
 		     state != TASK_RTLOCK_WAIT);
 }
+
+unsigned long rust_helper_sched_pi_lock_irqsave(struct task_struct *task)
+{
+	unsigned long flags;
+
+	raw_spin_lock_irqsave(&task->pi_lock, flags);
+	return flags;
+}
+
+void rust_helper_sched_pi_unlock_irqrestore(struct task_struct *task,
+					    unsigned long flags)
+{
+	raw_spin_unlock_irqrestore(&task->pi_lock, flags);
+}
 #endif
 
 static __always_inline
 int __task_state_match(struct task_struct *p, unsigned int state)
 {
-#ifdef CONFIG_RUST_SCHED_WAKE_STATE
-	return rust_sched_task_state_match(p, state);
-#else
 	if (READ_ONCE(p->__state) & state)
 		return 1;
 
@@ -2742,9 +2753,9 @@ int __task_state_match(struct task_struct *p, unsigned int state)
 		return -1;
 
 	return 0;
-#endif
 }
 
+#ifndef CONFIG_RUST_SCHED_WAKE_STATE
 static __always_inline
 int task_state_match(struct task_struct *p, unsigned int state)
 {
@@ -2755,6 +2766,7 @@ int task_state_match(struct task_struct *p, unsigned int state)
 	guard(raw_spinlock_irq)(&p->pi_lock);
 	return __task_state_match(p, state);
 }
+#endif
 
 /*
  * wait_task_inactive - wait for a thread to unschedule.
@@ -4285,6 +4297,17 @@ bool rust_helper_sched_ttwu_proxy_return(struct rq *rq,
 	return proxy_needs_return(rq, task);
 }
 
+struct rq *rust_helper_sched_ttwu_lock(struct task_struct *task,
+				       struct rq_flags *rf)
+{
+	return __task_rq_lock(task, rf);
+}
+
+void rust_helper_sched_ttwu_unlock(struct rq *rq, struct task_struct *task,
+				   struct rq_flags *rf)
+{
+	__task_rq_unlock(rq, task, rf);
+}
 #endif
 
 #if defined(CONFIG_RUST_SCHED_TTWU_RUNNABLE) || \
@@ -4312,14 +4335,11 @@ void rust_helper_sched_rq_repin_lock(struct rq *rq, struct rq_flags *rf)
 }
 #endif
 
+#ifndef CONFIG_RUST_SCHED_TTWU_ACTIVATE
 static void
 ttwu_do_activate(struct rq *rq, struct task_struct *p, int wake_flags,
 		 struct rq_flags *rf)
 {
-#ifdef CONFIG_RUST_SCHED_TTWU_ACTIVATE
-	lockdep_assert_rq_held(rq);
-	rust_sched_ttwu_activate_locked(rq, p, wake_flags, rf);
-#else
 	int en_flags = ENQUEUE_WAKEUP | ENQUEUE_NOCLOCK;
 
 	lockdep_assert_rq_held(rq);
@@ -4350,8 +4370,8 @@ ttwu_do_activate(struct rq *rq, struct task_struct *p, int wake_flags,
 		p->sched_class->task_woken(rq, p);
 		rq_repin_lock(rq, rf);
 	}
-#endif
 }
+#endif
 
 /*
  * Consider @p being inside a wait loop:
@@ -4378,18 +4398,9 @@ ttwu_do_activate(struct rq *rq, struct task_struct *p, int wake_flags,
  * Returns: %true when the wakeup is done,
  *          %false otherwise.
  */
+#ifndef CONFIG_RUST_SCHED_TTWU_RUNNABLE
 static int ttwu_runnable(struct task_struct *p, int wake_flags)
 {
-#ifdef CONFIG_RUST_SCHED_TTWU_RUNNABLE
-	struct rq_flags rf;
-	struct rq *rq;
-	int ret;
-
-	rq = __task_rq_lock(p, &rf);
-	ret = rust_sched_ttwu_runnable_locked(rq, p, wake_flags);
-	__task_rq_unlock(rq, p, &rf);
-	return ret;
-#else
 	ACQUIRE(__task_rq_lock, guard)(p);
 	struct rq *rq = guard.rq;
 
@@ -4412,8 +4423,8 @@ static int ttwu_runnable(struct task_struct *p, int wake_flags)
 	}
 	ttwu_do_wakeup(p);
 	return 1;
-#endif
 }
+#endif
 
 void sched_ttwu_pending(void *arg)
 {
@@ -4657,12 +4668,10 @@ static void ttwu_queue(struct task_struct *p, int cpu, int wake_flags)
  *   allows us to prevent early wakeup of tasks before they can be run on
  *   asymmetric ISA architectures (eg ARMv9).
  */
+#ifndef CONFIG_RUST_SCHED_WAKE_STATE
 static __always_inline
 bool ttwu_state_match(struct task_struct *p, unsigned int state, int *success)
 {
-#ifdef CONFIG_RUST_SCHED_WAKE_STATE
-	return rust_sched_ttwu_state_match(p, state, success);
-#else
 	int match;
 
 	if (IS_ENABLED(CONFIG_DEBUG_PREEMPT)) {
@@ -4690,8 +4699,8 @@ bool ttwu_state_match(struct task_struct *p, unsigned int state, int *success)
 		p->saved_state = TASK_RUNNING;
 
 	return match > 0;
-#endif
 }
+#endif
 
 /*
  * Notes on Program-Order guarantees on SMP systems.
