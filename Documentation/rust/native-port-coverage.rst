@@ -385,6 +385,39 @@ Address-space VMA-tree duplication
   clean pass of the focused KUnit, userspace, KASAN, lockdep, PREEMPT_RT, and
   adjacent fork matrices.
 
+Address-space range unmapping
+  Status: ``migrated``.
+
+  Evidence: :doc:`vma-unmap`.
+
+  Rust directly defines ``__vm_munmap()`` and ``do_vmi_munmap()``. Rust owns
+  page alignment, address-space limit validation, length rounding and
+  overflow, first-overlap lookup, empty-range lock handling, killable write
+  locking, conditional unlock, aligned unmap dispatch, and userfaultfd
+  completion order. C retains current-mm field access, mmap locking,
+  ``TASK_SIZE``, maple-tree lookup, aligned unmap, and userfaultfd completion.
+  C also retains the private VMA iterator and userfaultfd list layout. C
+  fallback and C-only configurations retain the complete implementations.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT
+  configurations exercise invalid boundaries, alignment, empty ranges,
+  partial and multi-VMA unmapping, shared mappings, and concurrent map/unmap
+  workloads.
+
+  Symbol inspection shows that native ``rust/kernel.o`` defines both entries
+  and C caller objects contain only undefined references. Fallback and C-only
+  objects define both entries in ``mm/vma.o`` and none in Rust. Both entries
+  remain unexported, each linked image has one definition, no old
+  ``rust_vma_unmap`` or ``rust_do_vmi_munmap`` symbols remain, and the
+  production image has no unresolved symbol.
+
+  Risk: A validation, lock, lookup, or completion mistake can unmap the wrong
+  range, leave a write lock held, report userfaultfd events out of order, or
+  expose partially removed mappings. The exit condition is one production
+  definition per entry in every configuration class and a clean pass of the
+  focused, concurrency, KASAN, lockdep, PREEMPT_RT, and adjacent munmap
+  matrices.
+
 Address-space construction and copy
   Status: ``migrated``.
 
@@ -2279,6 +2312,29 @@ Address-space VMA-tree duplication primitive boundary
   reverse-map, page-range, architecture, userfaultfd, and state layouts without
   changing lock, failure, or rollback contracts.
 
+Address-space range-unmapping primitive boundary
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/vma-unmap-rust.h``, ``mm/vma.c``, and
+  ``rust/kernel/vma_unmap.rs``.
+
+  Reason: C and Rust share current-mm field access, mmap locking,
+  ``TASK_SIZE``, maple-tree lookup, aligned unmapping, and userfaultfd
+  completion contracts. The state object also contains an mm-private VMA
+  iterator and userfaultfd list.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT runs exercise
+  range validation, empty and populated unmaps, lock release, userfaultfd
+  completion, and concurrent map/unmap workload. Symbol inspection checks
+  direct ownership and removal of both adapters.
+
+  Risk: A helper or layout mismatch can unmap the wrong pages, release the mmap
+  lock in the wrong branch, or expose userfaultfd state to the next caller.
+
+  Exit condition: Rust owns equivalent current-mm, mmap-lock, range-lookup,
+  aligned-unmap, userfaultfd, iterator, and list layouts without changing the
+  lock or completion contracts.
+
 IRQ work layout and callback ABI
   Status: ``boundary-retained``.
 
@@ -3062,6 +3118,12 @@ reverse-map insertion, page-range copying, architecture duplication,
 userfaultfd records, partial teardown, and private state layout remain named C
 boundaries. Rust defines the production entry and owns every lock-order,
 iteration, duplication, failure, rollback, accounting, and completion decision.
+
+The address-space range-unmapping boundary is valid only while current-mm field
+access, mmap locking, ``TASK_SIZE``, maple-tree lookup, aligned unmapping,
+userfaultfd completion, and the iterator and list layouts remain named C
+boundaries. Rust defines both production entries and owns every validation,
+alignment, lookup, unlock, dispatch, and completion-order decision.
 
 The IRQ work boundary is valid only while the shared work and callback layout,
 per-CPU lists, interrupt delivery, hotplug and PREEMPT_RT worker lifecycle,

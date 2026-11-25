@@ -3556,6 +3556,11 @@ void rust_helper_vma_munmap_iter_prev_range(struct vma_iterator *vmi)
 
 #ifdef CONFIG_RUST_VMA_UNMAP
 
+struct mm_struct *rust_helper_vma_unmap_current_mm(void)
+{
+	return current->mm;
+}
+
 void rust_helper_vma_unmap_state_init(struct rust_vma_unmap_state *state,
 				      struct mm_struct *mm,
 				      unsigned long start)
@@ -3618,13 +3623,11 @@ void rust_helper_vma_unmap_userfault_complete(struct mm_struct *mm,
  * Return: 0 on success and drops the lock if so directed, error and leaves the
  * lock held otherwise.
  */
+#ifndef CONFIG_RUST_VMA_UNMAP
 int do_vmi_munmap(struct vma_iterator *vmi, struct mm_struct *mm,
 		  unsigned long start, size_t len, struct list_head *uf,
 		  bool unlock)
 {
-#ifdef CONFIG_RUST_VMA_UNMAP
-	return rust_do_vmi_munmap(vmi, mm, start, len, uf, unlock);
-#else
 	unsigned long end;
 	struct vm_area_struct *vma;
 
@@ -3644,8 +3647,8 @@ int do_vmi_munmap(struct vma_iterator *vmi, struct mm_struct *mm,
 	}
 
 	return do_vmi_align_munmap(vmi, vma, mm, start, end, uf, unlock);
-#endif
 }
+#endif /* !CONFIG_RUST_VMA_UNMAP */
 
 /*
  * We are about to modify one or multiple of a VMA's flags, policy, userfaultfd
@@ -6367,11 +6370,9 @@ int expand_downwards(struct vm_area_struct *vma, unsigned long address)
 	return error;
 }
 
+#ifndef CONFIG_RUST_VMA_UNMAP
 int __vm_munmap(unsigned long start, size_t len, bool unlock)
 {
-#ifdef CONFIG_RUST_VMA_UNMAP
-	return rust_vma_unmap(current->mm, start, len, unlock);
-#else
 	int ret;
 	struct mm_struct *mm = current->mm;
 	LIST_HEAD(uf);
@@ -6386,8 +6387,8 @@ int __vm_munmap(unsigned long start, size_t len, bool unlock)
 
 	userfaultfd_unmap_complete(mm, &uf);
 	return ret;
-#endif
 }
+#endif /* !CONFIG_RUST_VMA_UNMAP */
 
 /*
  * Insert vm structure into process list sorted by address

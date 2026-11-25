@@ -12,12 +12,12 @@ struct rust_vma_unmap_state {
 	struct list_head userfaultfd;
 };
 
-int rust_vma_unmap(struct mm_struct *mm, unsigned long start, size_t len,
-		   bool unlock);
-int rust_do_vmi_munmap(struct vma_iterator *vmi, struct mm_struct *mm,
-		       unsigned long start, size_t len, struct list_head *uf,
-		       bool unlock);
+int __vm_munmap(unsigned long start, size_t len, bool unlock);
+int do_vmi_munmap(struct vma_iterator *vmi, struct mm_struct *mm,
+		  unsigned long start, size_t len, struct list_head *uf,
+		  bool unlock);
 
+struct mm_struct *rust_helper_vma_unmap_current_mm(void);
 void rust_helper_vma_unmap_state_init(struct rust_vma_unmap_state *state,
 				      struct mm_struct *mm,
 				      unsigned long start);

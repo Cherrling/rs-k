@@ -67,7 +67,7 @@ unsafe extern "C" fn rust_vma_unmap_test_range(
 ///
 /// The caller must hold the mmap write lock. `vmi` and `uf` must remain valid.
 /// `unlock` must select the caller's lock-release contract.
-unsafe fn do_vmi_munmap(
+unsafe fn do_vmi_munmap_range(
     vmi: *mut VmaIterator,
     mm: *mut Mm,
     start: usize,
@@ -97,13 +97,14 @@ unsafe fn do_vmi_munmap(
     unsafe { bindings::rust_helper_vma_unmap_align(vmi, vma, mm, start, end, uf, unlock) }
 }
 
-/// Unmaps one aligned range through the internal C ABI.
+/// Unmaps one aligned range using an existing iterator.
 ///
 /// # Safety
 ///
-/// The same requirements as [`do_vmi_munmap`] apply.
+/// The caller must hold the mmap write lock. `vmi` and `uf` must remain valid.
+/// `unlock` must select the caller's lock-release contract.
 #[export]
-unsafe extern "C" fn rust_do_vmi_munmap(
+unsafe extern "C" fn do_vmi_munmap(
     vmi: *mut VmaIterator,
     mm: *mut Mm,
     start: usize,
@@ -112,17 +113,17 @@ unsafe extern "C" fn rust_do_vmi_munmap(
     unlock: bool,
 ) -> c_int {
     // SAFETY: The caller upholds the function requirements.
-    unsafe { do_vmi_munmap(vmi, mm, start, len, uf, unlock) }
+    unsafe { do_vmi_munmap_range(vmi, mm, start, len, uf, unlock) }
 }
 
-/// Unmaps a user range from an address space.
+/// Unmaps a user range from the current address space.
 ///
 /// # Safety
 ///
-/// `mm` must be the current live address space. The caller must allow this
-/// function to acquire and release its mmap write lock.
-#[export]
-unsafe extern "C" fn rust_vma_unmap(mm: *mut Mm, start: usize, len: usize, unlock: bool) -> c_int {
+/// The current task must have a live address space. The call must occur in
+/// task context and allow this function to acquire and release the mmap write
+/// lock.
+unsafe fn unmap_range(mm: *mut Mm, start: usize, len: usize, unlock: bool) -> c_int {
     let mut storage = MaybeUninit::<State>::uninit();
     let state = storage.as_mut_ptr();
     // SAFETY: The private state is initialized before use.
@@ -135,7 +136,7 @@ unsafe extern "C" fn rust_vma_unmap(mm: *mut Mm, start: usize, len: usize, unloc
 
     // SAFETY: The write lock is held and the private state is initialized.
     let ret = unsafe {
-        do_vmi_munmap(
+        do_vmi_munmap_range(
             &mut (*state).vmi,
             mm,
             start,
@@ -154,4 +155,19 @@ unsafe extern "C" fn rust_vma_unmap(mm: *mut Mm, start: usize, len: usize, unloc
     // been completed.
     unsafe { bindings::rust_helper_vma_unmap_userfault_complete(mm, &mut (*state).userfaultfd) };
     ret
+}
+
+/// Unmaps a user range from the current address space.
+///
+/// # Safety
+///
+/// The current task must have a live address space. The call must occur in
+/// task context and allow this function to acquire and release the mmap write
+/// lock.
+#[export]
+unsafe extern "C" fn __vm_munmap(start: usize, len: usize, unlock: bool) -> c_int {
+    // SAFETY: The current task provides the live address space.
+    let mm = unsafe { bindings::rust_helper_vma_unmap_current_mm() };
+    // SAFETY: The caller upholds the function requirements.
+    unsafe { unmap_range(mm, start, len, unlock) }
 }

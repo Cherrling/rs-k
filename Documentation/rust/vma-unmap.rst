@@ -6,9 +6,10 @@ Native Rust Address-Space Range Unmapping
 Status and scope
 ----------------
 
-The ``CONFIG_RUST_VMA_UNMAP`` option selects native Rust for the production
-``munmap()`` orchestration. The option depends on ``CONFIG_RUST_EXIT_MMAP``.
-The original C implementation remains available as a fallback.
+The ``CONFIG_RUST_VMA_UNMAP`` option selects direct Rust definitions of the
+production ``__vm_munmap()`` and ``do_vmi_munmap()`` entries. The option
+depends on ``CONFIG_RUST_EXIT_MMAP``. The complete C implementations are
+selected only when the option is disabled.
 
 This unit covers the public ``munmap()`` entry point and the internal
 ``do_vmi_munmap()`` entry point. Rust owns range validation, page alignment,
@@ -22,15 +23,20 @@ partial-split decisions are described in :doc:`vma-munmap-gather`.
 Entry points and ownership
 --------------------------
 
-The C ``__vm_munmap()`` adapter passes ``current->mm`` to
-``rust_vma_unmap()``. Rust creates the private VMA iterator and userfaultfd
-list, acquires the write lock, runs the range operation, completes the
-required lock-release path, and reports the userfaultfd events.
+``rust/kernel/vma_unmap.rs`` directly defines ``__vm_munmap()`` and
+``do_vmi_munmap()``. The original C entries in ``mm/vma.c`` compile only when
+``CONFIG_RUST_VMA_UNMAP`` is disabled. The change does not expose a new public
+kernel ABI.
 
-The C ``do_vmi_munmap()`` adapter passes its existing iterator, mm, and
-userfaultfd list to ``rust_do_vmi_munmap()``. Rust then applies the same range
-validation and first-overlap decision. This preserves all existing callers
-that already hold the mmap write lock.
+Rust ``__vm_munmap()`` obtains ``current->mm`` through one narrow C helper. It
+creates the private VMA iterator and userfaultfd list, acquires the write lock,
+runs the range operation, completes the required lock-release path, and
+reports the userfaultfd events.
+
+Rust ``do_vmi_munmap()`` receives the caller's existing iterator, mm, and
+userfaultfd list. It applies the same range validation and first-overlap
+decision. This preserves all existing callers that already hold the mmap write
+lock.
 
 Rust owns these decisions:
 
@@ -49,12 +55,13 @@ Retained C boundary
 
 The C boundary contains:
 
-* Current-address-space selection.
+* Current-address-space field access.
 * VMA iterator and userfaultfd list initialization.
 * Mmap write-lock acquisition and release.
 * ``TASK_SIZE`` evaluation for the active thread.
 * First-overlap maple-tree lookup.
 * Userfaultfd unmap completion.
+* The private VMA iterator and userfaultfd list layout.
 
 ``do_vmi_align_munmap()`` now gathers, splits, detaches, completes, and rolls
 back through Rust. Split orchestration is described in :doc:`vma-split`. C
@@ -107,50 +114,54 @@ The test reports through ``/dev/kmsg`` and powers off QEMU.
 Validation record
 -----------------
 
-The KUnit suite contains one Rust range-operation case. It ran three
-consecutive times under the native Rust, KASAN, lockdep, and PREEMPT_RT
-configurations.
-
-The userspace suite ran three consecutive times under every configuration in
-the table. Each run covered the 64 single-threaded rounds and 4096 concurrent
-map and unmap cycles.
+The KUnit suite contains one Rust range-operation case. Native KUnit ran three
+times at four vCPUs and once at one vCPU. KASAN, lockdep, and PREEMPT_RT each
+ran KUnit once at four vCPUs and once at one vCPU. Every configuration ran the
+userspace suite once. Each run covered the 64 single-threaded rounds and 4096
+concurrent map and unmap cycles.
 
 .. list-table::
-   :widths: 30 18 20 20
+   :widths: 34 20 20 26
    :header-rows: 1
 
    * - Configuration
-     - Production path
-     - Userspace result
+     - KUnit runs
      - KUnit result
+     - Userspace
    * - Native Rust
-     - Rust
-     - 3 of 3
-     - 3 of 3
+     - SMP4: 3, SMP1: 1
+     - 1 of 1 pass
+     - 1 pass
    * - C fallback
-     - C
-     - 3 of 3
      - Not built
+     - Not built
+     - 1 pass
+   * - C-only fallback
+     - Not built
+     - Not built
+     - 1 pass
    * - KASAN
-     - Rust
-     - 3 of 3
-     - 3 of 3
+     - SMP4: 1, SMP1: 1
+     - 1 of 1 pass
+     - 1 pass
    * - lockdep
-     - Rust
-     - 3 of 3
-     - 3 of 3
+     - SMP4: 1, SMP1: 1
+     - 1 of 1 pass
+     - 1 pass
    * - PREEMPT_RT
-     - Rust
-     - 3 of 3
-     - 3 of 3
+     - SMP4: 1, SMP1: 1
+     - 1 of 1 pass
+     - 1 pass
 
-All QEMU runs used four vCPUs. Userspace runs used 1536 MiB of RAM. KUnit
-runs used 1024 MiB of RAM. KVM was the primary accelerator and TCG was the
-fallback. One RT KUnit launch stopped before KTAP. A retry started normally.
-All three final RT runs passed.
+Userspace runs used 1536 MiB of RAM. KUnit runs used 1024 MiB of RAM. KVM was
+the primary accelerator and TCG was the fallback.
 
 The final logs contain no failed case, BUG, warning, KASAN report, lockdep
 complaint, RCU stall, oops, or unexpected panic.
+
+An adjacent native SMP4 boot passed ``copy_mm`` 5 of 5 cases,
+``mm_lifetime`` 6 of 6 cases, ``exit_mmap`` 2 of 2 cases, and ``dup_mmap``
+2 of 2 cases.
 
 Build and production checks:
 
@@ -161,17 +172,21 @@ Build and production checks:
 * ``scripts/get_maintainer.pl`` matched every added file.
 * The Rust Sphinx build passed with only existing cross-reference and missing
   Graphviz warnings.
-* The production image contains ``rust_vma_unmap`` and
-  ``rust_do_vmi_munmap``.
-* The production image omits ``rust_vma_unmap_test_range`` and the VMA-unmap
-  KUnit test symbols.
+* The native Rust object directly defines ``__vm_munmap()`` and
+  ``do_vmi_munmap()``. Native C caller objects contain only undefined
+  references to both entries.
+* Fallback and C-only objects define both entries in ``mm/vma.o`` and none in
+  Rust.
+* Each linked image has one definition of each production entry. The
+  production image omits the old adapter, test-only, and VMA-unmap KUnit
+  symbols.
 * ``llvm-nm -u vmlinux`` reports no undefined symbols.
-* Disassembly shows ``do_vmi_munmap()`` jumping directly to
-  ``rust_do_vmi_munmap()``.
-* Disassembly shows ``__vm_munmap()`` jumping directly to
-  ``rust_vma_unmap()``.
+* ``Module.symvers`` and the generated Rust export header omit both production
+  entries.
 * Rust disassembly calls the lock, iterator, range-lookup, aligned-munmap,
   unlock, and userfaultfd helpers in the documented order.
+* Disassembly shows that both public entries are implemented in the Rust
+  object.
 * The final production image boots to the expected missing-root-filesystem
   panic. The kernel is not tainted, and no earlier BUG, warning, KASAN report,
   RCU stall, lockdep complaint, or oops occurs.
