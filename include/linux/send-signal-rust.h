@@ -11,9 +11,9 @@ struct task_struct;
 
 #ifdef CONFIG_RUST_SEND_SIGNAL
 
-int rust_send_signal_locked(int sig, struct kernel_siginfo *info,
-			    struct task_struct *task, unsigned int type,
-			    bool force);
+int __send_signal_locked(int sig, struct kernel_siginfo *info,
+			 struct task_struct *task, unsigned int type,
+			 bool force);
 
 void rust_helper_send_signal_assert_locked(struct task_struct *task);
 bool rust_helper_send_signal_is_noinfo(const struct kernel_siginfo *info);
@@ -41,10 +41,6 @@ struct multiprocess_signals *
 rust_helper_send_signal_first_delayed(struct signal_struct *signal);
 struct multiprocess_signals *
 rust_helper_send_signal_next_delayed(struct multiprocess_signals *delayed);
-bool rust_helper_send_signal_prepare(int sig, struct task_struct *task,
-				     bool force);
-void rust_helper_send_signal_complete(int sig, struct task_struct *task,
-				      unsigned int type);
 void rust_helper_send_signal_trace(int sig, struct kernel_siginfo *info,
 				   struct task_struct *task, bool group,
 				   unsigned int result);
@@ -56,11 +52,6 @@ void rust_helper_send_signal_trace(int sig, struct kernel_siginfo *info,
 struct sigqueue *
 rust_send_signal_alloc_queue_bridge(int sig, struct task_struct *task,
 				    int override_rlimit);
-bool rust_send_signal_prepare_bridge(int sig, struct task_struct *task,
-				     bool force);
-void rust_send_signal_complete_bridge(int sig, struct task_struct *task,
-				      unsigned int type);
-
 #ifdef CONFIG_SEND_SIGNAL_KUNIT_TEST
 void rust_send_signal_test_reset(void);
 u32 rust_send_signal_test_entry_count(void);

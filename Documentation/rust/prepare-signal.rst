@@ -7,8 +7,8 @@ Status and scope
 ----------------
 
 The ``CONFIG_RUST_PREPARE_SIGNAL`` option selects native Rust for the
-production ``prepare_signal()`` state machine in ``kernel/signal.c``. The
-original C implementation remains available as a fallback.
+production ``prepare_signal()`` function. The original C implementation
+remains available as a fallback.
 
 This unit covers process-exit rejection, kernel stop handling, SIGCONT
 handling, thread-group queue cleanup, job-control state transitions, ptrace
@@ -31,13 +31,10 @@ The Rust code owns these decisions and transitions:
 Entry points and ownership
 --------------------------
 
-The local ``prepare_signal()`` function remains in ``kernel/signal.c`` as the
-calling convention used by existing signal code. When the option is enabled,
-its body calls ``rust_prepare_signal()`` and the original C state machine is
-compiled out.
-
-Rust owns the operation order and every branch and transition in signal
-preparation. It does not call the original C state machine.
+Rust directly defines ``prepare_signal()``. The native build compiles the
+original C implementation out of ``kernel/signal.c``. Rust owns the operation
+order and every branch and transition in signal preparation. The C fallback
+and C-only configurations retain the complete implementation.
 
 Retained C boundary
 -------------------
@@ -53,7 +50,7 @@ The following operations remain in C:
 * Stopped-task wakeup.
 * Ptrace trap scheduling and ptrace wakeup selection.
 * Stop-flag bit replacement.
-* The signal-handler lock assertion and public ABI adapters.
+* The signal-handler lock contract.
 
 These boundaries isolate intrusive queues, task and ptrace state, scheduler
 wakeup, and the existing ignored-signal policy. No helper selects the
@@ -79,35 +76,53 @@ implementation.
 Validation record
 -----------------
 
-Each configuration runs with four vCPUs and 1536 MiB of guest memory.
+Each boot used 1536 MiB of guest memory. Native completed three four-vCPU
+runs and one single-vCPU run. Every other configuration completed one run at
+each CPU count.
 
 .. list-table::
-   :widths: 44 12 14 30
+   :widths: 34 16 14 12 24
    :header-rows: 1
 
    * - Configuration
-     - Runs
+     - Boots
+     - Signal groups
      - Cases
      - Result
    * - Rust signal preparation
-     - 3
-     - 1 of 1
+     - 3 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
      - Pass
    * - C signal preparation fallback
-     - 3
-     - 1 of 1
+     - 1 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
+     - Pass
+   * - Mixed C insertion with Rust preparation
+     - 1 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
+     - Pass
+   * - C-only
+     - 1 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
      - Pass
    * - Rust signal preparation with KASAN
-     - 3
-     - 1 of 1
-     - Pass
-   * - Rust signal preparation with PREEMPT_RT
-     - 3
-     - 1 of 1
+     - 1 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
      - Pass
    * - Rust signal preparation with lockdep
-     - 3
-     - 1 of 1
+     - 1 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
+     - Pass
+   * - Rust signal preparation with PREEMPT_RT
+     - 1 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
      - Pass
 
 The integration case creates a real shared thread group and calls the
@@ -116,23 +131,26 @@ paths, stop cleanup, continue cleanup, thread job-control state, ptrace trap
 selection, ignored signals, blocked ignored signals, and parent notification
 state. Rust-only counters verify the selected transitions.
 
-The existing Rust ``complete_signal`` and locked queue insertion KUnit tests
-also run with ``CONFIG_RUST_PREPARE_SIGNAL=y``.
+Every boot also ran the completion and locked queue insertion suites. Every
+log reported no failed case, BUG, warning, KASAN report, lockdep complaint,
+oops, or panic.
 
 Build and production checks
 ---------------------------
 
-The Rust source passes Clippy and ``rustfmtcheck``. The Rust documentation
-builds with Sphinx. The complete change passes ``git diff --check`` and strict
-``checkpatch`` with its generic new-file warning ignored. ``MAINTAINERS`` lists
-the new files.
+The production build passed with ``CONFIG_WERROR=y`` and Clippy. The module
+build completed modpost without an error. The Rust source passed
+``rustfmtcheck``, Rustdoc, and Clippy. Focused Sphinx generated this page with
+only the existing ``kernel-docs`` and ``getting_llvm`` reference warnings. The
+complete change passed ``git diff --check`` and strict ``checkpatch`` with zero
+errors, warnings, or checks.
 
-The production image disables KUnit, KASAN, and lockdep. Disassembly of
-``kernel/signal.o`` shows direct calls to ``rust_prepare_signal()`` from the
-production signal paths where the local ``prepare_signal()`` adapter is
-inlined. The production ``vmlinux`` contains no preparation test symbols and
-has no undefined symbols. The image boots to the expected missing
-root-filesystem panic.
+The production image disabled KUnit, KASAN, lockdep, and PREEMPT_RT.
+``rust/kernel.o`` defines ``prepare_signal()``. Native ``kernel/signal.o``
+contains an undefined reference and no implementation. The production image
+contains no ``rust_prepare_signal`` wrapper, no export table entry, and no
+unresolved symbol. The image boots to the expected missing root-filesystem
+panic without an earlier failure.
 
 Review conditions
 -----------------

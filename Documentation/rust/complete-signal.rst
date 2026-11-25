@@ -7,8 +7,8 @@ Status and scope
 ----------------
 
 The ``CONFIG_RUST_COMPLETE_SIGNAL`` option selects native Rust for the
-production ``complete_signal()`` function in ``kernel/signal.c``. The original
-C implementation remains available as a fallback.
+production ``complete_signal()`` function. The original C implementation
+remains available as a fallback.
 
 This unit covers notification-target selection, thread-group target balancing,
 fatal group-exit preparation, coredump deferral, and the final signal wakeup.
@@ -30,13 +30,11 @@ The Rust code owns these decisions and transitions:
 Entry points and ownership
 --------------------------
 
-The local ``complete_signal()`` function remains in ``kernel/signal.c``. When
-the option is enabled, it calls ``rust_complete_signal()`` and the original C
-state machine is compiled out.
-
-Rust owns the complete production algorithm. C provides only signal-bit
-operations, task-state inspection, thread traversal, job-control cleanup, and
-the public adapter.
+Rust directly defines ``complete_signal()``. The native build compiles the
+original C implementation out of ``kernel/signal.c``. Rust owns the complete
+production algorithm. C provides only signal-bit operations, task-state
+inspection, thread traversal, and job-control cleanup. The C fallback and
+C-only configurations retain the complete implementation.
 
 Retained C boundary
 -------------------
@@ -49,7 +47,7 @@ The following operations remain in C:
 * Task running, pending, stopped, and traced inspection.
 * ``task_clear_jobctl_pending()``.
 * The signal-handler lock assertion.
-* The final wakeup, scheduler wakeup, process kick, and public ABI adapter.
+* The final wakeup, scheduler wakeup, and process kick.
 
 The caller must hold ``task->sighand->siglock`` with local interrupts disabled.
 Rust preserves that requirement and does not sleep.
@@ -74,36 +72,53 @@ If group exit is not selected, Rust wakes only the chosen target.
 Validation record
 -----------------
 
-Each configuration runs three consecutive times with four vCPUs and 1536 MiB
-of guest memory.
+Each boot used 1536 MiB of guest memory. Native completed three four-vCPU
+runs and one single-vCPU run. Every other configuration completed one run at
+each CPU count.
 
 .. list-table::
-   :widths: 44 12 14 30
+   :widths: 34 16 14 12 24
    :header-rows: 1
 
    * - Configuration
-     - Runs
+     - Boots
+     - Signal groups
      - Cases
      - Result
    * - Rust signal completion
-     - 3
-     - 1 of 1
+     - 3 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
      - Pass
    * - C signal completion fallback
-     - 3
-     - 1 of 1
+     - 1 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
+     - Pass
+   * - Mixed C insertion with Rust completion
+     - 1 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
+     - Pass
+   * - C-only
+     - 1 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
      - Pass
    * - Rust signal completion with KASAN
-     - 3
-     - 1 of 1
-     - Pass
-   * - Rust signal completion with PREEMPT_RT
-     - 3
-     - 1 of 1
+     - 1 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
      - Pass
    * - Rust signal completion with lockdep
-     - 3
-     - 1 of 1
+     - 1 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
+     - Pass
+   * - Rust signal completion with PREEMPT_RT
+     - 1 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
      - Pass
 
 The integration case creates a real shared thread group and calls the
@@ -111,22 +126,27 @@ production entry under the signal-handler lock. It covers the suggested task,
 PID-specific rejection, target scan, no-candidate return, fatal group exit,
 coredump deferral, and the real-blocked fatal path.
 
-No run reported a BUG, warning, KASAN report, Oops, lockdep complaint, or
-kernel panic.
+Every boot also ran preparation and locked queue insertion suites. Every log
+reported no failed case, BUG, warning, KASAN report, lockdep complaint, oops,
+or panic.
 
 Build and production checks
 ---------------------------
 
-The final Rust source passed Clippy and ``rustfmtcheck``. The complete change
-passed strict ``checkpatch`` and ``git diff --check``.
+The production build passed with ``CONFIG_WERROR=y`` and Clippy. The module
+build completed modpost without an error. The Rust source passed
+``rustfmtcheck``, Rustdoc, and Clippy. Focused Sphinx generated this page with
+only the existing ``kernel-docs`` and ``getting_llvm`` reference warnings. The
+complete change passed ``git diff --check`` and strict ``checkpatch`` with zero
+errors, warnings, or checks.
 
-The production image disabled KUnit, KASAN, and lockdep. Disassembly of
-``kernel/signal.o`` showed direct relocations from signal senders to
-``rust_complete_signal()``.
-
-The production ``vmlinux`` contained the Rust completion entry, contained no
-completion test symbols, and had no undefined symbols. The image booted to the
-expected missing root-filesystem panic and reported no earlier failure.
+The production image disabled KUnit, KASAN, lockdep, and PREEMPT_RT.
+``rust/kernel.o`` defines ``complete_signal()``. Native ``kernel/signal.o``
+contains an undefined reference and no implementation. The Rust locked queue
+insertion path calls the internal completion state machine directly. The
+production image contains no ``rust_complete_signal`` wrapper, no export table
+entry, and no unresolved symbol. The image boots to the expected missing
+root-filesystem panic without an earlier failure.
 
 Review conditions
 -----------------

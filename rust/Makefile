@@ -851,6 +851,9 @@ rust_unexported_symbols := \
 	recalc_sigpending_tsk \
 	calculate_sigpending \
 	signal_wake_up_state \
+	prepare_signal \
+	complete_signal \
+	__send_signal_locked \
 	irq_work_needs_cpu \
 	irq_work_queue_on \
 	irq_work_single \

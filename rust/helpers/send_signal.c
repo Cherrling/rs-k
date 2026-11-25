@@ -135,19 +135,6 @@ rust_helper_send_signal_next_delayed(struct multiprocess_signals *delayed)
 				node);
 }
 
-__rust_helper bool
-rust_helper_send_signal_prepare(int sig, struct task_struct *task, bool force)
-{
-	return rust_send_signal_prepare_bridge(sig, task, force);
-}
-
-__rust_helper void
-rust_helper_send_signal_complete(int sig, struct task_struct *task,
-				 unsigned int type)
-{
-	rust_send_signal_complete_bridge(sig, task, type);
-}
-
 __rust_helper void
 rust_helper_send_signal_trace(int sig, struct kernel_siginfo *info,
 			      struct task_struct *task, bool group,

@@ -10,7 +10,7 @@ struct task_struct;
 
 #ifdef CONFIG_RUST_PREPARE_SIGNAL
 
-bool rust_prepare_signal(int sig, struct task_struct *task, bool force);
+bool prepare_signal(int sig, struct task_struct *task, bool force);
 
 bool rust_helper_prepare_signal_is_kernel_stop(int sig);
 void rust_helper_prepare_signal_init_cont_flush(sigset_t *set);

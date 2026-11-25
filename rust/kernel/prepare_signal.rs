@@ -251,7 +251,7 @@ unsafe fn prepare_continue(task: *mut Task) {
 /// # Safety
 ///
 /// `task` must be live and the caller must hold `task->sighand->siglock`.
-unsafe fn prepare_signal(sig: i32, task: *mut Task, force: bool) -> bool {
+pub(crate) unsafe fn prepare_signal_for_task(sig: i32, task: *mut Task, force: bool) -> bool {
     #[cfg(CONFIG_PREPARE_SIGNAL_KUNIT_TEST)]
     ENTRY_COUNT.fetch_add(1, Ordering::Relaxed);
 
@@ -310,9 +310,9 @@ unsafe fn prepare_signal(sig: i32, task: *mut Task, force: bool) -> bool {
 ///
 /// # Safety
 ///
-/// The requirements of [`prepare_signal`] apply.
+/// `task` must be live and the caller must hold `task->sighand->siglock`.
 #[export]
-unsafe extern "C" fn rust_prepare_signal(sig: i32, task: *mut Task, force: bool) -> bool {
+unsafe extern "C" fn prepare_signal(sig: i32, task: *mut Task, force: bool) -> bool {
     // SAFETY: The caller upholds the function requirements.
-    unsafe { prepare_signal(sig, task, force) }
+    unsafe { prepare_signal_for_task(sig, task, force) }
 }

@@ -2172,44 +2172,42 @@ config RUST_COMPLETE_SIGNAL
 	depends on RUST && RUST_SIGNAL_WAKE_SELECT
 	default y
 	help
-	  Use Rust for the production complete-signal state machine. Rust
-	  selects the notification target, balances the thread-group target,
-	  recognizes fatal group exits, prepares group-exit state, and chooses
-	  the final wakeup.
+	  Use Rust to directly define the production complete_signal() entry.
+	  Rust selects the notification target, balances the thread-group
+	  target, recognizes fatal group exits, prepares group-exit state, and
+	  chooses the final wakeup.
 
 	  Signal and job-control bit operations, task-state inspection, thread
-	  traversal, locking, scheduler wakeup, process kick, and the public
-	  adapter remain in C.
+	  traversal, locking, scheduler wakeup, and process kick remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
 config RUST_SEND_SIGNAL
 	bool "Rust implementation of locked signal queue insertion"
-	depends on RUST && RUST_COMPLETE_SIGNAL
+	depends on RUST && RUST_COMPLETE_SIGNAL && RUST_PREPARE_SIGNAL
 	default y
 	help
-	  Use Rust for the production locked signal queue insertion state
-	  machine. Rust selects queue admission, legacy de-duplication,
-	  siginfo allocation policy, pending-state updates, delayed
-	  multiprocess stop/continue updates, signal completion, and tracing.
+	  Use Rust to directly define the production __send_signal_locked()
+	  entry. Rust selects queue admission, legacy de-duplication, siginfo
+	  allocation policy, pending-state updates, delayed multiprocess
+	  stop/continue updates, signal completion, and tracing.
 
 	  Queue allocation, intrusive-list operations, signal-set bit
-	  operations, credential formatting, tracepoints, and the surrounding
-	  signal policies remain in C.
+	  operations, credential formatting, and tracepoints remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
 config RUST_PREPARE_SIGNAL
 	bool "Rust implementation of signal preparation"
-	depends on RUST && RUST_SEND_SIGNAL
+	depends on RUST
 	default y
 	help
-	  Use Rust for the production signal-preparation state machine. Rust
-	  owns process-exit rejection, stop and continue queue transitions,
-	  job-control wake policy, stop notification selection, and the final
-	  delivery decision.
+	  Use Rust to directly define the production prepare_signal() entry.
+	  Rust owns process-exit rejection, stop and continue queue
+	  transitions, job-control wake policy, stop notification selection,
+	  and the final delivery decision.
 
 	  Signal-set masks, queue-mask cleanup, thread traversal, ptrace trap
 	  scheduling, scheduler wakeup, stop-flag bit operations, and the

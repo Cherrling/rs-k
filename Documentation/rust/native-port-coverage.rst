@@ -1101,11 +1101,12 @@ Signal wakeup state
   layouts, thread-flag storage, scheduler wakeup, process kick, lock
   assertion helper, and the fallback implementation.
 
-  Test: Native completed three SMP4 and one SMP1 boot. Fallback and C-only
-  each passed SMP4 and SMP1. KASAN, lockdep, and PREEMPT_RT each passed SMP4
-  and SMP1. All seven configurations passed nine signal groups and twelve
-  signal cases without a BUG, warning, KASAN report, lockdep complaint, oops,
-  or panic.
+  Test: Native completed three SMP4 and one SMP1 boot. A mixed configuration
+  with C queue insertion and Rust preparation passed SMP4 and SMP1. Fallback
+  and C-only each passed SMP4 and SMP1. KASAN, lockdep, and PREEMPT_RT each
+  passed SMP4 and SMP1. All seven configurations passed nine signal groups
+  and twelve signal cases without a BUG, warning, KASAN report, lockdep
+  complaint, oops, or panic.
 
   Symbol inspection shows that native ``rust/kernel.o`` defines
   ``signal_wake_up_state()`` and native ``kernel/signal.o`` defines no
@@ -1119,6 +1120,99 @@ Signal wakeup state
   ineligible task. The exit condition is one production definition in every
   configuration class, preserved export metadata, and a clean pass of the
   focused, concurrency, KASAN, lockdep, PREEMPT_RT, and adjacent signal
+  matrices.
+
+Signal preparation
+  Status: ``migrated``.
+
+  Evidence: :doc:`prepare-signal`.
+
+  Rust directly defines ``prepare_signal()``. Rust owns process-exit
+  rejection, kernel-stop and continue transitions, thread-group queue
+  cleanup, job-control state updates, ptrace or wake selection, parent
+  notification selection, and the final delivery decision. C retains the
+  signal-set masks, intrusive queue cleanup, thread traversal, ptrace trap,
+  scheduler wakeup, stop flags, ignored-signal policy, and the fallback
+  implementation.
+
+  Test: Native completed three SMP4 and one SMP1 boot. A mixed configuration
+  with C queue insertion and Rust completion passed SMP4 and SMP1. Fallback
+  and C-only each passed SMP4 and SMP1. KASAN, lockdep, and PREEMPT_RT each
+  passed SMP4 and SMP1. All seven configurations passed nine signal groups
+  and twelve signal cases without a BUG, warning, KASAN report, lockdep
+  complaint, oops, or panic.
+
+  Symbol inspection shows that native ``rust/kernel.o`` defines
+  ``prepare_signal()`` and native ``kernel/signal.o`` contains only an
+  undefined reference. The production image contains no
+  ``rust_prepare_signal`` wrapper and no export table entry. The production
+  image has no unresolved symbol.
+
+  Risk: A wrong stop, continue, ptrace, notification, or ignored-signal
+  decision can leak queued signals or suppress a required delivery. The exit
+  condition is one production definition in every configuration class and a
+  clean pass of the focused, KASAN, lockdep, PREEMPT_RT, and adjacent signal
+  matrices.
+
+Signal completion
+  Status: ``migrated``.
+
+  Evidence: :doc:`complete-signal`.
+
+  Rust directly defines ``complete_signal()``. Rust owns suggested-target
+  testing, thread-group target balancing, no-candidate returns, fatal
+  group-exit preparation, coredump deferral, and the final wake choice. C
+  retains signal-set operations, fatal and coredump classification, task
+  state inspection, thread traversal, job-control cleanup, and the fallback
+  implementation.
+
+  Test: Native completed three SMP4 and one SMP1 boot. A mixed configuration
+  with C queue insertion and Rust preparation and completion passed SMP4 and
+  SMP1. Fallback and C-only each passed SMP4 and SMP1. KASAN, lockdep, and
+  PREEMPT_RT each passed SMP4 and SMP1. All seven configurations passed nine
+  signal groups and twelve signal cases without a BUG, warning, KASAN report,
+  lockdep complaint, oops, or panic.
+
+  Symbol inspection shows that native ``rust/kernel.o`` defines
+  ``complete_signal()`` and native ``kernel/signal.o`` contains only an
+  undefined reference. Rust queue insertion calls the Rust completion state
+  machine directly. The production image contains no
+  ``rust_complete_signal`` wrapper and no export table entry. The production
+  image has no unresolved symbol.
+
+  Risk: A wrong target, fatal-state, group-exit, or coredump decision can
+  wake the wrong thread or leave a fatal process alive. The exit condition is
+  one production definition in every configuration class and a clean pass of
+  the focused, KASAN, lockdep, PREEMPT_RT, and adjacent signal matrices.
+
+Locked signal queue insertion
+  Status: ``migrated``.
+
+  Evidence: :doc:`send-signal`.
+
+  Rust directly defines ``__send_signal_locked()``. Rust owns task admission,
+  legacy de-duplication, allocation policy, ``siginfo`` selection, pending
+  publication, delayed multiprocess updates, completion, and trace-result
+  selection. Rust calls the preparation and completion state machines
+  directly. C retains queue allocation, intrusive lists, signal-set
+  operations, credential formatting, and the generation tracepoint.
+
+  Test: Native completed three SMP4 and one SMP1 boot. Fallback and C-only
+  each passed SMP4 and SMP1. KASAN, lockdep, and PREEMPT_RT each passed SMP4
+  and SMP1. All seven configurations passed nine signal groups and twelve
+  signal cases without a BUG, warning, KASAN report, lockdep complaint, oops,
+  or panic.
+
+  Symbol inspection shows that native ``rust/kernel.o`` defines
+  ``__send_signal_locked()`` and native ``kernel/signal.o`` contains only an
+  undefined reference. The old wrapper, preparation bridge, and completion
+  bridge are absent. The entry has no export table entry. The production
+  image has no unresolved symbol.
+
+  Risk: A wrong admission, allocation, pending, or trace decision can lose a
+  signal, leak queued state, or report the wrong generation result. The exit
+  condition is one production definition in every configuration class and a
+  clean pass of the focused, KASAN, lockdep, PREEMPT_RT, and adjacent signal
   matrices.
 
 Boundary-retained inventory
@@ -1180,6 +1274,9 @@ Public ABI
   ``include/linux/idr.h``, ``include/linux/idr-rust.h``,
   ``include/linux/xarray.h``, ``include/linux/xarray-rust.h``,
   ``include/linux/mutex.h``, ``include/linux/sched/signal.h``,
+  ``include/linux/prepare-signal-rust.h``,
+  ``include/linux/complete-signal-rust.h``,
+  ``include/linux/send-signal-rust.h``,
   ``include/linux/ww_mutex.h``, and ``include/linux/rwsem.h``.
 
   Reason: Existing callers and loadable modules use the stable C ABI.
@@ -3238,6 +3335,72 @@ Signal wakeup state shared boundary
   Exit condition: Rust owns the referenced task state, thread flags,
   scheduler wakeup, process kick, lock assertion, and export metadata.
 
+Signal preparation shared boundary
+  Status: ``boundary-retained``.
+
+  Owner: ``kernel/signal.c``, ``rust/helpers/prepare_signal.c``,
+  ``include/linux/prepare-signal-rust.h``, and ``rust/Makefile``.
+
+  Reason: C and Rust access the same signal sets, intrusive queues, thread
+  group, job-control state, ptrace state, scheduler state, and ignored-signal
+  policy. Mask construction, queue cleanup, traversal, trap scheduling,
+  wakeup, and stop flags remain C interfaces.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT runs exercise
+  group exit, stop and continue cleanup, seized and non-seized threads,
+  notification selection, ignored signals, and adjacent signal state
+  machines at SMP1 and SMP4.
+
+  Risk: A queue, traversal, ptrace, wake, or ignored-policy change can make
+  Rust preserve the wrong pending state or suppress delivery.
+
+  Exit condition: Rust owns the signal-set, queue, thread, ptrace, wake,
+  stop-flag, and ignored-policy representations used by preparation.
+
+Signal completion shared boundary
+  Status: ``boundary-retained``.
+
+  Owner: ``kernel/signal.c``, ``rust/helpers/complete_signal.c``,
+  ``include/linux/complete-signal-rust.h``, and ``rust/Makefile``.
+
+  Reason: C and Rust access the same signal sets, task flags, thread group,
+  fatal-signal policy, job-control bits, and scheduler state. Signal-bit
+  operations, classification, traversal, task inspection, job-control
+  cleanup, and wakeup remain C interfaces.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT runs exercise
+  suggested targets, blocked PID signals, target scans, no-candidate returns,
+  fatal group exit, coredump deferral, and finite wakeups at SMP1 and SMP4.
+
+  Risk: A target, fatal, group-exit, task-state, or wake change can wake the
+  wrong thread or expose an incomplete group-exit state.
+
+  Exit condition: Rust owns the signal sets, task and thread selection state,
+  fatal policy, job-control cleanup, and wake contracts used by completion.
+
+Locked signal insertion shared boundary
+  Status: ``boundary-retained``.
+
+  Owner: ``kernel/signal.c``, ``rust/helpers/send_signal.c``,
+  ``include/linux/send-signal-rust.h``, and ``rust/Makefile``.
+
+  Reason: C and Rust access the same queues, intrusive lists, signal sets,
+  credentials, delayed multiprocess list, and generation tracepoint. Queue
+  allocation, list insertion, bit operations, credential formatting, and
+  tracing remain C interfaces.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT runs exercise
+  exit rejection, preparation rejection, legacy de-duplication, allocation
+  skipping, real-time queues, pending publication, multiprocess updates, and
+  trace results at SMP1 and SMP4.
+
+  Risk: A queue, list, signal-set, credential, or trace change can lose a
+  signal, corrupt pending state, or report a false generation result.
+
+  Exit condition: Rust owns the queue representation, allocation policy,
+  credential and payload representation, pending state, delayed list, and
+  generation trace contract.
+
 The lock-less list boundary is valid only while the inline producer paths,
 intrusive layouts, and atomic semantics remain shared ABI. A boundary entry
 does not transfer policy, retry decisions, state transitions, or exported
@@ -3339,6 +3502,24 @@ signal-handler state, lock assertion, thread-flag operation, scheduler
 wakeup, process kick, and unexported symbol policy remain named C boundaries.
 Rust defines the production entry and owns every pending-state publication,
 wake-mask, wake-attempt, and kick decision.
+
+The signal preparation boundary is valid only while the signal-set masks,
+queue cleanup, thread traversal, ptrace trap, wakeup, stop flags,
+ignored-signal policy, and unexported symbol policy remain named C
+boundaries. Rust defines the production entry and owns every exit, stop,
+continue, notification, and delivery decision.
+
+The signal completion boundary is valid only while the signal-bit operations,
+fatal classification, thread traversal, task inspection, job-control cleanup,
+wakeup, and unexported symbol policy remain named C boundaries. Rust defines
+the production entry and owns every target, group-exit, coredump, and final
+wake decision.
+
+The locked signal insertion boundary is valid only while queue allocation,
+intrusive-list insertion, signal-set operations, credential formatting,
+tracing, and unexported symbol policy remain named C boundaries. Rust defines
+the production entry and owns every admission, de-duplication, allocation,
+payload, pending, multiprocess, completion, and trace-result decision.
 
 The address-space lifetime boundary is valid only while the shared
 ``mm_users`` layout, task flags, task lock, task-mm access, sleep diagnostic,

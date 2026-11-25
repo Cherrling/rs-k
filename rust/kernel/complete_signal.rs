@@ -144,7 +144,7 @@ unsafe fn wants_signal(sig: i32, task: *mut Task) -> bool {
 /// # Safety
 ///
 /// `task` must be live and the caller must hold `task->sighand->siglock`.
-unsafe fn complete_signal(sig: i32, task: *mut Task, pid_type: u32) {
+pub(crate) unsafe fn complete_signal_for_task(sig: i32, task: *mut Task, pid_type: u32) {
     #[cfg(CONFIG_COMPLETE_SIGNAL_KUNIT_TEST)]
     ENTRY_COUNT.fetch_add(1, Ordering::Relaxed);
 
@@ -247,9 +247,9 @@ unsafe fn complete_signal(sig: i32, task: *mut Task, pid_type: u32) {
 ///
 /// # Safety
 ///
-/// The requirements of [`complete_signal`] apply.
+/// `task` must be live and the caller must hold `task->sighand->siglock`.
 #[export]
-unsafe extern "C" fn rust_complete_signal(sig: i32, task: *mut Task, pid_type: u32) {
+unsafe extern "C" fn complete_signal(sig: i32, task: *mut Task, pid_type: u32) {
     // SAFETY: The caller upholds the function requirements.
-    unsafe { complete_signal(sig, task, pid_type) };
+    unsafe { complete_signal_for_task(sig, task, pid_type) };
 }

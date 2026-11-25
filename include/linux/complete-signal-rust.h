@@ -10,7 +10,7 @@ struct task_struct;
 
 #ifdef CONFIG_RUST_COMPLETE_SIGNAL
 
-void rust_complete_signal(int sig, struct task_struct *task, unsigned int type);
+void complete_signal(int sig, struct task_struct *task, unsigned int type);
 
 bool rust_helper_complete_signal_member(const sigset_t *set, int sig);
 bool rust_helper_complete_signal_fatal(struct task_struct *task, int sig);

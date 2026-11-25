@@ -7,8 +7,8 @@ Status and scope
 ----------------
 
 The ``CONFIG_RUST_SEND_SIGNAL`` option selects native Rust for the production
-locked signal queue insertion state machine in ``kernel/signal.c``. The
-original C implementation remains available as a fallback.
+``__send_signal_locked()`` function. The original C implementation remains
+available as a fallback.
 
 This unit covers queue admission, ``prepare_signal()`` result handling, legacy
 signal de-duplication, allocation policy, real-time queue insertion,
@@ -33,12 +33,14 @@ The Rust code owns these decisions and transitions:
 Entry points and ownership
 --------------------------
 
-The local ``__send_signal_locked()`` function remains in ``kernel/signal.c``.
-When the option is enabled, its body calls ``rust_send_signal_locked()`` and
-the original C queue insertion state machine is compiled out.
+Rust directly defines ``__send_signal_locked()``. The native build compiles the
+original C implementation out of ``kernel/signal.c``. Rust owns the operation
+order and every admission and allocation decision. The C fallback and C-only
+configurations retain the complete implementation.
 
-Rust owns the operation order and every admission and allocation decision. It
-does not call the original C queue insertion state machine.
+The Rust insertion state machine calls the Rust preparation and completion
+state machines directly. C no longer dispatches either state machine through
+a policy bridge.
 
 Retained C boundary
 -------------------
@@ -50,16 +52,13 @@ The following operations remain in C:
 * Credential, PID namespace, and ``siginfo`` formatting.
 * Special ``siginfo`` pointer recognition.
 * ``signalfd_notify()``.
-* The ``prepare_signal()`` calling convention. Its state machine moves to
-  Rust when ``CONFIG_RUST_PREPARE_SIGNAL`` is enabled.
-* ``complete_signal()``, including its native Rust completion dispatch.
 * Delayed multiprocess list traversal.
 * Signal classification and the generation tracepoint.
-* The signal-handler lock assertion and public ABI adapters.
+* The signal-handler lock assertion.
 
-These boundaries isolate intrusive kernel data structures and existing signal
-policy helpers until safe Rust abstractions exist. No helper selects queue
-insertion policy or changes the Rust operation order.
+These boundaries isolate intrusive kernel data structures and low-level signal
+helpers until safe Rust abstractions exist. No helper selects queue insertion
+policy or changes the Rust operation order.
 
 The caller must hold ``task->sighand->siglock`` with local interrupts disabled.
 Rust preserves that requirement and does not sleep.
@@ -86,36 +85,53 @@ generation trace result on every exit path.
 Validation record
 -----------------
 
-Each configuration ran three consecutive times with four vCPUs and 1536 MiB of
-guest memory.
+Each boot used 1536 MiB of guest memory. Native completed three four-vCPU
+runs and one single-vCPU run. Every other configuration completed one run at
+each CPU count.
 
 .. list-table::
-   :widths: 44 12 14 30
+   :widths: 34 16 14 12 24
    :header-rows: 1
 
    * - Configuration
-     - Runs
+     - Boots
+     - Signal groups
      - Cases
      - Result
    * - Rust signal queue insertion
-     - 3
-     - 1 of 1
+     - 3 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
      - Pass
    * - C signal queue insertion fallback
-     - 3
-     - 1 of 1
+     - 1 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
+     - Pass
+   * - Mixed C insertion and Rust prepare/complete
+     - 1 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
+     - Pass
+   * - C-only
+     - 1 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
      - Pass
    * - Rust signal queue insertion with KASAN
-     - 3
-     - 1 of 1
-     - Pass
-   * - Rust signal queue insertion with PREEMPT_RT
-     - 3
-     - 1 of 1
+     - 1 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
      - Pass
    * - Rust signal queue insertion with lockdep
-     - 3
-     - 1 of 1
+     - 1 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
+     - Pass
+   * - Rust signal queue insertion with PREEMPT_RT
+     - 1 SMP4, 1 SMP1
+     - 9 of 9
+     - 12 of 12
      - Pass
 
 The integration case creates a real shared thread group and calls the
@@ -125,27 +141,29 @@ payloads, real-time queues, SIGKILL allocation skipping, shared queues, and
 delayed multiprocess stop and continue updates. Rust-only counters verify the
 selected state transitions.
 
-The existing native Rust ``complete_signal`` KUnit test also passed with
-``CONFIG_RUST_COMPLETE_SIGNAL=y``.
-
-No run reported a BUG, warning, KASAN report, Oops, lockdep complaint, or
-kernel panic.
+Every boot also ran the preparation and completion suites. Every log reported
+no failed case, BUG, warning, KASAN report, lockdep complaint, oops, or panic.
 
 Build and production checks
 ---------------------------
 
-The final Rust source passed Clippy and ``rustfmtcheck``. The complete change
-passed strict ``checkpatch`` and ``git diff --check``.
+The production build passed with ``CONFIG_WERROR=y`` and Clippy. The module
+build completed modpost without an error. The Rust source passed
+``rustfmtcheck``, Rustdoc, and Clippy. Focused Sphinx generated this page with
+only the existing ``kernel-docs`` and ``getting_llvm`` reference warnings. The
+complete change passed ``git diff --check`` and strict ``checkpatch`` with zero
+errors, warnings, or checks.
 
-The production image disabled KUnit, KASAN, and lockdep. Disassembly of
-``kernel/signal.o`` showed direct relocations from ``__send_signal_locked()``
-and other signal senders to ``rust_send_signal_locked()``. The three C policy
-bridges were also present.
+The production image disabled KUnit, KASAN, lockdep, and PREEMPT_RT.
+``rust/kernel.o`` defines ``__send_signal_locked()``. Native
+``kernel/signal.o`` contains an undefined reference and no implementation.
+Disassembly shows direct calls from the Rust insertion state machine to the
+Rust preparation and completion state machines.
 
-The production ``vmlinux`` contained the Rust insertion entry and its helpers,
-contained no signal insertion or completion test symbols, and had no undefined
-symbols. The image booted to the expected missing root-filesystem panic and
-reported no earlier failure.
+The production image contains no ``rust_send_signal_locked`` wrapper, no old
+preparation or completion dispatch helpers, no export table entry for the
+entry, and no unresolved symbol. The image boots to the expected missing
+root-filesystem panic without an earlier failure.
 
 Review conditions
 -----------------

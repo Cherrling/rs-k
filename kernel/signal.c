@@ -997,11 +997,9 @@ bool rust_prepare_signal_ignored_bridge(struct task_struct *task, int sig,
  * Returns true if the signal should be actually delivered, otherwise
  * it should be dropped.
  */
+#ifndef CONFIG_RUST_PREPARE_SIGNAL
 static bool prepare_signal(int sig, struct task_struct *p, bool force)
 {
-#ifdef CONFIG_RUST_PREPARE_SIGNAL
-	return rust_prepare_signal(sig, p, force);
-#else
 	struct signal_struct *signal = p->signal;
 	struct task_struct *t;
 	sigset_t flush;
@@ -1065,8 +1063,8 @@ static bool prepare_signal(int sig, struct task_struct *p, bool force)
 	}
 
 	return !sig_ignored(p, sig, force);
-#endif /* !CONFIG_RUST_PREPARE_SIGNAL */
 }
+#endif /* !CONFIG_RUST_PREPARE_SIGNAL */
 
 #ifdef CONFIG_PREPARE_SIGNAL_KUNIT_TEST
 bool prepare_signal_test_call(int sig, struct task_struct *task, bool force)
@@ -1106,11 +1104,9 @@ static inline bool wants_signal(int sig, struct task_struct *p)
 	return task_curr(p) || !task_sigpending(p);
 }
 
+#ifndef CONFIG_RUST_COMPLETE_SIGNAL
 static void complete_signal(int sig, struct task_struct *p, enum pid_type type)
 {
-#ifdef CONFIG_RUST_COMPLETE_SIGNAL
-	rust_complete_signal(sig, p, type);
-#else
 	struct signal_struct *signal = p->signal;
 	struct task_struct *t;
 
@@ -1179,8 +1175,8 @@ static void complete_signal(int sig, struct task_struct *p, enum pid_type type)
 	 */
 	signal_wake_up(t, sig == SIGKILL);
 	return;
-#endif /* !CONFIG_RUST_COMPLETE_SIGNAL */
 }
+#endif /* !CONFIG_RUST_COMPLETE_SIGNAL */
 
 #ifdef CONFIG_COMPLETE_SIGNAL_KUNIT_TEST
 void complete_signal_test_call(int sig, struct task_struct *task, int type)
@@ -1197,22 +1193,6 @@ rust_send_signal_alloc_queue_bridge(int sig, struct task_struct *task,
 				    int override_rlimit)
 {
 	return sigqueue_alloc(sig, task, GFP_ATOMIC, override_rlimit);
-}
-
-bool rust_send_signal_prepare_bridge(int sig, struct task_struct *task,
-				     bool force)
-{
-#ifdef CONFIG_RUST_PREPARE_SIGNAL
-	return rust_prepare_signal(sig, task, force);
-#else
-	return prepare_signal(sig, task, force);
-#endif
-}
-
-void rust_send_signal_complete_bridge(int sig, struct task_struct *task,
-				      unsigned int type)
-{
-	complete_signal(sig, task, type);
 }
 #endif
 
@@ -1236,12 +1216,11 @@ static inline bool task_can_queue_signal(struct task_struct *t, enum pid_type ty
 	return type != PIDTYPE_PID;
 }
 
+#ifndef CONFIG_RUST_SEND_SIGNAL
 static int __send_signal_locked(int sig, struct kernel_siginfo *info,
-				struct task_struct *t, enum pid_type type, bool force)
+				struct task_struct *t, enum pid_type type,
+				bool force)
 {
-#ifdef CONFIG_RUST_SEND_SIGNAL
-	return rust_send_signal_locked(sig, info, t, type, force);
-#else
 	struct sigpending *pending;
 	struct sigqueue *q;
 	int override_rlimit;
@@ -1358,8 +1337,8 @@ out_set:
 ret:
 	trace_signal_generate(sig, info, t, type != PIDTYPE_PID, result);
 	return ret;
-#endif /* !CONFIG_RUST_SEND_SIGNAL */
 }
+#endif /* !CONFIG_RUST_SEND_SIGNAL */
 
 #ifdef CONFIG_SEND_SIGNAL_KUNIT_TEST
 int send_signal_test_call(int sig, struct kernel_siginfo *info,

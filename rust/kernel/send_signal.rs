@@ -6,9 +6,11 @@
 //! siginfo selection, pending-state transitions, multiprocess stop/continue
 //! updates, completion, and trace result selection. C helpers provide queue
 //! allocation, intrusive-list operations, signal-set bit operations, credential
-//! formatting, tracing, and the remaining low-level signal policies.
+//! formatting, tracing, and the remaining low-level signal helpers.
 
 use crate::bindings;
+use crate::complete_signal;
+use crate::prepare_signal;
 use macros::export;
 
 #[cfg(CONFIG_SEND_SIGNAL_KUNIT_TEST)]
@@ -234,8 +236,8 @@ unsafe fn send_signal_locked(
         return unsafe { finish(sig, info, task, pid_type, result) };
     }
 
-    // SAFETY: The C policy validates the signal and task state under the lock.
-    if !unsafe { bindings::rust_helper_send_signal_prepare(sig, task, force) } {
+    // SAFETY: The preparation state machine validates the signal under the lock.
+    if !unsafe { prepare_signal::prepare_signal_for_task(sig, task, force) } {
         #[cfg(CONFIG_SEND_SIGNAL_KUNIT_TEST)]
         PREPARE_DROP_COUNT.fetch_add(1, Ordering::Relaxed);
         // SAFETY: The caller still holds the signal lock and all pointers are valid.
@@ -307,7 +309,7 @@ unsafe fn send_signal_locked(
     }
 
     // SAFETY: The queue, task, and signal state remain live under the lock.
-    unsafe { bindings::rust_helper_send_signal_complete(sig, task, pid_type) };
+    unsafe { complete_signal::complete_signal_for_task(sig, task, pid_type) };
     #[cfg(CONFIG_SEND_SIGNAL_KUNIT_TEST)]
     COMPLETE_COUNT.fetch_add(1, Ordering::Relaxed);
 
@@ -338,9 +340,10 @@ unsafe fn finish(sig: i32, info: *mut Info, task: *mut Task, pid_type: u32, resu
 ///
 /// # Safety
 ///
-/// The requirements of [`send_signal_locked`] apply.
+/// `task` must be live, `info` must be valid for the signal source, and the
+/// caller must hold `task->sighand->siglock` with local interrupts disabled.
 #[export]
-unsafe extern "C" fn rust_send_signal_locked(
+unsafe extern "C" fn __send_signal_locked(
     sig: i32,
     info: *mut Info,
     task: *mut Task,
