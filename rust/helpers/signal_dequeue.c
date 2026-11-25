@@ -63,3 +63,9 @@ rust_helper_signal_dequeue_is_kernel_stop(int sig)
 {
 	return sig_kernel_stop(sig);
 }
+
+__rust_helper void
+rust_helper_signal_dequeue_assert_locked(struct task_struct *task)
+{
+	lockdep_assert_held(&task->sighand->siglock);
+}

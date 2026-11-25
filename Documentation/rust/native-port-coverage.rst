@@ -1018,6 +1018,42 @@ XArray allocation entry points
   Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT builds at SMP1 and
   SMP4 passed the focused suite and the 158825682-check XArray regression.
 
+Pending signal dequeue
+  Status: ``migrated``.
+
+  Evidence: :doc:`signal-dequeue`.
+
+  Rust directly defines ``next_signal()``, ``dequeue_signal()``, and
+  ``dequeue_synchronous_signal()``. Rust owns synchronous signal priority,
+  local and shared queue selection, signal-number selection,
+  stop-dequeued tracking, POSIX timer retry, synchronous queue selection,
+  duplicate retention, and pending-bit clearing. C retains the intrusive
+  ``sigqueue`` layouts and traversal, ``collect_signal()`` queue collection,
+  synchronous queue removal, pending recalculation, POSIX timer operations,
+  signal classification, and the signal-handler lock assertion. C fallback
+  and C-only configurations retain the complete implementations.
+
+  Test: Native completed three SMP4 and one SMP1 boot with all five signal
+  groups passing. Fallback and C-only each passed SMP4 and SMP1. KASAN,
+  lockdep, and PREEMPT_RT each passed SMP4 and SMP1. Every boot ran
+  ``complete_signal``, ``send_signal``, ``prepare_signal``,
+  ``signal_dequeue``, and ``signal_pending_recalc`` without a BUG, warning,
+  KASAN report, lockdep complaint, oops, or panic.
+
+  Symbol inspection shows that native ``rust/kernel.o`` defines all three
+  entries and native ``kernel/signal.o`` defines none. Fallback and C-only
+  ``kernel/signal.o`` files define all three entries. ``dequeue_signal()``
+  retains its GPL export, and the other two entries remain unexported. The old
+  ``rust_signal_*`` wrapper names are absent, each native symbol has its
+  definition in Rust, and the production image has no unresolved symbol.
+
+  Risk: A wrong queue precedence, synchronous priority, timer retry, or
+  pending-bit decision can hide, duplicate, or misroute a signal. A missing
+  signal lock can corrupt queue and job-control state. The exit condition is
+  one production definition per entry in every configuration class and a
+  clean pass of the focused, concurrency, KASAN, lockdep, PREEMPT_RT, and
+  adjacent signal matrices.
+
 Boundary-retained inventory
 ---------------------------
 
@@ -3070,6 +3106,28 @@ Kernel FIFO export metadata
   Exit condition: Rust export metadata supports the original non-GPL class
   without C export entries.
 
+Pending signal dequeue shared boundary
+  Status: ``boundary-retained``.
+
+  Owner: ``kernel/signal.c``, ``rust/helpers/signal_dequeue.c``,
+  ``include/linux/sched/signal.h``, and
+  ``include/linux/signal-dequeue-rust.h``.
+
+  Reason: C and Rust access the same intrusive ``sigpending`` and ``sigqueue``
+  layouts. Static signal queue collection, synchronous removal, pending
+  recalculation, POSIX timer operations, signal classification, and the
+  signal-handler lock assertion remain C internals.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT runs exercise
+  local and shared queues, synchronous signals, duplicate retention, blocking,
+  the stop marker, and adjacent signal state machines at SMP1 and SMP4.
+
+  Risk: A queue-layout, callback, timer, or lock-contract change can make Rust
+  remove the wrong entry or recalculate pending state out of order.
+
+  Exit condition: Rust owns the signal queue representation and all queue
+  mutation, timer, classification, and lock contracts used by dequeue.
+
 The lock-less list boundary is valid only while the inline producer paths,
 intrusive layouts, and atomic semantics remain shared ABI. A boundary entry
 does not transfer policy, retry decisions, state transitions, or exported
@@ -3152,6 +3210,13 @@ callback layout, task PI lock, atomic primitives, notification flags,
 diagnostics, IRQ work, scheduler progress, and unexported symbol policy remain
 named C boundaries. Rust defines every public entry and owns every enqueue,
 cancellation, detachment, dispatch, exit, and reentrant-drain decision.
+
+The pending signal dequeue boundary is valid only while the intrusive signal
+queue layouts, static queue collection and removal, pending recalculation,
+POSIX timer operations, signal classification, and signal-handler lock
+assertion remain named C boundaries. Rust defines every production dequeue
+entry and owns every queue-class, signal-number, synchronous-priority,
+timer-retry, stop-marker, and pending-bit decision.
 
 The address-space lifetime boundary is valid only while the shared
 ``mm_users`` layout, task flags, task lock, task-mm access, sleep diagnostic,

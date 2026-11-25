@@ -249,7 +249,7 @@ unsafe fn dequeue_from_pending(
 ///
 /// `task` must be `current`, all pointers must be valid, and the caller must
 /// hold the signal-handler lock with interrupts disabled.
-unsafe fn dequeue_signal(
+unsafe fn dequeue_signal_for_task(
     task: *mut Task,
     mask: *mut SignalSet,
     info: *mut Info,
@@ -329,7 +329,7 @@ unsafe fn dequeue_signal(
 ///
 /// `task` must be `current`, `info` must be valid, and the caller must hold the
 /// signal-handler lock with interrupts disabled.
-unsafe fn dequeue_synchronous_signal(task: *mut Task, info: *mut Info) -> i32 {
+unsafe fn dequeue_synchronous_signal_for_task(task: *mut Task, info: *mut Info) -> i32 {
     #[cfg(CONFIG_SIGNAL_DEQUEUE_KUNIT_TEST)]
     SYNCHRONOUS_ENTRY_COUNT.fetch_add(1, Ordering::Relaxed);
 
@@ -406,7 +406,7 @@ unsafe fn dequeue_synchronous_signal(task: *mut Task, info: *mut Info) -> i32 {
 ///
 /// The pending queue and mask must remain live for the duration of the call.
 #[export]
-unsafe extern "C" fn rust_signal_next_pending(pending: *mut Pending, mask: *mut SignalSet) -> i32 {
+unsafe extern "C" fn next_signal(pending: *mut Pending, mask: *mut SignalSet) -> i32 {
     #[cfg(CONFIG_SIGNAL_DEQUEUE_KUNIT_TEST)]
     NEXT_ENTRY_COUNT.fetch_add(1, Ordering::Relaxed);
 
@@ -430,25 +430,32 @@ unsafe extern "C" fn rust_signal_next_pending(pending: *mut Pending, mask: *mut 
 ///
 /// # Safety
 ///
-/// The requirements of [`dequeue_signal`] apply.
+/// The caller must hold `current->sighand->siglock` with interrupts disabled.
 #[export]
-unsafe extern "C" fn rust_signal_dequeue(
-    task: *mut Task,
+unsafe extern "C" fn dequeue_signal(
     mask: *mut SignalSet,
     info: *mut Info,
     pid_type: *mut u32,
 ) -> i32 {
+    // SAFETY: Current is always valid in task context.
+    let task = unsafe { bindings::get_current() };
+    // SAFETY: The caller holds the signal-handler lock.
+    unsafe { bindings::rust_helper_signal_dequeue_assert_locked(task) };
     // SAFETY: The caller upholds the function requirements.
-    unsafe { dequeue_signal(task, mask, info, pid_type) }
+    unsafe { dequeue_signal_for_task(task, mask, info, pid_type) }
 }
 
 /// Dequeues a synchronous signal for `current`.
 ///
 /// # Safety
 ///
-/// The requirements of [`dequeue_synchronous_signal`] apply.
+/// The caller must hold `current->sighand->siglock` with interrupts disabled.
 #[export]
-unsafe extern "C" fn rust_signal_dequeue_synchronous(task: *mut Task, info: *mut Info) -> i32 {
+unsafe extern "C" fn dequeue_synchronous_signal(info: *mut Info) -> i32 {
+    // SAFETY: Current is always valid in task context.
+    let task = unsafe { bindings::get_current() };
+    // SAFETY: The caller holds the signal-handler lock.
+    unsafe { bindings::rust_helper_signal_dequeue_assert_locked(task) };
     // SAFETY: The caller upholds the function requirements.
-    unsafe { dequeue_synchronous_signal(task, info) }
+    unsafe { dequeue_synchronous_signal_for_task(task, info) }
 }

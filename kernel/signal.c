@@ -217,11 +217,9 @@ void signal_pending_recalc_test(void)
 	(sigmask(SIGSEGV) | sigmask(SIGBUS) | sigmask(SIGILL) | \
 	 sigmask(SIGTRAP) | sigmask(SIGFPE) | sigmask(SIGSYS))
 
+#ifndef CONFIG_RUST_SIGNAL_DEQUEUE
 int next_signal(struct sigpending *pending, sigset_t *mask)
 {
-#ifdef CONFIG_RUST_SIGNAL_DEQUEUE
-	return rust_signal_next_pending(pending, mask);
-#else
 	unsigned long i, *s, *m, x;
 	int sig = 0;
 
@@ -264,8 +262,8 @@ int next_signal(struct sigpending *pending, sigset_t *mask)
 	}
 
 	return sig;
-#endif /* !CONFIG_RUST_SIGNAL_DEQUEUE */
 }
+#endif /* !CONFIG_RUST_SIGNAL_DEQUEUE */
 
 static inline void print_dropped_signal(int sig)
 {
@@ -672,7 +670,6 @@ static int __dequeue_signal(struct sigpending *pending, sigset_t *mask,
 		collect_signal(sig, pending, info, timer_sigq);
 	return sig;
 }
-#endif
 
 /*
  * Try to dequeue a signal. If a deliverable signal is found fill in the
@@ -681,10 +678,6 @@ static int __dequeue_signal(struct sigpending *pending, sigset_t *mask,
  */
 int dequeue_signal(sigset_t *mask, kernel_siginfo_t *info, enum pid_type *type)
 {
-#ifdef CONFIG_RUST_SIGNAL_DEQUEUE
-	lockdep_assert_held(&current->sighand->siglock);
-	return rust_signal_dequeue(current, mask, info, type);
-#else
 	struct task_struct *tsk = current;
 	struct sigqueue *timer_sigq;
 	int signr;
@@ -730,16 +723,11 @@ again:
 	}
 
 	return signr;
-#endif /* !CONFIG_RUST_SIGNAL_DEQUEUE */
 }
 EXPORT_SYMBOL_GPL(dequeue_signal);
 
 static int dequeue_synchronous_signal(kernel_siginfo_t *info)
 {
-#ifdef CONFIG_RUST_SIGNAL_DEQUEUE
-	lockdep_assert_held(&current->sighand->siglock);
-	return rust_signal_dequeue_synchronous(current, info);
-#else
 	struct task_struct *tsk = current;
 	struct sigpending *pending = &tsk->pending;
 	struct sigqueue *q, *sync = NULL;
@@ -778,8 +766,8 @@ still_pending:
 	copy_siginfo(info, &sync->info);
 	__sigqueue_free(sync);
 	return info->si_signo;
-#endif /* !CONFIG_RUST_SIGNAL_DEQUEUE */
 }
+#endif /* !CONFIG_RUST_SIGNAL_DEQUEUE */
 
 #ifdef CONFIG_SIGNAL_DEQUEUE_KUNIT_TEST
 int signal_dequeue_test_call(sigset_t *mask, kernel_siginfo_t *info,

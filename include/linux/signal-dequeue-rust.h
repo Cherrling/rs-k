@@ -11,11 +11,7 @@ struct task_struct;
 
 #ifdef CONFIG_RUST_SIGNAL_DEQUEUE
 
-int rust_signal_next_pending(struct sigpending *pending, sigset_t *mask);
-int rust_signal_dequeue(struct task_struct *task, sigset_t *mask,
-			kernel_siginfo_t *info, enum pid_type *type);
-int rust_signal_dequeue_synchronous(struct task_struct *task,
-				    kernel_siginfo_t *info);
+int dequeue_synchronous_signal(kernel_siginfo_t *info);
 
 struct sigqueue *
 rust_helper_signal_dequeue_first(struct sigpending *pending);
@@ -32,6 +28,7 @@ void rust_helper_signal_dequeue_rearm_itimer(struct task_struct *task);
 bool rust_helper_signal_dequeue_deliver_timer(struct kernel_siginfo *info,
 					      struct sigqueue *timer_sigq);
 bool rust_helper_signal_dequeue_is_kernel_stop(int sig);
+void rust_helper_signal_dequeue_assert_locked(struct task_struct *task);
 
 /*
  * These bridges expose static signal queue internals to the Rust helper file.

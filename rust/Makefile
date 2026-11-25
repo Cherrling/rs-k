@@ -845,6 +845,8 @@ rust_unexported_symbols := \
 	dmam_pool_destroy \
 	activate_task \
 	deactivate_task \
+	next_signal \
+	dequeue_synchronous_signal \
 	irq_work_needs_cpu \
 	irq_work_queue_on \
 	irq_work_single \

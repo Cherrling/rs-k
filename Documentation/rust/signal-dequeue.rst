@@ -33,14 +33,13 @@ The Rust code owns these decisions and transitions:
 Entry points and ownership
 --------------------------
 
-The local ``next_signal()``, ``dequeue_signal()``, and
-``dequeue_synchronous_signal()`` functions remain in ``kernel/signal.c`` as
-ABI adapters. When the option is enabled, their original state machines are
-compiled out and each adapter calls the corresponding Rust entry.
+Rust directly defines ``next_signal()``, ``dequeue_signal()``, and
+``dequeue_synchronous_signal()``. The native build compiles their original C
+state machines out of ``kernel/signal.c``. Rust owns signal selection and
+operation order. It does not call an original C state machine.
 
-Rust owns signal selection and operation order. It does not call an original
-C state machine. The C adapters contain one direct Rust call on the enabled
-path.
+``dequeue_signal()`` keeps its original GPL export. ``next_signal()`` and
+``dequeue_synchronous_signal()`` remain unexported kernel entries.
 
 Retained C boundary
 -------------------
@@ -55,7 +54,7 @@ The following operations remain in C:
   native Rust recalculation state machine.
 * POSIX timer rearm and delivery primitives.
 * Signal classification helpers.
-* The signal-handler lock assertion and public ABI adapters.
+* The signal-handler lock assertion helper.
 
 These boundaries isolate intrusive-list mutation, object lifetime, timer
 internals, and architecture thread flags. No helper selects the queue class,
@@ -86,36 +85,41 @@ entry.
 Validation record
 -----------------
 
-Each KUnit configuration runs three consecutive times with four vCPUs and
-1536 MiB of guest memory.
+Each boot used 1536 MiB of guest memory. Native completed three four-vCPU
+runs and one single-vCPU run. Every other configuration completed one run at
+each CPU count.
 
 .. list-table::
    :widths: 44 12 14 30
    :header-rows: 1
 
    * - Configuration
-     - Runs
-     - Cases
+     - Boots
+     - Groups
      - Result
-   * - Rust pending signal dequeue
-     - 3
-     - 1 of 1
+   * - Native Rust
+     - 3 SMP4, 1 SMP1
+     - 5 of 5
      - Pass
-   * - C pending signal dequeue fallback
-     - 3
-     - 1 of 1
+   * - C fallback
+     - 1 SMP4, 1 SMP1
+     - 5 of 5
      - Pass
-   * - Rust pending signal dequeue with KASAN
-     - 3
-     - 1 of 1
+   * - C-only
+     - 1 SMP4, 1 SMP1
+     - 5 of 5
      - Pass
-   * - Rust pending signal dequeue with PREEMPT_RT
-     - 3
-     - 1 of 1
+   * - Native Rust with KASAN
+     - 1 SMP4, 1 SMP1
+     - 5 of 5
      - Pass
-   * - Rust pending signal dequeue with lockdep
-     - 3
-     - 1 of 1
+   * - Native Rust with lockdep
+     - 1 SMP4, 1 SMP1
+     - 5 of 5
+     - Pass
+   * - Native Rust with PREEMPT_RT
+     - 1 SMP4, 1 SMP1
+     - 5 of 5
      - Pass
 
 The integration case calls the production dequeue entries on the KUnit task.
@@ -123,10 +127,9 @@ It covers synchronous selection priority, local and shared queues, blocked
 signals, the stop marker, synchronous queue collection, and synchronous
 precheck misses. Rust-only counters verify the selected transitions.
 
-The existing signal preparation, completion, and queue insertion tests also
-run with ``CONFIG_RUST_SIGNAL_DEQUEUE=y``. A combined
-``kunit.filter_glob=*signal*`` run passed ``complete_signal``,
-``send_signal``, ``prepare_signal``, and ``signal_dequeue``.
+Every boot also ran ``complete_signal``, ``send_signal``,
+``prepare_signal``, and ``signal_pending_recalc`` with the selected dequeue
+configuration.
 
 Every KUnit log reported no BUG, warning, KASAN report, lockdep complaint, or
 kernel panic.
@@ -134,24 +137,27 @@ kernel panic.
 Build and production checks
 ---------------------------
 
-The final Rust source passed Clippy and ``rustfmtcheck``. The Rust
-documentation build completed and generated this page. Its only warnings were
-existing unresolved references in other Rust documentation and a missing
-``dot`` program. The complete change passed ``git diff --check`` and strict
-``checkpatch`` with the generic new-file warning ignored after ``MAINTAINERS``
-was updated.
+The production build passed with ``CONFIG_WERROR=y`` and Clippy. The module
+build completed modpost without an error. The Rust source passed
+``rustfmtcheck`` and Rustdoc. Focused Sphinx generated this page with only the
+existing ``kernel-docs`` and ``getting_llvm`` reference warnings. The complete
+change passed ``git diff --check`` and strict ``checkpatch`` with zero errors,
+warnings, or checks.
 
-The production image disabled KUnit, KASAN, lockdep, and PREEMPT_RT.
-``System.map`` contained ``rust_signal_next_pending``,
-``rust_signal_dequeue``, and ``rust_signal_dequeue_synchronous``.
-Disassembly showed a direct jump from ``next_signal()`` to
-``rust_signal_next_pending``, a direct jump from ``dequeue_signal()`` to
-``rust_signal_dequeue``, and direct calls from ``get_signal()`` to both Rust
-dequeue entries.
+The production image disables KUnit, KASAN, lockdep, and PREEMPT_RT.
+``rust/kernel.o`` defines ``next_signal()``, ``dequeue_signal()``, and
+``dequeue_synchronous_signal()``. Native ``kernel/signal.o`` contains only
+undefined references to them. Fallback and C-only ``kernel/signal.o`` files
+define all three entries and contain no references to Rust dequeue entries.
 
-The production ``vmlinux`` contained no signal dequeue test symbols and had no
-undefined symbols. The image booted to the expected missing root-filesystem
-panic and reported no earlier failure.
+The native image has one GPL export table entry for ``dequeue_signal()``.
+``next_signal()`` and ``dequeue_synchronous_signal()`` have no export table
+entries. The old ``rust_signal_*`` wrapper names are absent, and the production
+image has no unresolved symbols.
+
+The production ``vmlinux`` contains no signal dequeue test symbols. The image
+booted to the expected missing root-filesystem panic and reported no earlier
+failure.
 
 Review conditions
 -----------------

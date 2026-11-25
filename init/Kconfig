@@ -2227,10 +2227,11 @@ config RUST_SIGNAL_DEQUEUE
 	  priority, synchronous signal dequeue, stop-dequeued tracking, and
 	  POSIX timer retry.
 
-	  Intrusive queue traversal, siginfo collection and release, timer
-	  operations, the pending-state recalculation adapter, and public ABI
-	  adapters remain in C. With CONFIG_RUST_SIGNAL_PENDING_RECALC enabled,
-	  the recalculation adapter calls the native Rust state machine.
+	  Rust defines the production entry points. Intrusive queue traversal,
+	  siginfo collection and release, timer operations, the pending-state
+	  recalculation adapter, and the signal-handler lock assertion remain in
+	  C. With CONFIG_RUST_SIGNAL_PENDING_RECALC enabled, the recalculation
+	  adapter calls the native Rust state machine.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
