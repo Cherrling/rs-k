@@ -12,8 +12,6 @@ struct tty_struct;
 
 #ifdef CONFIG_RUST_TASK_RELEASE
 
-void rust_task_release(struct task_struct *task);
-
 void rust_helper_task_release_dec_nproc(struct task_struct *task);
 void rust_helper_task_release_pidfs_exit(struct task_struct *task);
 void rust_helper_task_release_cgroup(struct task_struct *task);

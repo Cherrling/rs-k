@@ -284,8 +284,7 @@ unsafe fn release_one(task: *mut Task) -> (*mut Task, bool) {
 /// # Safety
 ///
 /// `task` must satisfy the requirements of the original C `release_task()`.
-#[export]
-unsafe extern "C" fn rust_task_release(mut task: *mut Task) {
+pub(crate) unsafe fn release_task_for_task(mut task: *mut Task) {
     #[cfg(CONFIG_TASK_RELEASE_KUNIT_TEST)]
     RELEASE_COUNT.fetch_add(1, Ordering::Relaxed);
 
@@ -298,4 +297,15 @@ unsafe extern "C" fn rust_task_release(mut task: *mut Task) {
             break;
         }
     }
+}
+
+/// Releases a zombie task and any zap-owned group leader.
+///
+/// # Safety
+///
+/// `task` must satisfy the requirements of the original C `release_task()`.
+#[export]
+unsafe extern "C" fn release_task(task: *mut Task) {
+    // SAFETY: The caller upholds the function requirements.
+    unsafe { release_task_for_task(task) };
 }

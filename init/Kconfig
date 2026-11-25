@@ -2075,9 +2075,10 @@ config RUST_TASK_RELEASE
 	depends on RUST && RUST_PID_ASSOCIATION && RUST_PID_LIFECYCLE
 	default y
 	help
-	  Use Rust for the production orchestration of zombie task release.
-	  Rust owns release ordering, signal statistics updates, PID and thread
-	  list removal, group-leader notification, and zap-leader repetition.
+	  Use Rust to directly define the production release_task() entry.
+	  Rust owns release ordering, signal statistics updates, PID and
+	  thread list removal, group-leader notification, and zap-leader
+	  repetition.
 
 	  Task-list and signal locks, RCU and list operations, CPU and I/O
 	  accounting reads, parent notification, subsystem cleanup, and final

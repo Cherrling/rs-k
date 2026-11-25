@@ -284,6 +284,39 @@ Task work queues
   entries remain unexported. C fallback configurations retain the complete
   implementations.
 
+Zombie task release
+  Status: ``migrated``.
+
+  Evidence: :doc:`task-release`.
+
+  Rust directly defines ``release_task()``. Rust owns release preparation,
+  signal-structure statistics updates, PID and thread-list removal,
+  sighand publication, group-leader notification, exit-code selection,
+  zap-leader repetition, and final resource release ordering. C retains
+  tasklist and signal locks, RCU and list operations, accounting reads, PID
+  operations, subsystem cleanup, parent notification, architecture release
+  hooks, and final task-reference release.
+
+  Test: Native completed three SMP4 and one SMP1 boot with both focused
+  cases passing. Fallback and C-only each passed SMP4 and SMP1. KASAN,
+  lockdep, and PREEMPT_RT each passed SMP4 and SMP1. Every focused boot
+  reported no failed case, BUG, warning, KASAN report, lockdep complaint,
+  Oops, refcount report, or panic. Native adjacent signal-aware exit,
+  task thread-group exit synchronization, and task exit notification suites
+  also passed.
+
+  Symbol inspection shows that native ``rust/kernel.o`` defines
+  ``release_task()`` and native ``kernel/exit.o`` contains only undefined
+  references. The production image contains no ``rust_task_release`` wrapper.
+  The entry has no export table entry, which preserves its original
+  unexported class. The production image has no unresolved symbol.
+
+  Risk: A wrong lock, accounting, PID removal, notification, or repetition
+  decision can leak a task, free a PID association early, or release a zombie
+  twice. The exit condition is one production definition in every
+  configuration class, preserved export metadata, and a clean pass of the
+  focused, diagnostic, PREEMPT_RT, and adjacent lifecycle matrices.
+
 Address-space user lifetime
   Status: ``migrated``.
 

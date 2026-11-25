@@ -852,6 +852,7 @@ rust_unexported_symbols := \
 	calculate_sigpending \
 	signal_wake_up_state \
 	exit_signals \
+	release_task \
 	prepare_signal \
 	complete_signal \
 	__send_signal_locked \

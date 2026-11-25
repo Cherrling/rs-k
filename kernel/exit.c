@@ -252,11 +252,9 @@ void __weak release_thread(struct task_struct *dead_task)
 {
 }
 
+#ifndef CONFIG_RUST_TASK_RELEASE
 void release_task(struct task_struct *p)
 {
-#ifdef CONFIG_RUST_TASK_RELEASE
-	rust_task_release(p);
-#else
 	struct release_task_post post;
 	struct task_struct *leader;
 	struct pid *thread_pid;
@@ -327,8 +325,8 @@ repeat:
 	p = leader;
 	if (unlikely(zap_leader))
 		goto repeat;
-#endif /* CONFIG_RUST_TASK_RELEASE */
 }
+#endif /* !CONFIG_RUST_TASK_RELEASE */
 
 #ifndef CONFIG_RUST_RCUWAIT
 int rcuwait_wake_up(struct rcuwait *w)

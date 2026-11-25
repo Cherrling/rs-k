@@ -156,7 +156,7 @@ unsafe fn release_dead(dead: *mut ListHead) {
         // SAFETY: The dead task is removed before its release.
         unsafe {
             bindings::rust_helper_task_exit_notify_list_del_init(node);
-            bindings::rust_task_release(task);
+            crate::task_release::release_task_for_task(task);
         }
         node = next;
     }

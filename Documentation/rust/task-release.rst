@@ -28,14 +28,13 @@ The Rust code owns these decisions and transitions:
 Entry points and ownership
 --------------------------
 
-The exported C ``release_task()`` entry point remains in ``kernel/exit.c``.
-When the option is enabled, it calls ``rust_task_release()`` and the original
-C release state machine is compiled out.
+Rust directly defines ``release_task()``. The native build compiles the
+original C release state machine out of ``kernel/exit.c``. The C fallback and
+C-only configurations retain the complete implementation.
 
 Rust runs ``release_task()``, signal exit, and PID and thread-list unhashing in
-one implementation. The C adapter contains one direct call to Rust. The Rust
-code does not call the original ``release_task()``, ``__exit_signal()``, or
-``__unhash_process()`` implementations.
+one implementation. Rust does not call the original ``release_task()``,
+``__exit_signal()``, or ``__unhash_process()`` implementations.
 
 The Rust module uses narrow C helpers for individual operations. A helper
 performs one lock, atomic, RCU, list, accounting read, subsystem call, or
@@ -88,55 +87,75 @@ complete release path for that leader.
 Validation record
 -----------------
 
-Each KUnit configuration ran three consecutive times with four vCPUs and
-PREEMPT_RT. The Rust, fallback, and KASAN configurations also enabled lockdep.
+Each boot used 1536 MiB of guest memory. Native completed three four-vCPU
+runs and one single-vCPU run. Every other configuration completed one run at
+each CPU count.
 
 .. list-table::
-   :widths: 44 12 14 30
+   :widths: 38 18 14 12 18
    :header-rows: 1
 
    * - Configuration
-     - Runs
+     - Boots
+     - Groups
      - Cases
      - Result
    * - Rust task release
-     - 3
+     - 3 SMP4, 1 SMP1
+     - 1 of 1
      - 2 of 2
      - Pass
    * - C task release fallback
-     - 3
+     - 1 SMP4, 1 SMP1
+     - 1 of 1
      - 1 of 1
      - Pass
-   * - Generic inline KASAN with Rust
-     - 3
+   * - C-only
+     - 1 SMP4, 1 SMP1
+     - 1 of 1
+     - 1 of 1
+     - Pass
+   * - Rust task release with KASAN
+     - 1 SMP4, 1 SMP1
+     - 1 of 1
      - 2 of 2
      - Pass
-   * - Rust without ``PID_NS`` and ``POSIX_TIMERS``
-     - 3
+   * - Rust task release with lockdep
+     - 1 SMP4, 1 SMP1
+     - 1 of 1
+     - 2 of 2
+     - Pass
+   * - Rust task release with PREEMPT_RT
+     - 1 SMP4, 1 SMP1
+     - 1 of 1
      - 2 of 2
      - Pass
 
 The integration test creates, starts, stops, and reaps 24 kernel threads. It
 waits for RCU callbacks and checks that the Rust production entry was called.
 The policy tests cover all group-leader notification predicates and both
-exit-code selections.
+exit-code selections. Native adjacent runs also passed the signal-aware exit,
+task thread-group exit synchronization, and task exit notification suites.
 
-Every KUnit log reported no BUG, warning, KASAN report, Oops, refcount report,
-lockdep complaint, or kernel panic.
+Every focused log reported no failed case, BUG, warning, KASAN report, Oops,
+refcount report, lockdep complaint, or kernel panic.
 
-The production build used Clippy with KUnit, KASAN, and ``PROVE_LOCKING``
-disabled. PREEMPT_RT remained enabled. The C adapter contains a direct
-relocation to ``rust_task_release``. The Rust symbol is present, KUnit symbols
-are absent, and ``llvm-nm -u vmlinux`` reports no unresolved symbols.
+The production build passed with ``CONFIG_WERROR=y`` and Clippy. The module
+build completed modpost without an error. The Rust source passed
+``rustfmtcheck`` and Rustdoc. Focused Sphinx generated this page with only the
+existing ``kernel-docs`` and ``getting_llvm`` reference warnings. The complete
+change passed ``git diff --check`` and strict ``checkpatch``.
+
+The production image disabled KUnit, KASAN, lockdep, and PREEMPT_RT.
+``rust/kernel.o`` defines ``release_task()``. Native ``kernel/exit.o``
+contains only undefined references. The production image contains no
+``rust_task_release`` wrapper. The entry has no export table entry, each
+linked image has one definition, and the production image has no unresolved
+symbol.
 
 The production image starts with four vCPUs under KVM. Task creation and early
 process setup complete before the image reaches the expected missing
 root-filesystem panic. The boot log contains no additional diagnostic.
-
-A second production build disabled ``CONFIG_PID_NS`` and
-``CONFIG_POSIX_TIMERS``. It passed Clippy, linked with the same direct Rust
-call and no unresolved symbols, and reached the same expected boot panic
-without an additional diagnostic.
 
 Review conditions
 -----------------
