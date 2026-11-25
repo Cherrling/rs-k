@@ -715,6 +715,7 @@ rust_non_gpl_exports := \
 	wait_for_completion_killable_timeout \
 	try_wait_for_completion \
 	completion_done \
+	recalc_sigpending \
 	__kfifo_in \
 	__kfifo_out_peek \
 	__kfifo_out_linear \
@@ -847,6 +848,8 @@ rust_unexported_symbols := \
 	deactivate_task \
 	next_signal \
 	dequeue_synchronous_signal \
+	recalc_sigpending_tsk \
+	calculate_sigpending \
 	irq_work_needs_cpu \
 	irq_work_queue_on \
 	irq_work_single \

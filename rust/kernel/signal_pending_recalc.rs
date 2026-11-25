@@ -166,7 +166,7 @@ unsafe fn recalc(task: *mut Task) {
 ///
 /// `task` must be live and the caller must hold `task->sighand->siglock`.
 #[export]
-unsafe extern "C" fn rust_signal_pending_recalc_tsk(task: *mut Task) -> bool {
+unsafe extern "C" fn recalc_sigpending_tsk(task: *mut Task) -> bool {
     // SAFETY: The caller upholds the function requirements.
     unsafe { recalc_tsk(task) }
 }
@@ -175,9 +175,31 @@ unsafe extern "C" fn rust_signal_pending_recalc_tsk(task: *mut Task) -> bool {
 ///
 /// # Safety
 ///
-/// The requirements of [`recalc`] apply.
+/// The caller must hold `current->sighand->siglock`.
 #[export]
-unsafe extern "C" fn rust_signal_pending_recalc(task: *mut Task) {
+unsafe extern "C" fn recalc_sigpending() {
+    // SAFETY: Current is always valid in task context.
+    let task = unsafe { bindings::get_current() };
     // SAFETY: The caller upholds the function requirements.
     unsafe { recalc(task) };
+}
+
+/// Recalculates the pending flag for `current` after acquiring its siglock.
+///
+/// # Safety
+///
+/// The caller must be in task context and must not already hold
+/// `current->sighand->siglock`.
+#[export]
+unsafe extern "C" fn calculate_sigpending() {
+    // SAFETY: Current is always valid in task context.
+    let task = unsafe { bindings::get_current() };
+    // SAFETY: The caller does not hold the signal-handler lock.
+    unsafe { bindings::rust_helper_signal_pending_recalc_lock(task) };
+    // SAFETY: The task remains live while its signal-handler lock is held.
+    unsafe { bindings::rust_helper_signal_pending_recalc_set(task) };
+    // SAFETY: The signal-handler lock protects the task signal state.
+    unsafe { recalc(task) };
+    // SAFETY: Release the lock acquired above.
+    unsafe { bindings::rust_helper_signal_pending_recalc_unlock(task) };
 }

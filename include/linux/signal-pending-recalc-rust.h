@@ -8,14 +8,15 @@ struct task_struct;
 
 #ifdef CONFIG_RUST_SIGNAL_PENDING_RECALC
 
-bool rust_signal_pending_recalc_tsk(struct task_struct *task);
-void rust_signal_pending_recalc(struct task_struct *task);
+bool recalc_sigpending_tsk(struct task_struct *task);
 
 void rust_helper_signal_pending_recalc_set(struct task_struct *task);
 void rust_helper_signal_pending_recalc_clear(struct task_struct *task);
 bool rust_helper_signal_pending_recalc_test(struct task_struct *task);
 bool rust_helper_signal_pending_recalc_cgroup_frozen(struct task_struct *task);
 bool rust_helper_signal_pending_recalc_freezing(struct task_struct *task);
+void rust_helper_signal_pending_recalc_lock(struct task_struct *task);
+void rust_helper_signal_pending_recalc_unlock(struct task_struct *task);
 
 #ifdef CONFIG_SIGNAL_PENDING_RECALC_KUNIT_TEST
 void rust_signal_pending_recalc_test_reset(void);

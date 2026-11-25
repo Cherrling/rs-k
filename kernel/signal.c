@@ -135,6 +135,7 @@ static bool sig_ignored(struct task_struct *t, int sig, bool force)
  * Re-calculate pending state from the set of locally pending
  * signals, globally pending signals, and blocked signals.
  */
+#ifndef CONFIG_RUST_SIGNAL_PENDING_RECALC
 static inline bool has_pending_signals(sigset_t *signal, sigset_t *blocked)
 {
 	unsigned long ready = 0;
@@ -147,9 +148,6 @@ static inline bool has_pending_signals(sigset_t *signal, sigset_t *blocked)
 
 static bool recalc_sigpending_tsk(struct task_struct *t)
 {
-#ifdef CONFIG_RUST_SIGNAL_PENDING_RECALC
-	return rust_signal_pending_recalc_tsk(t);
-#else
 	if ((t->jobctl & (JOBCTL_PENDING_MASK | JOBCTL_TRAP_FREEZE)) ||
 	    PENDING(&t->pending, &t->blocked) ||
 	    PENDING(&t->signal->shared_pending, &t->blocked) ||
@@ -164,21 +162,15 @@ static bool recalc_sigpending_tsk(struct task_struct *t)
 	 * So we don't clear it here, and only callers who know they should do.
 	 */
 	return false;
-#endif /* !CONFIG_RUST_SIGNAL_PENDING_RECALC */
 }
 
 void recalc_sigpending(void)
 {
-#ifdef CONFIG_RUST_SIGNAL_PENDING_RECALC
-	rust_signal_pending_recalc(current);
-#else
 	if (!recalc_sigpending_tsk(current) && !freezing(current)) {
 		if (unlikely(test_thread_flag(TIF_SIGPENDING)))
 			clear_thread_flag(TIF_SIGPENDING);
 	}
-#endif /* !CONFIG_RUST_SIGNAL_PENDING_RECALC */
 }
-EXPORT_SYMBOL(recalc_sigpending);
 
 void calculate_sigpending(void)
 {
@@ -190,6 +182,8 @@ void calculate_sigpending(void)
 	recalc_sigpending();
 	spin_unlock_irq(&current->sighand->siglock);
 }
+#endif /* !CONFIG_RUST_SIGNAL_PENDING_RECALC */
+EXPORT_SYMBOL(recalc_sigpending);
 
 #ifdef CONFIG_SIGNAL_PENDING_RECALC_KUNIT_TEST
 bool signal_pending_recalc_test_tsk(void)

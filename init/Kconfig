@@ -2246,8 +2246,9 @@ config RUST_SIGNAL_PENDING_RECALC
 	  blocked, cgroup-frozen, and freezer checks that set or clear
 	  TIF_SIGPENDING.
 
-	  Thread-flag operations, cgroup freeze queries, and freezer state
-	  queries remain in C.
+	  Rust defines the production entries, including the lock wrapper used
+	  after fork. Thread-flag operations, lock primitives, cgroup freeze
+	  queries, and freezer state queries remain in C.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

@@ -10,11 +10,11 @@ The ``CONFIG_RUST_SIGNAL_PENDING_RECALC`` option selects native Rust for the
 production pending-signal recalculation state machine. The original C logic
 remains available as a fallback.
 
-This unit covers the policy in ``recalc_sigpending_tsk()`` and
-``recalc_sigpending()``. It includes job-control pending and freeze traps,
+This unit covers ``recalc_sigpending_tsk()``, ``recalc_sigpending()``, and
+``calculate_sigpending()``. It includes job-control pending and freeze traps,
 local pending signals, shared pending signals, blocked signals, cgroup
-freezer state, PM and cgroup1 freezer state, setting
-``TIF_SIGPENDING``, and clearing a stale current-task flag.
+freezer state, PM and cgroup1 freezer state, setting ``TIF_SIGPENDING``,
+clearing a stale current-task flag, and the forked-task lock wrapper.
 
 It excludes signal queue mutation, signal selection, signal delivery,
 thread-flag implementation, cgroup freezer transitions, and the freezer
@@ -29,17 +29,20 @@ Rust owns these decisions and transitions:
 5. Avoiding a clear while the current task is being frozen.
 6. Clearing a stale current-task flag only after all set reasons are absent.
 7. Leaving another task's flag untouched in the task-only entry.
+8. Acquiring and releasing the current signal-handler lock around the
+   forked-task recalculation.
 
 Entry points and ownership
 --------------------------
 
-The local ``recalc_sigpending_tsk()`` and exported ``recalc_sigpending()``
-functions remain in ``kernel/signal.c`` as ABI adapters. When the option is
-enabled, their original policy is compiled out and each adapter calls the
-corresponding Rust entry.
+Rust directly defines ``recalc_sigpending_tsk()``, ``recalc_sigpending()``,
+and ``calculate_sigpending()``. The native build compiles their original C
+implementations out of ``kernel/signal.c``. Rust owns the complete reason
+combination, set or clear order, and fork lock sequence. No C helper combines
+signal sets, job-control state, or freezer state.
 
-Rust owns the complete reason combination and set or clear order. No C helper
-combines signal sets, job-control state, or freezer state.
+``recalc_sigpending()`` keeps its original ordinary export.
+``recalc_sigpending_tsk()`` and ``calculate_sigpending()`` remain unexported.
 
 Retained C boundary
 -------------------
@@ -49,7 +52,8 @@ The following operations remain in C:
 * ``TIF_SIGPENDING`` set, clear, and test operations.
 * ``cgroup_task_frozen()``.
 * ``freezing()``.
-* The public function and symbol adapters.
+* Signal-handler lock and interrupt-mode primitives.
+* The ordinary export metadata.
 
 These operations isolate architecture thread flags and freezer subsystem
 state. The retained boundary does not select whether the pending flag should
@@ -69,49 +73,58 @@ The full entry first applies the same set reasons. If none exist and the
 current task is being frozen, Rust leaves the flag unchanged. Otherwise Rust
 clears an existing flag and reports the transition to test counters.
 
+The forked-task entry acquires ``current->sighand->siglock`` with interrupts
+disabled, sets ``TIF_SIGPENDING``, runs the full recalculation, and releases
+the lock. The lock covers the complete set-and-recalculate sequence.
+
 Validation record
 -----------------
 
-Each KUnit configuration runs three consecutive times with four vCPUs and
-1536 MiB of guest memory.
+Each boot used 1536 MiB of guest memory. Native completed three four-vCPU
+runs and one single-vCPU run. Every other configuration completed one run at
+each CPU count.
 
 .. list-table::
    :widths: 44 12 14 30
    :header-rows: 1
 
    * - Configuration
-     - Runs
-     - Cases
+     - Boots
+     - Groups
      - Result
-   * - Rust pending signal recalculation
-     - 3
-     - 1 of 1
+   * - Native Rust
+     - 3 SMP4, 1 SMP1
+     - 5 of 5
      - Pass
-   * - C pending signal recalculation fallback
-     - 3
-     - 1 of 1
+   * - C fallback
+     - 1 SMP4, 1 SMP1
+     - 5 of 5
      - Pass
-   * - Rust pending signal recalculation with KASAN
-     - 3
-     - 1 of 1
+   * - C-only
+     - 1 SMP4, 1 SMP1
+     - 5 of 5
      - Pass
-   * - Rust pending signal recalculation with PREEMPT_RT
-     - 3
-     - 1 of 1
+   * - Native Rust with KASAN
+     - 1 SMP4, 1 SMP1
+     - 5 of 5
      - Pass
-   * - Rust pending signal recalculation with lockdep
-     - 3
-     - 1 of 1
+   * - Native Rust with lockdep
+     - 1 SMP4, 1 SMP1
+     - 5 of 5
+     - Pass
+   * - Native Rust with PREEMPT_RT
+     - 1 SMP4, 1 SMP1
+     - 5 of 5
      - Pass
 
 The integration test exercises local and shared pending signals, blocked
 signals, both job-control reason classes, cgroup freezer state, stale flag
-clearing, and the task-only no-clear contract. Rust-only counters verify each
-transition.
+clearing, the task-only no-clear contract, and the forked-task lock wrapper.
+Rust-only counters verify each transition.
 
-The existing signal tests also run with the Rust implementation enabled. A
-combined run passed ``complete_signal``, ``send_signal``,
-``prepare_signal``, ``signal_dequeue``, and ``signal_pending_recalc``.
+Every boot also ran ``complete_signal``, ``send_signal``,
+``prepare_signal``, and ``signal_dequeue`` with the selected recalculation
+configuration.
 
 Every KUnit log reported no failed case, BUG, warning, KASAN report, lockdep
 complaint, or kernel panic.
@@ -119,22 +132,28 @@ complaint, or kernel panic.
 Build and production checks
 ---------------------------
 
-The final Rust source passed ``rustfmtcheck`` and Clippy. The Rust
-documentation build generated this page. Its only warnings were existing
-unresolved Rust documentation references and a missing ``dot`` program.
-The complete change passed ``git diff --check`` and strict ``checkpatch``
-with no errors or checks. Checkpatch reported its generic new-file warning
-after ``MAINTAINERS`` was updated with the new entries.
+The production build passes with ``CONFIG_WERROR=y`` and Clippy. The module
+build completes modpost without an error. The Rust source passes
+``rustfmtcheck`` and Rustdoc. Focused Sphinx generates this page with only the
+existing ``kernel-docs`` and ``getting_llvm`` reference warnings. The complete
+change passes ``git diff --check`` and strict ``checkpatch`` with zero errors,
+warnings, or checks.
 
-The production image disabled KUnit, KASAN, lockdep, and PREEMPT_RT.
-``System.map`` contained ``rust_signal_pending_recalc`` and
-``rust_signal_pending_recalc_tsk``. Disassembly showed a direct jump from
-``recalc_sigpending()`` to ``rust_signal_pending_recalc()`` and a direct call
-from ``calculate_sigpending()`` to the same Rust entry.
+The production image disables KUnit, KASAN, lockdep, and PREEMPT_RT.
+``rust/kernel.o`` defines ``recalc_sigpending_tsk()``,
+``recalc_sigpending()``, and ``calculate_sigpending()``. Native
+``kernel/signal.o`` contains undefined references and export metadata, not
+the three implementations. Fallback and C-only ``kernel/signal.o`` files
+define all three entries.
 
-The production ``vmlinux`` contained no pending-signal recalculation test
-symbols and had no undefined symbols. The image booted to the expected
-missing root-filesystem panic and reported no earlier failure.
+The native image keeps one ordinary export table entry for
+``recalc_sigpending()``. The task-only and fork entries have no export table
+entries. The old ``rust_signal_pending_recalc*`` wrapper names are absent, and
+the production image has no unresolved symbols.
+
+The production ``vmlinux`` contains no pending-signal recalculation test
+symbols. The image boots to the expected missing root-filesystem panic and
+reports no earlier failure.
 
 Review conditions
 -----------------

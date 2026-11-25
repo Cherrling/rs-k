@@ -1054,6 +1054,41 @@ Pending signal dequeue
   clean pass of the focused, concurrency, KASAN, lockdep, PREEMPT_RT, and
   adjacent signal matrices.
 
+Pending signal recalculation
+  Status: ``migrated``.
+
+  Evidence: :doc:`signal-pending-recalc`.
+
+  Rust directly defines ``recalc_sigpending_tsk()``, ``recalc_sigpending()``,
+  and ``calculate_sigpending()``. Rust owns job-control pending and freeze
+  reasons, local and shared pending-set checks, blocked-set exclusion,
+  cgroup-freezer checks, ``TIF_SIGPENDING`` updates, stale-flag clearing,
+  current-task restrictions, and the fork lock sequence. C retains the shared
+  signal and task layouts, thread-flag primitives, cgroup and freezer
+  queries, signal-handler locking, and ordinary export metadata. C fallback
+  and C-only configurations retain the complete implementations.
+
+  Test: Native completed three SMP4 and one SMP1 boot with all five signal
+  groups passing. Fallback and C-only each passed SMP4 and SMP1. KASAN,
+  lockdep, and PREEMPT_RT each passed SMP4 and SMP1. Every boot ran
+  ``complete_signal``, ``send_signal``, ``prepare_signal``,
+  ``signal_dequeue``, and ``signal_pending_recalc`` without a BUG, warning,
+  KASAN report, lockdep complaint, oops, or panic. The recalculation suite
+  also executes the production fork lock wrapper.
+
+  Symbol inspection shows that native ``rust/kernel.o`` defines all three
+  entries and native ``kernel/signal.o`` defines none. Fallback and C-only
+  ``kernel/signal.o`` files define all three entries. ``recalc_sigpending()``
+  retains its ordinary export, and the other two entries remain unexported.
+  The old wrapper names are absent, and the production image has no
+  unresolved symbol.
+
+  Risk: A wrong pending-set comparison, freezer order, lock sequence, or
+  current-task rule can lose a wakeup, clear a required flag, or corrupt
+  signal state. The exit condition is one production definition per entry in
+  every configuration class and a clean pass of the focused, concurrency,
+  KASAN, lockdep, PREEMPT_RT, and adjacent signal matrices.
+
 Boundary-retained inventory
 ---------------------------
 
@@ -1112,7 +1147,7 @@ Public ABI
   ``include/linux/dmapool.h``, ``include/linux/dmapool-rust.h``,
   ``include/linux/idr.h``, ``include/linux/idr-rust.h``,
   ``include/linux/xarray.h``, ``include/linux/xarray-rust.h``,
-  ``include/linux/mutex.h``,
+  ``include/linux/mutex.h``, ``include/linux/sched/signal.h``,
   ``include/linux/ww_mutex.h``, and ``include/linux/rwsem.h``.
 
   Reason: Existing callers and loadable modules use the stable C ABI.
@@ -3128,6 +3163,28 @@ Pending signal dequeue shared boundary
   Exit condition: Rust owns the signal queue representation and all queue
   mutation, timer, classification, and lock contracts used by dequeue.
 
+Pending signal recalculation shared boundary
+  Status: ``boundary-retained``.
+
+  Owner: ``kernel/signal.c``, ``rust/helpers/signal_pending_recalc.c``,
+  ``include/linux/sched/signal.h``, and
+  ``include/linux/signal-pending-recalc-rust.h``.
+
+  Reason: C and Rust access the same task, signal-set, job-control, and
+  cgroup-freezer state. Thread flags, freezer queries, signal-handler locking,
+  and ordinary export metadata remain C interfaces.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT runs exercise
+  local and shared pending sets, blocked signals, job-control reasons, cgroup
+  freezing, stale-flag clearing, and the fork lock wrapper at SMP1 and SMP4.
+
+  Risk: A thread-flag, freezer, or lock-contract change can make Rust publish
+  the wrong pending state or clear a flag outside the valid current-task
+  context.
+
+  Exit condition: Rust owns the referenced task and signal state, thread-flag
+  operations, freezer queries, signal-handler locking, and export metadata.
+
 The lock-less list boundary is valid only while the inline producer paths,
 intrusive layouts, and atomic semantics remain shared ABI. A boundary entry
 does not transfer policy, retry decisions, state transitions, or exported
@@ -3217,6 +3274,12 @@ POSIX timer operations, signal classification, and signal-handler lock
 assertion remain named C boundaries. Rust defines every production dequeue
 entry and owns every queue-class, signal-number, synchronous-priority,
 timer-retry, stop-marker, and pending-bit decision.
+
+The pending signal recalculation boundary is valid only while the shared task
+and signal layouts, job-control state, thread-flag operations, cgroup and
+freezer queries, signal-handler locking, and ordinary export metadata remain
+named C boundaries. Rust defines all three production entries and owns every
+pending-set, freezer, stale-flag, current-task, and fork lock decision.
 
 The address-space lifetime boundary is valid only while the shared
 ``mm_users`` layout, task flags, task lock, task-mm access, sleep diagnostic,

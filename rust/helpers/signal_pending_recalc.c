@@ -35,3 +35,15 @@ rust_helper_signal_pending_recalc_freezing(struct task_struct *task)
 {
 	return freezing(task);
 }
+
+__rust_helper void
+rust_helper_signal_pending_recalc_lock(struct task_struct *task)
+{
+	spin_lock_irq(&task->sighand->siglock);
+}
+
+__rust_helper void
+rust_helper_signal_pending_recalc_unlock(struct task_struct *task)
+{
+	spin_unlock_irq(&task->sighand->siglock);
+}

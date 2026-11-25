@@ -241,6 +241,26 @@ static void signal_pending_recalc_test_run_current(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, 0,
 			rust_signal_pending_recalc_test_clear_count());
 #endif
+
+	signal_pending_recalc_test_reset();
+	signal_pending_recalc_test_set_pending(&current->pending, SIGUSR1);
+	calculate_sigpending();
+	KUNIT_EXPECT_TRUE(test,
+			  test_tsk_thread_flag(current, TIF_SIGPENDING));
+#ifdef CONFIG_RUST_SIGNAL_PENDING_RECALC
+	KUNIT_EXPECT_EQ(test, 1,
+			rust_signal_pending_recalc_test_recalc_count());
+	KUNIT_EXPECT_EQ(test, 1,
+			rust_signal_pending_recalc_test_tsk_count());
+	KUNIT_EXPECT_EQ(test, 1,
+			rust_signal_pending_recalc_test_set_count());
+	KUNIT_EXPECT_EQ(test, 0,
+			rust_signal_pending_recalc_test_freezing_count());
+	KUNIT_EXPECT_EQ(test, 0,
+			rust_signal_pending_recalc_test_clear_check_count());
+	KUNIT_EXPECT_EQ(test, 0,
+			rust_signal_pending_recalc_test_clear_count());
+#endif
 }
 
 static void signal_pending_recalc_test_suite_run(struct kunit *test)
