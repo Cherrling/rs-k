@@ -34,7 +34,6 @@
 #include <linux/init.h>
 #include <linux/rculist.h>
 #include <linux/memblock.h>
-#include <linux/pid-allocation-rust.h>
 #include <linux/pid-association-rust.h>
 #include <linux/pid-number-rust.h>
 #include <linux/pid-rust.h>
@@ -184,23 +183,7 @@ void free_pids(struct pid **pids)
 
 #endif /* CONFIG_RUST_PID_LIFECYCLE */
 
-#ifdef CONFIG_RUST_PID_ALLOCATION
-
-struct pid *alloc_pid(struct pid_namespace *ns, pid_t *arg_set_tid,
-		      size_t arg_set_tid_size)
-{
-	struct pid *pid = NULL;
-	int ret;
-
-	ret = rust_pid_alloc(ns, arg_set_tid, arg_set_tid_size, &pid);
-	if (unlikely(ret))
-		return ERR_PTR(ret);
-
-	return pid;
-}
-
-#else /* !CONFIG_RUST_PID_ALLOCATION */
-
+#ifndef CONFIG_RUST_PID_ALLOCATION
 struct pid *alloc_pid(struct pid_namespace *ns, pid_t *arg_set_tid,
 		      size_t arg_set_tid_size)
 {
@@ -405,7 +388,7 @@ out_abort:
 	return ERR_PTR(retval);
 }
 
-#endif /* CONFIG_RUST_PID_ALLOCATION */
+#endif /* !CONFIG_RUST_PID_ALLOCATION */
 
 void disable_pid_allocation(struct pid_namespace *ns)
 {

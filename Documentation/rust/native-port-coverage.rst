@@ -284,6 +284,43 @@ Task work queues
   entries remain unexported. C fallback configurations retain the complete
   implementations.
 
+Native PID allocation
+  Status: ``migrated``.
+
+  Evidence: :doc:`pid-allocation`.
+
+  Rust directly defines the production ``alloc_pid()`` entry. Rust owns
+  set_tid validation, namespace traversal, IDR allocation, retry selection,
+  error mapping, partial-failure rollback, publication, and pidfs failure
+  handling. C retains the shared PID and namespace layouts, cache allocation,
+  IDR primitives, locks, capability checks, namespace references, and pidfs
+  insertion. The entry remains unexported. C fallback and C-only
+  configurations retain the complete implementation.
+
+  Test: Native completed three SMP4 and one SMP1 boot with all eight focused
+  cases passing. Fallback and C-only each passed six cases at SMP4 and SMP1.
+  KASAN, lockdep, and PREEMPT_RT each passed all eight cases at SMP4 and SMP1.
+  All focused logs are free of failures and diagnostics. The native SMP4
+  adjacent PID lifecycle, association, number, task release, signal exit, and
+  task exit notification suites passed 22 of 22 cases.
+
+  Symbol inspection shows that native ``rust/kernel.o`` defines ``alloc_pid``
+  and native ``kernel/pid.o`` defines no implementation. The linked image has
+  one ``alloc_pid`` definition, no ``rust_pid_alloc`` wrapper, no export
+  entry, and no unresolved symbol.
+
+  The production Clippy build produced ``bzImage`` and modules. Its four-vCPU
+  KVM boot reached the expected missing-root-filesystem panic without an
+  unexpected diagnostic. A second production build disabled
+  ``CONFIG_PID_NS``, retained the Rust definition, and reached the same
+  expected panic.
+
+  Risk: A wrong validation, retry, rollback, publication, or namespace count
+  transition can leak an ID, expose a partial PID, or return the wrong error.
+  The exit condition is one production definition in every configuration
+  class, preserved error-pointer semantics, and a clean focused and adjacent
+  matrix.
+
 Native PID lifecycle release
   Status: ``migrated``.
 

@@ -45,9 +45,6 @@ void rust_helper_pid_alloc_count_inc(struct pid_namespace *ns);
 void rust_helper_pid_alloc_active_get(struct pid_namespace *ns);
 int rust_helper_pid_alloc_pidfs_add(struct pid *pid);
 
-int rust_pid_alloc(struct pid_namespace *ns, pid_t *arg_set_tid,
-		   size_t arg_set_tid_size, struct pid **out_pid);
-
 #ifdef CONFIG_PID_ALLOCATION_KUNIT_TEST
 int rust_pid_alloc_test_pid_min(unsigned int cursor);
 int rust_pid_alloc_test_map_idr_error(int error, unsigned int cyclic);

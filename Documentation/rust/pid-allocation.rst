@@ -31,13 +31,13 @@ The Rust code owns these decisions:
 Entry points and ownership
 --------------------------
 
-The public C ``alloc_pid()`` entry point remains in ``kernel/pid.c``.  When
-the option is enabled, its C ABI adapter calls ``rust_pid_alloc()`` and the
-original C state machine is compiled out.
+Rust directly defines the production ``alloc_pid()`` entry.  The native build
+compiles the original C implementation out of ``kernel/pid.c``.  The C
+fallback and C-only configurations retain the complete implementation.
 
-Rust returns a kernel error code and a PID pointer through an output argument.
-The C adapter converts a non-zero result with ``ERR_PTR()``.  Success returns
-the PID pointer without additional C processing.
+Rust returns either a live PID pointer or an ``ERR_PTR()`` value.  Error
+encoding, state transitions, allocation retry, rollback, publication, and
+pidfs failure handling all remain in Rust.
 
 Retained C boundary
 -------------------
@@ -91,32 +91,45 @@ normal ``free_pid()`` release path and returns ``-ENOMEM``.
 Validation record
 -----------------
 
-The x86_64 validation used PREEMPT_RT and lockdep for every KUnit
-configuration.  The KASAN configuration also used generic inline KASAN.
+The x86_64 validation used the final source for every KUnit configuration.
+KASAN used Clang, ``LLVM=1``, and generic inline KASAN.
 
 .. list-table::
-   :widths: 42 16 16 26
+   :widths: 38 24 16 22
    :header-rows: 1
 
    * - Configuration
-     - Runs
+     - Boots
      - Cases
      - Result
-   * - Rust PID allocation
-     - 3
+   * - Native
+     - 3 SMP4, 1 SMP1
      - 8 of 8
      - Pass
-   * - C PID allocation fallback
-     - 3
+   * - Rust fallback
+     - SMP4, SMP1
      - 6 of 6
      - Pass
-   * - KASAN with Rust PID allocation
-     - 3
+   * - C-only
+     - SMP4, SMP1
+     - 6 of 6
+     - Pass
+   * - KASAN with native
+     - SMP4, SMP1
+     - 8 of 8
+     - Pass
+   * - Lockdep with native
+     - SMP4, SMP1
+     - 8 of 8
+     - Pass
+   * - PREEMPT_RT with native
+     - SMP4, SMP1
      - 8 of 8
      - Pass
 
-The two Rust-only selector tests are absent from the C fallback run.  The six
-implementation-independent integration tests ran in every configuration.
+The two Rust-only selector tests are absent from the fallback and C-only runs.
+The six implementation-independent integration tests ran in every
+configuration.
 
 The tests cover the cyclic lower bound, IDR error mapping, default allocation,
 invalid set_tid sizes and values, explicit-ID collision, nested namespace
@@ -125,14 +138,18 @@ The nested rollback case first verifies child-reaper rejection rollback.  It
 then allocates an inner ID, fails an outer explicit ID lookup, verifies
 inner-ID rollback, and reuses the inner namespace.
 
-Every log reported zero failures and no BUG, warning, KASAN report, Oops,
-refcount report, lockdep complaint, or kernel panic.
+Every KUnit log reported zero failures and no BUG, warning, KASAN report,
+Oops, refcount report, lockdep complaint, or kernel panic.
 
-The production build used Clippy with KUnit, KASAN, and lockdep disabled.  It
-contains ``rust_pid_alloc()`` and the public C ``alloc_pid()`` adapter calls
-that Rust symbol.  Test selector symbols are absent, and
-``llvm-nm -u vmlinux`` reports no unresolved symbols.
+The native SMP4 regression image enabled the PID lifecycle, PID association,
+PID number, zombie task release, signal-aware exit, and task exit notification
+suites.  The adjacent suites passed 22 of 22 cases.
 
+Native ``rust/kernel.o`` defines ``alloc_pid()`` and native ``kernel/pid.o``
+contains no implementation.  The linked image contains one definition, no
+``rust_pid_alloc()`` wrapper, no export-table entry, and no unresolved symbol.
+
+The production build used Clippy and produced both ``bzImage`` and modules.
 The production image starts with four vCPUs under KVM.  PID allocation,
 process creation, early scheduling, and namespace setup complete before the
 image reaches the expected missing-root-filesystem panic.  The boot log
@@ -141,8 +158,8 @@ lockdep complaint.
 
 A second production configuration disabled ``CONFIG_PID_NS`` while it kept the
 Rust PID allocator enabled.  It passed the full build, linked with no
-unresolved symbols, kept ``alloc_pid()`` calling Rust, and reached the same
-expected missing-root-filesystem panic without an unexpected diagnostic.
+unresolved symbols, kept ``alloc_pid()`` defined by Rust, and reached the
+same expected missing-root-filesystem panic without an unexpected diagnostic.
 
 Review conditions
 -----------------

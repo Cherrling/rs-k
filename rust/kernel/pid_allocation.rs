@@ -39,6 +39,10 @@ fn map_idr_error(error: c_int, cyclic: bool) -> c_int {
     }
 }
 
+fn error_ptr(error: c_int) -> *mut Pid {
+    crate::error::Error::from_errno(error).to_ptr()
+}
+
 /// Returns the first cyclic PID candidate for an IDR cursor.
 #[cfg(CONFIG_PID_ALLOCATION_KUNIT_TEST)]
 #[export]
@@ -58,14 +62,14 @@ extern "C" fn rust_pid_alloc_test_map_idr_error(error: c_int, cyclic: u32) -> c_
 /// # Safety
 ///
 /// `ns` and `pid` must describe a successful cache allocation. This function
-/// consumes the PID cache storage.
-unsafe fn abort(pid: *mut Pid, ns: *mut PidNamespace, retval: c_int) -> c_int {
+/// consumes the PID cache storage and returns an error pointer.
+unsafe fn abort(pid: *mut Pid, ns: *mut PidNamespace, retval: c_int) -> *mut Pid {
     // SAFETY: The allocation path acquired this namespace reference.
     unsafe { bindings::rust_helper_pid_alloc_put_ns(ns) };
     // SAFETY: The PID was allocated from this namespace cache and is not
     // published.
     unsafe { bindings::rust_helper_pid_alloc_cache_free(pid, ns) };
-    retval
+    error_ptr(retval)
 }
 
 /// Rolls back identifiers allocated before publication.
@@ -81,7 +85,7 @@ unsafe fn out_free(
     level: isize,
     first: isize,
     retval: c_int,
-) -> c_int {
+) -> *mut Pid {
     let mut index = first;
 
     while index <= level {
@@ -131,34 +135,30 @@ unsafe fn release_published_pid(pid: *mut Pid) {
 /// # Safety
 ///
 /// `ns` must be live. If `arg_set_tid_size` is non-zero, `arg_set_tid` must
-/// point to that many readable identifiers. `out_pid` must point to writable
-/// storage and must not alias the input array.
+/// point to that many readable identifiers.
 #[export]
-unsafe extern "C" fn rust_pid_alloc(
+unsafe extern "C" fn alloc_pid(
     ns: *mut PidNamespace,
     arg_set_tid: *mut i32,
     arg_set_tid_size: usize,
-    out_pid: *mut *mut Pid,
-) -> c_int {
-    if out_pid.is_null() || ns.is_null() {
-        return -errno(bindings::EINVAL);
+) -> *mut Pid {
+    if ns.is_null() {
+        return error_ptr(-errno(bindings::EINVAL));
     }
-    // SAFETY: The caller guarantees writable output storage.
-    unsafe { *out_pid = core::ptr::null_mut() };
 
     // SAFETY: The caller guarantees a live namespace.
     let level = unsafe { (*ns).level as usize };
     if arg_set_tid_size > level + 1 {
-        return -errno(bindings::EINVAL);
+        return error_ptr(-errno(bindings::EINVAL));
     }
     if arg_set_tid_size != 0 && arg_set_tid.is_null() {
-        return -errno(bindings::EINVAL);
+        return error_ptr(-errno(bindings::EINVAL));
     }
 
     // SAFETY: The namespace is live and owns the PID cache.
     let pid = unsafe { bindings::rust_helper_pid_alloc_cache_alloc(ns) };
     if pid.is_null() {
-        return -errno(bindings::ENOMEM);
+        return error_ptr(-errno(bindings::ENOMEM));
     }
 
     // SAFETY: `pid` is the new cache object and `ns` is live.
@@ -313,10 +313,8 @@ unsafe extern "C" fn rust_pid_alloc(
     if retval != 0 {
         // SAFETY: This consumes the published PID and defers its release.
         unsafe { release_published_pid(pid) };
-        return -errno(bindings::ENOMEM);
+        return error_ptr(-errno(bindings::ENOMEM));
     }
 
-    // SAFETY: The caller guarantees writable output storage.
-    unsafe { *out_pid = pid };
-    0
+    pid
 }

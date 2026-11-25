@@ -2308,10 +2308,10 @@ config RUST_PID_ALLOCATION
 	depends on RUST
 	default y
 	help
-	  Use Rust for the production PID allocation state machine. Rust owns
-	  set_tid validation, namespace traversal, IDR preload retry selection,
-	  identify allocation, partial-failure rollback, namespace publication,
-	  and pidfs insertion failure handling.
+	  Use Rust to directly define the production alloc_pid() entry. Rust
+	  owns set_tid validation, namespace traversal, IDR preload retry
+	  selection, identifier allocation, partial-failure rollback, namespace
+	  publication, and pidfs insertion failure handling.
 
 	  PID cache allocation, IDR primitive calls, locking, capability checks,
 	  namespace reference primitives, and pidfs insertion remain in C.
