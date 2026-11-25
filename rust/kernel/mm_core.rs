@@ -2,9 +2,10 @@
 
 //! Native `mm_users` lifetime and task address-space acquisition.
 //!
-//! Rust owns the task-mm acquisition decision, atomic `mm_users` updates, the
+//! Rust directly defines `get_task_mm()`, `mmput()`, and `mmput_async()`.
+//! It owns the task-mm acquisition decision, atomic `mm_users` updates, the
 //! synchronous finalization decision, and asynchronous finalization queueing.
-//! C retains task locking, the final address-space teardown, and workqueue
+//! C retains task locking, final address-space teardown, and workqueue
 //! primitives.
 
 use crate::bindings;
@@ -128,7 +129,7 @@ unsafe fn finish_put(mm: *mut Mm, asynchronous: bool) {
 ///
 /// `task` must be a live task reference for the duration of this call.
 #[export]
-unsafe extern "C" fn rust_mm_get_task(task: *mut Task) -> *mut Mm {
+unsafe extern "C" fn get_task_mm(task: *mut Task) -> *mut Mm {
     // SAFETY: The caller supplies a live task.
     let kernel_thread = unsafe { bindings::rust_helper_mm_task_is_kernel_thread(task) };
     if get_task_plan(kernel_thread, true) == GET_ACTION_NONE {
@@ -175,7 +176,9 @@ pub(crate) unsafe fn put_sync(mm: *mut Mm) {
 /// `mm` must point to a live `struct mm_struct` and the caller must own one
 /// user reference. The call must occur in sleepable context.
 #[export]
-unsafe extern "C" fn rust_mm_put(mm: *mut Mm) {
+unsafe extern "C" fn mmput(mm: *mut Mm) {
+    // SAFETY: The caller satisfies the sleepable-context contract.
+    unsafe { bindings::rust_helper_mm_put_might_sleep() };
     // SAFETY: The caller owns one live user reference.
     unsafe { put_sync(mm) };
 }
@@ -187,7 +190,7 @@ unsafe extern "C" fn rust_mm_put(mm: *mut Mm) {
 /// `mm` must point to a live `struct mm_struct` and the caller must own one
 /// user reference.
 #[export]
-unsafe extern "C" fn rust_mm_put_async(mm: *mut Mm) {
+unsafe extern "C" fn mmput_async(mm: *mut Mm) {
     // SAFETY: The caller owns one live user reference.
     let became_zero = unsafe { mmput_dec_and_test(mm) };
     let plan = put_plan(became_zero, true);

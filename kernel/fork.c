@@ -1840,6 +1840,11 @@ struct mm_struct *rust_helper_mm_task_mm(struct task_struct *task)
 	return task->mm;
 }
 
+void rust_helper_mm_put_might_sleep(void)
+{
+	might_sleep();
+}
+
 void rust_helper_mm_put_final(struct mm_struct *mm)
 {
 	__mmput(mm);
@@ -1849,18 +1854,16 @@ void rust_helper_mm_put_final(struct mm_struct *mm)
 /*
  * Decrement the use count and release all resources for an mm.
  */
+#ifndef CONFIG_RUST_MM_LIFETIME
 void mmput(struct mm_struct *mm)
 {
 	might_sleep();
 
-#ifdef CONFIG_RUST_MM_LIFETIME
-	rust_mm_put(mm);
-#else
 	if (atomic_dec_and_test(&mm->mm_users))
 		__mmput(mm);
-#endif
 }
 EXPORT_SYMBOL_GPL(mmput);
+#endif
 
 #if defined(CONFIG_MMU) || defined(CONFIG_FUTEX_PRIVATE_HASH)
 static void mmput_async_fn(struct work_struct *work)
@@ -1879,18 +1882,16 @@ void rust_helper_mm_put_async_schedule(struct mm_struct *mm)
 }
 #endif
 
+#ifndef CONFIG_RUST_MM_LIFETIME
 void mmput_async(struct mm_struct *mm)
 {
-#ifdef CONFIG_RUST_MM_LIFETIME
-	rust_mm_put_async(mm);
-#else
 	if (atomic_dec_and_test(&mm->mm_users)) {
 		INIT_WORK(&mm->async_put_work, mmput_async_fn);
 		schedule_work(&mm->async_put_work);
 	}
-#endif
 }
 EXPORT_SYMBOL_GPL(mmput_async);
+#endif
 #endif
 
 /**
@@ -2038,11 +2039,9 @@ struct file *get_task_exe_file(struct task_struct *task)
  * bumping up the use count.  User must release the mm via mmput()
  * after use.  Typically used by /proc and ptrace.
  */
+#ifndef CONFIG_RUST_MM_LIFETIME
 struct mm_struct *get_task_mm(struct task_struct *task)
 {
-#ifdef CONFIG_RUST_MM_LIFETIME
-	return rust_mm_get_task(task);
-#else
 	struct mm_struct *mm;
 
 	if (task->flags & PF_KTHREAD)
@@ -2054,9 +2053,9 @@ struct mm_struct *get_task_mm(struct task_struct *task)
 		mmget(mm);
 	task_unlock(task);
 	return mm;
-#endif
 }
 EXPORT_SYMBOL_GPL(get_task_mm);
+#endif
 
 static bool may_access_mm(struct mm_struct *mm, struct task_struct *task, unsigned int mode)
 {

@@ -284,6 +284,45 @@ Task work queues
   entries remain unexported. C fallback configurations retain the complete
   implementations.
 
+Address-space user lifetime
+  Status: ``migrated``.
+
+  Evidence: :doc:`mm-lifetime`.
+
+  Rust directly defines ``get_task_mm()``, ``mmput()``, and
+  ``mmput_async()``. Rust owns kernel-thread rejection, the task-mm
+  acquisition decision, the lock-held user-count increment, both user-count
+  decrements, sleep-context diagnostic ordering, synchronous finalization
+  selection, asynchronous work scheduling selection, and the original GPL
+  export class. C retains task flags and locking, task-mm field access, the
+  shared atomic-field address and layout checks, the sleep-context diagnostic,
+  final teardown dispatch, work initialization, work queueing, and callback
+  execution. C fallback and C-only configurations retain the complete
+  implementations.
+
+  Test: Native, C-lifetime/Rust-teardown, C-only, KASAN, lockdep, and
+  PREEMPT_RT configurations passed the focused suite at one and four virtual
+  CPUs. Native SMP4 passed 6 of 6 cases in three consecutive runs. Native,
+  KASAN, lockdep, and PREEMPT_RT SMP1 runs passed 6 of 6 cases. The fallback
+  passed 4 of 4 cases and C-only passed 3 of 3 cases at both CPU counts. An
+  adjacent native SMP4 boot passed ``copy_mm``, ``exit_mmap``, ``dup_mmap``,
+  ``vma_unmap``, ``dup_task_struct``, ``task_teardown``, and ``task_release``.
+
+  Symbol inspection shows that native ``rust/kernel.o`` defines all three
+  entries and native ``kernel/fork.o`` contains only the applicable undefined
+  references. Fallback and C-only objects define all three entries in
+  ``kernel/fork.o`` and none in Rust. Every configuration preserves
+  ``EXPORT_SYMBOL_GPL``. Each linked image has one strong definition per
+  entry, and the production image has no unresolved symbol.
+
+  Risk: A wrong atomic ordering or count transition can release an address
+  space too early or leak it forever. A task-lock or task-mm mistake can
+  acquire the wrong address space. Moving the sleep diagnostic can lose a
+  valid atomic-context report. The exit condition is one production definition
+  per entry in every configuration class, unchanged GPL export classes, and a
+  clean pass of the complete lifetime, KASAN, lockdep, PREEMPT_RT, and adjacent
+  lifecycle matrices.
+
 IRQ work execution
   Status: ``migrated``.
 
@@ -2051,6 +2090,28 @@ Task work primitive helpers
   Exit condition: Approved Rust task, lock, atomic, notification, and
   scheduler abstractions preserve the complete helper contracts.
 
+Address-space lifetime layout and primitive boundary
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/mm-rust.h``, ``include/linux/mm_types.h``,
+  ``include/linux/sched.h``, ``kernel/fork.c``, and
+  ``rust/kernel/mm_core.rs``.
+
+  Reason: C and Rust share the ``mm_users`` field and atomic representation,
+  task flags, task lock, task-mm pointer, sleep-context assertion, final
+  ``__mmput()`` destination, and asynchronous work storage and callback.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT runs exercise
+  synthetic task-mm acquisition, synchronous release, asynchronous release,
+  field layout checks, and real finalization.
+
+  Risk: A layout, lock, ordering, or callback mismatch can corrupt the user
+  count, acquire a replaced address space, or finalize it in the wrong
+  context.
+
+  Exit condition: Approved Rust task, lock, atomic-field, finalization, and
+  workqueue abstractions preserve the complete helper contracts.
+
 IRQ work layout and callback ABI
   Status: ``boundary-retained``.
 
@@ -2808,6 +2869,12 @@ callback layout, task PI lock, atomic primitives, notification flags,
 diagnostics, IRQ work, scheduler progress, and unexported symbol policy remain
 named C boundaries. Rust defines every public entry and owns every enqueue,
 cancellation, detachment, dispatch, exit, and reentrant-drain decision.
+
+The address-space lifetime boundary is valid only while the shared
+``mm_users`` layout, task flags, task lock, task-mm access, sleep diagnostic,
+finalization destination, asynchronous work storage, and callback remain named
+C boundaries. Rust defines every public entry and owns every acquisition,
+count, release, and queue decision.
 
 The IRQ work boundary is valid only while the shared work and callback layout,
 per-CPU lists, interrupt delivery, hotplug and PREEMPT_RT worker lifecycle,

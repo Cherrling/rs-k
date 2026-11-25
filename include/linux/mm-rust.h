@@ -21,12 +21,9 @@ bool rust_helper_mm_task_is_kernel_thread(struct task_struct *task);
 void rust_helper_mm_task_lock(struct task_struct *task);
 void rust_helper_mm_task_unlock(struct task_struct *task);
 struct mm_struct *rust_helper_mm_task_mm(struct task_struct *task);
+void rust_helper_mm_put_might_sleep(void);
 void rust_helper_mm_put_final(struct mm_struct *mm);
 void rust_helper_mm_put_async_schedule(struct mm_struct *mm);
-
-struct mm_struct *rust_mm_get_task(struct task_struct *task);
-void rust_mm_put(struct mm_struct *mm);
-void rust_mm_put_async(struct mm_struct *mm);
 
 #ifdef CONFIG_KUNIT
 unsigned int rust_mm_get_task_plan_select(bool kernel_thread, bool has_mm);

@@ -6,10 +6,10 @@ Native Rust Address-Space Lifetime
 Status and scope
 ----------------
 
-The ``CONFIG_RUST_MM_LIFETIME`` option selects native Rust for the production
-``mm_users`` lifetime path. The configuration default is enabled when Rust
-support and an MMU are available. The C implementation remains available as a
-fallback.
+The ``CONFIG_RUST_MM_LIFETIME`` option selects direct Rust definitions of the
+production ``mm_users`` lifetime entries. The configuration default is enabled
+when Rust support and an MMU are available. The complete C implementation is
+selected only when the Rust option is disabled.
 
 This unit covers three public entry points:
 
@@ -20,8 +20,8 @@ This unit covers three public entry points:
 The migration excludes device drivers. Final address-space teardown remains in
 C when ``CONFIG_RUST_MM_TEARDOWN`` is disabled. When that option is enabled,
 Rust owns the final teardown orchestration described in
-``Documentation/rust/mm-teardown.rst``. This unit does not change the public C
-ABI.
+``Documentation/rust/mm-teardown.rst``. Rust exports the same three public GPL
+symbols, so this unit does not change the public C ABI.
 
 The Rust code owns these production decisions:
 
@@ -35,15 +35,11 @@ The Rust code owns these production decisions:
 Entry points and ownership
 --------------------------
 
-The exported functions in ``kernel/fork.c`` remain C ABI adapters. When the
-Rust option is enabled, they call these Rust production functions:
-
-* ``rust_mm_get_task()``
-* ``rust_mm_put()``
-* ``rust_mm_put_async()``
-
-The original C lifetime decisions are compiled out for these entry points.
-The C adapter for ``mmput()`` keeps ``might_sleep()`` outside the Rust call.
+``rust/kernel/mm_core.rs`` directly defines ``get_task_mm()``, ``mmput()``,
+and ``mmput_async()``. These functions use the production names and carry the
+original GPL export class. The C definitions and export records in
+``kernel/fork.c`` compile only when ``CONFIG_RUST_MM_LIFETIME`` is disabled.
+Rust owns the complete decision and helper order after entry.
 
 The Rust implementation uses these narrow C helpers:
 
@@ -53,6 +49,8 @@ The Rust implementation uses these narrow C helpers:
 * ``rust_helper_mm_task_lock()`` and ``rust_helper_mm_task_unlock()`` acquire
   and release the existing task lock.
 * ``rust_helper_mm_task_mm()`` reads ``task->mm`` while the task lock is held.
+* ``rust_helper_mm_put_might_sleep()`` preserves the sleep-context diagnostic
+  before synchronous release work.
 * ``rust_helper_mm_put_final()`` calls ``__mmput()`` when native final
   teardown is disabled.
 * ``rust_helper_mm_put_async_schedule()`` initializes and schedules the
@@ -67,9 +65,9 @@ reads ``task->mm``, increments ``mm_users`` while the lock remains held, and
 unlocks the task. The lock prevents ``task->mm`` from being replaced while the
 reference is acquired.
 
-For ``mmput()``, Rust performs one atomic decrement. A result other than one
-returns without finalization. A result equal to one transfers the final user
-reference to ``__mmput()``.
+For ``mmput()``, Rust first runs the sleep-context diagnostic and then performs
+one atomic decrement. A result other than one returns without finalization. A
+result equal to one transfers the final user reference to ``__mmput()``.
 
 For ``mmput_async()``, Rust performs the same atomic decrement. A result equal
 to one transfers the final user reference to ``INIT_WORK()`` and
@@ -107,62 +105,69 @@ Validation record
 -----------------
 
 The x86_64 validation used four vCPUs and 1536 MiB of RAM in QEMU with KVM.
-Each configuration ran three times.
+The native and PREEMPT_RT configurations ran three times at four vCPUs. Every
+configuration also ran once at one vCPU.
 
 .. list-table::
-   :widths: 36 16 16 32
+   :widths: 42 20 14 24
    :header-rows: 1
 
    * - Configuration
      - Runs
      - Cases
      - Result
-   * - Rust implementation with KUnit
-     - 3
-     - 5 of 5
+   * - Native Rust lifetime and teardown
+     - SMP4: 3, SMP1: 1
+     - 6 of 6
      - Pass
-   * - C fallback with KUnit
-     - 3
+   * - C lifetime and Rust teardown
+     - SMP4: 1, SMP1: 1
+     - 4 of 4
+     - Pass
+   * - C lifetime and C teardown
+     - SMP4: 1, SMP1: 1
      - 3 of 3
      - Pass
-   * - Rust implementation with KASAN
-     - 3
-     - 5 of 5
+   * - Native Rust lifetime with KASAN
+     - SMP4: 1, SMP1: 1
+     - 6 of 6
      - Pass
-   * - Rust implementation with lockdep
-     - 3
-     - 5 of 5
+   * - Native Rust lifetime with lockdep
+     - SMP4: 1, SMP1: 1
+     - 6 of 6
      - Pass
-   * - Rust implementation with PREEMPT_RT
-     - 3
-     - 5 of 5
+   * - Native Rust lifetime with PREEMPT_RT
+     - SMP4: 3, SMP1: 1
+     - 6 of 6
      - Pass
 
-After the final source review fixes, the integration configuration was rebuilt
-and rerun three times. Each run passed all five MM lifetime cases with no
-warning, BUG, KASAN report, lockdep complaint, or panic. The C fallback was also
-rebuilt and passed its three lifetime cases.
+The six native cases cover acquisition-plan selection, release-plan selection,
+final-cleanup-plan selection, real task-mm acquisition, synchronous final
+teardown, and asynchronous final teardown. The C lifetime and Rust teardown
+combination runs the four cases that remain applicable. The C-only combination
+runs the three real lifetime cases.
 
-The five Rust cases cover acquisition-plan selection, release-plan selection,
-real task-mm acquisition, synchronous final teardown, and asynchronous final
-teardown. The C fallback runs the three real lifetime cases.
+An adjacent native SMP4 boot passed ``copy_mm`` 5 of 5 cases, ``exit_mmap`` 2
+of 2 cases, ``dup_mmap`` 2 of 2 cases, ``vma_unmap`` 1 of 1 case,
+``dup_task_struct`` 2 of 2 cases, ``task_teardown`` 1 of 1 case, and
+``task_release`` 2 of 2 cases.
 
-The PREEMPT_RT integration kernel also compiled the scheduler wake KUnit test.
-Three targeted runs passed all 37 scheduler wake cases. Three targeted runs
-passed all five MM lifetime cases. The targeted logs had no warning, BUG,
-KASAN report, lockdep complaint, or panic.
+No focused run reported a BUG, warning, KASAN report, lock dependency
+diagnosis, Oops, or unexpected panic.
 
-A separate all-suite diagnostic boot used ``kunit.filter_glob=*`` on the
-PREEMPT_RT kernel. Both target suites passed. That boot also emitted a warning
-from the pre-existing ``rust_spinlock_irq_condvar`` test. The test asserts that
-interrupts are disabled while holding a regular ``spinlock_t``. This assertion
-does not hold under PREEMPT_RT spinlock semantics. The test and helper are not
-changed by this unit.
+Native ``rust/kernel.o`` defines ``get_task_mm()``, ``mmput()``, and
+``mmput_async()``. Native ``kernel/fork.o`` has only undefined references to
+``get_task_mm()`` and ``mmput()``. The C lifetime and C teardown combinations
+have the reverse ownership. Each linked image has one strong definition of
+each entry.
+
+``vmlinux.symvers`` and ``Module.symvers`` record all three symbols with
+``EXPORT_SYMBOL_GPL`` in every configuration. The Rust export header uses
+``EXPORT_SYMBOL_RUST_GPL`` for each native entry.
 
 The final production build used Clippy with KUnit disabled. The image contains
-``rust_mm_get_task``, ``rust_mm_put``, and ``rust_mm_put_async``. The KUnit
-selector symbols are absent. ``llvm-nm -u vmlinux`` reports no unresolved
-symbols.
+the three direct lifetime entries. The KUnit selector symbols are absent.
+``llvm-nm -u vmlinux`` reports no unresolved symbols.
 
 Disassembly shows locked increment and decrement operations. It also shows
 direct calls to the C finalization and asynchronous scheduling boundaries.
