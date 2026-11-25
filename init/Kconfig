@@ -1027,6 +1027,24 @@ config RUST_RWLOCK
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SCHED_WAKE_Q
+	bool "Rust implementation of scheduler deferred wake queues"
+	depends on RUST
+	default y
+	help
+	  Use Rust to directly define the production deferred wake-queue
+	  entries. Rust owns task enqueue deduplication, the queue append
+	  decision, task-reference ownership, safe-add reference transfer,
+	  queue traversal, wakeup order, node clearing, and final task-reference
+	  release.
+
+	  The wake-queue and wake-node layouts, compare-exchange and memory
+	  ordering primitive, task reference operations, runqueue wake entry,
+	  and fallback definitions remain in C.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_SCHED_WAKE_STATE
 	bool "Rust implementation of scheduler wake-state matching"
 	depends on RUST

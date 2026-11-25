@@ -301,6 +301,15 @@ static_assert(offsetof(struct rq, curr) %
 	      __alignof__(((struct rq *)0)->curr) == 0);
 #endif
 
+#ifdef CONFIG_RUST_SCHED_WAKE_Q
+static_assert(RUST_SCHED_WAKE_Q_TAIL == (unsigned long)WAKE_Q_TAIL);
+static_assert(sizeof_field(struct wake_q_head, first) == sizeof(void *));
+static_assert(sizeof_field(struct wake_q_head, lastp) == sizeof(void *));
+static_assert(sizeof_field(struct wake_q_node, next) == sizeof(void *));
+static_assert(offsetof(struct task_struct, wake_q) %
+	      __alignof__(((struct task_struct *)0)->wake_q) == 0);
+#endif
+
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 DEFINE_PER_CPU(struct rnd_state, sched_rnd_state);
 
@@ -1272,6 +1281,19 @@ static inline bool set_nr_if_polling(struct task_struct *p)
 }
 #endif
 
+#ifdef CONFIG_RUST_SCHED_WAKE_Q
+bool rust_helper_sched_wake_q_claim(struct wake_q_node *node)
+{
+	/* Ensure a pending wakeup observes our pending state on failure. */
+	smp_mb__before_atomic();
+	return !cmpxchg_relaxed(&node->next, NULL, WAKE_Q_TAIL);
+}
+
+struct task_struct *rust_helper_sched_wake_q_task(struct wake_q_node *node)
+{
+	return container_of(node, struct task_struct, wake_q);
+}
+#else
 static bool __wake_q_add(struct wake_q_head *head, struct task_struct *task)
 {
 	struct wake_q_node *node = &task->wake_q;
@@ -1358,6 +1380,7 @@ void wake_up_q(struct wake_q_head *head)
 		put_task_struct(task);
 	}
 }
+#endif /* CONFIG_RUST_SCHED_WAKE_Q */
 
 /*
  * resched_curr - mark rq's current task 'to be rescheduled now'.

@@ -5,15 +5,17 @@
 //! Rust owns task-state matching, reschedule requests, idle CPU wakeups, task
 //! CPU selection, runqueue enqueue and dequeue routing, wake activation, wake
 //! preemption, scheduler-class transition routing, previous-task balancing,
-//! next-task selection, core-scheduling task picking, and task blocking
-//! decisions. Rust also directly defines the top-level task wakeup entry and
-//! owns its lock, retry, migration, and queue decisions. C retains raw task and
-//! runqueue locking, warning delivery, scheduling-class implementations, class
-//! ordering anchors, cpumask operations, CPU eligibility queries, fallback
-//! placement, and fatal scheduler invariant reporting.
+//! next-task selection, core-scheduling task picking, deferred wake queues,
+//! and task blocking decisions. Rust also directly defines the top-level task
+//! wakeup entry and owns its lock, retry, migration, and queue decisions. C
+//! retains raw task and runqueue locking, warning delivery, scheduling-class
+//! implementations, class ordering anchors, cpumask operations, CPU
+//! eligibility queries, fallback placement, and fatal scheduler invariant
+//! reporting.
 
 use crate::bindings;
 #[cfg(any(
+    CONFIG_RUST_SCHED_WAKE_Q,
     CONFIG_RUST_SCHED_WAKE_STATE,
     CONFIG_RUST_SCHED_TRY_WAKEUP,
     CONFIG_RUST_SCHED_WAKE_PREEMPT,
@@ -77,6 +79,10 @@ use macros::export;
     CONFIG_RUST_SCHED_CORE_PICK_TASK
 ))]
 type Task = bindings::task_struct;
+#[cfg(CONFIG_RUST_SCHED_WAKE_Q)]
+type WakeQHead = bindings::wake_q_head;
+#[cfg(CONFIG_RUST_SCHED_WAKE_Q)]
+type WakeQNode = bindings::wake_q_node;
 #[cfg(any(
     CONFIG_RUST_SCHED_BLOCK_TASK,
     CONFIG_RUST_SCHED_TRY_WAKEUP,
@@ -124,6 +130,9 @@ type SetNextTaskCallback = unsafe extern "C" fn(rq: *mut Rq, next: *mut Task, fi
 type BalanceCallback = unsafe extern "C" fn(rq: *mut Rq, rf: *mut RqFlags) -> c_int;
 #[cfg(any(CONFIG_RUST_SCHED_PICK_NEXT_TASK, CONFIG_RUST_SCHED_CORE_PICK_TASK))]
 type PickTaskCallback = unsafe extern "C" fn(rq: *mut Rq, rf: *mut RqFlags) -> *mut Task;
+
+#[cfg(CONFIG_RUST_SCHED_WAKE_Q)]
+const WAKE_Q_TAIL: *mut WakeQNode = bindings::RUST_SCHED_WAKE_Q_TAIL as usize as *mut WakeQNode;
 
 #[cfg(any(
     CONFIG_RUST_SCHED_TTWU_RUNNABLE,
@@ -225,6 +234,104 @@ const PICK_ACTION_TRANSITION: u32 = bindings::RUST_SCHED_PICK_ACTION_TRANSITION;
 const CORE_PICK_ACTION_RETURN: u32 = bindings::RUST_SCHED_CORE_PICK_ACTION_RETURN;
 #[cfg(CONFIG_RUST_SCHED_CORE_PICK_TASK)]
 const CORE_PICK_ACTION_CONTINUE: u32 = bindings::RUST_SCHED_CORE_PICK_ACTION_CONTINUE;
+
+/// Claims a task's wake-queue node for the caller.
+///
+/// The pre-atomic barrier and compare-exchange give one caller ownership of
+/// the node before the sequence pointer is appended.
+///
+/// # Safety
+///
+/// `head` and `task` must remain live for the duration of the call. The caller
+/// must provide exclusive access to `head`.
+#[cfg(CONFIG_RUST_SCHED_WAKE_Q)]
+unsafe fn wake_q_add_one(head: *mut WakeQHead, task: *mut Task) -> bool {
+    // SAFETY: The caller guarantees that the task remains live.
+    let node = unsafe { core::ptr::addr_of_mut!((*task).wake_q) };
+    // SAFETY: The caller provides exclusive access to `head`, and the task
+    // remains live across the compare-exchange.
+    if !unsafe { bindings::rust_helper_sched_wake_q_claim(node) } {
+        return false;
+    }
+
+    // SAFETY: The caller provides exclusive access to the context-local head.
+    unsafe { *(*head).lastp = node };
+    // SAFETY: The task's wake-queue node remains live because this function
+    // has claimed it and the caller will keep a task reference until drain.
+    unsafe { (*head).lastp = core::ptr::addr_of_mut!((*node).next) };
+    true
+}
+
+/// Queues a task for a later wakeup and acquires its task reference.
+///
+/// # Safety
+///
+/// `head` must point to valid, exclusively owned wake-queue head storage.
+/// `task` must remain live and be ready to be woken.
+#[cfg(CONFIG_RUST_SCHED_WAKE_Q)]
+#[export]
+unsafe extern "C" fn wake_q_add(head: *mut WakeQHead, task: *mut Task) {
+    // SAFETY: The caller satisfies the wake-queue head and task contracts.
+    if unsafe { wake_q_add_one(head, task) } {
+        // SAFETY: The caller guarantees that the task remains live. The queue
+        // now owns one reference until `wake_up_q()` drains the entry.
+        unsafe { bindings::get_task_struct(task) };
+    }
+}
+
+/// Queues a task for a later wakeup and transfers a caller-owned reference.
+///
+/// If another waker already queued the task, this function releases the
+/// caller-owned reference instead.
+///
+/// # Safety
+///
+/// `head` must point to valid, exclusively owned wake-queue head storage.
+/// `task` must remain live, be ready to be woken, and have a caller-owned
+/// reference suitable for transfer to this function.
+#[cfg(CONFIG_RUST_SCHED_WAKE_Q)]
+#[export]
+unsafe extern "C" fn wake_q_add_safe(head: *mut WakeQHead, task: *mut Task) {
+    // SAFETY: The caller satisfies the wake-queue head and task contracts.
+    if !unsafe { wake_q_add_one(head, task) } {
+        // SAFETY: The caller transferred its reference to this function.
+        unsafe { bindings::put_task_struct(task) };
+    }
+}
+
+/// Wakes every task in a wake queue and releases the queue-owned references.
+///
+/// The head is not reinitialized. Callers that reuse it must call the existing
+/// `wake_q_init()` inline helper after this function returns.
+///
+/// # Safety
+///
+/// `head` must point to a valid wake queue initialized by `wake_q_init()` or
+/// `DEFINE_WAKE_Q()`. Every queued entry must still own one task reference.
+#[cfg(CONFIG_RUST_SCHED_WAKE_Q)]
+#[export]
+unsafe extern "C" fn wake_up_q(head: *mut WakeQHead) {
+    // SAFETY: The caller guarantees that the head is initialized.
+    let mut node = unsafe { (*head).first };
+
+    while node != WAKE_Q_TAIL {
+        // SAFETY: The queue owns a reference to the containing task while the
+        // node is linked.
+        let task = unsafe { bindings::rust_helper_sched_wake_q_task(node) };
+        // SAFETY: The queue entry remains live until this iteration releases
+        // its task reference.
+        let next = unsafe { (*node).next };
+        // SAFETY: The task reference keeps the node live. Clear it before the
+        // wakeup so the task can be queued again after this store.
+        unsafe { core::ptr::addr_of_mut!((*node).next).write_volatile(core::ptr::null_mut()) };
+
+        // SAFETY: The task is live and a wake was published before queueing.
+        unsafe { bindings::wake_up_process(task) };
+        // SAFETY: This releases the reference acquired for the queue entry.
+        unsafe { bindings::put_task_struct(task) };
+        node = next;
+    }
+}
 
 /// Reads the current task wake state.
 ///

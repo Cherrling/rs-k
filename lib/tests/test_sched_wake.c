@@ -12,6 +12,7 @@
 #include <linux/sched.h>
 #include <linux/sched/idle.h>
 #include <linux/sched/smt.h>
+#include <linux/sched/wake_q.h>
 #include <linux/sched-rust.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
@@ -41,6 +42,93 @@ static int sched_wake_test_runnable_thread(void *data)
 
 	return 0;
 }
+
+#ifdef CONFIG_RUST_SCHED_WAKE_Q
+static int sched_wake_q_test_thread(void *data)
+{
+	struct completion *started = data;
+
+	set_current_state(TASK_INTERRUPTIBLE);
+	complete(started);
+	schedule();
+	__set_current_state(TASK_RUNNING);
+
+	return 0;
+}
+
+static struct task_struct *
+sched_wake_q_test_start(struct kunit *test, struct completion *started)
+{
+	struct task_struct *task;
+
+	init_completion(started);
+	task = kthread_create(sched_wake_q_test_thread, started,
+			      "sched-wake-q-test");
+	KUNIT_ASSERT_NOT_ERR_OR_NULL(test, task);
+	KUNIT_ASSERT_EQ(test, 1, wake_up_process(task));
+	wait_for_completion(started);
+	KUNIT_ASSERT_GT(test,
+			wait_task_inactive(task, TASK_INTERRUPTIBLE), 0);
+
+	return task;
+}
+
+static void sched_wake_test_wake_q_refs(struct kunit *test)
+{
+	DEFINE_WAKE_Q(wake_q);
+	struct task_struct *task;
+	struct completion started;
+	int initial_refs;
+
+	task = sched_wake_q_test_start(test, &started);
+	initial_refs = refcount_read(&task->usage);
+
+	wake_q_add(&wake_q, task);
+	KUNIT_EXPECT_PTR_EQ(test, &task->wake_q, wake_q.first);
+	KUNIT_EXPECT_PTR_EQ(test, &task->wake_q.next, wake_q.lastp);
+	KUNIT_EXPECT_EQ(test, initial_refs + 1,
+			refcount_read(&task->usage));
+
+	wake_q_add(&wake_q, task);
+	KUNIT_EXPECT_PTR_EQ(test, &task->wake_q, wake_q.first);
+	KUNIT_EXPECT_PTR_EQ(test, &task->wake_q.next, wake_q.lastp);
+	KUNIT_EXPECT_EQ(test, initial_refs + 1,
+			refcount_read(&task->usage));
+
+	wake_up_q(&wake_q);
+	KUNIT_EXPECT_NULL(test, task->wake_q.next);
+	KUNIT_EXPECT_EQ(test, initial_refs, refcount_read(&task->usage));
+	KUNIT_EXPECT_EQ(test, 0, kthread_stop(task));
+}
+
+static void sched_wake_test_wake_q_safe_refs(struct kunit *test)
+{
+	DEFINE_WAKE_Q(wake_q);
+	struct task_struct *task;
+	struct completion started;
+	int initial_refs;
+
+	task = sched_wake_q_test_start(test, &started);
+	initial_refs = refcount_read(&task->usage);
+
+	get_task_struct(task);
+	wake_q_add_safe(&wake_q, task);
+	KUNIT_EXPECT_PTR_EQ(test, &task->wake_q, wake_q.first);
+	KUNIT_EXPECT_EQ(test, initial_refs + 1,
+			refcount_read(&task->usage));
+
+	get_task_struct(task);
+	wake_q_add_safe(&wake_q, task);
+	KUNIT_EXPECT_PTR_EQ(test, &task->wake_q, wake_q.first);
+	KUNIT_EXPECT_EQ(test, initial_refs + 1,
+			refcount_read(&task->usage));
+
+	wake_up_q(&wake_q);
+	KUNIT_EXPECT_NULL(test, task->wake_q.next);
+	KUNIT_EXPECT_EQ(test, initial_refs, refcount_read(&task->usage));
+	KUNIT_EXPECT_EQ(test, 0, kthread_stop(task));
+}
+#endif
 
 #ifdef CONFIG_RUST_SCHED_BLOCK_TASK
 static int sched_block_test_thread(void *data)
@@ -816,6 +904,10 @@ static void sched_wake_test_runnable_task(struct kunit *test)
 }
 
 static struct kunit_case sched_wake_test_cases[] = {
+#ifdef CONFIG_RUST_SCHED_WAKE_Q
+	KUNIT_CASE(sched_wake_test_wake_q_refs),
+	KUNIT_CASE(sched_wake_test_wake_q_safe_refs),
+#endif
 #ifdef CONFIG_RUST_SCHED_WAKE_STATE
 	KUNIT_CASE(sched_wake_test_state_match),
 	KUNIT_CASE(sched_wake_test_saved_state_transition),

@@ -828,6 +828,9 @@ rust_unexported_symbols := \
 	resched_cpu \
 	select_task_rq \
 	wake_up_if_idle \
+	wake_q_add \
+	wake_q_add_safe \
+	wake_up_q \
 	enqueue_task \
 	dequeue_task \
 	put_prev_task \

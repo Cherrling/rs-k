@@ -1269,6 +1269,46 @@ Scheduler core task pick entry
   complete focused and adjacent test coverage, and clean symbol ownership in
   every configuration class.
 
+Scheduler deferred wake queues
+  Status: ``migrated``.
+
+  Evidence: :doc:`sched`.
+
+  Rust directly defines ``wake_q_add()``, ``wake_q_add_safe()``, and
+  ``wake_up_q()``. Rust owns task-node claiming and deduplication, the
+  context-local tail append, task-reference acquisition and transfer, failed
+  safe-insertion release, insertion-order traversal, node clearing, wake
+  ordering, and final reference release. C retains the wake-head and
+  wake-node layouts, tail sentinel, pre-atomic barrier and compare-exchange,
+  node-to-task conversion, task reference primitives, ``wake_up_process()``,
+  and the complete fallback implementation.
+
+  Test: Native, wake-queue fallback, C-only, KASAN, lockdep, and PREEMPT_RT
+  configurations passed the focused suite at one and four virtual CPUs.
+  Native, KASAN, lockdep, and PREEMPT_RT passed 41 four-vCPU cases and 38
+  one-vCPU cases with 3 skips. The wake-queue fallback passed 39 and 36 cases
+  with 3 one-vCPU skips. C-only passed 4 and 2 cases with 2 one-vCPU skips.
+  The new lifecycle cases passed queue membership, duplicate insertion,
+  reference counts, safe-reference transfer, failed safe insertion, node
+  clearing, and wake delivery. All six configurations passed all 25 hrtimer
+  cases, and native, fallback, and C-only passed all 6 CPU-priority cases.
+  No run reported an unexpected scheduler ``BUG``, warning, KASAN report,
+  lock dependency diagnosis, Oops, or panic.
+
+  Native ``rust/kernel.o`` defines all three entries. Native
+  ``kernel/sched/core.o`` has no production definition for them. The linked
+  image has one strong definition of each entry, no Rust adapter name, no
+  export entry, and no unresolved symbol. The production build enabled all
+  seventeen scheduler Rust options and passed Clippy, Rustdoc, rustfmt,
+  strict checkpatch, focused Sphinx, and an SMT boot to the expected
+  missing-root-filesystem panic.
+
+  Risk: A changed claim ordering, duplicate decision, tail append, reference
+  transfer, node clear, or wake order can lose a wakeup, leak a task, or wake
+  after releasing the task. The exit condition is one production definition
+  per entry in every configuration class, preserved reference ownership, and
+  a clean focused, diagnostic, PREEMPT_RT, and adjacent regression matrix.
+
 Scheduler task runqueue transition entries
   Status: ``migrated``.
 
@@ -1755,6 +1795,28 @@ CPU-priority scheduler shared entry boundary
   Exit condition: Rust owns compatible cpumasks, atomic and barrier
   primitives, scheduler locking, initialization, diagnostics, and lifecycle
   operations without shared C helper entries.
+
+Scheduler deferred wake queue primitive boundary
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/sched-rust.h``, ``include/linux/sched/wake_q.h``,
+  ``kernel/sched/core.c``, and ``rust/kernel/sched_core.rs``.
+
+  Reason: Rust owns all three production entries, but the wake-head and
+  wake-node layouts, tail sentinel, pre-atomic barrier and compare-exchange,
+  node-to-task conversion, task references, and runqueue wake entry are
+  shared scheduler and architecture primitives.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, PREEMPT_RT, SMP1, and SMP4
+  boots exercise queue ownership, duplicate insertion, both reference modes,
+  traversal, node clearing, and wake delivery.
+
+  Risk: A layout, claim, barrier, reference, or wake-order mismatch can lose
+  a wakeup, leak a task reference, or access a task after release.
+
+  Exit condition: Rust owns compatible wake-head and wake-node layouts,
+  atomic claiming, task references, and runqueue wake delivery without shared
+  C helper entries.
 
 Scheduler wake and blocking primitive boundary
   Status: ``boundary-retained``.

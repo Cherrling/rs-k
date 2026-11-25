@@ -6,6 +6,10 @@ Native Rust Scheduler Core Paths
 Status and scope
 ----------------
 
+The ``CONFIG_RUST_SCHED_WAKE_Q`` option selects direct Rust definitions of
+``wake_q_add()``, ``wake_q_add_safe()``, and ``wake_up_q()``. Rust owns queue
+membership, duplicate insertion, task-reference acquisition and transfer,
+queue traversal, node clearing, and wake order.
 The ``CONFIG_RUST_SCHED_WAKE_STATE`` option selects native Rust definitions of
 ``task_state_match()`` and ``ttwu_state_match()`` for task wakeups and
 inactive-task waits.
@@ -66,6 +70,14 @@ Rust owns these production decisions:
 * Giving a current-state match precedence over a saved-state match.
 * Reporting wake success independently from whether the task can run now.
 * Publishing a matched saved state as ``TASK_RUNNING``.
+* Claiming a task's embedded wake-queue node exactly once after the required
+  pre-atomic barrier and appending it to the context-local queue.
+* Acquiring one task reference for an ordinary insertion and transferring a
+  caller-owned reference for a safe insertion. A failed safe insertion
+  releases that caller reference immediately.
+* Traversing queued tasks in insertion order, clearing each embedded node
+  before waking its task, and releasing the queue-owned task reference after
+  each wake.
 * Defining the complete task wakeup entry and owning its preemption-disabled
   lifetime, wake-flag decoration, and current-task fast path.
 * Acquiring and releasing the task pi lock for a non-current target, ordering
@@ -154,18 +166,24 @@ fatal scheduler invariant reporting also remain in C.
 Blocking dequeue and block accounting primitives also remain in C. The KCSAN
 runqueue membership writer assertion, warnings, and queue operations also
 remain in C.
+The wake-queue and wake-node layouts, tail sentinel, compare-exchange and
+pre-atomic memory barrier, node-to-task conversion, task reference operations,
+and ``wake_up_process()`` remain in C.
 
 Entry points and ownership
 --------------------------
 
-``rust/kernel/sched_core.rs`` directly defines ``task_state_match()``,
+``rust/kernel/sched_core.rs`` directly defines ``wake_q_add()``,
+``wake_q_add_safe()``, ``wake_up_q()``, ``task_state_match()``,
 ``ttwu_state_match()``, ``try_to_wake_up()``, ``ttwu_runnable()``,
 ``ttwu_do_activate()``, ``block_task()``, and ``wakeup_preempt()``. Each
 corresponding C fallback is compiled only when its Rust option is disabled.
-The native C object retains undefined references to the seven Rust entries.
 
 The Rust-to-C calls are:
 
+* The wake-node compare-exchange and pre-atomic barrier, node-to-task
+  conversion, task reference acquisition and release, and
+  ``wake_up_process()`` used by deferred wake queues.
 * The invalid debug-preemption wake-mask warning.
 * The task pi-lock acquisition and release used by ``task_state_match()``.
 * The task pi-lock acquisition and release, preemption-count changes, memory
@@ -224,12 +242,29 @@ The Rust-to-C calls are:
 
 Other C-to-Rust production entries are:
 
+* ``wake_q_add()``.
+* ``wake_q_add_safe()``.
+* ``wake_up_q()``.
 * ``put_prev_task()``.
 * ``set_next_task()``.
 * ``put_prev_set_next_task()``.
 * ``prev_balance()``.
 * ``rust_sched_pick_next_task()``.
 * ``pick_task()``.
+
+For deferred wake queues, the caller provides exclusively owned
+``struct wake_q_head`` storage. Rust calls the C compare-exchange primitive
+after the required pre-atomic barrier. A successful claim makes Rust append
+the task's embedded node through the context-local tail pointer.
+``wake_q_add()`` then acquires a queue-owned task reference.
+``wake_q_add_safe()`` instead consumes the caller-owned reference and releases
+it when another waker owns the node.
+
+``wake_up_q()`` traverses entries in insertion order. For each entry, Rust
+reads the next pointer, clears the current node, calls ``wake_up_process()``,
+and releases the queue-owned reference. The head remains at its previous
+value after traversal, matching the original contract. Callers that reuse a
+head call the existing inline ``wake_q_init()`` helper.
 
 ``task_state_match()`` acquires ``p->pi_lock`` with interrupts disabled and
 releases it before returning. The caller of ``ttwu_state_match()`` holds
@@ -1816,11 +1851,73 @@ expected missing-root-filesystem panic without another scheduler ``BUG``,
 warning, KASAN report, lock dependency diagnosis, Oops, or unexpected panic.
 Rustdoc, rustfmt, strict checkpatch, and ``git diff --check`` passed.
 
+The deferred wake-queue ownership unit was validated on 2026-11-26 with
+x86_64 ``LLVM=1`` builds and QEMU 11.1.3. Four-vCPU runs used one socket, two
+cores, and two threads per core. One-vCPU runs covered the single-CPU path.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 20 25 20 15
+
+   * - Configuration
+     - SMP4 wake
+     - SMP1 wake
+     - hrtimer
+     - cpupri
+   * - Full Rust
+     - 41 pass
+     - 38 pass, 3 skip
+     - 25 pass
+     - 6 pass
+   * - Wake-queue fallback
+     - 39 pass
+     - 36 pass, 3 skip
+     - 25 pass
+     - 6 pass
+   * - C-only
+     - 4 pass
+     - 2 pass, 2 skip
+     - 25 pass
+     - 6 pass
+   * - PREEMPT_RT
+     - 41 pass
+     - 38 pass, 3 skip
+     - 25 pass
+     - not run
+   * - KASAN
+     - 41 pass
+     - 38 pass, 3 skip
+     - 25 pass
+     - not run
+   * - lockdep
+     - 41 pass
+     - 38 pass, 3 skip
+     - 25 pass
+     - not run
+
+The two new lifecycle cases verify queue membership, duplicate insertion,
+reference counts, safe-reference transfer, failed safe insertion, node
+clearing, and wake delivery with a sleeping kernel thread. Every focused boot
+reported no failed case, unexpected ``BUG`` or warning, KASAN report, lock
+dependency diagnosis, Oops, or panic.
+
+The no-KUnit production configuration enabled all seventeen scheduler Rust
+options and built with ``CLIPPY=1``. Native ``rust/kernel.o`` defines all
+three wake-queue entries. Native ``kernel/sched/core.o`` contains no
+production definition for them. The linked image contains one strong
+definition of each entry, no Rust adapter name, no export entry, and no
+unresolved symbol.
+Rustdoc, rustfmt, strict checkpatch, and ``git diff --check`` passed. Focused
+Sphinx completed with only pre-existing unrelated reference warnings.
+
 Review conditions
 -----------------
 
 Reopen this boundary decision if any of these conditions changes:
 
+* The wake-queue head, node, or task layout changes.
+* The wake-queue tail sentinel, compare-exchange ordering, task-reference
+  ownership, or ``wake_up_process()`` contract changes.
 * Task current-state or saved-state representation changes.
 * ``try_to_wake_up()`` changes the state-match gate or saved-state protocol.
 * Debug-preemption wake-mask validation changes.

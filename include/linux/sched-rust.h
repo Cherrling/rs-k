@@ -9,8 +9,19 @@ struct rq;
 struct rq_flags;
 struct cpumask;
 struct sched_class;
+struct wake_q_head;
+struct wake_q_node;
 
 void resched_curr(struct rq *rq);
+
+#ifdef CONFIG_RUST_SCHED_WAKE_Q
+
+#define RUST_SCHED_WAKE_Q_TAIL		1UL
+
+bool rust_helper_sched_wake_q_claim(struct wake_q_node *node);
+struct task_struct *rust_helper_sched_wake_q_task(struct wake_q_node *node);
+
+#endif /* CONFIG_RUST_SCHED_WAKE_Q */
 
 #ifdef CONFIG_RUST_SCHED_RESCHED_CURR
 void resched_curr_lazy(struct rq *rq);

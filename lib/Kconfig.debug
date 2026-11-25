@@ -2579,8 +2579,10 @@ config SCHED_WAKE_KUNIT_TEST
 
 	  The state-table, saved-state, activation-plan, block-plan, and
 	  transition-plan cases run with the native Rust implementation
-	  selected. The real wakeup and blocking cases run with either the C
-	  implementation or the native Rust implementation.
+	  selected. Deferred wake-queue lifecycle cases cover queue membership,
+	  duplicate insertion, and both reference-transfer modes. The real
+	  wakeup and blocking cases run with either the C implementation or the
+	  native Rust implementation.
 
 	  If unsure, say N.
 
