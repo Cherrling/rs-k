@@ -6,9 +6,9 @@ Native Rust VMA-Tree Duplication
 Status and scope
 ----------------
 
-The ``CONFIG_RUST_DUP_MMAP`` option selects native Rust for the production
-``dup_mmap()`` path. The option depends on ``CONFIG_RUST_COPY_MM``. The
-original C implementation remains available as a fallback.
+The ``CONFIG_RUST_DUP_MMAP`` option selects the direct Rust definition of the
+production ``dup_mmap()`` entry. The option depends on ``CONFIG_RUST_COPY_MM``.
+The complete C implementation is selected only when the option is disabled.
 
 This unit covers the production duplication of an address space's VMA tree
 and the per-VMA steps needed to make a private child address space. Rust owns
@@ -23,10 +23,11 @@ existing subsystems.
 Entry points and ownership
 --------------------------
 
-The Rust ``copy_mm`` implementation calls ``dup_mmap::duplicate()`` directly
-when ``CONFIG_RUST_DUP_MMAP`` is enabled. The static C ``dup_mmap()`` entry
-also calls ``rust_dup_mmap()``, so other callers enter the same Rust
-implementation.
+``rust/kernel/dup_mmap.rs`` directly defines ``dup_mmap()``. The original C
+definition in ``mm/mmap.c`` compiles only when ``CONFIG_RUST_DUP_MMAP`` is
+disabled. The Rust ``copy_mm`` implementation continues to call
+``dup_mmap::duplicate()`` directly for the private-address-space path. The
+change does not expose a new public kernel ABI.
 
 Rust owns these production decisions:
 
@@ -69,12 +70,14 @@ The C boundary contains:
   ``UNMAP_STATE`` and ``tear_down_vmas()`` interfaces. Shared
   ``unmap_region()`` and ``remove_vma()`` ordering moves to Rust when
   ``CONFIG_RUST_VMA_REGION_TEARDOWN`` is enabled.
+* The private VMA iterator, userfaultfd list, and accounting-charge layout.
 
 These helpers use kernel-private inline functions, C layout rules, subsystem
 interfaces, or a lock contract that Rust cannot currently express without
 duplicating the implementation. The retained cleanup helper performs one
 partial-tree teardown. Rust still decides whether rollback is needed and
-computes the exclusive end address.
+computes the exclusive end address. Rust owns the lifetime of the state object
+on its stack, while C defines the contained mm-private layout.
 
 Locking and invariants
 ----------------------
@@ -145,45 +148,50 @@ The test reports through ``/dev/kmsg`` and powers off QEMU after reporting.
 Validation record
 -----------------
 
-All final runs used four vCPUs. KUnit used 1024 MiB of RAM. The userspace
-test used 1536 MiB of RAM and ran 32 fork rounds per boot.
-
-Each table entry represents three final runs.
+Native KUnit ran three times at four vCPUs and once at one vCPU. KASAN,
+lockdep, and PREEMPT_RT each ran KUnit once at four vCPUs and once at one
+vCPU. Every configuration ran the userspace test once. KUnit used 1024 MiB of
+RAM. Each userspace run used 1536 MiB of RAM and performed 32 fork rounds.
 
 .. list-table::
-   :widths: 36 12 22 30
+   :widths: 36 20 20 24
    :header-rows: 1
 
    * - Configuration
-     - Runs
+     - KUnit runs
      - KUnit result
-     - Userspace result
+     - Userspace
    * - Native Rust
-     - 3
-     - ``dup_mmap`` 2 of 2 pass and ``copy_mm`` 5 of 5 pass
-     - 3 of 3 pass
+     - SMP4: 3, SMP1: 1
+     - ``dup_mmap`` 2 of 2 pass
+     - 1 pass
    * - C fallback
-     - 3
-     - ``copy_mm`` 5 of 5 pass and ``dup_mmap`` suite not built
-     - 3 of 3 pass
+     - Not built
+     - ``dup_mmap`` suite not built
+     - 1 pass
+   * - C-only fallback
+     - Not built
+     - ``dup_mmap`` suite not built
+     - 1 pass
    * - KASAN with native Rust
-     - 3
+     - SMP4: 1, SMP1: 1
      - ``dup_mmap`` 2 of 2 pass
-     - 3 of 3 pass
-   * - PREEMPT_RT with native Rust
-     - 3
-     - ``dup_mmap`` 2 of 2 pass
-     - 3 of 3 pass
+     - 1 pass
    * - lockdep with native Rust
-     - 3
+     - SMP4: 1, SMP1: 1
      - ``dup_mmap`` 2 of 2 pass
-     - 3 of 3 pass
+     - 1 pass
+   * - PREEMPT_RT with native Rust
+     - SMP4: 1, SMP1: 1
+     - ``dup_mmap`` 2 of 2 pass
+     - 1 pass
 
 The final KUnit and userspace logs contain no failed case, BUG, warning,
 KASAN report, lockdep report, RCU stall, oops, or unexpected panic.
-These runs were repeated after the final checkpatch cleanup. The userspace
-cleanup replaced unnecessary ``volatile`` qualifiers with calls that already
-provide the required compiler memory barriers.
+
+An adjacent native SMP4 boot passed ``copy_mm`` 5 of 5 cases,
+``mm_lifetime`` 6 of 6 cases, ``exit_mmap`` 2 of 2 cases, and ``vma_unmap``
+1 of 1 case.
 
 Build and production checks
 ---------------------------
@@ -193,10 +201,10 @@ The final production configuration enabled ``RUST_COPY_MM``,
 were disabled.
 
 The production Clippy build completed with C warnings treated as errors.
-The resulting ``vmlinux`` contains ``rust_dup_mmap`` and the Rust
-``duplicate()`` implementation. It contains no failure-injection or KUnit
-symbols and no undefined symbols. Disassembly shows ``rust_dup_mmap``
-jumping directly to the Rust implementation.
+The resulting ``vmlinux`` contains one direct ``dup_mmap()`` definition and no
+``rust_dup_mmap`` symbol. It contains the Rust ``duplicate()`` implementation,
+no failure-injection or KUnit symbols, and no undefined symbols. Disassembly
+shows ``rust_helper_copy_mm_dup_mmap()`` tail-calling the Rust entry.
 
 The production image booted with four vCPUs and no root filesystem. It
 reached the expected missing-root panic without an earlier warning, BUG,
@@ -223,6 +231,8 @@ Reopen a retained C boundary if any of these conditions changes:
 * Maple-tree, VMA-lock, or complex VMA teardown operations gain a safe Rust
   representation with the same locking contract.
 * Architecture or page-table duplication gains a stable Rust interface.
+* The VMA iterator, userfaultfd list, or accounting-charge layout becomes
+  fully Rust-owned.
 * Reverse-mapping, userfaultfd, or hugetlb interfaces gain suitable Rust
   wrappers.
 * The partial cleanup helper is split into narrower Rust-callable

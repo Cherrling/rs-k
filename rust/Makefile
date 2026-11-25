@@ -829,6 +829,7 @@ rust_unexported_symbols := \
 	wakeup_preempt \
 	try_to_wake_up \
 	exit_mmap \
+	dup_mmap \
 	copy_mm \
 	mm_init \
 	dma_pool_create_node \

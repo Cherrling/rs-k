@@ -13,7 +13,7 @@ struct rust_dup_mmap_state {
 	unsigned long charge;
 };
 
-int rust_dup_mmap(struct mm_struct *mm, struct mm_struct *oldmm);
+int dup_mmap(struct mm_struct *mm, struct mm_struct *oldmm);
 
 void rust_helper_dup_mmap_state_init(struct rust_dup_mmap_state *state,
 				     struct mm_struct *mm);

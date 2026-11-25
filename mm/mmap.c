@@ -2373,11 +2373,9 @@ bool mmap_read_lock_maybe_expand(struct mm_struct *mm,
 	return true;
 }
 
+#ifndef CONFIG_RUST_DUP_MMAP
 __latent_entropy int dup_mmap(struct mm_struct *mm, struct mm_struct *oldmm)
 {
-#ifdef CONFIG_RUST_DUP_MMAP
-	return rust_dup_mmap(mm, oldmm);
-#else
 	struct vm_area_struct *mpnt, *tmp;
 	int retval;
 	unsigned long charge = 0;
@@ -2568,8 +2566,8 @@ fail_nomem:
 	retval = -ENOMEM;
 	vm_unacct_memory(charge);
 	goto loop_out;
-#endif /* !CONFIG_RUST_DUP_MMAP */
 }
+#endif /* !CONFIG_RUST_DUP_MMAP */
 
 #ifdef CONFIG_RUST_DUP_MMAP
 

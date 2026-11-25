@@ -61,7 +61,7 @@ static void test_dup_mmap_success(struct kunit *test)
 	KUNIT_EXPECT_EQ(test, 4UL, oldmm->map_count);
 	KUNIT_EXPECT_EQ(test, 4UL, oldmm->total_vm);
 	KUNIT_EXPECT_EQ(test, 4UL, oldmm->data_vm);
-	KUNIT_EXPECT_EQ(test, 0, rust_dup_mmap(mm, oldmm));
+	KUNIT_EXPECT_EQ(test, 0, dup_mmap(mm, oldmm));
 	KUNIT_EXPECT_EQ(test, 3UL, mm->map_count);
 	KUNIT_EXPECT_EQ(test, 3UL, mm->total_vm);
 	KUNIT_EXPECT_EQ(test, 3UL, mm->data_vm);
@@ -117,7 +117,7 @@ static void test_dup_mmap_failures(struct kunit *test)
 		KUNIT_ASSERT_EQ(test, 0, add_test_vmas(oldmm));
 
 		rust_dup_mmap_test_fail(oldmm, stages[i].stage);
-		error = rust_dup_mmap(mm, oldmm);
+		error = dup_mmap(mm, oldmm);
 		KUNIT_EXPECT_NE(test, 0, error);
 		KUNIT_EXPECT_EQ(test, stages[i].map_count, mm->map_count);
 		KUNIT_EXPECT_EQ(test, stages[i].unstable,

@@ -424,13 +424,14 @@ pub(crate) unsafe fn duplicate(mm: *mut Mm, oldmm: *mut Mm) -> c_int {
     retval
 }
 
-/// Duplicates a VMA tree through the C ABI.
+/// Duplicates all copyable VMAs from one address space into another.
 ///
 /// # Safety
 ///
-/// The requirements of [`duplicate`] apply.
+/// `mm` must be initialized and unpublished. `oldmm` must remain live until
+/// this call returns. Both pointers must remain valid for the entire call.
 #[export]
-unsafe extern "C" fn rust_dup_mmap(mm: *mut Mm, oldmm: *mut Mm) -> c_int {
+unsafe extern "C" fn dup_mmap(mm: *mut Mm, oldmm: *mut Mm) -> c_int {
     // SAFETY: The caller upholds the function requirements.
     unsafe { duplicate(mm, oldmm) }
 }

@@ -1922,12 +1922,14 @@ config RUST_DUP_MMAP
 	depends on RUST_COPY_MM
 	default y
 	help
-	  Use Rust for the production VMA-tree duplication path. Rust owns
-	  locking, VMA iteration, per-VMA duplication, failure depth, rollback,
-	  and final success handling.
+	  Use Rust for the direct definition of dup_mmap(). Rust owns locking,
+	  VMA iteration, per-VMA duplication, failure depth, rollback, and final
+	  success handling.
 
 	  Private VMA allocation, maple-tree primitives, architecture hooks,
-	  reverse mappings, userfaultfd, and page-table copying remain in C.
+	  reverse mappings, userfaultfd, page-table copying, and private state
+	  layout remain in C. The original C entry definition is selected only
+	  when this option is disabled.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

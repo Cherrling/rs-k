@@ -354,6 +354,37 @@ Address-space mapping teardown
   every configuration class and a clean pass of the focused KUnit, userspace,
   KASAN, lockdep, PREEMPT_RT, and adjacent lifecycle matrices.
 
+Address-space VMA-tree duplication
+  Status: ``migrated``.
+
+  Evidence: :doc:`dup-mmap`.
+
+  Rust directly defines ``dup_mmap()``. Rust owns the source and destination
+  mmap lock order, VMA iteration, ``MADV_DONTFORK`` and ``MADV_WIPEONFORK``
+  decisions, accounting, VMA clone and policy sequence, reverse-map insertion,
+  page-range copying, architecture completion, failure depth, partial rollback,
+  unlock order, and userfaultfd completion. C retains maple-tree, VMA, policy,
+  reverse-map, page-table, architecture, and userfaultfd primitives. C also
+  retains the private VMA iterator, userfaultfd list, and charge layout. C
+  fallback and C-only configurations retain the complete implementation.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT
+  configurations exercise successful duplication, every injected failure
+  stage, rollback, and the userspace fork path.
+
+  Symbol inspection shows that native ``rust/kernel.o`` defines ``dup_mmap()``
+  and C caller objects contain only undefined references. Fallback and C-only
+  objects define the entry in ``mm/mmap.o`` and none in Rust. The entry remains
+  unexported, each linked image has one definition, no old ``rust_dup_mmap``
+  symbol remains, and the production image has no unresolved symbol.
+
+  Risk: A lock-order, rollback-depth, accounting, or VMA insertion mistake can
+  expose a partial address space, corrupt the maple tree, leak a file or
+  policy reference, or leave page tables for an unpublished mm. The exit
+  condition is one production definition in every configuration class and a
+  clean pass of the focused KUnit, userspace, KASAN, lockdep, PREEMPT_RT, and
+  adjacent fork matrices.
+
 Address-space construction and copy
   Status: ``migrated``.
 
@@ -2224,6 +2255,30 @@ Address-space mapping teardown primitive boundary
   architecture, trace, accounting, and private state layouts without changing
   lock or ordering contracts.
 
+Address-space VMA-tree duplication primitive boundary
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/dup-mmap-rust.h``, ``mm/mmap.c``, and
+  ``rust/kernel/dup_mmap.rs``.
+
+  Reason: C and Rust share mmap locking, maple-tree, VMA allocation and clone,
+  memory policy, reverse-map, page-range, architecture, userfaultfd, and partial
+  teardown primitives. The state object also contains an mm-private VMA
+  iterator, userfaultfd list, and accounting charge.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT runs exercise
+  success, failure injection at every production stage, rollback, and
+  production fork. Symbol inspection checks direct ownership and removal of
+  the old adapter.
+
+  Risk: A layout or helper mismatch can leak references, leave partial VMAs in
+  the destination, copy the wrong page ranges, or unlock an address space out
+  of order.
+
+  Exit condition: Rust owns equivalent mmap, maple-tree, VMA, policy,
+  reverse-map, page-range, architecture, userfaultfd, and state layouts without
+  changing lock, failure, or rollback contracts.
+
 IRQ work layout and callback ABI
   Status: ``boundary-retained``.
 
@@ -3000,6 +3055,13 @@ page-table removal, architecture hooks, tracing, accounting, and private state
 layout remain named C boundaries. Rust defines the production entry and owns
 every lock transition, iteration, teardown, OOM publication, and accounting
 decision.
+
+The address-space VMA-tree duplication boundary is valid only while mmap
+locking, maple-tree operations, VMA allocation and clone, memory policy,
+reverse-map insertion, page-range copying, architecture duplication,
+userfaultfd records, partial teardown, and private state layout remain named C
+boundaries. Rust defines the production entry and owns every lock-order,
+iteration, duplication, failure, rollback, accounting, and completion decision.
 
 The IRQ work boundary is valid only while the shared work and callback layout,
 per-CPU lists, interrupt delivery, hotplug and PREEMPT_RT worker lifecycle,
