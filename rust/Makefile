@@ -677,6 +677,7 @@ rust_non_gpl_exports := \
 	kobject_get \
 	kobject_get_unless_zero \
 	kobject_put \
+	kobject_del \
 	kset_register \
 	kset_unregister \
 	lockref_get \

@@ -818,11 +818,21 @@ Kobject lifecycle
 
   Evidence: :doc:`native-kobject`.
 
-  Rust defines the four public ``kobject_*`` symbols for typed
-  initialization, reference acquisition, conditional acquisition, and final
-  reference dispatch. The native C object retains only their non-GPL export
-  metadata. C also retains bitfield accessors, diagnostics, the release
-  callback bridge, and final cleanup.
+  Rust defines seven public ``kobject_*`` symbols for typed initialization,
+  reference acquisition, conditional acquisition, removal, rename, move, and
+  final-reference dispatch. Rust owns hierarchy transactions, parent and kset
+  reference accounting, move-event construction, automatic cleanup, ktype
+  release dispatch, name release, and debug delayed release. C retains the
+  shared layout, bitfield accessors, diagnostics, sysfs and kset primitive
+  operations, allocation and uevent helpers, ordinary export metadata, and
+  debug delayed-work setup. The variadic add, init-and-add, and set-name
+  interfaces remain C ABI boundaries.
+
+  Test: Nine normal QEMU configurations plus the native debug delayed-release
+  configuration passed 13 of 13 focused cases. Native, fallback, and C-only
+  each ran at one and four virtual CPUs. The adjacent object and list suites
+  passed 96 cases. Native, fallback, and C-only module builds and export
+  checks passed.
 
 Kset lifecycle
   Status: ``migrated``.
@@ -3248,8 +3258,9 @@ Kobject layout and state
   Reason: C callers and retained sysfs and kset paths share the intrusive
   layout, registration bitfields, delayed-work member, and type pointer.
 
-  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT runs exercise
-  initialization, reinitialization, and final cleanup.
+  Test: Native, fallback, C-only, KASAN, lockdep, PREEMPT_RT, and debug
+  delayed-release runs exercise initialization, reinitialization, hierarchy
+  removal, and final cleanup.
 
   Risk: A layout or state mismatch can corrupt registration state or release
   a live object.
@@ -3275,39 +3286,62 @@ Kobject diagnostics
   Exit condition: Rust diagnostics preserve the formatting, stack trace, and
   recoverability contracts.
 
-Kobject release bridge
+Kobject hierarchy helpers
   Status: ``boundary-retained``.
 
   Owner: ``lib/kobject.c`` and ``include/linux/kobject-rust.h``.
 
-  Reason: Rust dispatches the final reference through
-  ``rust_kobject_release()``. C then owns delayed work, ktype release,
-  parent-reference removal, name cleanup, and sysfs cleanup.
+  Reason: Rust hierarchy and cleanup policy needs narrow access to sysfs group
+  and directory removal, kset list removal, uevent delivery, string and
+  memory allocation, and debug delayed-work setup.
 
-  Test: Final-reference KUnit cases pass under native SMP1/SMP4, KASAN,
+  Test: Explicit removal, rename, move, automatic cleanup, and debug delayed
+  release cases pass under native SMP1/SMP4, fallback, C-only, KASAN,
   lockdep, and PREEMPT_RT.
 
-  Risk: A callback mismatch can skip cleanup, double release an object, or
-  break the delayed-release path.
+  Risk: A helper can change lock scope, ownership, event order, or allocation
+  lifetime and corrupt the hierarchy or leak a reference.
 
-  Exit condition: Rust owns the complete cleanup and delayed-release
-  lifecycle with equivalent workqueue and callback primitives.
+  Exit condition: Safe reusable Rust abstractions replace these helpers
+  without adding a generic C lifecycle adapter.
 
 Kobject export metadata
   Status: ``boundary-retained``.
 
-  Owner: ``lib/kobject.c``.
+  Owner: ``lib/kobject.c`` and ``rust/Makefile``.
 
-  Reason: The four public lifecycle operations retain a non-GPL export class
-  while generated Rust exports use the GPL class.
+  Reason: Five ordinary entries retain a non-GPL export class while generated
+  Rust exports use the GPL class. The GPL rename and move entries use native
+  Rust export generation.
 
-  Test: ``vmlinux.symvers`` records all four public symbols as
-  ``EXPORT_SYMBOL``, and the generated Rust GPL export header excludes them.
+  Test: ``Module.symvers`` records the original five ordinary and two GPL
+  classes. The generated Rust GPL export header excludes the ordinary names.
+  Native, fallback, and C-only module builds pass.
 
   Risk: Duplicate exports or a class change can break module compatibility.
 
   Exit condition: Rust export metadata supports the original non-GPL class
   without C export entries.
+
+Kobject variadic add and naming ABI
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/kobject.h`` and ``lib/kobject.c``.
+
+  Reason: ``kobject_add()``, ``kobject_init_and_add()``, and
+  ``kobject_set_name()`` accept C variadic arguments and format strings. Their
+  existing callers cross the module ABI, and the registration path is still
+  shared with C hierarchy code.
+
+  Test: Add, initialization-and-add, rename, and hierarchy tests exercise the
+  boundary in native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT runs.
+
+  Risk: A replacement can change format handling, allocation ownership, or
+  ABI behavior for existing C callers.
+
+  Exit condition: Rust supports the established variadic ABI without an
+  opaque generic wrapper, or every in-tree caller moves to a safe typed
+  interface.
 
 Kset layout and embedded state
   Status: ``boundary-retained``.
@@ -4132,9 +4166,10 @@ startup, queue, expiry, interrupt, rearm, migration, cancellation, forwarding,
 and sleeper decision.
 
 The kobject boundary is valid only while the shared layout, bitfields,
-diagnostics, final cleanup callback, and non-GPL export metadata remain named
-C boundaries. Rust defines every public lifecycle entry and owns every
-initialization and reference decision.
+diagnostics, hierarchy and cleanup helpers, variadic entry points, and export
+metadata remain named C boundaries. Rust defines every migrated public entry
+and owns every initialization, reference, removal, rename, move, cleanup, and
+release decision.
 
 The interval tree boundary is valid only while the intrusive node, cached
 red-black tree layout, augmented callback interface, and two narrow C helpers

@@ -9,6 +9,7 @@
 #include <linux/kref.h>
 #include <linux/kthread.h>
 #include <linux/string.h>
+#include <linux/workqueue.h>
 
 #define KOBJECT_TEST_WORKERS 4
 #define KOBJECT_TEST_ITERATIONS 10000
@@ -52,6 +53,28 @@ static bool kobject_test_wait_for_release(struct kobject_test_object *object,
 		cond_resched();
 
 	return atomic_read(&object->releases) == expected;
+}
+
+static void kobject_test_wait_for_cleanup(struct kobject *kobj)
+{
+#ifdef CONFIG_DEBUG_KOBJECT_RELEASE
+	flush_delayed_work(&kobj->release);
+#endif
+}
+
+static bool kobject_test_path_matches(struct kobject *kobj,
+				      const char *expected)
+{
+	char *path;
+	bool matches;
+
+	path = kobject_get_path(kobj, GFP_KERNEL);
+	if (!path)
+		return false;
+
+	matches = !strcmp(path, expected);
+	kfree(path);
+	return matches;
 }
 
 static void kobject_test_lifecycle(struct kunit *test)
@@ -102,6 +125,7 @@ static void kobject_test_internal_init(struct kunit *test)
 	KUNIT_EXPECT_PTR_EQ(test, kset->kobj.ktype, NULL);
 	kobject_put(&kset->kobj);
 	KUNIT_EXPECT_EQ(test, kref_read(&kset->kobj.kref), 0U);
+	kobject_test_wait_for_cleanup(&kset->kobj);
 }
 
 static void kobject_test_invalid_init(struct kunit *test)
@@ -129,6 +153,197 @@ static void kobject_test_invalid_init(struct kunit *test)
 	kobject_put(&object->kobj);
 	KUNIT_EXPECT_TRUE(test, kobject_test_wait_for_release(object, 1));
 	KUNIT_EXPECT_EQ(test, kref_read(&object->kobj.kref), 0U);
+}
+
+static void kobject_test_hierarchy_cleanup(struct kunit *test)
+{
+	struct kobject_test_object *object;
+	struct kobject *replacement;
+	struct kobject *parent;
+	const char *expected;
+	bool path_matches;
+
+	kobject_del(NULL);
+
+	parent = kobject_create_and_add("kobject-kunit-hierarchy",
+					kernel_kobj);
+	KUNIT_ASSERT_NOT_NULL(test, parent);
+
+	object = kunit_kzalloc(test, sizeof(*object), GFP_KERNEL);
+	KUNIT_ASSERT_NOT_NULL(test, object);
+	kobject_test_init_object(object);
+	KUNIT_ASSERT_EQ(test, 0,
+			kobject_add(&object->kobj, parent,
+				    "kobject-kunit-hierarchy-child"));
+	KUNIT_EXPECT_TRUE(test, object->kobj.state_in_sysfs);
+	KUNIT_EXPECT_PTR_EQ(test, object->kobj.parent, parent);
+	expected = "/kernel/kobject-kunit-hierarchy/kobject-kunit-hierarchy-child";
+	path_matches = kobject_test_path_matches(&object->kobj, expected);
+	KUNIT_EXPECT_TRUE(test, path_matches);
+
+	kobject_del(&object->kobj);
+	KUNIT_EXPECT_FALSE(test, object->kobj.state_in_sysfs);
+	KUNIT_EXPECT_PTR_EQ(test, object->kobj.parent, NULL);
+	KUNIT_EXPECT_EQ(test, atomic_read(&object->releases), 0);
+	KUNIT_EXPECT_EQ(test, kref_read(&object->kobj.kref), 1U);
+
+	replacement = kobject_create_and_add("kobject-kunit-hierarchy-child",
+					     parent);
+	KUNIT_ASSERT_NOT_NULL(test, replacement);
+
+	kobject_put(&object->kobj);
+	KUNIT_EXPECT_TRUE(test, kobject_test_wait_for_release(object, 1));
+	KUNIT_EXPECT_EQ(test, kref_read(&object->kobj.kref), 0U);
+
+	kobject_put(replacement);
+	kobject_put(parent);
+}
+
+static void kobject_test_rename(struct kunit *test)
+{
+	struct kobject_test_object *detached;
+	struct kobject_test_object *object;
+	struct kobject *blocker;
+	struct kobject *parent;
+	const char *expected;
+	bool path_matches;
+
+	expected = "/kernel/kobject-kunit-rename-parent/kobject-kunit-rename-new";
+
+	KUNIT_EXPECT_EQ(test, -EINVAL, kobject_rename(NULL, "invalid"));
+
+	detached = kunit_kzalloc(test, sizeof(*detached), GFP_KERNEL);
+	KUNIT_ASSERT_NOT_NULL(test, detached);
+	kobject_test_init_object(detached);
+	KUNIT_EXPECT_EQ(test, -EINVAL,
+			kobject_rename(&detached->kobj, "invalid"));
+	kobject_put(&detached->kobj);
+	KUNIT_ASSERT_TRUE(test,
+			  kobject_test_wait_for_release(detached, 1));
+
+	parent = kobject_create_and_add("kobject-kunit-rename-parent",
+					kernel_kobj);
+	KUNIT_ASSERT_NOT_NULL(test, parent);
+
+	object = kunit_kzalloc(test, sizeof(*object), GFP_KERNEL);
+	KUNIT_ASSERT_NOT_NULL(test, object);
+	kobject_test_init_object(object);
+	KUNIT_ASSERT_EQ(test, 0,
+			kobject_add(&object->kobj, parent,
+				    "kobject-kunit-rename-old"));
+
+	KUNIT_ASSERT_EQ(test, 0,
+			kobject_rename(&object->kobj,
+				       "kobject-kunit-rename-new"));
+	KUNIT_EXPECT_STREQ(test, kobject_name(&object->kobj),
+			   "kobject-kunit-rename-new");
+	path_matches = kobject_test_path_matches(&object->kobj, expected);
+	KUNIT_EXPECT_TRUE(test, path_matches);
+
+	blocker = kobject_create_and_add("kobject-kunit-rename-taken", parent);
+	KUNIT_ASSERT_NOT_NULL(test, blocker);
+	KUNIT_EXPECT_EQ(test, -EEXIST,
+			kobject_rename(&object->kobj,
+				       "kobject-kunit-rename-taken"));
+	KUNIT_EXPECT_STREQ(test, kobject_name(&object->kobj),
+			   "kobject-kunit-rename-new");
+	path_matches = kobject_test_path_matches(&object->kobj, expected);
+	KUNIT_EXPECT_TRUE(test, path_matches);
+
+	kobject_del(&object->kobj);
+	kobject_put(&object->kobj);
+	KUNIT_EXPECT_TRUE(test, kobject_test_wait_for_release(object, 1));
+	kobject_put(blocker);
+	kobject_put(parent);
+}
+
+static void kobject_test_move(struct kunit *test)
+{
+	struct kobject_test_object *object;
+	struct kobject *blocker;
+	struct kobject *destination;
+	struct kobject *source;
+	const char *expected;
+	bool path_matches;
+
+	expected = "/kernel/kobject-kunit-move-source/kobject-kunit-move-child";
+
+	KUNIT_EXPECT_EQ(test, -EINVAL, kobject_move(NULL, kernel_kobj));
+
+	source = kobject_create_and_add("kobject-kunit-move-source",
+					kernel_kobj);
+	KUNIT_ASSERT_NOT_NULL(test, source);
+	destination = kobject_create_and_add("kobject-kunit-move-destination",
+					     kernel_kobj);
+	KUNIT_ASSERT_NOT_NULL(test, destination);
+
+	object = kunit_kzalloc(test, sizeof(*object), GFP_KERNEL);
+	KUNIT_ASSERT_NOT_NULL(test, object);
+	kobject_test_init_object(object);
+	KUNIT_ASSERT_EQ(test, 0,
+			kobject_add(&object->kobj, source,
+				    "kobject-kunit-move-child"));
+	path_matches = kobject_test_path_matches(&object->kobj, expected);
+	KUNIT_EXPECT_TRUE(test, path_matches);
+
+	blocker = kobject_create_and_add("kobject-kunit-move-child",
+					 destination);
+	KUNIT_ASSERT_NOT_NULL(test, blocker);
+	KUNIT_EXPECT_EQ(test, -EEXIST,
+			kobject_move(&object->kobj, destination));
+	KUNIT_EXPECT_PTR_EQ(test, object->kobj.parent, source);
+	path_matches = kobject_test_path_matches(&object->kobj, expected);
+	KUNIT_EXPECT_TRUE(test, path_matches);
+
+	kobject_del(blocker);
+	kobject_put(blocker);
+	KUNIT_ASSERT_EQ(test, 0,
+			kobject_move(&object->kobj, destination));
+	KUNIT_EXPECT_PTR_EQ(test, object->kobj.parent, destination);
+	expected = "/kernel/kobject-kunit-move-destination/kobject-kunit-move-child";
+	path_matches = kobject_test_path_matches(&object->kobj, expected);
+	KUNIT_EXPECT_TRUE(test, path_matches);
+
+	kobject_del(&object->kobj);
+	kobject_put(&object->kobj);
+	KUNIT_EXPECT_TRUE(test, kobject_test_wait_for_release(object, 1));
+	kobject_put(source);
+	kobject_put(destination);
+}
+
+static void kobject_test_kset_automatic_cleanup(struct kunit *test)
+{
+	struct kobject_test_object *object;
+	struct kobject *found;
+	struct kset *kset;
+
+	kset = kset_create_and_add("kset-kunit-automatic-cleanup", NULL,
+				   kernel_kobj);
+	KUNIT_ASSERT_NOT_NULL(test, kset);
+
+	object = kunit_kzalloc(test, sizeof(*object), GFP_KERNEL);
+	KUNIT_ASSERT_NOT_NULL(test, object);
+	kobject_test_init_object(object);
+	object->kobj.kset = kset;
+	KUNIT_ASSERT_EQ(test, 0,
+			kobject_add(&object->kobj, NULL,
+				    "kset-kunit-automatic-child"));
+
+	found = kset_find_obj(kset, "kset-kunit-automatic-child");
+	KUNIT_EXPECT_PTR_EQ(test, found, &object->kobj);
+	if (found)
+		kobject_put(found);
+
+	kobject_uevent(&object->kobj, KOBJ_ADD);
+	kobject_put(&object->kobj);
+	KUNIT_ASSERT_TRUE(test,
+			  kobject_test_wait_for_release(object, 1));
+	KUNIT_EXPECT_FALSE(test, object->kobj.state_in_sysfs);
+	KUNIT_EXPECT_PTR_EQ(test, object->kobj.parent, NULL);
+	KUNIT_EXPECT_NULL(test,
+			  kset_find_obj(kset, "kset-kunit-automatic-child"));
+
+	kset_unregister(kset);
 }
 
 struct kobject_test_worker {
@@ -245,6 +460,7 @@ static void kobject_test_kset_init(struct kunit *test)
 
 	kobject_put(&kset->kobj);
 	KUNIT_EXPECT_EQ(test, kref_read(&kset->kobj.kref), 0U);
+	kobject_test_wait_for_cleanup(&kset->kobj);
 }
 
 static void kobject_test_kset_invalid_register(struct kunit *test)
@@ -419,6 +635,10 @@ static struct kunit_case kobject_test_cases[] = {
 	KUNIT_CASE(kobject_test_lifecycle),
 	KUNIT_CASE(kobject_test_internal_init),
 	KUNIT_CASE(kobject_test_invalid_init),
+	KUNIT_CASE(kobject_test_hierarchy_cleanup),
+	KUNIT_CASE(kobject_test_rename),
+	KUNIT_CASE(kobject_test_move),
+	KUNIT_CASE(kobject_test_kset_automatic_cleanup),
 	KUNIT_CASE(kobject_test_concurrent),
 	KUNIT_CASE(kobject_test_kset_init),
 	KUNIT_CASE(kobject_test_kset_invalid_register),

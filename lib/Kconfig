@@ -792,15 +792,18 @@ config RUST_KOBJECT
 	default y
 	help
 	  Use Rust for the production kobject initialization state, reference
-	  acquisition, conditional acquisition, and final-reference dispatch.
+	  acquisition, conditional acquisition, removal, rename, move,
+	  automatic hierarchy cleanup, and final-reference dispatch.
 
 	  Rust directly defines the public kobject lifecycle functions. C
-	  retains their non-GPL export metadata, bitfield accessors,
-	  diagnostics, sysfs and kset operations, and the final cleanup
-	  callback.
+	  retains the shared layout, bitfield accessors, diagnostics, sysfs and
+	  kset operations, allocation and uevent primitives, export metadata,
+	  and debug delayed-work setup.
 
-	  The complete C kobject initialization and reference implementation
-	  remains available when this option is disabled.
+	  The variadic kobject_add(), kobject_init_and_add(), and
+	  kobject_set_name() interfaces remain C ABI boundaries. The complete C
+	  kobject implementation remains available when this option is
+	  disabled.
 
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.

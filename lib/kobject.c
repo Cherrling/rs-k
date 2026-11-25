@@ -201,6 +201,21 @@ bool rust_kobject_state_initialized(const struct kobject *kobj)
 	return kobj->state_initialized;
 }
 
+bool rust_kobject_state_in_sysfs(const struct kobject *kobj)
+{
+	return kobj->state_in_sysfs;
+}
+
+bool rust_kobject_state_add_uevent_sent(const struct kobject *kobj)
+{
+	return kobj->state_add_uevent_sent;
+}
+
+bool rust_kobject_state_remove_uevent_sent(const struct kobject *kobj)
+{
+	return kobj->state_remove_uevent_sent;
+}
+
 void rust_kobject_state_reset(struct kobject *kobj)
 {
 	kobj->state_in_sysfs = 0;
@@ -211,6 +226,11 @@ void rust_kobject_state_reset(struct kobject *kobj)
 void rust_kobject_state_mark_initialized(struct kobject *kobj)
 {
 	kobj->state_initialized = 1;
+}
+
+void rust_kobject_state_mark_in_sysfs(struct kobject *kobj, bool in_sysfs)
+{
+	kobj->state_in_sysfs = in_sysfs;
 }
 
 void rust_kobject_warn_invalid_pointer(void)
@@ -525,6 +545,7 @@ EXPORT_SYMBOL_GPL(kobject_init_and_add);
  * on the same kobject and to ensure that new_name is valid and
  * won't conflict with other kobjects.
  */
+#ifndef CONFIG_RUST_KOBJECT
 int kobject_rename(struct kobject *kobj, const char *new_name)
 {
 	int error = 0;
@@ -582,13 +603,17 @@ out:
 
 	return error;
 }
+#endif /* !CONFIG_RUST_KOBJECT */
+#ifndef CONFIG_RUST_KOBJECT
 EXPORT_SYMBOL_GPL(kobject_rename);
+#endif
 
 /**
  * kobject_move() - Move object to another parent.
  * @kobj: object in question.
  * @new_parent: object's new parent (can be NULL)
  */
+#ifndef CONFIG_RUST_KOBJECT
 int kobject_move(struct kobject *kobj, struct kobject *new_parent)
 {
 	int error;
@@ -635,8 +660,33 @@ out:
 	kfree(devpath);
 	return error;
 }
+#endif /* !CONFIG_RUST_KOBJECT */
+#ifndef CONFIG_RUST_KOBJECT
 EXPORT_SYMBOL_GPL(kobject_move);
+#endif
 
+#ifdef CONFIG_RUST_KOBJECT
+void rust_helper_kobject_remove_groups(struct kobject *kobj)
+{
+	const struct kobj_type *ktype = get_ktype(kobj);
+
+	if (ktype)
+		sysfs_remove_groups(kobj, ktype->default_groups);
+}
+
+void rust_helper_kobject_remove_dir(struct kobject *kobj)
+{
+	struct kernfs_node *sd = kobj->sd;
+
+	sysfs_remove_dir(kobj);
+	sysfs_put(sd);
+}
+
+void rust_helper_kobject_kset_leave(struct kobject *kobj)
+{
+	kobj_kset_leave(kobj);
+}
+#else
 static void __kobject_del(struct kobject *kobj)
 {
 	struct kernfs_node *sd;
@@ -662,6 +712,7 @@ static void __kobject_del(struct kobject *kobj)
 	kobj_kset_leave(kobj);
 	kobj->parent = NULL;
 }
+#endif /* CONFIG_RUST_KOBJECT */
 
 /**
  * kobject_del() - Unlink kobject from hierarchy.
@@ -670,6 +721,7 @@ static void __kobject_del(struct kobject *kobj)
  * This is the function that should be called to delete an object
  * successfully added via kobject_add().
  */
+#ifndef CONFIG_RUST_KOBJECT
 void kobject_del(struct kobject *kobj)
 {
 	struct kobject *parent;
@@ -681,6 +733,7 @@ void kobject_del(struct kobject *kobj)
 	__kobject_del(kobj);
 	kobject_put(parent);
 }
+#endif /* !CONFIG_RUST_KOBJECT */
 EXPORT_SYMBOL(kobject_del);
 
 #ifndef CONFIG_RUST_KOBJECT
@@ -714,6 +767,7 @@ struct kobject * __must_check kobject_get_unless_zero(struct kobject *kobj)
 #endif /* !CONFIG_RUST_KOBJECT */
 EXPORT_SYMBOL(kobject_get_unless_zero);
 
+#ifndef CONFIG_RUST_KOBJECT
 /*
  * kobject_cleanup - free kobject resources.
  * @kobj: object to cleanup
@@ -778,13 +832,17 @@ static void kobject_release(struct kref *kref)
 	kobject_cleanup(kobj);
 #endif
 }
+#endif /* !CONFIG_RUST_KOBJECT */
 
-#ifdef CONFIG_RUST_KOBJECT
-void rust_kobject_release(struct kref *kref)
+#if defined(CONFIG_RUST_KOBJECT) && defined(CONFIG_DEBUG_KOBJECT_RELEASE)
+void rust_helper_kobject_schedule_delayed_release(struct kobject *kobj,
+						  work_func_t func,
+						  unsigned long delay)
 {
-	kobject_release(kref);
+	INIT_DELAYED_WORK(&kobj->release, func);
+	schedule_delayed_work(&kobj->release, delay);
 }
-#endif /* CONFIG_RUST_KOBJECT */
+#endif
 
 #ifndef CONFIG_RUST_KOBJECT
 /**
