@@ -359,6 +359,47 @@ Native PID task association
   configuration class, preserved unexported symbols, and a clean focused and
   adjacent matrix.
 
+Native PID number resolution
+  Status: ``migrated``.
+
+  Evidence: :doc:`pid-number`.
+
+  Rust directly defines the production ``pid_nr_ns()``, ``pid_vnr()``, and
+  ``__task_pid_nr_ns()`` entries. Rust owns namespace-depth rejection,
+  same-level namespace ownership, PID number selection, null handling, task
+  PID type dispatch, and the current namespace fallback. C retains the shared
+  PID and namespace layouts, task PID slot dereference, RCU read locking,
+  current task retrieval, active namespace lookup, the non-GPL export
+  metadata for ``__task_pid_nr_ns()``, and the fallback implementations.
+  ``pid_nr_ns()`` and ``pid_vnr()`` remain GPL-only exports, while
+  ``__task_pid_nr_ns()`` remains an ordinary export. C fallback and C-only
+  configurations retain the complete implementation.
+
+  Test: Native completed three SMP4 and one SMP1 boot with all four focused
+  cases passing. Fallback and C-only each passed four cases at SMP4 and SMP1.
+  KASAN, lockdep, and PREEMPT_RT each passed all four cases at SMP4 and SMP1.
+  All focused logs are free of failures and relevant diagnostics. The native
+  SMP4 adjacent PID lifecycle, allocation, association, number, task release,
+  signal exit, and task exit notification suites passed 30 of 30 cases.
+
+  Symbol inspection shows that native ``rust/kernel.o`` defines all three
+  entries and native ``kernel/pid.o`` defines none. The linked image contains
+  one definition of each entry and no ``rust_pid_*`` wrapper or unresolved
+  symbol. ``pid_nr_ns()`` and ``pid_vnr()`` remain GPL-only in
+  ``Module.symvers``, while ``__task_pid_nr_ns()`` remains an ordinary export.
+
+  The production Clippy build produced ``bzImage`` and modules. Its four-vCPU
+  KVM boot reached the expected missing-root-filesystem panic without an
+  unexpected diagnostic. A second production build disabled
+  ``CONFIG_PID_NS``, retained the same Rust entries, and reached the same
+  expected panic.
+
+  Risk: A wrong namespace depth or ownership check can expose a PID number
+  from another namespace. A missing RCU or lifetime guard can return a stale
+  number. The exit condition is one production definition in every
+  configuration class, preserved export metadata, and a clean focused and
+  adjacent matrix.
+
 Native PID lifecycle release
   Status: ``migrated``.
 

@@ -588,23 +588,10 @@ EXPORT_SYMBOL_GPL(find_get_pid);
 
 #ifdef CONFIG_RUST_PID_NUMBER
 
-pid_t pid_nr_ns(struct pid *pid, struct pid_namespace *ns)
-{
-	return rust_pid_nr_ns(pid, ns);
-}
-EXPORT_SYMBOL_GPL(pid_nr_ns);
-
-pid_t pid_vnr(struct pid *pid)
-{
-	return rust_pid_vnr(pid);
-}
-EXPORT_SYMBOL_GPL(pid_vnr);
-
-pid_t __task_pid_nr_ns(struct task_struct *task, enum pid_type type,
-		       struct pid_namespace *ns)
-{
-	return rust_task_pid_nr_ns(task, type, ns);
-}
+/*
+ * Rust defines all three production entry points. C retains only the
+ * original non-GPL export metadata for __task_pid_nr_ns().
+ */
 EXPORT_SYMBOL(__task_pid_nr_ns);
 
 #else /* !CONFIG_RUST_PID_NUMBER */

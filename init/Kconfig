@@ -2340,9 +2340,10 @@ config RUST_PID_NUMBER
 	depends on RUST
 	default y
 	help
-	  Use Rust to resolve a PID into the number visible in a selected PID
-	  namespace. Rust owns namespace depth, ownership, null, and current
-	  namespace fallback decisions.
+	  Use Rust to directly define the production pid_nr_ns(), pid_vnr(), and
+	  __task_pid_nr_ns() entries. Rust owns namespace depth, ownership, null,
+	  and current namespace fallback decisions. The original C
+	  implementation is compiled out.
 
 	  RCU protection, task PID slot access, and namespace retrieval remain
 	  in C.

@@ -7,8 +7,8 @@ Status and scope
 ----------------
 
 The ``CONFIG_RUST_PID_NUMBER`` option selects native Rust for PID namespace
-number resolution. The original C implementation remains available as a
-fallback.
+number resolution. Rust directly defines the production entries. The complete
+C implementation remains available as a fallback and in C-only builds.
 
 This unit covers ``pid_nr_ns()``, ``pid_vnr()``, and
 ``__task_pid_nr_ns()``. It decides whether a PID is visible in a selected
@@ -28,10 +28,11 @@ The Rust code owns these decisions:
 Entry points and ownership
 --------------------------
 
-The exported ``pid_nr_ns()``, ``pid_vnr()``, and ``__task_pid_nr_ns()``
-functions remain C ABI adapters. When the option is enabled, each adapter calls
-the matching Rust production entry point and the original C implementation is
-compiled out.
+Rust directly defines the production ``pid_nr_ns()``, ``pid_vnr()``, and
+``__task_pid_nr_ns()`` entries. The native build compiles their C
+implementations out of ``kernel/pid.c``. C retains only the original non-GPL
+export metadata for ``__task_pid_nr_ns()``. The first two entries retain their
+original GPL-only export class through the Rust export generator.
 
 The Rust entry point for ``__task_pid_nr_ns()`` establishes an RCU read-side
 critical section. The other entry points rely on the caller's PID lifetime or
@@ -66,26 +67,39 @@ All PID identifier forms use the same depth, ownership, and fallback rules.
 Validation record
 -----------------
 
-Each KUnit configuration ran three consecutive times with four vCPUs.
+The x86_64 validation used the final source for every KUnit configuration.
+KASAN used Clang, ``LLVM=1``, and generic inline KASAN.
 
 .. list-table::
-   :widths: 42 16 16 26
+   :widths: 38 24 16 22
    :header-rows: 1
 
    * - Configuration
-     - Runs
+     - Boots
      - Cases
      - Result
-   * - Rust with PREEMPT_RT and lockdep
-     - 3
+   * - Native
+     - 3 SMP4, 1 SMP1
      - 4 of 4
      - Pass
-   * - C fallback with PREEMPT_RT and lockdep
-     - 3
+   * - Rust fallback
+     - SMP4, SMP1
      - 4 of 4
      - Pass
-   * - Generic inline KASAN with Rust
-     - 3
+   * - C-only
+     - SMP4, SMP1
+     - 4 of 4
+     - Pass
+   * - KASAN with native
+     - SMP4, SMP1
+     - 4 of 4
+     - Pass
+   * - Lockdep with native
+     - SMP4, SMP1
+     - 4 of 4
+     - Pass
+   * - PREEMPT_RT with native
+     - SMP4, SMP1
      - 4 of 4
      - Pass
 
@@ -93,18 +107,27 @@ The tests cover valid hierarchy levels, missing inputs, excessive depth,
 same-level namespace mismatch, all task PID types, and current namespace
 fallback.
 
-Every KUnit log reported zero failures and no BUG, warning, KASAN report,
-Oops, refcount report, or lockdep complaint.
+Every focused KUnit run reported zero failures and no BUG, Oops, KASAN
+report, refcount report, or lockdep complaint.
 
-The production build used Clippy with KUnit, KASAN, and ``PROVE_LOCKING``
-disabled. The enabled ``PREEMPT_RT`` configuration still selected ``LOCKDEP``.
-The C adapters contain direct relocations to all three Rust entry points. The
-production image contains no test symbols or unresolved symbols.
+The native SMP4 adjacent PID lifecycle, allocation, association, number,
+task release, signal exit, and task exit notification suites passed 30 of 30
+cases.
 
-The production image started with four vCPUs under KVM and reached the expected
-missing-root-filesystem panic without an unexpected diagnostic. A second
-production configuration disabled ``CONFIG_PID_NS`` and repeated the build,
-link, relocation, and boot checks with the same result.
+Native ``rust/kernel.o`` defines all three entries and native ``kernel/pid.o``
+defines none. The linked image contains one definition of each entry, no
+``rust_pid_*`` wrapper, no unresolved symbol, and the original export classes.
+``pid_nr_ns()`` and ``pid_vnr()`` remain GPL-only exports, while
+``__task_pid_nr_ns()`` remains an ordinary export.
+
+The production Clippy build produced ``bzImage`` and modules. Its four-vCPU
+KVM boot reached the expected missing-root-filesystem panic without an
+unexpected diagnostic. A second production build disabled ``CONFIG_PID_NS``,
+retained the same Rust entries, and reached the same expected panic.
+
+Rustfmtcheck, Rustdoc, focused Sphinx generation, strict checkpatch, and
+``git diff --check`` passed. Sphinx reported only the two existing
+cross-reference warnings in ``index.rst`` and ``quick-start.rst``.
 
 Review conditions
 -----------------

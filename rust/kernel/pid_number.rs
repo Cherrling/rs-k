@@ -48,7 +48,7 @@ unsafe fn nr_ns(pid: *mut Pid, ns: *mut PidNamespace) -> bindings::pid_t {
 ///
 /// The same requirements as [`nr_ns`] apply.
 #[export]
-unsafe extern "C" fn rust_pid_nr_ns(pid: *mut Pid, ns: *mut PidNamespace) -> bindings::pid_t {
+unsafe extern "C" fn pid_nr_ns(pid: *mut Pid, ns: *mut PidNamespace) -> bindings::pid_t {
     // SAFETY: The caller upholds the function requirements.
     unsafe { nr_ns(pid, ns) }
 }
@@ -59,7 +59,7 @@ unsafe extern "C" fn rust_pid_nr_ns(pid: *mut Pid, ns: *mut PidNamespace) -> bin
 ///
 /// A non-null `pid` must remain live for the duration of the call.
 #[export]
-unsafe extern "C" fn rust_pid_vnr(pid: *mut Pid) -> bindings::pid_t {
+unsafe extern "C" fn pid_vnr(pid: *mut Pid) -> bindings::pid_t {
     // SAFETY: The current task has an active PID namespace.
     let current = unsafe { bindings::get_current() };
     // SAFETY: The current task is live and has a PID namespace.
@@ -75,7 +75,7 @@ unsafe extern "C" fn rust_pid_vnr(pid: *mut Pid) -> bindings::pid_t {
 ///
 /// `task`, `type`, and `ns` must follow the contract of `__task_pid_nr_ns()`.
 #[export]
-unsafe extern "C" fn rust_task_pid_nr_ns(
+unsafe extern "C" fn __task_pid_nr_ns(
     task: *mut Task,
     pid_type: PidType,
     ns: *mut PidNamespace,
