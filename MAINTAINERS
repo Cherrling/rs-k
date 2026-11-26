@@ -20033,9 +20033,13 @@ F:	lib/test_objagg.c
 OBJPOOL
 M:	Matt Wu <wuqiang.matt@bytedance.com>
 S:	Supported
+F:	Documentation/rust/native-objpool.rst
+F:	include/linux/objpool-rust.h
 F:	include/linux/objpool.h
 F:	lib/objpool.c
 F:	lib/test_objpool.c
+F:	lib/tests/objpool_kunit.c
+F:	rust/kernel/objpool.rs
 
 OBJTOOL
 M:	Josh Poimboeuf <jpoimboe@kernel.org>

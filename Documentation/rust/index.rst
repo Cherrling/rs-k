@@ -136,6 +136,7 @@ more details.
     native-device
     native-list-lru
     native-kfifo
+    native-objpool
     native-genradix
     native-maple-tree-load
     native-maple-tree-walk

@@ -2423,6 +2423,22 @@ config CLOSURE_KUNIT_TEST
 
 	  If unsure, say N.
 
+config OBJPOOL_KUNIT_TEST
+	bool "KUnit test for object pools" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for objpool parameter validation,
+	  capacity and object layout, initialization callbacks, pop and push,
+	  synchronous draining, outstanding-object accounting, forced release,
+	  atomic allocation, and partial-initialization cleanup.
+
+	  The same tests run with either the C implementation or the native
+	  Rust implementation selected. This test must be built-in because it
+	  inspects pool state and exercises the GPL public entries.
+
+	  If unsure, say N.
+
 config SWAIT_KUNIT_TEST
 	bool "KUnit test for simple wait queues" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

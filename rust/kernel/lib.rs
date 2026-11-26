@@ -252,6 +252,8 @@ mod mutex_core;
 #[cfg(CONFIG_NET)]
 pub mod net;
 pub mod num;
+#[cfg(CONFIG_RUST_OBJPOOL)]
+mod objpool;
 pub mod of;
 #[cfg(CONFIG_PM_OPP)]
 pub mod opp;

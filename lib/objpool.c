@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 
 #include <linux/objpool.h>
+#include <linux/objpool-rust.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include <linux/atomic.h>
@@ -13,6 +14,69 @@
  *
  * Copyright: wuqiang.matt@bytedance.com,mhiramat@kernel.org
  */
+
+#ifdef CONFIG_RUST_OBJPOOL
+
+void *rust_objpool_alloc_cpu_slots(size_t size, gfp_t gfp)
+{
+	return kzalloc(size, gfp);
+}
+
+void *rust_objpool_alloc_slot(size_t size, int cpu, gfp_t gfp)
+{
+	void *slot = NULL;
+
+	if ((gfp & (GFP_ATOMIC | GFP_KERNEL)) != GFP_ATOMIC)
+		slot = __vmalloc_node(size, sizeof(void *), gfp, cpu_to_node(cpu),
+				      __builtin_return_address(0));
+
+	if (!slot)
+		slot = kmalloc_node(size, gfp, cpu_to_node(cpu));
+
+	return slot;
+}
+
+void rust_objpool_free_slot(void *slot)
+{
+	kvfree(slot);
+}
+
+int rust_objpool_nr_cpu_ids(void)
+{
+	return nr_cpu_ids;
+}
+
+int rust_objpool_num_possible_cpus(void)
+{
+	return num_possible_cpus();
+}
+
+bool rust_objpool_cpu_possible(int cpu)
+{
+	return cpu_possible(cpu);
+}
+
+void rust_objpool_refcount_set(struct objpool_head *pool, int value)
+{
+	refcount_set(&pool->ref, value);
+}
+
+bool rust_objpool_refcount_dec_and_test(struct objpool_head *pool)
+{
+	return refcount_dec_and_test(&pool->ref);
+}
+
+bool rust_objpool_refcount_sub_and_test(struct objpool_head *pool, int value)
+{
+	return refcount_sub_and_test(value, &pool->ref);
+}
+
+void *rust_objpool_pop(struct objpool_head *pool)
+{
+	return objpool_pop(pool);
+}
+
+#else /* !CONFIG_RUST_OBJPOOL */
 
 /* initialize percpu objpool_slot */
 static int
@@ -201,3 +265,5 @@ void objpool_fini(struct objpool_head *pool)
 		objpool_free(pool);
 }
 EXPORT_SYMBOL_GPL(objpool_fini);
+
+#endif /* CONFIG_RUST_OBJPOOL */

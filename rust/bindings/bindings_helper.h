@@ -129,6 +129,7 @@
 #include <linux/mremap-to-rust.h>
 #include <linux/miscdevice.h>
 #include <linux/mutex-rust.h>
+#include <linux/objpool-rust.h>
 #include <linux/of_device.h>
 #include <linux/pci.h>
 #include <linux/phy.h>

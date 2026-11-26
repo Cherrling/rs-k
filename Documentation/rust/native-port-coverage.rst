@@ -49,6 +49,28 @@ Klist entry operations
   attachment state, and iteration. The native C file retains list
   initialization, blocking removal, and the shared wakeup callback.
 
+Object pool lifecycle
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-objpool`.
+
+  Rust directly defines ``objpool_init()``, ``objpool_free()``,
+  ``objpool_drop()``, and ``objpool_fini()``. Rust owns validation, alignment,
+  capacity, CPU object distribution, slot initialization callbacks,
+  partial-failure cleanup, reference-count conversion, forced release,
+  drain-and-release selection, and final cleanup callback selection. C
+  retains the packed layouts, inline pop and push paths, CPU topology and
+  allocation primitives, and refcount atomics. The native C object retains
+  only the helper boundary. C fallback and C-only configurations retain the
+  complete implementation.
+
+  Test: All nine Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT
+  KUnit boots passed 7 of 7 cases. Native, fallback, and C-only each ran the
+  existing stress module at one and four CPUs. All six runs completed ten
+  cases with zero allocation differences. The adjacent rethook and kprobes
+  suite passed 7 of 7 cases. Native, fallback, and C-only external modules
+  linked all four GPL symbols.
+
 DMA coherent pool state machine
   Status: ``migrated``.
 
@@ -1839,6 +1861,7 @@ Public ABI
   ``include/linux/timerqueue.h``, ``include/linux/hrtimer.h``,
   ``include/linux/itimer-rust.h``, ``include/linux/cpupri.h``,
   ``include/linux/dmapool.h``, ``include/linux/dmapool-rust.h``,
+  ``include/linux/objpool.h``, ``include/linux/objpool-rust.h``,
   ``include/linux/idr.h``, ``include/linux/idr-rust.h``,
   ``include/linux/xarray.h``, ``include/linux/xarray-rust.h``,
   ``include/linux/mutex.h``, ``include/linux/sched/signal.h``,
@@ -2395,6 +2418,31 @@ Klist primitive helpers
 
   Exit condition: Approved Rust list, lock, and refcount abstractions cover the
   complete helper contract.
+
+Object pool shared boundary
+  Status: ``boundary-retained``.
+
+  Owner: ``include/linux/objpool.h``, ``include/linux/objpool-rust.h``,
+  ``lib/objpool.c``, and ``rust/kernel/objpool.rs``.
+
+  Reason: C and Rust access the same packed slot and pool layouts, pointer
+  array, ring sequence fields, callbacks, allocation flags, and reference
+  count. The inline pop and push paths rely on the retained ring encoding and
+  memory ordering. CPU topology, allocation fallback, ``kvfree``, and
+  refcount transitions remain C primitives.
+
+  Test: Native, fallback, C-only, KASAN, lockdep, and PREEMPT_RT runs exercise
+  the shared layout and lifecycle. Six stress runs exercise slab and
+  ``vmalloc`` storage with synchronous, interrupt, asynchronous, and overrun
+  consumers at one and four CPUs.
+
+  Risk: A layout, ring encoding, allocation, CPU topology, callback, or
+  refcount change can make Rust free invalid storage or select the wrong
+  reference transition.
+
+  Exit condition: Rust owns the pool and ring layouts, inline pop and push,
+  CPU topology, allocation primitives, refcount transitions, and public GPL
+  export class.
 
 DMA pool shared layout
   Status: ``boundary-retained``.
@@ -4079,6 +4127,12 @@ The klist boundary is valid only while initialization, blocking removal,
 task wakeup, and shared primitive behavior remain outside the migrated entry
 scope. The retained C functions do not select insertion, reference, deletion,
 attachment, or traversal policy.
+
+The object-pool boundary is valid only while the packed pool and slot layouts,
+inline pop and push paths, CPU topology, allocation fallback, and refcount
+atomics remain named C boundaries. Rust defines all four lifecycle entries
+and owns every validation, distribution, callback, cleanup, reference, drain,
+and release decision.
 
 The reference-counting boundary is valid only while the shared counter layout,
 saturation encoding, architecture atomics and barriers, lock primitives,

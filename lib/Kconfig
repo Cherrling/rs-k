@@ -1624,6 +1624,29 @@ config RUST_CLOSURE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_OBJPOOL
+	bool "Rust implementation of objpool lifecycle"
+	depends on RUST
+	default y
+	help
+	  Use Rust for the production object-pool initialization, cleanup,
+	  asynchronous-object accounting, and forced-release lifecycle.
+
+	  Rust directly defines the public objpool entry points. It owns
+	  parameter validation, capacity calculation, per-CPU slot
+	  initialization, partial-failure cleanup, reference-count
+	  transitions, forced release, drain-and-release selection, and the
+	  final cleanup callback decision. C retains the packed ring layouts,
+	  inline pop and push fast paths, per-CPU topology and allocation
+	  primitives, and refcount atomics. Rust preserves the historical GPL
+	  export class for the public entry points.
+
+	  The complete C objpool implementation remains available when this
+	  option is disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config HAS_IOMEM
 	bool
 	depends on !NO_IOMEM
