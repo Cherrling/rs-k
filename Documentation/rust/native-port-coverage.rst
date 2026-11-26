@@ -896,6 +896,30 @@ Bus lifecycle
   Device-model smoke tests passed 17 cases in each of the native, fallback,
   and C-only runs. The adjacent object and list suites passed 96 cases.
 
+Driver lifecycle
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-driver`.
+
+  Rust defines the two public ``driver_register()`` and
+  ``driver_unregister()`` GPL symbols and owns the internal bus add and
+  remove state machines. Rust owns validation, duplicate-name rejection,
+  private-object allocation, driver klist and kobject initialization, bus
+  list insertion, automatic attachment, module links, driver and bus sysfs
+  groups, uevent and bind attributes, failure rollback, reference
+  accounting, and unregistration order. C retains the shared driver, bus,
+  and private layouts, static driver kobject type and sysfs operations,
+  lookup and reference helpers, attach and detach primitives, module-link
+  implementation, diagnostics, final release callback, and original export
+  metadata. C fallback and C-only configurations retain the complete
+  implementation.
+
+  Test: Nine QEMU configurations passed 5 of 5 focused cases. Native,
+  fallback, and C-only each ran at one and four virtual CPUs. KASAN fallback,
+  native lockdep, and native PREEMPT_RT runs used four virtual CPUs. The
+  native device-model regression passed 17 cases. The adjacent object and
+  list suites passed 96 cases.
+
 Interval tree operations
   Status: ``migrated``.
 
@@ -1761,7 +1785,8 @@ Public ABI
   Owner: The public symbols defined in ``include/linux/llist.h``,
   ``include/linux/klist.h``, ``include/linux/kref.h``,
   ``include/linux/lockref.h``,
-  ``include/linux/kobject.h``, ``include/linux/rcuwait.h``,
+  ``include/linux/kobject.h``, ``include/linux/device/driver.h``,
+  ``include/linux/driver-rust.h``, ``include/linux/rcuwait.h``,
   ``include/linux/interval_tree.h``,
   ``include/linux/rbtree.h``, ``include/linux/rbtree_augmented.h``,
   ``include/linux/plist.h``, ``include/linux/list_sort.h``,

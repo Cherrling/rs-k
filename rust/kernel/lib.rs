@@ -90,6 +90,8 @@ pub mod dma;
 #[cfg(CONFIG_RUST_DMAPOOL)]
 mod dmapool;
 pub mod driver;
+#[cfg(CONFIG_RUST_DRIVER)]
+mod driver_core;
 #[cfg(CONFIG_DRM = "y")]
 pub mod drm;
 #[cfg(CONFIG_RUST_DUP_MMAP)]

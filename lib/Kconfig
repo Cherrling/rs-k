@@ -872,6 +872,29 @@ config RUST_BUS
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_DRIVER
+	bool "Rust implementation of device driver lifecycle"
+	depends on RUST_BUS
+	default y
+	help
+	  Use Rust for the production device driver registration and
+	  unregistration lifecycle.
+
+	  Rust directly defines the public driver entry points. It owns
+	  driver-private allocation, bus membership, automatic device
+	  attachment, module links, driver and bus attribute groups, uevent
+	  and bind attributes, registration rollback, and unregistration
+	  order. C retains the shared driver and bus layouts, lookup and
+	  reference accounting, static driver type and sysfs attributes,
+	  attach and detach primitives, diagnostics, the final release
+	  callback, and export metadata.
+
+	  The complete C driver lifecycle remains available when this option
+	  is disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_LOCKREF
 	bool "Rust implementation of lockref operations"
 	depends on RUST && X86_64 && SMP

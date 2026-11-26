@@ -13,6 +13,7 @@
 #include <linux/bus-rust.h>
 #include <linux/device/bus.h>
 #include <linux/device.h>
+#include <linux/driver-rust.h>
 #include <linux/module.h>
 #include <linux/errno.h>
 #include <linux/slab.h>
@@ -740,6 +741,55 @@ static ssize_t uevent_store(struct device_driver *drv, const char *buf,
 }
 static DRIVER_ATTR_WO(uevent);
 
+#ifdef CONFIG_RUST_DRIVER
+int rust_helper_driver_kobject_init_and_add(struct device_driver *drv)
+{
+	return kobject_init_and_add(&drv->p->kobj, &driver_ktype, NULL,
+				    "%s", drv->name);
+}
+
+int rust_helper_driver_add_uevent_file(struct device_driver *drv)
+{
+	return driver_create_file(drv, &driver_attr_uevent);
+}
+
+void rust_helper_driver_remove_uevent_file(struct device_driver *drv)
+{
+	driver_remove_file(drv, &driver_attr_uevent);
+}
+
+int rust_helper_driver_add_bind_files(struct device_driver *drv)
+{
+	return add_bind_files(drv);
+}
+
+void rust_helper_driver_remove_bind_files(struct device_driver *drv)
+{
+	remove_bind_files(drv);
+}
+
+int rust_helper_driver_module_add(struct device_driver *drv)
+{
+	return module_add_driver(drv->owner, drv);
+}
+
+void rust_helper_driver_module_remove(struct device_driver *drv)
+{
+	module_remove_driver(drv);
+}
+
+void rust_helper_driver_bus_put(struct subsys_private *sp)
+{
+	subsys_put(sp);
+}
+
+void rust_helper_driver_warn_unexpected_unregister(void)
+{
+	WARN(1, "Unexpected driver unregister!\n");
+}
+#endif /* CONFIG_RUST_DRIVER */
+
+#ifndef CONFIG_RUST_DRIVER
 /**
  * bus_add_driver - Add a driver to the bus.
  * @drv: driver.
@@ -856,6 +906,7 @@ void bus_remove_driver(struct device_driver *drv)
 	subsys_put(sp);
 	subsys_put(sp);
 }
+#endif /* CONFIG_RUST_DRIVER */
 
 /* Helper for bus_rescan_devices's iter */
 static int __must_check bus_rescan_devices_helper(struct device *dev,

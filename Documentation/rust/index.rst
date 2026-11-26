@@ -131,6 +131,7 @@ more details.
     native-kset
     native-class
     native-bus
+    native-driver
     native-list-lru
     native-kfifo
     native-genradix

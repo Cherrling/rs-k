@@ -64,6 +64,7 @@
 #include <linux/debugfs.h>
 #include <linux/dec-and-lock-rust.h>
 #include <linux/device/faux.h>
+#include <linux/driver-rust.h>
 #include <linux/dma-direction.h>
 #include <linux/dma-mapping.h>
 #include <linux/dma-resv.h>

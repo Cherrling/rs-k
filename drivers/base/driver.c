@@ -139,6 +139,7 @@ void driver_remove_groups(const struct device_driver *drv,
 	sysfs_remove_groups(&drv->p->kobj, groups);
 }
 
+#ifndef CONFIG_RUST_DRIVER
 /**
  * driver_register - register driver with bus
  * @drv: driver to register
@@ -202,3 +203,4 @@ void driver_unregister(struct device_driver *drv)
 	bus_remove_driver(drv);
 }
 EXPORT_SYMBOL_GPL(driver_unregister);
+#endif /* CONFIG_RUST_DRIVER */
