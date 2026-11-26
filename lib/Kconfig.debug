@@ -2757,6 +2757,21 @@ config IRQ_WORK_KUNIT_TEST
 
 	  If unsure, say N.
 
+config CRED_LIFECYCLE_KUNIT_TEST
+	bool "KUnit test for credential lifecycle" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for credential allocation, prepare,
+	  exec and kernel credential creation, reference acquisition, commit,
+	  abort, comparison, and RCU final release.
+
+	  The commit policy selector cases run only with the native Rust
+	  implementation. The lifecycle cases run with either the C
+	  implementation or the native Rust implementation selected.
+
+	  If unsure, say N.
+
 config TASK_RELEASE_KUNIT_TEST
 	bool "KUnit test for zombie task release" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

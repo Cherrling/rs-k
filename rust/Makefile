@@ -564,11 +564,20 @@ $(obj)/helpers/helpers.bc $(obj)/helpers/helpers_module.bc: $(src)/helpers/helpe
 # their EXPORT_SYMBOL() metadata, so the automatic Rust exporter must skip
 # them to avoid duplicate GPL exports.
 rust_non_gpl_exports := \
+	__put_cred \
 	__task_pid_nr_ns \
 	__xa_alloc \
 	__xa_alloc_cyclic \
+	abort_creds \
+	commit_creds \
+	cred_fscmp \
+	get_task_cred \
 	idr_alloc_cyclic \
 	idr_get_next \
+	prepare_creds \
+	prepare_kernel_cred \
+	set_create_files_as \
+	set_security_override \
 	__refcount_add_not_zero \
 	__refcount_add_not_zero_limited_acquire \
 	__refcount_add \
@@ -803,10 +812,13 @@ rust_unexported_symbols := \
 	alloc_pid \
 	attach_pid \
 	change_pid \
+	copy_creds \
 	copy_signal \
+	cred_alloc_blank \
 	detach_pid \
 	dup_task_struct \
 	exchange_tids \
+	exit_creds \
 	free_pid \
 	free_pids \
 	idr_alloc \
@@ -820,6 +832,8 @@ rust_unexported_symbols := \
 	plist_add \
 	plist_del \
 	plist_requeue \
+	prepare_exec_creds \
+	set_cred_ucounts \
 	bitmap_onto \
 	bitmap_fold \
 	complete_on_current_cpu \

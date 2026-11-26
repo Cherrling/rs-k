@@ -62,6 +62,7 @@
 #include <linux/cpupri-rust.h>
 #include <linux/cpumask.h>
 #include <linux/cred.h>
+#include <linux/cred-rust.h>
 #include <linux/debugfs.h>
 #include <linux/dec-and-lock-rust.h>
 #include <linux/device/faux.h>

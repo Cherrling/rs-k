@@ -93,6 +93,8 @@ pub mod cpumask;
 #[cfg(CONFIG_RUST_CPUPRI)]
 mod cpupri_core;
 pub mod cred;
+#[cfg(CONFIG_RUST_CRED_LIFECYCLE)]
+mod cred_lifecycle;
 pub mod debugfs;
 #[cfg(CONFIG_RUST_DEC_AND_LOCK)]
 mod dec_and_lock;

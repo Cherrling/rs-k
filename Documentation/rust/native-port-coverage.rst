@@ -1807,6 +1807,41 @@ Signal-aware task exit
   configuration class, a lock-free queue destruction order, preserved export
   metadata, and a clean pass of the focused and adjacent exit matrices.
 
+Credential lifecycle
+--------------------
+
+Status: ``migrated``.
+
+Evidence: :doc:`native-cred-lifecycle`.
+
+Rust directly defines ``__put_cred()``, ``exit_creds()``,
+``get_task_cred()``, ``cred_alloc_blank()``, ``prepare_creds()``,
+``prepare_exec_creds()``, ``copy_creds()``, ``commit_creds()``,
+``abort_creds()``, ``cred_fscmp()``, ``set_cred_ucounts()``,
+``prepare_kernel_cred()``, ``set_security_override()``, and
+``set_create_files_as()``. Rust owns dependency acquisition and rollback,
+fork and exec keyring policy, task publication, dumpability and namespace
+transitions, proc connector selection, RCU release, and final release order.
+
+C retains the shared credential layouts, slab cache, atomics and RCU
+primitives, task pointer access, LSM and key callbacks, user namespace and
+ucount operations, and architecture barriers. Native ``kernel/cred.o``
+retains 46 helpers and the nine ordinary export metadata entries. The five
+historically unexported entries retain that class.
+
+Test: Native lockdep, KASAN, and PREEMPT_RT each passed SMP1 and SMP4 with
+16 of 16 cases. Fallback and C-only each passed SMP1 and SMP4 with 14 of 14
+cases. Coverage includes every injected allocation and callback failure,
+ucounts replacement, supplementary groups, cross-namespace capability
+policy, RCU and direct release, concurrent prepare and commit, real kthread
+fork and exit, and ``CLONE_THREAD`` credential sharing. Native
+``rust/kernel.o`` defines all 14 entries and native ``kernel/cred.o`` defines
+none. External GPL and non-GPL modules linked all nine ordinary exports.
+
+Risk: A wrong dependency transition can leak a key, group, user namespace,
+or ucounts reference. A wrong publication or release order can expose stale
+credentials or free them before an RCU reader completes.
+
 Direct-entry audit
 ------------------
 

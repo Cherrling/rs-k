@@ -2092,6 +2092,27 @@ config RUST_IRQ_SPURIOUS
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_CRED_LIFECYCLE
+	bool "Rust implementation of credential lifecycle"
+	depends on RUST
+	default y
+	help
+	  Use Rust to directly define the production credential allocation,
+	  preparation, commit, abort, fork/exec copy, reference, and final
+	  release entries. Rust owns dependency reference acquisition and
+	  rollback, keyring and UID/GID transition ordering, ucount changes,
+	  RCU publication, proc connector decisions, and final release order.
+
+	  C retains the credential layout and slab cache, atomic and RCU
+	  primitives, task pointer access, LSM and key callbacks, user,
+	  namespace, group and ucount operations, and architecture barriers.
+
+	  The complete C implementation remains available when this option is
+	  disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_TEARDOWN
 	bool "Rust implementation of final task teardown"
 	depends on RUST

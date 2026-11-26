@@ -45,7 +45,7 @@ Wave 1 work packages
 Order             Unit                        Status         Primary ownership
 ================  ==========================  =============  =====================================================
 1                 ``direct-entry-audit``      complete       Helper and adapter classification.
-2                 ``cred-lifecycle``          pending        Credential creation, commit, abort, and release.
+2                 ``cred-lifecycle``          complete       Credential creation, commit, abort, and release.
 3                 ``nsproxy-lifecycle``       pending        Namespace proxy copy, switch, and teardown.
 4                 ``file-lifecycle``          pending        File creation, close, delayed close, and release.
 5                 ``fdtable-lifecycle``       pending        FD allocation, growth, lookup, and RCU release.

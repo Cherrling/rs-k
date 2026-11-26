@@ -6949,10 +6949,14 @@ R:	Serge Hallyn <sergeh@kernel.org>
 L:	linux-security-module@vger.kernel.org
 S:	Supported
 T:	git https://git.kernel.org/pub/scm/linux/kernel/git/pcmoore/lsm.git
+F:	Documentation/rust/native-cred-lifecycle.rst
+F:	Documentation/security/credentials.rst
+F:	include/linux/cred-rust.h
 F:	include/linux/cred.h
 F:	kernel/cred.c
+F:	lib/tests/cred_lifecycle_kunit.c
 F:	rust/kernel/cred.rs
-F:	Documentation/security/credentials.rst
+F:	rust/kernel/cred_lifecycle.rs
 
 INTEL CRPS COMMON REDUNDANT PSU DRIVER
 M:	Ninad Palsule <ninad@linux.ibm.com>
