@@ -28,6 +28,10 @@ Status definitions
   The scope is not yet native Rust, or an earlier Rust algorithm still uses a
   C ABI adapter. A pending item does not count as complete.
 
+``complete``
+  A non-production prerequisite has met all of its artifacts and checks. This
+  status makes no production ownership claim.
+
 Migrated components
 -------------------
 
@@ -1802,6 +1806,40 @@ Signal-aware task exit
   wrong parent. The exit condition is one production definition in every
   configuration class, a lock-free queue destruction order, preserved export
   metadata, and a clean pass of the focused and adjacent exit matrices.
+
+Direct-entry audit
+------------------
+
+Status: ``complete``.
+
+Evidence: :doc:`native-direct-entry-audit`.
+
+The audit records the helper boundary, the public ABI baseline, and every
+production C-to-Rust call-site candidate at baseline
+``5d5c5c4fa34ed9be5e6e6ba6ef2595084da6d96a``. It classifies 88 helper sources
+and 144 call sites in 16 C files. It also records the 557 export directives in
+the 15 target VFS, socket, sock, and SKB source files.
+
+None of the target source files contains a ``rust_`` reference or a
+target-specific ``CONFIG_RUST_*`` branch. The VFS migration wave therefore
+starts without a C public ABI adapter.
+
+The audit identifies legacy public adapter debt in the MM, VMA, Maple Tree,
+XArray, and signal-control families. Each family has a named clear condition.
+These items remain pending production work even though the audit itself is
+complete.
+
+Focused Sphinx, Rustfmt, Clippy, Rustdoc, and ``git diff --check`` passed.
+Strict checkpatch reported only the permitted new-file ``FILE_PATH_CHANGES``
+warning. This package changes documentation only, so Native, fallback,
+C-only, QEMU, KASAN, lockdep, PREEMPT_RT, and ABI runtime matrices do not test
+the changed artifacts. The first production migration repeats the full matrix.
+
+Risk: The inventory can become stale when a target source, helper, export, or
+adapter changes.
+
+Reopen this audit before starting a package when the baseline moves, a target
+source gains a Rust entry, or a new C-to-Rust call site appears.
 
 Boundary-retained inventory
 ---------------------------
@@ -4403,11 +4441,6 @@ Pending inventory
 
 The following major areas remain pending. The order follows dependency and
 risk. Device drivers and peripheral subsystems remain behind the core work.
-
-Direct-entry audit
-  Status: ``pending``.
-
-  Replace C ABI adapters with Rust-defined public entry points unit by unit.
 
 Remaining core object lifecycles
   Status: ``pending``.

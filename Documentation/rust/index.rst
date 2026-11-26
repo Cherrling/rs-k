@@ -37,6 +37,8 @@ more details.
     coding-guidelines
     arch-support
     testing
+    native-port-roadmap
+    native-direct-entry-audit
     native-port-coverage
     dup-task-struct
     task-teardown
