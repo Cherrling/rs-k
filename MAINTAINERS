@@ -6426,8 +6426,11 @@ M:	Kent Overstreet <kent.overstreet@linux.dev>
 L:	linux-bcachefs@vger.kernel.org
 S:	Supported
 C:	irc://irc.oftc.net/bcache
+F:	include/linux/closure-rust.h
 F:	include/linux/closure.h
 F:	lib/closure.c
+F:	lib/tests/closure_kunit.c
+F:	rust/kernel/closure.rs
 
 CMPC ACPI DRIVER
 M:	Thadeu Lima de Souza Cascardo <cascardo@holoscopio.com>

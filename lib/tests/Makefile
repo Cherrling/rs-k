@@ -128,6 +128,7 @@ obj-$(CONFIG_KOBJECT_KUNIT_TEST) += kobject_kunit.o
 obj-$(CONFIG_LOCKREF_KUNIT_TEST) += lockref_kunit.o
 obj-$(CONFIG_LIST_LRU_KUNIT_TEST) += list_lru_kunit.o
 obj-$(CONFIG_LLIST_KUNIT_TEST) += llist_kunit.o
+obj-$(CONFIG_CLOSURE_KUNIT_TEST) += closure_kunit.o
 obj-$(CONFIG_RANDSTRUCT_KUNIT_TEST) += randstruct_kunit.o
 obj-$(CONFIG_SCANF_KUNIT_TEST) += scanf_kunit.o
 obj-$(CONFIG_SEQ_BUF_KUNIT_TEST) += seq_buf_kunit.o

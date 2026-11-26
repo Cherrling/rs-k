@@ -2406,6 +2406,23 @@ config LLIST_KUNIT_TEST
 
 	  If unsure, say N.
 
+config CLOSURE_KUNIT_TEST
+	bool "KUnit test for closures" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	select CLOSURES
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for closure reference transitions,
+	  wait-list membership and FIFO wakeup, asynchronous callback
+	  rescheduling, destructor and parent release, synchronous retirement,
+	  timeout rollback, and concurrent producers.
+
+	  The same tests run with either the C implementation or the native
+	  Rust implementation selected. This test must be built-in because it
+	  inspects closure state and exercises the ordinary public entries.
+
+	  If unsure, say N.
+
 config SWAIT_KUNIT_TEST
 	bool "KUnit test for simple wait queues" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

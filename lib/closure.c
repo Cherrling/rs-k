@@ -6,7 +6,7 @@
  * Copyright 2012 Google, Inc.
  */
 
-#include <linux/closure.h>
+#include <linux/closure-rust.h>
 #include <linux/debugfs.h>
 #include <linux/export.h>
 #include <linux/rcupdate.h>
@@ -27,6 +27,133 @@ static inline void closure_put_after_sub_checks(int flags)
 	     flags & ~CLOSURE_DESTRUCTOR, (unsigned) __fls(flags));
 }
 
+#ifdef CONFIG_RUST_CLOSURE
+
+int rust_closure_atomic_read(struct closure *cl)
+{
+	return atomic_read(&cl->remaining);
+}
+
+void rust_closure_atomic_set(struct closure *cl, int value)
+{
+	atomic_set(&cl->remaining, value);
+}
+
+void rust_closure_atomic_add(struct closure *cl, int value)
+{
+	atomic_add(value, &cl->remaining);
+}
+
+int rust_closure_atomic_sub_return_release(struct closure *cl, int value)
+{
+	return atomic_sub_return_release(value, &cl->remaining);
+}
+
+int rust_closure_atomic_dec_return_release(struct closure *cl)
+{
+	return atomic_dec_return_release(&cl->remaining);
+}
+
+int rust_closure_atomic_cmpxchg(struct closure *cl, int old, int new)
+{
+	return atomic_cmpxchg(&cl->remaining, old, new);
+}
+
+void rust_closure_acquire_after_ctrl_dep(void)
+{
+	smp_acquire__after_ctrl_dep();
+}
+
+void rust_closure_put_after_sub_checks(int flags)
+{
+	closure_put_after_sub_checks(flags);
+}
+
+void rust_closure_queue(struct closure *cl)
+{
+	closure_queue(cl);
+}
+
+void rust_closure_set_ip(struct closure *cl)
+{
+	closure_set_ip(cl);
+}
+
+void rust_closure_set_waiting(struct closure *cl, unsigned long ip)
+{
+	closure_set_waiting(cl, ip);
+}
+
+struct llist_node *rust_closure_llist_del_all(struct closure_waitlist *list)
+{
+	return llist_del_all(&list->list);
+}
+
+bool rust_closure_llist_add(struct closure *cl, struct closure_waitlist *list)
+{
+	return llist_add(&cl->list, &list->list);
+}
+
+void rust_closure_set_current_state(unsigned int state)
+{
+	set_current_state(state);
+}
+
+void rust_closure_set_current_running(void)
+{
+	__set_current_state(TASK_RUNNING);
+}
+
+void rust_closure_schedule(void)
+{
+	schedule();
+}
+
+long rust_closure_schedule_timeout(long timeout)
+{
+	return schedule_timeout(timeout);
+}
+
+#ifdef CONFIG_DEBUG_CLOSURES
+static LIST_HEAD(closure_list);
+static DEFINE_SPINLOCK(closure_list_lock);
+
+void rust_closure_debug_register(struct closure *cl)
+{
+	unsigned long flags;
+
+	/*
+	 * Preserve the debug-closure corruption contract. Continuing with an
+	 * inconsistent magic value would corrupt the debug list.
+	 */
+	BUG_ON(cl->magic == CLOSURE_MAGIC_ALIVE);
+	cl->magic = CLOSURE_MAGIC_ALIVE;
+
+	spin_lock_irqsave(&closure_list_lock, flags);
+	list_add(&cl->all, &closure_list);
+	spin_unlock_irqrestore(&closure_list_lock, flags);
+}
+
+void rust_closure_debug_unregister(struct closure *cl)
+{
+	unsigned long flags;
+
+	if (cl->magic == CLOSURE_MAGIC_STACK)
+		return;
+
+	/* Preserve the original fatal check for an invalid debug-list entry. */
+	BUG_ON(cl->magic != CLOSURE_MAGIC_ALIVE);
+	cl->magic = CLOSURE_MAGIC_DEAD;
+
+	spin_lock_irqsave(&closure_list_lock, flags);
+	list_del(&cl->all);
+	spin_unlock_irqrestore(&closure_list_lock, flags);
+}
+#endif
+
+#endif /* CONFIG_RUST_CLOSURE */
+
+#ifndef CONFIG_RUST_CLOSURE
 static inline void closure_put_after_sub(struct closure *cl, int flags)
 {
 	closure_put_after_sub_checks(flags);
@@ -60,20 +187,24 @@ void closure_sub(struct closure *cl, int v)
 {
 	closure_put_after_sub(cl, atomic_sub_return_release(v, &cl->remaining));
 }
+#endif /* CONFIG_RUST_CLOSURE */
 EXPORT_SYMBOL(closure_sub);
 
 /*
  * closure_put - decrement a closure's refcount
  */
+#ifndef CONFIG_RUST_CLOSURE
 void closure_put(struct closure *cl)
 {
 	closure_put_after_sub(cl, atomic_dec_return_release(&cl->remaining));
 }
+#endif /* CONFIG_RUST_CLOSURE */
 EXPORT_SYMBOL(closure_put);
 
 /*
  * closure_wake_up - wake up all closures on a wait list, without memory barrier
  */
+#ifndef CONFIG_RUST_CLOSURE
 void __closure_wake_up(struct closure_waitlist *wait_list)
 {
 	struct llist_node *list;
@@ -91,6 +222,7 @@ void __closure_wake_up(struct closure_waitlist *wait_list)
 		closure_sub(cl, CLOSURE_WAITING + 1);
 	}
 }
+#endif /* CONFIG_RUST_CLOSURE */
 EXPORT_SYMBOL(__closure_wake_up);
 
 /**
@@ -100,6 +232,7 @@ EXPORT_SYMBOL(__closure_wake_up);
  * @cl: closure pointer.
  *
  */
+#ifndef CONFIG_RUST_CLOSURE
 bool closure_wait(struct closure_waitlist *waitlist, struct closure *cl)
 {
 	if (atomic_read(&cl->remaining) & CLOSURE_WAITING)
@@ -112,8 +245,10 @@ bool closure_wait(struct closure_waitlist *waitlist, struct closure *cl)
 
 	return true;
 }
+#endif /* CONFIG_RUST_CLOSURE */
 EXPORT_SYMBOL(closure_wait);
 
+#ifndef CONFIG_RUST_CLOSURE
 struct closure_syncer {
 	struct task_struct	*task;
 	int			done;
@@ -148,6 +283,7 @@ void __sched __closure_sync(struct closure *cl)
 
 	__set_current_state(TASK_RUNNING);
 }
+#endif /* CONFIG_RUST_CLOSURE */
 EXPORT_SYMBOL(__closure_sync);
 
 /*
@@ -157,6 +293,7 @@ EXPORT_SYMBOL(__closure_sync);
  * Unlike closure_sync() this doesn't reinit the ref to 1; subsequent
  * closure_get_not_zero() calls waill fail.
  */
+#ifndef CONFIG_RUST_CLOSURE
 void __sched closure_return_sync(struct closure *cl)
 {
 	struct closure_syncer s = { .task = current };
@@ -183,8 +320,10 @@ void __sched closure_return_sync(struct closure *cl)
 	if (cl->parent)
 		closure_put(cl->parent);
 }
+#endif /* CONFIG_RUST_CLOSURE */
 EXPORT_SYMBOL(closure_return_sync);
 
+#ifndef CONFIG_RUST_CLOSURE
 int __sched __closure_sync_timeout(struct closure *cl, unsigned long timeout)
 {
 	struct closure_syncer s = { .task = current };
@@ -220,10 +359,12 @@ success:
 	__set_current_state(TASK_RUNNING);
 	return ret;
 }
+#endif /* CONFIG_RUST_CLOSURE */
 EXPORT_SYMBOL(__closure_sync_timeout);
 
 #ifdef CONFIG_DEBUG_CLOSURES
 
+#ifndef CONFIG_RUST_CLOSURE
 static LIST_HEAD(closure_list);
 static DEFINE_SPINLOCK(closure_list_lock);
 
@@ -238,8 +379,10 @@ void closure_debug_create(struct closure *cl)
 	list_add(&cl->all, &closure_list);
 	spin_unlock_irqrestore(&closure_list_lock, flags);
 }
+#endif /* CONFIG_RUST_CLOSURE */
 EXPORT_SYMBOL(closure_debug_create);
 
+#ifndef CONFIG_RUST_CLOSURE
 void closure_debug_destroy(struct closure *cl)
 {
 	unsigned long flags;
@@ -254,6 +397,7 @@ void closure_debug_destroy(struct closure *cl)
 	list_del(&cl->all);
 	spin_unlock_irqrestore(&closure_list_lock, flags);
 }
+#endif /* CONFIG_RUST_CLOSURE */
 EXPORT_SYMBOL(closure_debug_destroy);
 
 static int debug_show(struct seq_file *f, void *data)

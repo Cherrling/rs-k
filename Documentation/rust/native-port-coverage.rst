@@ -271,6 +271,25 @@ RCU wait lifecycle
   passed 8 of 8 cases, the adjacent SMP4 suites passed 23 of 23 cases, and
   the module ABI test linked all eight symbols.
 
+Closure reference and wait lifecycle
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-closure`.
+
+  Rust directly defines the seven public reference, wait, wake, synchronous
+  retirement, and timeout entries. With ``CONFIG_DEBUG_CLOSURES`` it also
+  defines the two public debug entries. Rust owns remaining-count transitions,
+  guard validation, wait-list membership and FIFO ordering, callback
+  rescheduling, destructor and parent release, synchronous handoff, and
+  timeout rollback. C retains the shared layout, atomics and barriers,
+  lock-less list primitives, workqueue queuing, task-state and scheduler
+  primitives, debug-list storage, and ordinary export metadata. C fallback
+  configurations retain the complete implementation. Native debug and
+  non-debug, fallback, and C-only configurations passed 10 of 10 focused
+  cases on one and four CPUs. KASAN, lockdep, and PREEMPT_RT boots passed,
+  adjacent suites passed 124 of 124 cases, and external modules linked all
+  nine ordinary exports.
+
 Task work queues
   Status: ``migrated``.
 

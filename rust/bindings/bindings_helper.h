@@ -51,6 +51,7 @@
 #include <linux/btree-rust.h>
 #include <linux/class-rust.h>
 #include <linux/clk.h>
+#include <linux/closure-rust.h>
 #include <linux/completion.h>
 #include <linux/completion-rust.h>
 #include <linux/complete-signal-rust.h>

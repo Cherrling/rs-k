@@ -29,6 +29,17 @@
 // To be determined.
 #![feature(used_with_arg)]
 //
+// `return_address()` has no stable equivalent. Use it to preserve the caller
+// address stored by debug closures.
+#![cfg_attr(
+    all(CONFIG_RUST_CLOSURE, CONFIG_DEBUG_CLOSURES),
+    feature(core_intrinsics)
+)]
+#![cfg_attr(
+    all(CONFIG_RUST_CLOSURE, CONFIG_DEBUG_CLOSURES),
+    allow(internal_features)
+)]
+//
 // `feature(file_with_nul)` is stable since Rust 1.92.0. Before Rust 1.89.0, it did not exist, so
 // enable it conditionally.
 #![cfg_attr(CONFIG_RUSTC_HAS_FILE_WITH_NUL, feature(file_with_nul))]
@@ -65,6 +76,8 @@ mod bus;
 #[cfg(CONFIG_RUST_CLASS)]
 mod class;
 pub mod clk;
+#[cfg(CONFIG_RUST_CLOSURE)]
+mod closure;
 #[cfg(CONFIG_RUST_COMPLETE_SIGNAL)]
 mod complete_signal;
 #[cfg(CONFIG_RUST_COMPLETION)]

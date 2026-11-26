@@ -1601,6 +1601,29 @@ config ASSOCIATIVE_ARRAY
 config CLOSURES
 	bool
 
+config RUST_CLOSURE
+	bool "Rust implementation of closure lifecycle"
+	depends on RUST && CLOSURES
+	default y
+	help
+	  Use Rust for the production closure reference count, wait-list,
+	  synchronization, timeout, and asynchronous callback lifecycle.
+
+	  Rust directly defines the public closure entry points. It owns the
+	  remaining-count state machine, guard validation, wait-list membership
+	  and ordering, callback rescheduling, destructor and parent release
+	  ordering, synchronous callback handoff, and timeout rollback. C
+	  retains the shared closure layout, architecture atomics and barriers,
+	  lock-less list primitives, workqueue queuing, task-state and scheduler
+	  primitives, locking diagnostics, debugfs inspection, and ordinary
+	  export metadata.
+
+	  The complete C closure implementation remains available when this
+	  option is disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config HAS_IOMEM
 	bool
 	depends on !NO_IOMEM

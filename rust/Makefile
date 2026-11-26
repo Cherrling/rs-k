@@ -593,6 +593,15 @@ rust_non_gpl_exports := \
 	prepare_to_rcuwait \
 	finish_rcuwait \
 	rcuwait_wake_up \
+	closure_sub \
+	closure_put \
+	__closure_wake_up \
+	closure_wait \
+	__closure_sync \
+	closure_return_sync \
+	__closure_sync_timeout \
+	closure_debug_create \
+	closure_debug_destroy \
 	__init_swait_queue_head \
 	swake_up_locked \
 	swake_up_one \

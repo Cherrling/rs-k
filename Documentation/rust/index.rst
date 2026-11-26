@@ -62,6 +62,7 @@ more details.
     native-irq-resend
     native-irq-work
     native-rcuwait
+    native-closure
     native-task-work
     mm-lifetime
     mm-teardown
