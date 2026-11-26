@@ -40,6 +40,7 @@ more details.
     native-port-roadmap
     native-direct-entry-audit
     native-cred-lifecycle
+    native-nsproxy-lifecycle
     native-port-coverage
     dup-task-struct
     task-teardown

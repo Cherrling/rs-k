@@ -253,6 +253,8 @@ mod mremap_to;
 mod mutex_core;
 #[cfg(CONFIG_NET)]
 pub mod net;
+#[cfg(CONFIG_RUST_NSPROXY_LIFECYCLE)]
+mod nsproxy_lifecycle;
 pub mod num;
 #[cfg(CONFIG_RUST_OBJPOOL)]
 mod objpool;

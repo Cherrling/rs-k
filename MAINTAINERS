@@ -18914,6 +18914,11 @@ M:	Christian Brauner <christian@brauner.io>
 R:	Pavel Tikhomirov <ptikhomirov@virtuozzo.com>
 L:	linux-kernel@vger.kernel.org
 S:	Maintained
+F:	Documentation/rust/native-nsproxy-lifecycle.rst
+F:	include/linux/nsproxy-rust.h
+F:	kernel/nsproxy.c
+F:	lib/tests/nsproxy_lifecycle_kunit.c
+F:	rust/kernel/nsproxy_lifecycle.rs
 F:	rust/kernel/pid_namespace.rs
 F:	kernel/pid_namespace.c
 F:	tools/testing/selftests/pid_namespace/

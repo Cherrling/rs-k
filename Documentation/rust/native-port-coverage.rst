@@ -1842,6 +1842,43 @@ Risk: A wrong dependency transition can leak a key, group, user namespace,
 or ucounts reference. A wrong publication or release order can expose stale
 credentials or free them before an RCU reader completes.
 
+Namespace proxy lifecycle
+-------------------------
+
+Status: ``migrated``.
+
+Evidence: :doc:`native-nsproxy-lifecycle`.
+
+Rust directly defines ``create_new_namespaces()``, ``nsproxy_free()``,
+``deactivate_nsproxy()``, ``copy_namespaces()``,
+``unshare_nsproxy_namespaces()``, ``switch_task_namespaces()``,
+``exit_nsproxy_namespaces()``, ``switch_cred_namespaces()``,
+``get_cred_namespaces()``, ``exit_cred_namespaces()``, and
+``exec_task_namespaces()``. Rust owns namespace copy ordering,
+partial-failure rollback, task publication, unshare and exec transitions,
+credential namespace accounting, and final release order.
+
+C retains the shared namespace layouts, proxy slab allocation, namespace copy
+and put primitives, task locks, capability checks, time namespace transitions,
+user namespace active references, and error pointer primitives.
+
+Test: Native lockdep, KASAN, and PREEMPT_RT each passed SMP1 and SMP4 with
+10 of 10 cases. Fallback and C-only each passed SMP1 and SMP4 with 9 of 9
+cases. Coverage includes every injected allocation and namespace copy
+failure, task switch and final release, concurrent creation, real kthread
+fork and exit, unshare, credential namespace accounting, exec no-op, and a
+pending time namespace transition during exec.
+
+Native ``rust/kernel.o`` defined all 11 entries and native ``kernel/nsproxy.o``
+defined none. There are 58 Native helpers. The fallback and C-only objects
+retained the complete implementation. None of the 11 entries appears in
+``Module.symvers``. External GPL and non-GPL modules failed modpost with all
+11 symbols unresolved. Disassembly showed complete Rust
+``create_new_namespaces()`` and ``exec_task_namespaces()`` implementations.
+
+Risk: A wrong rollback or release order can leak a namespace reference. A
+wrong publication or exec transition can expose stale namespace state.
+
 Direct-entry audit
 ------------------
 

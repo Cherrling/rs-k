@@ -2113,6 +2113,27 @@ config RUST_CRED_LIFECYCLE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_NSPROXY_LIFECYCLE
+	bool "Rust implementation of namespace proxy lifecycle"
+	depends on RUST
+	default y
+	help
+	  Use Rust to directly define namespace proxy allocation, namespace
+	  copying, partial-failure cleanup, task publication, exec and unshare
+	  transitions, credential namespace accounting, and final release
+	  ordering.
+
+	  C retains the shared namespace and proxy layouts, slab allocator,
+	  task locking, capability checks, time namespace transitions, active
+	  namespace references, and each namespace type's copy and put
+	  primitives.
+
+	  The complete C implementation remains available when this option is
+	  disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_TEARDOWN
 	bool "Rust implementation of final task teardown"
 	depends on RUST

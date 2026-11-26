@@ -32,6 +32,7 @@ obj-$(CONFIG_VMA_UNMAP_KUNIT_TEST) += test_vma_unmap.o
 obj-$(CONFIG_DUP_MMAP_KUNIT_TEST) += test_dup_mmap.o
 obj-$(CONFIG_DUP_TASK_STRUCT_KUNIT_TEST) += test_dup_task_struct.o
 obj-$(CONFIG_CRED_LIFECYCLE_KUNIT_TEST) += cred_lifecycle_kunit.o
+obj-$(CONFIG_NSPROXY_LIFECYCLE_KUNIT_TEST) += nsproxy_lifecycle_kunit.o
 obj-$(CONFIG_TASK_TEARDOWN_KUNIT_TEST) += test_task_teardown.o
 obj-$(CONFIG_TASK_WORK_KUNIT_TEST) += task_work_kunit.o
 obj-$(CONFIG_IRQ_WORK_KUNIT_TEST) += irq_work_kunit.o

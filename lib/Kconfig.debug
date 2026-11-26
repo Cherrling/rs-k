@@ -2772,6 +2772,22 @@ config CRED_LIFECYCLE_KUNIT_TEST
 
 	  If unsure, say N.
 
+config NSPROXY_LIFECYCLE_KUNIT_TEST
+	bool "KUnit test for namespace proxy lifecycle" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for namespace proxy creation,
+	  namespace copy failure cleanup, task switching, unshare, exec,
+	  reference release, credential namespace accounting, and concurrent
+	  fork and namespace creation.
+
+	  The failure-injection and policy counters run only with the native
+	  Rust implementation. The lifecycle cases run with either the C
+	  implementation or the native Rust implementation selected.
+
+	  If unsure, say N.
+
 config TASK_RELEASE_KUNIT_TEST
 	bool "KUnit test for zombie task release" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

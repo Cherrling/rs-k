@@ -809,6 +809,24 @@ rust_non_gpl_exports := \
 
 # Rust-defined production symbols that must not receive automatic exports.
 rust_unexported_symbols := \
+	copy_namespaces \
+	create_new_namespaces \
+	deactivate_nsproxy \
+	exec_task_namespaces \
+	exit_cred_namespaces \
+	exit_nsproxy_namespaces \
+	get_cred_namespaces \
+	nsproxy_free \
+	rust_nsproxy_test_copy_count \
+	rust_nsproxy_test_create_count \
+	rust_nsproxy_test_fail_next \
+	rust_nsproxy_test_failure_count \
+	rust_nsproxy_test_free_count \
+	rust_nsproxy_test_release_count \
+	rust_nsproxy_test_switch_count \
+	switch_cred_namespaces \
+	switch_task_namespaces \
+	unshare_nsproxy_namespaces \
 	alloc_pid \
 	attach_pid \
 	change_pid \

@@ -28,6 +28,9 @@
 #include <linux/cgroup.h>
 #include <linux/perf_event.h>
 #include <linux/nstree.h>
+#include <linux/capability.h>
+#include <linux/cred.h>
+#include <linux/nsproxy-rust.h>
 
 static struct kmem_cache *nsproxy_cachep;
 
@@ -50,6 +53,343 @@ struct nsproxy init_nsproxy = {
 	.time_ns_for_children	= &init_time_ns,
 #endif
 };
+
+#ifdef CONFIG_RUST_NSPROXY_LIFECYCLE
+
+struct nsproxy *rust_helper_nsproxy_alloc(void)
+{
+	struct nsproxy *ns;
+
+	ns = kmem_cache_alloc(nsproxy_cachep, GFP_KERNEL);
+	if (ns)
+		refcount_set(&ns->count, 1);
+	return ns;
+}
+
+void rust_helper_nsproxy_free_object(struct nsproxy *ns)
+{
+	kmem_cache_free(nsproxy_cachep, ns);
+}
+
+void rust_helper_nsproxy_get(struct nsproxy *ns)
+{
+	get_nsproxy(ns);
+}
+
+void rust_helper_nsproxy_put(struct nsproxy *ns)
+{
+	put_nsproxy(ns);
+}
+
+void rust_helper_nsproxy_active_get(struct nsproxy *ns)
+{
+	nsproxy_ns_active_get(ns);
+}
+
+void rust_helper_nsproxy_active_put(struct nsproxy *ns)
+{
+	nsproxy_ns_active_put(ns);
+}
+
+u64 rust_helper_nsproxy_nonuser_flags(void)
+{
+	return CLONE_NS_ALL & ~CLONE_NEWUSER;
+}
+
+u64 rust_helper_nsproxy_empty_mntns_flag(void)
+{
+	return UNSHARE_EMPTY_MNTNS;
+}
+
+u64 rust_helper_nsproxy_clone_empty_mntns_flag(void)
+{
+	return CLONE_EMPTY_MNTNS;
+}
+
+struct task_struct *rust_helper_nsproxy_current(void)
+{
+	return current;
+}
+
+struct nsproxy *rust_helper_nsproxy_task(const struct task_struct *task)
+{
+	return task->nsproxy;
+}
+
+void rust_helper_nsproxy_set_task(struct task_struct *task, struct nsproxy *ns)
+{
+	task->nsproxy = ns;
+}
+
+struct nsproxy *rust_helper_nsproxy_swap_task(struct task_struct *task,
+					      struct nsproxy *new)
+{
+	struct nsproxy *old;
+
+	task_lock(task);
+	old = task->nsproxy;
+	task->nsproxy = new;
+	task_unlock(task);
+	return old;
+}
+
+struct user_namespace *
+rust_helper_nsproxy_task_user_ns(struct task_struct *task)
+{
+	return task_cred_xxx(task, user_ns);
+}
+
+struct user_namespace *
+rust_helper_nsproxy_cred_user_ns(const struct cred *cred)
+{
+	return cred->user_ns;
+}
+
+struct user_namespace *rust_helper_nsproxy_current_user_ns(void)
+{
+	return current_user_ns();
+}
+
+struct fs_struct *rust_helper_nsproxy_task_fs(struct task_struct *task)
+{
+	return task->fs;
+}
+
+struct fs_struct *rust_helper_nsproxy_current_fs(void)
+{
+	return current->fs;
+}
+
+bool rust_helper_nsproxy_capable(struct user_namespace *user_ns)
+{
+	return ns_capable(user_ns, CAP_SYS_ADMIN);
+}
+
+void rust_helper_nsproxy_might_sleep(void)
+{
+	might_sleep();
+}
+
+struct mnt_namespace *
+rust_helper_nsproxy_copy_mnt(u64 flags, struct mnt_namespace *old,
+			     struct user_namespace *user_ns,
+			     struct fs_struct *new_fs)
+{
+	return copy_mnt_ns(flags, old, user_ns, new_fs);
+}
+
+struct uts_namespace *
+rust_helper_nsproxy_copy_uts(u64 flags, struct uts_namespace *old,
+			     struct user_namespace *user_ns)
+{
+	return copy_utsname(flags, user_ns, old);
+}
+
+struct ipc_namespace *
+rust_helper_nsproxy_copy_ipc(u64 flags, struct ipc_namespace *old,
+			     struct user_namespace *user_ns)
+{
+	return copy_ipcs(flags, user_ns, old);
+}
+
+struct pid_namespace *
+rust_helper_nsproxy_copy_pid(u64 flags, struct pid_namespace *old,
+			     struct user_namespace *user_ns)
+{
+	return copy_pid_ns(flags, user_ns, old);
+}
+
+struct cgroup_namespace *
+rust_helper_nsproxy_copy_cgroup(u64 flags, struct cgroup_namespace *old,
+				struct user_namespace *user_ns)
+{
+	return copy_cgroup_ns(flags, user_ns, old);
+}
+
+struct net *
+rust_helper_nsproxy_copy_net(u64 flags, struct net *old,
+			     struct user_namespace *user_ns)
+{
+	return copy_net_ns(flags, user_ns, old);
+}
+
+struct time_namespace *
+rust_helper_nsproxy_copy_time(u64 flags, struct time_namespace *old,
+			      struct user_namespace *user_ns)
+{
+	return copy_time_ns(flags, user_ns, old);
+}
+
+struct time_namespace *
+rust_helper_nsproxy_get_time(struct time_namespace *ns)
+{
+	return get_time_ns(ns);
+}
+
+struct mnt_namespace *rust_helper_nsproxy_mnt(const struct nsproxy *ns)
+{
+	return ns->mnt_ns;
+}
+
+struct uts_namespace *rust_helper_nsproxy_uts(const struct nsproxy *ns)
+{
+	return ns->uts_ns;
+}
+
+struct ipc_namespace *rust_helper_nsproxy_ipc(const struct nsproxy *ns)
+{
+	return ns->ipc_ns;
+}
+
+struct pid_namespace *rust_helper_nsproxy_pid(const struct nsproxy *ns)
+{
+	return ns->pid_ns_for_children;
+}
+
+struct cgroup_namespace *
+rust_helper_nsproxy_cgroup(const struct nsproxy *ns)
+{
+	return ns->cgroup_ns;
+}
+
+struct net *rust_helper_nsproxy_net(const struct nsproxy *ns)
+{
+	return ns->net_ns;
+}
+
+struct time_namespace *
+rust_helper_nsproxy_time(const struct nsproxy *ns)
+{
+	return ns->time_ns;
+}
+
+struct time_namespace *
+rust_helper_nsproxy_time_for_children(const struct nsproxy *ns)
+{
+	return ns->time_ns_for_children;
+}
+
+void rust_helper_nsproxy_set_mnt(struct nsproxy *ns,
+				 struct mnt_namespace *mnt)
+{
+	ns->mnt_ns = mnt;
+}
+
+void rust_helper_nsproxy_set_uts(struct nsproxy *ns,
+				 struct uts_namespace *uts)
+{
+	ns->uts_ns = uts;
+}
+
+void rust_helper_nsproxy_set_ipc(struct nsproxy *ns,
+				 struct ipc_namespace *ipc)
+{
+	ns->ipc_ns = ipc;
+}
+
+void rust_helper_nsproxy_set_pid(struct nsproxy *ns,
+				 struct pid_namespace *pid)
+{
+	ns->pid_ns_for_children = pid;
+}
+
+void rust_helper_nsproxy_set_cgroup(struct nsproxy *ns,
+				    struct cgroup_namespace *cgroup)
+{
+	ns->cgroup_ns = cgroup;
+}
+
+void rust_helper_nsproxy_set_net(struct nsproxy *ns, struct net *net)
+{
+	ns->net_ns = net;
+}
+
+void rust_helper_nsproxy_set_time(struct nsproxy *ns,
+				  struct time_namespace *time)
+{
+	ns->time_ns = time;
+}
+
+void rust_helper_nsproxy_set_time_for_children(struct nsproxy *ns,
+					       struct time_namespace *time)
+{
+	ns->time_ns_for_children = time;
+}
+
+void rust_helper_nsproxy_put_mnt(struct mnt_namespace *ns)
+{
+	put_mnt_ns(ns);
+}
+
+void rust_helper_nsproxy_put_uts(struct uts_namespace *ns)
+{
+	put_uts_ns(ns);
+}
+
+void rust_helper_nsproxy_put_ipc(struct ipc_namespace *ns)
+{
+	put_ipc_ns(ns);
+}
+
+void rust_helper_nsproxy_put_pid(struct pid_namespace *ns)
+{
+	put_pid_ns(ns);
+}
+
+void rust_helper_nsproxy_put_cgroup(struct cgroup_namespace *ns)
+{
+	put_cgroup_ns(ns);
+}
+
+void rust_helper_nsproxy_put_net(struct net *ns)
+{
+	put_net(ns);
+}
+
+void rust_helper_nsproxy_put_time(struct time_namespace *ns)
+{
+	put_time_ns(ns);
+}
+
+void rust_helper_nsproxy_user_ns_active_get(struct user_namespace *ns)
+{
+	ns_ref_active_get(ns);
+}
+
+void rust_helper_nsproxy_user_ns_active_put(struct user_namespace *ns)
+{
+	ns_ref_active_put(ns);
+}
+
+bool rust_helper_nsproxy_time_equal(const struct nsproxy *ns)
+{
+	return ns->time_ns_for_children == ns->time_ns;
+}
+
+void rust_helper_nsproxy_timens_on_fork(struct nsproxy *ns,
+					struct task_struct *task)
+{
+	timens_on_fork(ns, task);
+}
+
+bool rust_helper_nsproxy_is_err(const void *ptr)
+{
+	return IS_ERR(ptr);
+}
+
+long rust_helper_nsproxy_ptr_err(const void *ptr)
+{
+	return PTR_ERR(ptr);
+}
+
+void *rust_helper_nsproxy_err_ptr(long error)
+{
+	return ERR_PTR(error);
+}
+
+#endif /* CONFIG_RUST_NSPROXY_LIFECYCLE */
+
+#ifndef CONFIG_RUST_NSPROXY_LIFECYCLE
 
 static inline struct nsproxy *create_nsproxy(void)
 {
@@ -297,6 +637,15 @@ int exec_task_namespaces(void)
 	switch_task_namespaces(tsk, new);
 	return 0;
 }
+
+#endif /* !CONFIG_RUST_NSPROXY_LIFECYCLE */
+
+#ifdef CONFIG_NSPROXY_LIFECYCLE_KUNIT_TEST
+struct nsproxy *nsproxy_test_create(void)
+{
+	return create_new_namespaces(0, current, current_user_ns(), current->fs);
+}
+#endif
 
 static int check_setns_flags(unsigned long flags)
 {
