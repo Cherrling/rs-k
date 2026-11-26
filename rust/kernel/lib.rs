@@ -84,6 +84,8 @@ pub mod debugfs;
 #[cfg(CONFIG_RUST_DEC_AND_LOCK)]
 mod dec_and_lock;
 pub mod device;
+#[cfg(CONFIG_RUST_DEVICE)]
+mod device_core;
 pub mod device_id;
 pub mod devres;
 pub mod dma;

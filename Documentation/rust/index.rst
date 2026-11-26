@@ -132,6 +132,7 @@ more details.
     native-class
     native-bus
     native-driver
+    native-device
     native-list-lru
     native-kfifo
     native-genradix

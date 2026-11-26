@@ -13,6 +13,7 @@
 #include <linux/cleanup.h>
 #include <linux/cpufreq.h>
 #include <linux/device.h>
+#include <linux/device-rust.h>
 #include <linux/dma-map-ops.h> /* for dma_default_coherent */
 #include <linux/err.h>
 #include <linux/fwnode.h>
@@ -3210,6 +3211,7 @@ static void klist_children_put(struct klist_node *n)
 	put_device(dev);
 }
 
+#ifndef CONFIG_RUST_DEVICE
 /**
  * device_initialize - init device structure.
  * @dev: device.
@@ -3250,6 +3252,7 @@ void device_initialize(struct device *dev)
 	swiotlb_dev_init(dev);
 }
 EXPORT_SYMBOL_GPL(device_initialize);
+#endif /* CONFIG_RUST_DEVICE */
 
 struct kobject *virtual_device_parent(void)
 {
@@ -3603,6 +3606,7 @@ static void device_remove_sys_dev_entry(struct device *dev)
 	}
 }
 
+#ifndef CONFIG_RUST_DEVICE
 static int device_private_init(struct device *dev)
 {
 	dev->p = kzalloc_obj(*dev->p);
@@ -3614,7 +3618,9 @@ static int device_private_init(struct device *dev)
 	INIT_LIST_HEAD(&dev->p->deferred_probe);
 	return 0;
 }
+#endif /* CONFIG_RUST_DEVICE */
 
+#ifndef CONFIG_RUST_DEVICE
 /**
  * device_add - add device to device hierarchy.
  * @dev: device.
@@ -3860,6 +3866,7 @@ int device_register(struct device *dev)
 	return device_add(dev);
 }
 EXPORT_SYMBOL_GPL(device_register);
+#endif /* CONFIG_RUST_DEVICE */
 
 /**
  * get_device - increment reference count for device.
@@ -3905,6 +3912,7 @@ bool kill_device(struct device *dev)
 }
 EXPORT_SYMBOL_GPL(kill_device);
 
+#ifndef CONFIG_RUST_DEVICE
 /**
  * device_del - delete device from system.
  * @dev: device.
@@ -4009,6 +4017,285 @@ void device_unregister(struct device *dev)
 	put_device(dev);
 }
 EXPORT_SYMBOL_GPL(device_unregister);
+#endif /* CONFIG_RUST_DEVICE */
+
+#ifdef CONFIG_RUST_DEVICE
+const struct kobj_type *rust_helper_device_ktype(void)
+{
+	return &device_ktype;
+}
+
+void rust_helper_device_init_locks(struct device *dev)
+{
+	mutex_init(&dev->mutex);
+	spin_lock_init(&dev->driver_override.lock);
+	lockdep_set_novalidate_class(&dev->mutex);
+	spin_lock_init(&dev->devres_lock);
+}
+
+void rust_helper_device_init_pm(struct device *dev)
+{
+	device_pm_init(dev);
+}
+
+void rust_helper_device_set_node_no_numa(struct device *dev)
+{
+	set_dev_node(dev, NUMA_NO_NODE);
+}
+
+void rust_helper_device_init_coherent(struct device *dev)
+{
+	dev_assign_dma_coherent(dev, dma_default_coherent);
+	swiotlb_dev_init(dev);
+}
+
+void rust_helper_device_init_private(struct device *dev)
+{
+	dev->p->device = dev;
+	klist_init(&dev->p->klist_children, klist_children_get,
+		   klist_children_put);
+	INIT_LIST_HEAD(&dev->p->deferred_probe);
+}
+
+int rust_helper_device_set_init_name(struct device *dev)
+{
+	int error = dev_set_name(dev, "%s", dev->init_name);
+
+	dev->init_name = NULL;
+	return error;
+}
+
+const char *rust_helper_device_name(const struct device *dev)
+{
+	return dev_name(dev);
+}
+
+int rust_helper_device_set_bus_name(struct device *dev)
+{
+	return dev_set_name(dev, "%s%u", dev->bus->dev_name, dev->id);
+}
+
+void rust_helper_device_debug_add(const struct device *dev)
+{
+	pr_debug("device: '%s': device_add\n", dev_name(dev));
+}
+
+void rust_helper_device_debug_unregistering(const struct device *dev)
+{
+	pr_debug("device: '%s': device_unregister\n", dev_name(dev));
+}
+
+int rust_helper_device_get_parent(struct device *dev, struct device *parent,
+				  struct kobject **parent_kobj)
+{
+	struct kobject *kobj = get_device_parent(dev, parent);
+
+	if (IS_ERR(kobj))
+		return PTR_ERR(kobj);
+
+	*parent_kobj = kobj;
+	return 0;
+}
+
+void rust_helper_device_inherit_parent_node(struct device *dev,
+					    struct device *parent)
+{
+	if (parent && dev_to_node(dev) == NUMA_NO_NODE)
+		set_dev_node(dev, dev_to_node(parent));
+}
+
+int rust_helper_device_kobject_add(struct device *dev)
+{
+	return kobject_add(&dev->kobj, dev->kobj.parent, NULL);
+}
+
+void rust_helper_device_lock(struct device *dev)
+{
+	device_lock(dev);
+}
+
+void rust_helper_device_unlock(struct device *dev)
+{
+	device_unlock(dev);
+}
+
+void rust_helper_device_set_ready_to_probe(struct device *dev)
+{
+	dev_set_ready_to_probe(dev);
+}
+
+void rust_helper_device_platform_notify(struct device *dev)
+{
+	device_platform_notify(dev);
+}
+
+void rust_helper_device_platform_notify_remove(struct device *dev)
+{
+	device_platform_notify_remove(dev);
+}
+
+int rust_helper_device_add_uevent_file(struct device *dev)
+{
+	return device_create_file(dev, &dev_attr_uevent);
+}
+
+void rust_helper_device_remove_uevent_file(struct device *dev)
+{
+	device_remove_file(dev, &dev_attr_uevent);
+}
+
+int rust_helper_device_add_class_symlinks(struct device *dev)
+{
+	return device_add_class_symlinks(dev);
+}
+
+void rust_helper_device_remove_class_symlinks(struct device *dev)
+{
+	device_remove_class_symlinks(dev);
+}
+
+int rust_helper_device_add_attrs(struct device *dev)
+{
+	return device_add_attrs(dev);
+}
+
+void rust_helper_device_remove_attrs(struct device *dev)
+{
+	device_remove_attrs(dev);
+}
+
+int rust_helper_device_dpm_sysfs_add(struct device *dev)
+{
+	return dpm_sysfs_add(dev);
+}
+
+void rust_helper_device_dpm_sysfs_remove(struct device *dev)
+{
+	dpm_sysfs_remove(dev);
+}
+
+void rust_helper_device_pm_add(struct device *dev)
+{
+	device_pm_add(dev);
+}
+
+void rust_helper_device_pm_remove(struct device *dev)
+{
+	device_pm_remove(dev);
+}
+
+bool rust_helper_device_has_devt(const struct device *dev)
+{
+	return MAJOR(dev->devt);
+}
+
+int rust_helper_device_add_dev_file(struct device *dev)
+{
+	return device_create_file(dev, &dev_attr_dev);
+}
+
+void rust_helper_device_remove_dev_file(struct device *dev)
+{
+	device_remove_file(dev, &dev_attr_dev);
+}
+
+int rust_helper_device_add_sys_dev_entry(struct device *dev)
+{
+	return device_create_sys_dev_entry(dev);
+}
+
+void rust_helper_device_remove_sys_dev_entry(struct device *dev)
+{
+	device_remove_sys_dev_entry(dev);
+}
+
+int rust_helper_device_devtmpfs_add(struct device *dev)
+{
+	return devtmpfs_create_node(dev);
+}
+
+int rust_helper_device_devtmpfs_remove(struct device *dev)
+{
+	return devtmpfs_delete_node(dev);
+}
+
+void rust_helper_device_fw_devlink_add(struct device *dev)
+{
+	if (dev->fwnode && !dev->fwnode->dev) {
+		dev->fwnode->dev = dev;
+		fw_devlink_link_device(dev);
+	}
+}
+
+void rust_helper_device_fw_devlink_maybe_unblock(struct device *dev)
+{
+	if (dev->fwnode && fw_devlink_drv_reg_done && !dev_can_match(dev))
+		fw_devlink_unblock_consumers(dev);
+}
+
+void rust_helper_device_class_add(struct device *dev,
+				  struct subsys_private *sp)
+{
+	struct class_interface *class_intf;
+
+	mutex_lock(&sp->mutex);
+	klist_add_tail(&dev->p->knode_class, &sp->klist_devices);
+	list_for_each_entry(class_intf, &sp->interfaces, node)
+		if (class_intf->add_dev)
+			class_intf->add_dev(dev);
+	mutex_unlock(&sp->mutex);
+}
+
+void rust_helper_device_class_remove(struct device *dev,
+				     struct subsys_private *sp)
+{
+	struct class_interface *class_intf;
+
+	mutex_lock(&sp->mutex);
+	list_for_each_entry(class_intf, &sp->interfaces, node)
+		if (class_intf->remove_dev)
+			class_intf->remove_dev(dev);
+	klist_del(&dev->p->knode_class);
+	mutex_unlock(&sp->mutex);
+}
+
+void rust_helper_device_class_put(struct subsys_private *sp)
+{
+	subsys_put(sp);
+}
+
+void rust_helper_device_set_driver_null(struct device *dev)
+{
+	device_set_driver(dev, NULL);
+}
+
+void rust_helper_device_clear_fwnode(struct device *dev)
+{
+	if (dev->fwnode && dev->fwnode->dev == dev)
+		dev->fwnode->dev = NULL;
+}
+
+void rust_helper_device_links_purge(struct device *dev)
+{
+	device_links_purge(dev);
+}
+
+unsigned int rust_helper_device_memalloc_noio_save(void)
+{
+	return memalloc_noio_save();
+}
+
+void rust_helper_device_memalloc_noio_restore(unsigned int flags)
+{
+	memalloc_noio_restore(flags);
+}
+
+void rust_helper_device_cleanup_glue_dir(struct device *dev,
+					 struct kobject *glue_dir)
+{
+	cleanup_glue_dir(dev, glue_dir);
+}
+#endif /* CONFIG_RUST_DEVICE */
 
 static struct device *prev_device(struct klist_iter *i)
 {

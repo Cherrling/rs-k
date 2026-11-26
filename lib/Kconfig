@@ -895,6 +895,29 @@ config RUST_DRIVER
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_DEVICE
+	bool "Rust implementation of device lifecycle"
+	depends on RUST_DRIVER
+	default y
+	help
+	  Use Rust for the production device initialization, addition,
+	  registration, deletion, and unregistration lifecycle.
+
+	  Rust directly defines the public device entry points. It owns
+	  private-object allocation, naming, parent acquisition, kobject
+	  registration, class and bus attachment, power-management entry,
+	  probe activation, complete reverse-order rollback, and removal
+	  order. C retains the shared device and private layouts, static
+	  kobject type, parent and sysfs helpers, PM and devtmpfs primitives,
+	  class interface dispatch, device links, diagnostics, release
+	  callback, and export metadata.
+
+	  The complete C device lifecycle remains available when this option
+	  is disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_LOCKREF
 	bool "Rust implementation of lockref operations"
 	depends on RUST && X86_64 && SMP

@@ -24133,6 +24133,7 @@ F:	Documentation/rust/native-btree-visitors.rst
 F:	Documentation/rust/native-bus.rst
 F:	Documentation/rust/native-class.rst
 F:	Documentation/rust/native-dec-and-lock.rst
+F:	Documentation/rust/native-device.rst
 F:	Documentation/rust/native-driver.rst
 F:	Documentation/rust/native-irq-event.rst
 F:	Documentation/rust/native-irq-spurious.rst
@@ -24167,6 +24168,7 @@ F:	include/linux/copy-mm-rust.h
 F:	include/linux/cpupri-rust.h
 F:	include/linux/cpupri.h
 F:	include/linux/dec-and-lock-rust.h
+F:	include/linux/device-rust.h
 F:	include/linux/driver-rust.h
 F:	include/linux/dup-mmap-rust.h
 F:	include/linux/dup-task-struct-rust.h
@@ -24309,6 +24311,7 @@ F:	rust/kernel/btree.rs
 F:	rust/kernel/bus.rs
 F:	rust/kernel/class.rs
 F:	rust/kernel/dec_and_lock.rs
+F:	rust/kernel/device_core.rs
 F:	rust/kernel/driver_core.rs
 F:	rust/kernel/exit_signals.rs
 F:	rust/kernel/interval_tree.rs

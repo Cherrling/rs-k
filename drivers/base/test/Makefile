@@ -6,6 +6,7 @@ obj-$(CONFIG_DM_KUNIT_TEST)	+= platform-device-test.o
 obj-$(CONFIG_DM_KUNIT_TEST)	+= class-test.o
 obj-$(CONFIG_DM_KUNIT_TEST)	+= bus-test.o
 obj-$(CONFIG_DM_KUNIT_TEST)	+= driver-test.o
+obj-$(CONFIG_DM_KUNIT_TEST)	+= device-test.o
 
 obj-$(CONFIG_DRIVER_PE_KUNIT_TEST) += property-entry-test.o
 CFLAGS_property-entry-test.o += $(DISABLE_STRUCTLEAK_PLUGIN)

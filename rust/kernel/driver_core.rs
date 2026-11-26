@@ -133,17 +133,17 @@ unsafe fn add_driver(drv: *mut DeviceDriver) -> c_int {
     // SAFETY: The driver kobject is registered.
     let error = unsafe { bindings::rust_helper_driver_add_uevent_file(drv) };
     if error != 0 {
-        pr_err!("driver_add: uevent attr ({}) failed\n", unsafe {
-            CStr::from_char_ptr((*drv).name)
-        });
+        // SAFETY: The registered driver owns a valid name.
+        let name = unsafe { CStr::from_char_ptr((*drv).name) };
+        pr_err!("driver_add: uevent attr ({}) failed\n", name);
     }
 
     // SAFETY: The registered bus and driver remain live.
     let error = unsafe { bindings::driver_add_groups(drv, (*bus).drv_groups) };
     if error != 0 {
-        pr_err!("driver_add_groups({}) failed\n", unsafe {
-            CStr::from_char_ptr((*drv).name)
-        });
+        // SAFETY: The registered driver owns a valid name.
+        let name = unsafe { CStr::from_char_ptr((*drv).name) };
+        pr_err!("driver_add_groups({}) failed\n", name);
     }
 
     // SAFETY: The registered driver remains live.
@@ -151,9 +151,9 @@ unsafe fn add_driver(drv: *mut DeviceDriver) -> c_int {
         // SAFETY: The driver kobject is registered.
         let error = unsafe { bindings::rust_helper_driver_add_bind_files(drv) };
         if error != 0 {
-            pr_err!("add_bind_files({}) failed\n", unsafe {
-                CStr::from_char_ptr((*drv).name)
-            });
+            // SAFETY: The registered driver owns a valid name.
+            let name = unsafe { CStr::from_char_ptr((*drv).name) };
+            pr_err!("add_bind_files({}) failed\n", name);
         }
     }
 
@@ -218,16 +218,24 @@ unsafe extern "C" fn driver_register(drv: *mut DeviceDriver) -> c_int {
 
     // SAFETY: The caller guarantees a valid live driver.
     let bus = unsafe { (*drv).bus };
-    if bus.is_null() || unsafe { (*drv).name.is_null() } {
+    if bus.is_null() {
+        return -(bindings::EINVAL as c_int);
+    }
+    // SAFETY: The caller guarantees a valid live driver.
+    if unsafe { (*drv).name.is_null() } {
         return -(bindings::EINVAL as c_int);
     }
 
     // SAFETY: The bus pointer is valid and the driver remains live.
     if !unsafe { bindings::bus_is_registered(bus) } {
+        // SAFETY: The driver remains live and owns a valid name.
+        let driver_name = unsafe { CStr::from_char_ptr((*drv).name) };
+        // SAFETY: The bus remains live and owns a valid name.
+        let bus_name = unsafe { CStr::from_char_ptr((*bus).name) };
         pr_err!(
             "Driver '{}' was unable to register with bus_type '{}' because the bus was not initialized.\n",
-            unsafe { CStr::from_char_ptr((*drv).name) },
-            unsafe { CStr::from_char_ptr((*bus).name) }
+            driver_name,
+            bus_name
         );
         return -(bindings::EINVAL as c_int);
     }
@@ -239,18 +247,22 @@ unsafe extern "C" fn driver_register(drv: *mut DeviceDriver) -> c_int {
             || ((*bus).shutdown.is_some() && (*drv).shutdown.is_some())
     };
     if obsolete_methods {
+        // SAFETY: The driver remains live and owns a valid name.
+        let name = unsafe { CStr::from_char_ptr((*drv).name) };
         pr_warn!(
             "Driver '{}' needs updating - please use bus_type methods\n",
-            unsafe { CStr::from_char_ptr((*drv).name) }
+            name
         );
     }
 
     // SAFETY: The bus is registered and the driver name remains live.
     let other = unsafe { bindings::driver_find((*drv).name, bus) };
     if !other.is_null() {
+        // SAFETY: The driver remains live and owns a valid name.
+        let name = unsafe { CStr::from_char_ptr((*drv).name) };
         pr_err!(
             "Error: Driver '{}' is already registered, aborting...\n",
-            unsafe { CStr::from_char_ptr((*drv).name) }
+            name
         );
         return -(bindings::EBUSY as c_int);
     }
@@ -290,7 +302,13 @@ unsafe extern "C" fn driver_register(drv: *mut DeviceDriver) -> c_int {
 /// `driver_register()` call.
 #[export]
 unsafe extern "C" fn driver_unregister(drv: *mut DeviceDriver) {
-    if drv.is_null() || unsafe { (*drv).p.is_null() } {
+    if drv.is_null() {
+        // SAFETY: This is the diagnostic for invalid unregistration.
+        unsafe { bindings::rust_helper_driver_warn_unexpected_unregister() };
+        return;
+    }
+    // SAFETY: The caller provides valid driver storage.
+    if unsafe { (*drv).p.is_null() } {
         // SAFETY: This is the diagnostic for invalid unregistration.
         unsafe { bindings::rust_helper_driver_warn_unexpected_unregister() };
         return;

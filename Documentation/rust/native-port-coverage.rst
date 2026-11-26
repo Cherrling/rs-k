@@ -920,6 +920,27 @@ Driver lifecycle
   native device-model regression passed 17 cases. The adjacent object and
   list suites passed 96 cases.
 
+Device lifecycle
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-device`.
+
+  Rust defines the five public ``device_initialize()``, ``device_add()``,
+  ``device_register()``, ``device_del()``, and ``device_unregister()`` GPL
+  symbols. Rust owns private-object allocation, naming, parent-reference
+  acquisition, kobject registration, class and bus attachment, PM entry,
+  probe activation, reverse rollback, and removal ordering. C retains the
+  shared device and private layouts, parent and sysfs helpers, class and bus
+  primitives, PM and devtmpfs operations, device links, diagnostics, release
+  callback, and original export metadata. C fallback and C-only
+  configurations retain the complete implementation.
+
+  Test: Nine QEMU configurations passed 7 of 7 focused cases. Native,
+  fallback, and C-only each ran at one and four virtual CPUs. KASAN fallback,
+  native lockdep, and native PREEMPT_RT runs used four virtual CPUs. The
+  adjacent device-model, class, bus, driver, object, and list suites passed
+  118 cases.
+
 Interval tree operations
   Status: ``migrated``.
 
@@ -1786,7 +1807,8 @@ Public ABI
   ``include/linux/klist.h``, ``include/linux/kref.h``,
   ``include/linux/lockref.h``,
   ``include/linux/kobject.h``, ``include/linux/device/driver.h``,
-  ``include/linux/driver-rust.h``, ``include/linux/rcuwait.h``,
+  ``include/linux/driver-rust.h``, ``include/linux/device.h``,
+  ``include/linux/device-rust.h``, ``include/linux/rcuwait.h``,
   ``include/linux/interval_tree.h``,
   ``include/linux/rbtree.h``, ``include/linux/rbtree_augmented.h``,
   ``include/linux/plist.h``, ``include/linux/list_sort.h``,
