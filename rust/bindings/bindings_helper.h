@@ -46,6 +46,7 @@
 #include <linux/blk_types.h>
 #include <linux/blkdev.h>
 #include <linux/brk-rust.h>
+#include <linux/bus-rust.h>
 #include <linux/btree.h>
 #include <linux/btree-rust.h>
 #include <linux/class-rust.h>

@@ -850,6 +850,28 @@ config RUST_CLASS
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_BUS
+	bool "Rust implementation of device bus lifecycle"
+	depends on RUST_KSET
+	default y
+	help
+	  Use Rust for the production device bus registration and
+	  unregistration lifecycle.
+
+	  Rust directly defines the public bus entry points. It owns
+	  initialization order, child kset and sysfs attribute creation,
+	  notifier, lock, and klist setup, and reverse-order registration
+	  rollback. C retains the shared bus and subsystem layouts, lookup and
+	  reference accounting, static bus kset and kobject types, sysfs
+	  attributes, device reference callbacks, diagnostics, the release
+	  callback, and export metadata.
+
+	  The complete C bus lifecycle remains available when this option is
+	  disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_LOCKREF
 	bool "Rust implementation of lockref operations"
 	depends on RUST && X86_64 && SMP

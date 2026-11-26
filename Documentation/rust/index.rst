@@ -130,6 +130,7 @@ more details.
     native-kobject
     native-kset
     native-class
+    native-bus
     native-list-lru
     native-kfifo
     native-genradix

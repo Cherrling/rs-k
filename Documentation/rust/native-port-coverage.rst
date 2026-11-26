@@ -875,6 +875,27 @@ Class lifecycle
   Device-model smoke tests passed 51 cases. The adjacent object and list
   suites passed 96 cases.
 
+Bus lifecycle
+  Status: ``migrated``.
+
+  Evidence: :doc:`native-bus`.
+
+  Rust defines the two public ``bus_register()`` and ``bus_unregister()``
+  GPL symbols. Rust owns zeroed private-object allocation, notifier, lock,
+  mutex, and klist initialization order, main and child kset registration,
+  uevent and probe attributes, bus group creation, reverse-order rollback,
+  and unregistration order. C retains the shared bus and subsystem layouts,
+  bus lookup and reference accounting, static bus kset and kobject types,
+  sysfs attribute mappings, device reference callbacks, diagnostics, and the
+  final release callback. C fallback and C-only configurations retain the
+  complete implementation.
+
+  Test: Nine QEMU configurations passed 3 of 3 focused cases. Native,
+  fallback, and C-only each ran at one and four virtual CPUs. KASAN fallback,
+  native lockdep, and native PREEMPT_RT runs used four virtual CPUs.
+  Device-model smoke tests passed 17 cases in each of the native, fallback,
+  and C-only runs. The adjacent object and list suites passed 96 cases.
+
 Interval tree operations
   Status: ``migrated``.
 
@@ -4272,7 +4293,7 @@ Remaining core object lifecycles
   Status: ``pending``.
 
   Complete the direct-entry and ownership review for object types beyond
-  kobject, kset, and class.
+  kobject, kset, class, and bus.
 
 Lock and wait lifecycles
   Status: ``pending``.

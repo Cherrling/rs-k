@@ -10,6 +10,7 @@
  */
 
 #include <linux/async.h>
+#include <linux/bus-rust.h>
 #include <linux/device/bus.h>
 #include <linux/device.h>
 #include <linux/module.h>
@@ -944,6 +945,68 @@ static ssize_t bus_uevent_store(const struct bus_type *bus,
 static struct bus_attribute bus_attr_uevent = __ATTR(uevent, 0200, NULL,
 						     bus_uevent_store);
 
+#ifdef CONFIG_RUST_BUS
+struct kset *rust_helper_bus_kset(void)
+{
+	return bus_kset;
+}
+
+const struct kobj_type *rust_helper_bus_ktype(void)
+{
+	return &bus_ktype;
+}
+
+int rust_helper_bus_set_name(struct subsys_private *sp, const char *name)
+{
+	return kobject_set_name(&sp->subsys.kobj, "%s", name);
+}
+
+void rust_helper_bus_init_notifier(struct subsys_private *sp)
+{
+	BLOCKING_INIT_NOTIFIER_HEAD(&sp->bus_notifier);
+}
+
+void rust_helper_bus_klist_devices_get(struct klist_node *n)
+{
+	klist_devices_get(n);
+}
+
+void rust_helper_bus_klist_devices_put(struct klist_node *n)
+{
+	klist_devices_put(n);
+}
+
+int rust_helper_bus_create_uevent_file(const struct bus_type *bus)
+{
+	return bus_create_file(bus, &bus_attr_uevent);
+}
+
+void rust_helper_bus_remove_uevent_file(const struct bus_type *bus)
+{
+	bus_remove_file(bus, &bus_attr_uevent);
+}
+
+int rust_helper_bus_add_probe_files(const struct bus_type *bus)
+{
+	return add_probe_files(bus);
+}
+
+void rust_helper_bus_remove_probe_files(const struct bus_type *bus)
+{
+	remove_probe_files(bus);
+}
+
+void rust_helper_bus_debug_registered(const struct bus_type *bus)
+{
+	pr_debug("bus: '%s': registered\n", bus->name);
+}
+
+void rust_helper_bus_debug_unregistering(const struct bus_type *bus)
+{
+	pr_debug("bus: '%s': unregistering\n", bus->name);
+}
+#endif /* CONFIG_RUST_BUS */
+
 /**
  * bus_register - register a driver-core subsystem
  * @bus: bus to register
@@ -952,6 +1015,7 @@ static struct bus_attribute bus_attr_uevent = __ATTR(uevent, 0200, NULL,
  * infrastructure, then register the children subsystems it has:
  * the devices and drivers that belong to the subsystem.
  */
+#ifndef CONFIG_RUST_BUS
 int bus_register(const struct bus_type *bus)
 {
 	int retval;
@@ -1030,7 +1094,10 @@ out:
 	kfree(priv);
 	return retval;
 }
+#endif /* !CONFIG_RUST_BUS */
+#ifndef CONFIG_RUST_BUS
 EXPORT_SYMBOL_GPL(bus_register);
+#endif
 
 /**
  * bus_unregister - remove a bus from the system
@@ -1039,6 +1106,7 @@ EXPORT_SYMBOL_GPL(bus_register);
  * Unregister the child subsystems and the bus itself.
  * Finally, we call bus_put() to release the refcount
  */
+#ifndef CONFIG_RUST_BUS
 void bus_unregister(const struct bus_type *bus)
 {
 	struct subsys_private *sp = bus_to_subsys(bus);
@@ -1061,7 +1129,10 @@ void bus_unregister(const struct bus_type *bus)
 	kset_unregister(&sp->subsys);
 	subsys_put(sp);
 }
+#endif /* !CONFIG_RUST_BUS */
+#ifndef CONFIG_RUST_BUS
 EXPORT_SYMBOL_GPL(bus_unregister);
+#endif
 
 int bus_register_notifier(const struct bus_type *bus, struct notifier_block *nb)
 {
