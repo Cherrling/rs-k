@@ -589,6 +589,8 @@ rust_non_gpl_exports := \
 	fget_task_next \
 	get_unused_fd_flags \
 	put_unused_fd \
+	rw_verify_area \
+	vfs_llseek \
 	__put_cred \
 	__task_pid_nr_ns \
 	__xa_alloc \
@@ -914,6 +916,8 @@ rust_unexported_symbols := \
 	vfs_create_mount \
 	vfs_lookup_open \
 	vfs_open \
+	vfs_read \
+	vfs_write \
 	vfs_path_lookup \
 	vfs_path_parent_lookup \
 	rust_super_test_counter \

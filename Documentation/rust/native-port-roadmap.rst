@@ -55,7 +55,7 @@ Order             Unit                        Status         Primary ownership
 9                 ``vfsmount-lifecycle``      complete       Mount clone, reference, detach, and release.
 10                ``path-lookup``             complete       Name resolution control flow and rollback.
 11                ``open-entry``              complete       Open dispatch, completion, and cleanup.
-12                ``vfs-io``                  pending        Read, write, seek, and operation dispatch.
+12                ``vfs-io``                  complete       Read, write, seek, and operation dispatch.
 13                ``socket-lifecycle``        pending        Socket allocation, reference, close, and release.
 14                ``skb-lifecycle``           pending        SKB allocation, clone, recycle, and destruction.
 ================  ==========================  =============  =====================================================

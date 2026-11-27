@@ -49,6 +49,7 @@ more details.
     native-vfsmount-lifecycle
     native-path-lookup
     native-open-entry
+    native-vfs-io
     native-port-coverage
     dup-task-struct
     task-teardown

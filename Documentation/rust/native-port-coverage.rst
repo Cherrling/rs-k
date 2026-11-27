@@ -2252,6 +2252,51 @@ Risk: A wrong ownership transfer can leak or double-release a dentry,
 path, inode, file operation table, or mount write reference. A wrong retry
 or completion order can bypass permission and revalidation semantics.
 
+VFS I/O orchestration
+---------------------
+
+Status: ``migrated``.
+
+Evidence: :doc:`native-vfs-io`.
+
+Rust directly defines ``vfs_llseek()``, ``rw_verify_area()``, ``vfs_read()``,
+and ``vfs_write()``.
+
+Rust owns file access and callback capability checks, seek dispatch, count
+overflow and offset checks, user-range and range-verification ordering,
+``MAX_RW_COUNT`` clamping, legacy and iterator callback selection,
+successful notification and accounting order, and write-freeze bracketing.
+
+C retains file, inode, superblock, ``file_operations``, iovec, and kiocb
+layouts. C also retains 12 helpers for user-address checks, unsigned-offset
+testing, LSM and fsnotify hooks, write-freeze primitives, synchronous iovec
+and kiocb construction, and current-task I/O accounting. Rust references all
+12 helpers.
+
+Test: Native, KASAN, lockdep, PREEMPT_RT, and DEBUG_VFS each passed SMP1 and
+SMP4 with 20 of 20 cases. Fallback and C-only also passed SMP1 and SMP4 with
+20 of 20 cases. Coverage includes legacy and iterator read and write,
+missing modes and capabilities, missing callbacks, bad user ranges,
+``MAX_RW_COUNT`` clamps, count overflow, negative and unsigned offsets,
+signed limits, valid ranges, seek dispatch, and write-freeze observation.
+
+Native ``rust/kernel.o`` defines all four entries. Native
+``fs/read_write.o`` defines none. Fallback and C-only ``fs/read_write.o``
+retain the complete implementations. Native ``Module.symvers`` contains
+ordinary exports for ``vfs_llseek()`` and ``rw_verify_area()``. The read and
+write entries remain unexported.
+
+External GPL and non-GPL modules linked both ordinary exports. Modpost
+rejected both license classes with the unexported entries. Disassembly shows
+complete Rust implementations without a public C tail-call adapter.
+Rustfmt, Clippy, Rustdoc, focused Sphinx, strict checkpatch, and
+``git diff --check`` pass.
+
+Risk: A wrong range check can pass an overflowing range to a filesystem. A
+wrong callback selection or notification order can violate filesystem,
+fsnotify, security, and accounting contracts. An unbalanced write-freeze
+section can block filesystem freeze progress.
+
 Direct-entry audit
 ------------------
 

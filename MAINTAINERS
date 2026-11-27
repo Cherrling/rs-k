@@ -10080,6 +10080,7 @@ F:	Documentation/rust/native-inode-lifecycle.rst
 F:	Documentation/rust/native-open-entry.rst
 F:	Documentation/rust/native-path-lookup.rst
 F:	Documentation/rust/native-superblock-lifecycle.rst
+F:	Documentation/rust/native-vfs-io.rst
 F:	Documentation/rust/native-vfsmount-lifecycle.rst
 F:	fs/*
 F:	include/linux/dentry-rust.h
@@ -10089,6 +10090,7 @@ F:	include/linux/inode-rust.h
 F:	include/linux/open-entry-rust.h
 F:	include/linux/path-lookup-rust.h
 F:	include/linux/superblock-rust.h
+F:	include/linux/vfs-io-rust.h
 F:	include/linux/vfsmount-rust.h
 F:	include/linux/fs.h
 F:	include/linux/fs_types.h
@@ -10103,6 +10105,7 @@ F:	lib/tests/inode_lifecycle_kunit.c
 F:	lib/tests/open_entry_kunit.c
 F:	lib/tests/path_lookup_kunit.c
 F:	lib/tests/superblock_lifecycle_kunit.c
+F:	lib/tests/vfs_io_kunit.c
 F:	lib/tests/vfsmount_lifecycle_kunit.c
 F:	rust/kernel/dentry_lifecycle.rs
 F:	rust/kernel/fdtable_lifecycle.rs
@@ -10111,6 +10114,7 @@ F:	rust/kernel/inode_lifecycle.rs
 F:	rust/kernel/open_entry.rs
 F:	rust/kernel/path_lookup.rs
 F:	rust/kernel/superblock_lifecycle.rs
+F:	rust/kernel/vfs_io.rs
 F:	rust/kernel/vfsmount_lifecycle.rs
 F:	rust/kernel/fs.rs
 F:	rust/kernel/fs/

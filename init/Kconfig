@@ -2288,6 +2288,24 @@ config RUST_OPEN_ENTRY
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_VFS_IO
+	bool "Rust implementation of VFS I/O orchestration"
+	depends on RUST && RUST_FILE_LIFECYCLE
+	default y
+	help
+	  Use Rust to directly define synchronous read, write, seek, and range
+	  verification dispatch.
+
+	  C retains user-address checks, synchronous iovec and kiocb
+	  construction, LSM and fsnotify hooks, task accounting primitives,
+	  filesystem callbacks, and superblock write-freeze primitives.
+
+	  The complete C implementation remains available when this option is
+	  disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_TEARDOWN
 	bool "Rust implementation of final task teardown"
 	depends on RUST

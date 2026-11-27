@@ -2910,6 +2910,20 @@ config OPEN_ENTRY_KUNIT_TEST
 
 	  If unsure, say N.
 
+config VFS_IO_KUNIT_TEST
+	bool "KUnit test for VFS I/O orchestration" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for synchronous read, write, and seek
+	  dispatch, operation selection, range and overflow checks, short I/O,
+	  and write-freeze ordering.
+
+	  The compatibility cases run with either the C implementation or the
+	  native Rust implementation selected.
+
+	  If unsure, say N.
+
 config TASK_RELEASE_KUNIT_TEST
 	bool "KUnit test for zombie task release" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

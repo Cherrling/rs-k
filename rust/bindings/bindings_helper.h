@@ -130,6 +130,7 @@
 #include <linux/move-page-tables-rust.h>
 #include <linux/open-entry-rust.h>
 #include <linux/path-lookup-rust.h>
+#include <linux/vfs-io-rust.h>
 #include <linux/move-pgt-entry-rust.h>
 #include <linux/mremap-batch-rust.h>
 #include <linux/mremap-copy-rust.h>
