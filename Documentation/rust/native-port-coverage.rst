@@ -1879,6 +1879,49 @@ retained the complete implementation. None of the 11 entries appears in
 Risk: A wrong rollback or release order can leak a namespace reference. A
 wrong publication or exec transition can expose stale namespace state.
 
+File lifecycle
+--------------
+
+Status: ``migrated``.
+
+Evidence: :doc:`native-file-lifecycle`.
+
+Rust directly defines ``alloc_empty_file()``, ``alloc_file_pseudo()``,
+``alloc_file_clone()``, ``__fput()``, ``fput()``, ``__fput_sync()``,
+``fput_close_sync()``, and ``fput_close()``. Rust owns file-limit policy,
+allocation initialization and rollback, pseudo path composition, clone path
+and mapping inheritance, final callback order, mount dissolution selection,
+final dependency release, and the synchronous, task-work, and delayed-work
+drop decisions.
+
+C retains the shared file and file-operations layouts, slab allocation, field
+initialization, per-CPU accounting, security, fsnotify, eventpoll, lock,
+fasync, cdev, owner, and access callbacks, path and mount primitives, and
+task-work and delayed-work queue operations.
+
+Test: Native lockdep, KASAN, and PREEMPT_RT each passed SMP1 and SMP4 with
+8 of 8 cases. Fallback and C-only each passed SMP1 and SMP4 with 6 of 6
+cases. Coverage includes every injected limit, allocation, initialization,
+and pseudo path failure, task-work final release, empty-file allocation,
+pseudo-file fasync release, clone inheritance, multiple references, real
+kernel-thread delayed release through ``fput_close()``, and four concurrent
+reference drops.
+
+Native ``rust/kernel.o`` defined all eight entries and native
+``fs/file_table.o`` defined none. The object retained 53 helpers, and all 53
+have Rust references. The fallback and C-only objects retained the complete
+implementation. Native ``Module.symvers`` preserved ordinary exports for
+``alloc_file_pseudo()``, ``fput()``, and ``__fput_sync()``. The other five
+entries remained absent. External GPL and non-GPL modules linked all three
+exports. Both license classes failed modpost with the five unexported
+entries. Disassembly showed complete Rust implementations of
+``alloc_file_pseudo()``, ``__fput()``, and ``fput()`` without a C tail-call
+adapter.
+
+Risk: A wrong allocation rollback can leak a path, credential, mount, or
+accounted file object. A wrong final callback or reference order can release
+a file operation, dentry, or mount while another consumer still uses it.
+
 Direct-entry audit
 ------------------
 

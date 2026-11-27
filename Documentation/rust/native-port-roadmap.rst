@@ -47,7 +47,7 @@ Order             Unit                        Status         Primary ownership
 1                 ``direct-entry-audit``      complete       Helper and adapter classification.
 2                 ``cred-lifecycle``          complete       Credential creation, commit, abort, and release.
 3                 ``nsproxy-lifecycle``       complete       Namespace proxy copy, switch, and teardown.
-4                 ``file-lifecycle``          pending        File creation, close, delayed close, and release.
+4                 ``file-lifecycle``          complete       File creation, close, delayed close, and release.
 5                 ``fdtable-lifecycle``       pending        FD allocation, growth, lookup, and RCU release.
 6                 ``dentry-lifecycle``        pending        Dentry reference, retention, and release.
 7                 ``inode-lifecycle``         pending        Inode allocation, reference, LRU, and destruction.

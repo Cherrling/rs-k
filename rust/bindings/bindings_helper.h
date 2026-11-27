@@ -79,6 +79,7 @@
 #include <linux/exit-mmap-rust.h>
 #include <linux/fdtable.h>
 #include <linux/file.h>
+#include <linux/file-lifecycle-rust.h>
 #include <linux/firmware.h>
 #include <linux/fwctl.h>
 #include <linux/fs.h>

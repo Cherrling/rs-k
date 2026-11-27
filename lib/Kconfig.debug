@@ -2788,6 +2788,22 @@ config NSPROXY_LIFECYCLE_KUNIT_TEST
 
 	  If unsure, say N.
 
+config FILE_LIFECYCLE_KUNIT_TEST
+	bool "KUnit test for file lifecycle" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for file allocation, pseudo-file
+	  creation, cloning, final release ordering, synchronous close, task
+	  work and delayed-fput decisions, failure cleanup, and concurrent
+	  reference release.
+
+	  The failure-injection and policy counters run only with the native
+	  Rust implementation. The lifecycle cases run with either the C
+	  implementation or the native Rust implementation selected.
+
+	  If unsure, say N.
+
 config TASK_RELEASE_KUNIT_TEST
 	bool "KUnit test for zombie task release" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

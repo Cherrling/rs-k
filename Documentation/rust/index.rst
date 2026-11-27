@@ -41,6 +41,7 @@ more details.
     native-direct-entry-audit
     native-cred-lifecycle
     native-nsproxy-lifecycle
+    native-file-lifecycle
     native-port-coverage
     dup-task-struct
     task-teardown

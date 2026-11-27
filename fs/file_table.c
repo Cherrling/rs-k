@@ -27,6 +27,7 @@
 #include <linux/task_work.h>
 #include <linux/swap.h>
 #include <linux/kmemleak.h>
+#include <linux/file-lifecycle-rust.h>
 
 #include <linux/atomic.h>
 
@@ -92,6 +93,8 @@ static inline void backing_file_free(struct backing_file *ff)
 	kmem_cache_free(bfilp_cache, ff);
 }
 
+#ifndef CONFIG_RUST_FILE_LIFECYCLE
+
 static inline void file_free(struct file *f)
 {
 	security_file_free(f);
@@ -104,6 +107,8 @@ static inline void file_free(struct file *f)
 		kmem_cache_free(filp_cache, f);
 	}
 }
+
+#endif /* !CONFIG_RUST_FILE_LIFECYCLE */
 
 /*
  * Return the total number of open files in the system
@@ -240,6 +245,8 @@ static int init_file(struct file *f, int flags, const struct cred *cred)
  * done, the mount's writer count will be wrong
  * and a warning at __fput() time.
  */
+#ifndef CONFIG_RUST_FILE_LIFECYCLE
+
 struct file *alloc_empty_file(int flags, const struct cred *cred)
 {
 	static long old_max;
@@ -281,6 +288,8 @@ over:
 	}
 	return ERR_PTR(-ENFILE);
 }
+
+#endif /* !CONFIG_RUST_FILE_LIFECYCLE */
 
 /*
  * Variant of alloc_empty_file() that doesn't check and modify nr_files.
@@ -388,6 +397,8 @@ static void file_init_path(struct file *file, const struct path *path,
  * @flags: O_... flags with which the new file will be opened
  * @fop: the 'struct file_operations' for the new file
  */
+#ifndef CONFIG_RUST_FILE_LIFECYCLE
+
 static struct file *alloc_file(const struct path *path, int flags,
 		const struct file_operations *fop)
 {
@@ -398,6 +409,8 @@ static struct file *alloc_file(const struct path *path, int flags,
 		file_init_path(file, path, fop);
 	return file;
 }
+
+#endif /* !CONFIG_RUST_FILE_LIFECYCLE */
 
 static inline int alloc_path_pseudo(const char *name, struct inode *inode,
 				    struct vfsmount *mnt, struct path *path)
@@ -411,6 +424,8 @@ static inline int alloc_path_pseudo(const char *name, struct inode *inode,
 	d_instantiate(path->dentry, inode);
 	return 0;
 }
+
+#ifndef CONFIG_RUST_FILE_LIFECYCLE
 
 struct file *alloc_file_pseudo(struct inode *inode, struct vfsmount *mnt,
 			       const char *name, int flags,
@@ -438,6 +453,8 @@ struct file *alloc_file_pseudo(struct inode *inode, struct vfsmount *mnt,
 	return file;
 }
 EXPORT_SYMBOL(alloc_file_pseudo);
+
+#endif /* !CONFIG_RUST_FILE_LIFECYCLE */
 
 struct file *alloc_file_pseudo_noaccount(struct inode *inode,
 					 struct vfsmount *mnt, const char *name,
@@ -467,6 +484,8 @@ struct file *alloc_file_pseudo_noaccount(struct inode *inode,
 	return file;
 }
 EXPORT_SYMBOL_GPL(alloc_file_pseudo_noaccount);
+
+#ifndef CONFIG_RUST_FILE_LIFECYCLE
 
 struct file *alloc_file_clone(struct file *base, int flags,
 				const struct file_operations *fops)
@@ -526,6 +545,8 @@ out:
 	file_free(file);
 }
 
+#endif /* !CONFIG_RUST_FILE_LIFECYCLE */
+
 static LLIST_HEAD(delayed_fput_list);
 static void delayed_fput(struct work_struct *unused)
 {
@@ -559,6 +580,8 @@ void flush_delayed_fput(void)
 	flush_delayed_work(&delayed_fput_work);
 }
 EXPORT_SYMBOL_GPL(flush_delayed_fput);
+
+#ifndef CONFIG_RUST_FILE_LIFECYCLE
 
 static void __fput_deferred(struct file *file)
 {
@@ -629,6 +652,307 @@ void fput_close(struct file *file)
 	if (file_ref_put_close(&file->f_ref))
 		__fput_deferred(file);
 }
+
+#endif /* !CONFIG_RUST_FILE_LIFECYCLE */
+
+#ifdef CONFIG_RUST_FILE_LIFECYCLE
+
+struct file *rust_helper_file_alloc_object(void)
+{
+	return kmem_cache_alloc(filp_cache, GFP_KERNEL);
+}
+
+void rust_helper_file_free_object(struct file *file)
+{
+	kmem_cache_free(filp_cache, file);
+}
+
+int rust_helper_file_init_object(struct file *file, int flags,
+				 const struct cred *cred)
+{
+	return init_file(file, flags, cred);
+}
+
+const struct cred *rust_helper_file_current_cred(void)
+{
+	return current_cred();
+}
+
+long rust_helper_file_nr_files(void)
+{
+	return get_nr_files();
+}
+
+long rust_helper_file_nr_files_sum(void)
+{
+	return percpu_counter_sum_positive(&nr_files);
+}
+
+unsigned long rust_helper_file_max_files(void)
+{
+	return get_max_files();
+}
+
+bool rust_helper_file_admin_capable(void)
+{
+	return capable(CAP_SYS_ADMIN);
+}
+
+void rust_helper_file_limit_warn(void)
+{
+	pr_info("VFS: file-max limit %lu reached\n", get_max_files());
+}
+
+void rust_helper_file_account_get(void)
+{
+	percpu_counter_inc(&nr_files);
+}
+
+void rust_helper_file_account_put(void)
+{
+	percpu_counter_dec(&nr_files);
+}
+
+bool rust_helper_file_is_err(const void *value)
+{
+	return IS_ERR(value);
+}
+
+void *rust_helper_file_err_ptr(long error)
+{
+	return ERR_PTR(error);
+}
+
+int rust_helper_file_alloc_pseudo_path(const char *name,
+				       struct inode *inode,
+				       struct vfsmount *mnt,
+				       struct path *path)
+{
+	return alloc_path_pseudo(name, inode, mnt, path);
+}
+
+void rust_helper_file_abort_pseudo_path(struct path *path,
+					struct inode *inode)
+{
+	ihold(inode);
+	path_put(path);
+}
+
+void rust_helper_file_init_path(struct file *file, const struct path *path,
+				const struct file_operations *fops)
+{
+	file_init_path(file, path, fops);
+}
+
+void rust_helper_file_get_path(struct file *file)
+{
+	path_get(&file->f_path);
+}
+
+void rust_helper_file_set_mapping(struct file *file,
+				  const struct file *base)
+{
+	file->f_mapping = base->f_mapping;
+}
+
+void rust_helper_file_set_fsnotify_nonotify(struct file *file)
+{
+	file_set_fsnotify_mode(file, FMODE_NONOTIFY);
+}
+
+struct dentry *rust_helper_file_dentry(const struct file *file)
+{
+	return file->f_path.dentry;
+}
+
+struct vfsmount *rust_helper_file_mount(const struct file *file)
+{
+	return file->f_path.mnt;
+}
+
+struct inode *rust_helper_file_inode(const struct file *file)
+{
+	return file->f_inode;
+}
+
+u32 rust_helper_file_mode(const struct file *file)
+{
+	return file->f_mode;
+}
+
+bool rust_helper_file_opened(const struct file *file)
+{
+	return file->f_mode & FMODE_OPENED;
+}
+
+bool rust_helper_file_early_release(const struct file *file)
+{
+	return !(file->f_mode & (FMODE_BACKING | FMODE_OPENED));
+}
+
+void rust_helper_file_might_sleep(void)
+{
+	might_sleep();
+}
+
+void rust_helper_file_fsnotify_close(struct file *file)
+{
+	fsnotify_close(file);
+}
+
+void rust_helper_file_eventpoll_release(struct file *file)
+{
+	eventpoll_release(file);
+}
+
+void rust_helper_file_locks_remove(struct file *file)
+{
+	locks_remove_file(file);
+}
+
+void rust_helper_file_security_release(struct file *file)
+{
+	security_file_release(file);
+}
+
+bool rust_helper_file_needs_fasync(const struct file *file)
+{
+	return (file->f_flags & FASYNC) && file->f_op->fasync;
+}
+
+void rust_helper_file_call_fasync(struct file *file)
+{
+	file->f_op->fasync(-1, file, 0);
+}
+
+bool rust_helper_file_has_release(const struct file *file)
+{
+	return file->f_op->release;
+}
+
+void rust_helper_file_call_release(struct file *file, struct inode *inode)
+{
+	file->f_op->release(inode, file);
+}
+
+bool rust_helper_file_needs_cdev_put(const struct file *file,
+				     const struct inode *inode, u32 mode)
+{
+	return S_ISCHR(inode->i_mode) && inode->i_cdev &&
+	       !(mode & FMODE_PATH);
+}
+
+void rust_helper_file_cdev_put(struct inode *inode)
+{
+	cdev_put(inode->i_cdev);
+}
+
+void rust_helper_file_fops_put(struct file *file)
+{
+	fops_put(file->f_op);
+}
+
+void rust_helper_file_owner_release(struct file *file)
+{
+	file_f_owner_release(file);
+}
+
+void rust_helper_file_put_access(struct file *file)
+{
+	put_file_access(file);
+}
+
+void rust_helper_file_dput(struct dentry *dentry)
+{
+	dput(dentry);
+}
+
+bool rust_helper_file_needs_unmount(u32 mode)
+{
+	return mode & FMODE_NEED_UNMOUNT;
+}
+
+void rust_helper_file_dissolve_mount(struct vfsmount *mnt)
+{
+	dissolve_on_fput(mnt);
+}
+
+void rust_helper_file_mntput(struct vfsmount *mnt)
+{
+	mntput(mnt);
+}
+
+void rust_helper_file_security_free(struct file *file)
+{
+	security_file_free(file);
+}
+
+bool rust_helper_file_noaccount(const struct file *file)
+{
+	return file->f_mode & FMODE_NOACCOUNT;
+}
+
+void rust_helper_file_put_cred(struct file *file)
+{
+	put_cred(file->f_cred);
+}
+
+bool rust_helper_file_backing(const struct file *file)
+{
+	return file->f_mode & FMODE_BACKING;
+}
+
+void rust_helper_file_backing_free(struct file *file)
+{
+	backing_file_free(backing_file(file));
+}
+
+bool rust_helper_file_ref_put(struct file *file)
+{
+	return file_ref_put(&file->f_ref);
+}
+
+bool rust_helper_file_ref_put_close(struct file *file)
+{
+	return file_ref_put_close(&file->f_ref);
+}
+
+bool rust_helper_file_can_use_task_work(void)
+{
+	return !in_interrupt() && !(current->flags & PF_KTHREAD);
+}
+
+bool rust_helper_file_queue_task_work(struct file *file)
+{
+	init_task_work(&file->f_task_work, ____fput);
+	return !task_work_add(current, &file->f_task_work, TWA_RESUME);
+}
+
+void rust_helper_file_queue_delayed(struct file *file)
+{
+	if (llist_add(&file->f_llist, &delayed_fput_list))
+		schedule_delayed_work(&delayed_fput_work, 1);
+}
+
+/*
+ * Rust defines these functions. This object contains only ordinary export
+ * metadata so loadable modules can keep using the public file API.
+ */
+#define EXPORT_FILE_ABI(symbol) EXPORT_SYMBOL(symbol)
+EXPORT_FILE_ABI(alloc_file_pseudo);
+EXPORT_FILE_ABI(fput);
+EXPORT_FILE_ABI(__fput_sync);
+#undef EXPORT_FILE_ABI
+
+#endif /* CONFIG_RUST_FILE_LIFECYCLE */
+
+#ifdef CONFIG_FILE_LIFECYCLE_KUNIT_TEST
+struct file *file_lifecycle_test_alloc_empty(int flags,
+					     const struct cred *cred)
+{
+	return alloc_empty_file(flags, cred);
+}
+#endif
 
 void __init files_init(void)
 {

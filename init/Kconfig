@@ -2134,6 +2134,26 @@ config RUST_NSPROXY_LIFECYCLE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_FILE_LIFECYCLE
+	bool "Rust implementation of file lifecycle"
+	depends on RUST
+	default y
+	help
+	  Use Rust to directly define file allocation, pseudo-file creation,
+	  file cloning, final release ordering, and synchronous and deferred
+	  reference-drop decisions.
+
+	  C retains the file layout and slab caches, field initialization,
+	  security callbacks, eventpoll and lock cleanup, file operation
+	  callbacks, character-device release, task work, delayed work, and
+	  path and mount primitives.
+
+	  The complete C implementation remains available when this option is
+	  disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_TEARDOWN
 	bool "Rust implementation of final task teardown"
 	depends on RUST

@@ -121,6 +121,8 @@ mod exit_mmap;
 #[cfg(CONFIG_RUST_EXIT_SIGNALS)]
 mod exit_signals;
 pub mod faux;
+#[cfg(CONFIG_RUST_FILE_LIFECYCLE)]
+mod file_lifecycle;
 #[cfg(CONFIG_RUST_FIND_BIT)]
 mod find_bit;
 #[cfg(CONFIG_RUST_FW_LOADER_ABSTRACTIONS)]

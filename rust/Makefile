@@ -564,6 +564,9 @@ $(obj)/helpers/helpers.bc $(obj)/helpers/helpers_module.bc: $(src)/helpers/helpe
 # their EXPORT_SYMBOL() metadata, so the automatic Rust exporter must skip
 # them to avoid duplicate GPL exports.
 rust_non_gpl_exports := \
+	alloc_file_pseudo \
+	fput \
+	__fput_sync \
 	__put_cred \
 	__task_pid_nr_ns \
 	__xa_alloc \
@@ -809,6 +812,21 @@ rust_non_gpl_exports := \
 
 # Rust-defined production symbols that must not receive automatic exports.
 rust_unexported_symbols := \
+	__fput \
+	alloc_empty_file \
+	alloc_file_clone \
+	fput_close \
+	fput_close_sync \
+	rust_file_test_alloc_count \
+	rust_file_test_delayed_count \
+	rust_file_test_fail_next \
+	rust_file_test_failure_count \
+	rust_file_test_free_count \
+	rust_file_test_init_count \
+	rust_file_test_path_count \
+	rust_file_test_queue_task_work \
+	rust_file_test_release_count \
+	rust_file_test_task_work_count \
 	copy_namespaces \
 	create_new_namespaces \
 	deactivate_nsproxy \
