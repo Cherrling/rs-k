@@ -270,6 +270,8 @@ pub mod of;
 #[cfg(CONFIG_PM_OPP)]
 pub mod opp;
 pub mod page;
+#[cfg(CONFIG_RUST_PATH_LOOKUP)]
+mod path_lookup;
 #[cfg(CONFIG_PCI)]
 pub mod pci;
 #[cfg(CONFIG_RUST_PERCPU_REFCOUNT)]

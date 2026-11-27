@@ -2250,6 +2250,24 @@ config RUST_VFSMOUNT_LIFECYCLE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_PATH_LOOKUP
+	bool "Rust implementation of path lookup orchestration"
+	depends on RUST
+	default y
+	help
+	  Use Rust to directly define filename and parent path lookup,
+	  RCU and revalidation retry policy, scoped lookup completion,
+	  directory checks, audit dispatch, and exported path lookup wrappers.
+
+	  C retains the nameidata layout, RCU and ref-walk steps, link traversal,
+	  filesystem callbacks, permission checks, and filename allocation.
+
+	  The complete C implementation remains available when this option is
+	  disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_TEARDOWN
 	bool "Rust implementation of final task teardown"
 	depends on RUST

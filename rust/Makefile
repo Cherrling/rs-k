@@ -845,6 +845,7 @@ rust_unexported_symbols := \
 	file_close_fd_locked \
 	fput_close \
 	fput_close_sync \
+	filename_lookup \
 	inode_lru_list_add \
 	prune_icache_sb \
 	put_files_struct \
@@ -874,6 +875,8 @@ rust_unexported_symbols := \
 	rust_inode_test_reset \
 	rust_kill_super_notify \
 	clone_mnt \
+	filename_parentat \
+	kern_path \
 	mnt_clone_internal \
 	mnt_make_shortterm \
 	mntget \
@@ -889,7 +892,17 @@ rust_unexported_symbols := \
 	rust_mnt_test_flush_delayed \
 	rust_mnt_test_reset \
 	rust_mnt_test_synchronize_rcu \
+	path_lookupat \
+	rust_path_test_fail_lookup \
+	rust_path_test_fail_parent \
+	rust_path_test_lookup_attempts \
+	rust_path_test_lookup_flags \
+	rust_path_test_parent_attempts \
+	rust_path_test_parent_flags \
+	rust_path_test_reset \
 	vfs_create_mount \
+	vfs_path_lookup \
+	vfs_path_parent_lookup \
 	rust_super_test_counter \
 	rust_super_test_fail \
 	rust_super_test_reset \

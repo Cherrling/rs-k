@@ -22,6 +22,7 @@
 #include <linux/fs.h>
 #include <linux/filelock.h>
 #include <linux/namei.h>
+#include <linux/path-lookup-rust.h>
 #include <linux/pagemap.h>
 #include <linux/sched/mm.h>
 #include <linux/fsnotify.h>
@@ -128,11 +129,6 @@
 /* SLAB cache for struct filename instances */
 static struct kmem_cache *__names_cache __ro_after_init;
 #define names_cache	runtime_const_ptr(__names_cache)
-
-/*
- * Type of the last component on LOOKUP_PARENT
- */
-enum last_type {LAST_NORM, LAST_ROOT, LAST_DOT, LAST_DOTDOT};
 
 void __init filename_init(void)
 {
@@ -723,36 +719,6 @@ void path_put(const struct path *path)
 	mntput(path->mnt);
 }
 EXPORT_SYMBOL(path_put);
-
-#define EMBEDDED_LEVELS 2
-struct nameidata {
-	struct path	path;
-	struct qstr	last;
-	struct path	root;
-	struct inode	*inode; /* path.dentry.d_inode */
-	unsigned int	flags, state;
-	unsigned	seq, next_seq, m_seq, r_seq;
-	enum last_type	last_type;
-	unsigned	depth;
-	int		total_link_count;
-	struct saved {
-		struct path link;
-		struct delayed_call done;
-		const char *name;
-		unsigned seq;
-	} *stack, internal[EMBEDDED_LEVELS];
-	struct filename	*name;
-	const char *pathname;
-	struct nameidata *saved;
-	unsigned	root_seq;
-	int		dfd;
-	vfsuid_t	dir_vfsuid;
-	umode_t		dir_mode;
-} __randomize_layout;
-
-#define ND_ROOT_PRESET 1
-#define ND_ROOT_GRABBED 2
-#define ND_JUMPED 4
 
 static void __set_nameidata(struct nameidata *p, int dfd, struct filename *name)
 {
@@ -2797,6 +2763,7 @@ static int handle_lookup_down(struct nameidata *nd)
 	return PTR_ERR(step_into(nd, WALK_NOFOLLOW, nd->path.dentry));
 }
 
+#ifndef CONFIG_RUST_PATH_LOOKUP
 /* Returns 0 and nd will be valid on success; Returns error, otherwise. */
 static int path_lookupat(struct nameidata *nd, unsigned flags, struct path *path)
 {
@@ -2901,6 +2868,7 @@ static int filename_parentat(int dfd, struct filename *name,
 {
 	return __filename_parentat(dfd, name, flags, parent, last, type, NULL);
 }
+#endif /* !CONFIG_RUST_PATH_LOOKUP */
 
 static struct dentry *__start_dirop(struct dentry *parent, struct qstr *name,
 				    unsigned int lookup_flags,
@@ -3030,6 +2998,7 @@ struct dentry *kern_path_parent(const char *name, struct path *path)
 	return d;
 }
 
+#ifndef CONFIG_RUST_PATH_LOOKUP
 int kern_path(const char *name, unsigned int flags, struct path *path)
 {
 	CLASS(filename_kernel, filename)(name);
@@ -3081,6 +3050,142 @@ int vfs_path_lookup(struct dentry *dentry, struct vfsmount *mnt,
 	return filename_lookup(AT_FDCWD, filename, flags, path, &root);
 }
 EXPORT_SYMBOL(vfs_path_lookup);
+#endif /* !CONFIG_RUST_PATH_LOOKUP */
+
+#ifdef CONFIG_RUST_PATH_LOOKUP
+/*
+ * Rust defines the lookup orchestration entries. C retains the nameidata
+ * layout and the individual RCU and ref-walk steps.
+ */
+#define EXPORT_PATH_LOOKUP_ABI(symbol) EXPORT_SYMBOL(symbol)
+EXPORT_PATH_LOOKUP_ABI(kern_path);
+EXPORT_PATH_LOOKUP_ABI(vfs_path_parent_lookup);
+EXPORT_PATH_LOOKUP_ABI(vfs_path_lookup);
+#undef EXPORT_PATH_LOOKUP_ABI
+
+void rust_helper_path_set_nameidata(struct nameidata *nd, int dfd,
+				    struct filename *name,
+				    const struct path *root)
+{
+	set_nameidata(nd, dfd, name, root);
+}
+
+void rust_helper_path_restore_nameidata(void)
+{
+	restore_nameidata();
+}
+
+void rust_helper_path_init_root(struct path *path, struct dentry *dentry,
+				struct vfsmount *mnt)
+{
+	path->dentry = dentry;
+	path->mnt = mnt;
+}
+
+const char *rust_helper_path_init(struct nameidata *nd, unsigned int flags)
+{
+	return path_init(nd, flags);
+}
+
+int rust_helper_path_link_path_walk(const char *name, struct nameidata *nd)
+{
+	return link_path_walk(name, nd);
+}
+
+const char *rust_helper_path_lookup_last(struct nameidata *nd)
+{
+	return lookup_last(nd);
+}
+
+int rust_helper_path_handle_lookup_down(struct nameidata *nd)
+{
+	return handle_lookup_down(nd);
+}
+
+bool rust_helper_path_has_mountpoint(struct nameidata *nd)
+{
+	return nd->flags & LOOKUP_MOUNTPOINT;
+}
+
+void rust_helper_path_clear_jumped(struct nameidata *nd)
+{
+	nd->state &= ~ND_JUMPED;
+}
+
+int rust_helper_path_complete_walk(struct nameidata *nd)
+{
+	return complete_walk(nd);
+}
+
+bool rust_helper_path_requires_directory(struct nameidata *nd)
+{
+	return nd->flags & LOOKUP_DIRECTORY;
+}
+
+bool rust_helper_path_can_lookup(struct nameidata *nd)
+{
+	return d_can_lookup(nd->path.dentry);
+}
+
+void rust_helper_path_take_path(struct nameidata *nd, struct path *path)
+{
+	*path = nd->path;
+	nd->path.mnt = NULL;
+	nd->path.dentry = NULL;
+}
+
+void rust_helper_path_terminate_walk(struct nameidata *nd)
+{
+	terminate_walk(nd);
+}
+
+void rust_helper_path_get_last(struct nameidata *nd, struct qstr *last)
+{
+	*last = nd->last;
+}
+
+enum last_type rust_helper_path_last_type(struct nameidata *nd)
+{
+	return nd->last_type;
+}
+
+void rust_helper_path_audit_inode(struct filename *name,
+				  const struct dentry *dentry,
+				  unsigned int audit_flags)
+{
+	audit_inode(name, dentry, audit_flags);
+}
+
+void rust_helper_path_put(const struct path *path)
+{
+	path_put(path);
+}
+
+struct filename *rust_helper_path_getname_kernel(const char *name)
+{
+	return getname_kernel(name);
+}
+
+void rust_helper_path_putname(struct filename *name)
+{
+	putname(name);
+}
+
+bool rust_helper_path_is_err(const void *value)
+{
+	return IS_ERR(value);
+}
+
+void *rust_helper_path_err_ptr(long error)
+{
+	return ERR_PTR(error);
+}
+
+long rust_helper_path_ptr_err(const void *value)
+{
+	return PTR_ERR(value);
+}
+#endif /* CONFIG_RUST_PATH_LOOKUP */
 
 int lookup_noperm_common(struct qstr *qname, struct dentry *base)
 {

@@ -2157,6 +2157,53 @@ by namespace traversal, propagation, a cover, or an RCU path. A wrong
 rollback can leak a mount identifier, peer group, idmap, dentry, or
 superblock reference.
 
+Path lookup orchestration
+-------------------------
+
+Status: ``migrated``.
+
+Evidence: :doc:`native-path-lookup`.
+
+Rust directly defines ``path_lookupat()``, ``filename_lookup()``,
+``filename_parentat()``, ``kern_path()``, ``vfs_path_lookup()``, and
+``vfs_path_parent_lookup()``.
+
+Rust owns the filename and parent lookup entry loops, RCU ref-walk retry,
+revalidation retry, mountpoint and starting-point traversal order, scoped
+completion, directory checks, audit selection, path transfer and termination
+order, and kernel filename release in the exported wrappers.
+
+C retains the ``nameidata`` layout, name hashing, component lookup, RCU and
+ref-walk steps, mount crossing, symlink resolution, filesystem dentry
+callbacks, permission callbacks, and filename allocation.
+
+Test: Native, fallback, C-only, Native KASAN Rust, lockdep, PREEMPT_RT, and
+DEBUG_VFS each passed SMP1 and SMP4. Native and the advanced configurations
+passed 7 of 7 cases. Fallback and C-only passed 5 of 5 cases. Coverage
+includes relative lookup, missing components, directory checks,
+``LOOKUP_IN_ROOT`` clamping, ``LOOKUP_BENEATH`` rejection, starting-point and
+final mount traversal, parent lookup, invalid parent components, and injected
+``-ECHILD`` and ``-ESTALE`` retries.
+
+Native ``rust/kernel.o`` defined all six entries. Native ``fs/namei.o``
+defined none. The object retained 23 helpers, and Rust references all 23.
+Fallback and C-only ``fs/namei.o`` retained the complete C implementation.
+Native ``Module.symvers`` preserved ordinary exports for ``kern_path()``,
+``vfs_path_lookup()``, and ``vfs_path_parent_lookup()``. The three internal
+entries remained unexported.
+
+External GPL and non-GPL modules linked all three ordinary exports. Both
+license classes failed modpost with the unexported entries. Disassembly
+showed the Rust retry and parent orchestration without a C public tail-call
+adapter.
+
+Rustfmt, Clippy, Rustdoc, focused Sphinx, strict checkpatch, and
+``git diff --check`` passed.
+
+Risk: A wrong retry or success decision can reuse terminated state, return an
+unreferenced path, leak a referenced path, invoke audit on a partial lookup,
+or bypass scoped escape checks.
+
 Direct-entry audit
 ------------------
 
