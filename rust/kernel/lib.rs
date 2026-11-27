@@ -151,6 +151,8 @@ mod idr_next;
 #[doc(hidden)]
 pub mod impl_flags;
 pub mod init;
+#[cfg(CONFIG_RUST_INODE_LIFECYCLE)]
+mod inode_lifecycle;
 pub mod interop;
 pub mod interrupt;
 #[cfg(CONFIG_RUST_INTERVAL_TREE)]

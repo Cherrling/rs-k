@@ -86,6 +86,7 @@
 #include <linux/firmware.h>
 #include <linux/fwctl.h>
 #include <linux/fs.h>
+#include <linux/inode-rust.h>
 #include <linux/generic-radix-tree.h>
 #include <linux/generic-radix-tree-rust.h>
 #include <linux/i2c.h>

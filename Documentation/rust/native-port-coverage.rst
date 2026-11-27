@@ -2016,6 +2016,50 @@ Risk: A wrong retention or lock acquisition decision can free a dentry while
 an RCU lookup or inode alias user still observes it. A wrong parent-chain
 release can leak a parent or use it after final release.
 
+Inode lifecycle
+---------------
+
+Status: ``migrated``.
+
+Evidence: :doc:`native-inode-lifecycle`.
+
+Rust directly defines ``alloc_inode()``, ``new_inode()``, ``ihold()``,
+``iput()``, ``iput_not_last()``, ``inode_lru_list_add()``, and
+``prune_icache_sb()``. Rust owns allocation rollback, reference transitions,
+the final drop decision, LRU insertion and isolation, writeback triggering,
+eviction, and final destruction.
+
+C retains the shared inode, superblock, address-space, list, and callback
+layouts, slab and page-cache primitives, inode state and reference-count
+operations, locks, RCU, hash operations, security and fsnotify callbacks,
+writeback primitives, and filesystem callbacks. The ``evict_inodes()``
+superblock-list traversal and scheduling handoff remain in C.
+
+Test: Native, fallback, C-only, Native KASAN Rust, lockdep, PREEMPT_RT, and
+DEBUG_VFS each passed SMP1 and SMP4. Native and the advanced configurations
+passed 9 of 9 cases. Fallback and C-only passed 7 of 7 cases. Coverage includes
+null and final drops, shared references, ``iput_not_last()``, LRU insertion
+and pruning, concurrent reference work, allocation failure, and initialization
+rollback. Each lifecycle case uses a real rootfs path and ``path_put()``.
+
+Native ``rust/kernel.o`` defined all seven entries and the four private
+callbacks. Native ``fs/inode.o`` defined none of the seven entries. The object
+retained 62 helpers, and Rust references all 62. Fallback and C-only
+``fs/inode.o`` each retained complete definitions for all seven entries.
+Native ``Module.symvers`` preserved ordinary exports for ``new_inode()``,
+``ihold()``, ``iput()``, and ``iput_not_last()``. ``alloc_inode()``,
+``inode_lru_list_add()``, and ``prune_icache_sb()`` remained unexported.
+External GPL and non-GPL modules linked all four ordinary exports. Both
+license classes failed modpost with any of the unexported entries.
+
+Disassembly showed complete Rust implementations of ``iput()``,
+``new_inode()``, and ``prune_icache_sb()`` without a C tail-call adapter. The
+KASAN Rust object contained ``__asan_*`` references.
+
+Risk: A wrong final-reference or LRU decision can evict an inode still used by
+writeback, page-cache reclaim, or filesystem callbacks. A wrong allocation
+rollback can leak partially initialized inode state.
+
 Direct-entry audit
 ------------------
 

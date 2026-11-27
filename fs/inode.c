@@ -20,6 +20,7 @@
 #include <linux/ratelimit.h>
 #include <linux/list_lru.h>
 #include <linux/iversion.h>
+#include <linux/inode-rust.h>
 #include <linux/rw_hint.h>
 #include <linux/seq_file.h>
 #include <linux/debugfs.h>
@@ -329,6 +330,7 @@ static void i_callback(struct rcu_head *head)
  *	- fs can't be unmount
  *	- quotas, fsnotify, writeback can't work
  */
+#ifndef CONFIG_RUST_INODE_LIFECYCLE
 struct inode *alloc_inode(struct super_block *sb)
 {
 	const struct super_operations *ops = sb->s_op;
@@ -355,6 +357,7 @@ struct inode *alloc_inode(struct super_block *sb)
 
 	return inode;
 }
+#endif /* !CONFIG_RUST_INODE_LIFECYCLE */
 
 void __destroy_inode(struct inode *inode)
 {
@@ -377,6 +380,7 @@ void __destroy_inode(struct inode *inode)
 }
 EXPORT_SYMBOL(__destroy_inode);
 
+#ifndef CONFIG_RUST_INODE_LIFECYCLE
 static void destroy_inode(struct inode *inode)
 {
 	const struct super_operations *ops = inode->i_sb->s_op;
@@ -391,6 +395,11 @@ static void destroy_inode(struct inode *inode)
 	inode->free_inode = ops->free_inode;
 	call_rcu(&inode->i_rcu, i_callback);
 }
+#endif /* !CONFIG_RUST_INODE_LIFECYCLE */
+
+#ifdef CONFIG_RUST_INODE_LIFECYCLE
+#define destroy_inode rust_inode_destroy
+#endif
 
 /**
  * drop_nlink - directly drop an inode's link count
@@ -548,6 +557,7 @@ void wait_on_new_inode(struct inode *inode)
 }
 EXPORT_SYMBOL(wait_on_new_inode);
 
+#ifndef CONFIG_RUST_INODE_LIFECYCLE
 static void __inode_lru_list_add(struct inode *inode, bool rotate)
 {
 	lockdep_assert_held(&inode->i_lock);
@@ -583,7 +593,13 @@ static void inode_lru_list_del(struct inode *inode)
 	if (list_lru_del_obj(&inode->i_sb->s_inode_lru, &inode->i_lru))
 		this_cpu_dec(nr_unused);
 }
+#endif /* !CONFIG_RUST_INODE_LIFECYCLE */
 
+#ifdef CONFIG_RUST_INODE_LIFECYCLE
+#define inode_lru_list_del rust_inode_lru_list_del
+#endif
+
+#ifndef CONFIG_RUST_INODE_LIFECYCLE
 static void inode_pin_lru_isolating(struct inode *inode)
 {
 	lockdep_assert_held(&inode->i_lock);
@@ -599,6 +615,7 @@ static void inode_unpin_lru_isolating(struct inode *inode)
 	/* Called with inode->i_lock which ensures memory ordering. */
 	inode_wake_up_bit(inode, __I_LRU_ISOLATING);
 }
+#endif /* !CONFIG_RUST_INODE_LIFECYCLE */
 
 static void inode_wait_for_lru_isolating(struct inode *inode)
 {
@@ -795,6 +812,7 @@ EXPORT_SYMBOL(clear_inode);
  * the cache. This should occur atomically with setting the I_FREEING state
  * flag, so no inodes here should ever be on the LRU when being evicted.
  */
+#ifndef CONFIG_RUST_INODE_LIFECYCLE
 static void evict(struct inode *inode)
 {
 	const struct super_operations *op = inode->i_sb->s_op;
@@ -864,6 +882,11 @@ static void dispose_list(struct list_head *head)
 		cond_resched();
 	}
 }
+#endif /* !CONFIG_RUST_INODE_LIFECYCLE */
+
+#ifdef CONFIG_RUST_INODE_LIFECYCLE
+#define dispose_list rust_inode_dispose_list
+#endif
 
 /**
  * evict_inodes	- evict all evictable inodes for a superblock
@@ -928,6 +951,7 @@ EXPORT_SYMBOL_GPL(evict_inodes);
  * LRU does not have strict ordering. Hence we don't want to reclaim inodes
  * with this flag set because they are the inodes that are out of order.
  */
+#ifndef CONFIG_RUST_INODE_LIFECYCLE
 static enum lru_status inode_lru_isolate(struct list_head *item,
 		struct list_lru_one *lru, void *arg)
 {
@@ -1021,6 +1045,7 @@ long prune_icache_sb(struct super_block *sb, struct shrink_control *sc)
 	dispose_list(&freeable);
 	return freed;
 }
+#endif /* !CONFIG_RUST_INODE_LIFECYCLE */
 
 static void __wait_on_freeing_inode(struct inode *inode, bool hash_locked, bool rcu_locked);
 static bool igrab_from_hash(struct inode *inode);
@@ -1174,6 +1199,7 @@ EXPORT_SYMBOL(get_next_ino);
  *	newly created inode's mapping
  *
  */
+#ifndef CONFIG_RUST_INODE_LIFECYCLE
 struct inode *new_inode(struct super_block *sb)
 {
 	struct inode *inode;
@@ -1184,6 +1210,7 @@ struct inode *new_inode(struct super_block *sb)
 	return inode;
 }
 EXPORT_SYMBOL(new_inode);
+#endif /* !CONFIG_RUST_INODE_LIFECYCLE */
 
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
 void lockdep_annotate_inode_mutex_key(struct inode *inode)
@@ -1585,12 +1612,14 @@ EXPORT_SYMBOL(iunique);
  * ihold - get a reference on the inode, provided you already have one
  * @inode:	inode to operate on
  */
+#ifndef CONFIG_RUST_INODE_LIFECYCLE
 void ihold(struct inode *inode)
 {
 	VFS_BUG_ON_INODE(icount_read_once(inode) < 1, inode);
 	WARN_ON(atomic_inc_return(&inode->i_count) < 2);
 }
 EXPORT_SYMBOL(ihold);
+#endif /* !CONFIG_RUST_INODE_LIFECYCLE */
 
 struct inode *igrab(struct inode *inode)
 {
@@ -1978,6 +2007,7 @@ EXPORT_SYMBOL(inode_just_drop);
  * in cache if fs is alive, sync and evict if fs is
  * shutting down.
  */
+#ifndef CONFIG_RUST_INODE_LIFECYCLE
 static void iput_final(struct inode *inode)
 {
 	struct super_block *sb = inode->i_sb;
@@ -2087,6 +2117,353 @@ void iput_not_last(struct inode *inode)
 	WARN_ON(atomic_sub_return(1, &inode->i_count) == 0);
 }
 EXPORT_SYMBOL(iput_not_last);
+#endif /* !CONFIG_RUST_INODE_LIFECYCLE */
+
+#ifdef CONFIG_RUST_INODE_LIFECYCLE
+/*
+ * Rust defines these functions. This object contains only ordinary export
+ * metadata so loadable modules can keep using the public inode API.
+ */
+#define EXPORT_INODE_ABI(symbol) EXPORT_SYMBOL(symbol)
+EXPORT_INODE_ABI(new_inode);
+EXPORT_INODE_ABI(ihold);
+EXPORT_INODE_ABI(iput);
+EXPORT_INODE_ABI(iput_not_last);
+#endif
+
+#ifdef CONFIG_RUST_INODE_LIFECYCLE
+#undef destroy_inode
+void rust_helper_inode_might_sleep(void)
+{
+	might_sleep();
+}
+
+void rust_helper_inode_verify_lock_not_held(struct inode *inode)
+{
+	lockdep_assert_not_held(&inode->i_lock);
+}
+
+void rust_helper_inode_lock(struct inode *inode)
+{
+	spin_lock(&inode->i_lock);
+}
+
+bool rust_helper_inode_trylock(struct inode *inode)
+{
+	return spin_trylock(&inode->i_lock);
+}
+
+void rust_helper_inode_unlock(struct inode *inode)
+{
+	spin_unlock(&inode->i_lock);
+}
+
+unsigned int rust_helper_inode_state_read_once(struct inode *inode)
+{
+	return inode_state_read_once(inode);
+}
+
+unsigned int rust_helper_inode_state_read(struct inode *inode)
+{
+	return inode_state_read(inode);
+}
+
+void rust_helper_inode_state_set(struct inode *inode, unsigned int flags)
+{
+	inode_state_set(inode, flags);
+}
+
+void rust_helper_inode_state_clear(struct inode *inode, unsigned int flags)
+{
+	inode_state_clear(inode, flags);
+}
+
+void rust_helper_inode_state_replace(struct inode *inode,
+				     unsigned int clearflags,
+				     unsigned int setflags)
+{
+	inode_state_replace(inode, clearflags, setflags);
+}
+
+int rust_helper_inode_count_read_once(struct inode *inode)
+{
+	return icount_read_once(inode);
+}
+
+int rust_helper_inode_count_read(struct inode *inode)
+{
+	return icount_read(inode);
+}
+
+int rust_helper_inode_atomic_inc_return(struct inode *inode)
+{
+	return atomic_inc_return(&inode->i_count);
+}
+
+bool rust_helper_inode_atomic_add_unless_dec(struct inode *inode)
+{
+	return atomic_add_unless(&inode->i_count, -1, 1);
+}
+
+bool rust_helper_inode_atomic_dec_and_test(struct inode *inode)
+{
+	return atomic_dec_and_test(&inode->i_count);
+}
+
+int rust_helper_inode_atomic_sub_return(struct inode *inode)
+{
+	return atomic_sub_return(1, &inode->i_count);
+}
+
+void rust_helper_inode_dump(struct inode *inode)
+{
+#ifdef CONFIG_DEBUG_VFS
+	dump_inode(inode, "Rust inode lifecycle invariant");
+#endif
+}
+
+bool rust_helper_inode_warn_once(bool condition)
+{
+	return WARN_ON_ONCE(condition);
+}
+
+bool rust_helper_inode_sb_active(struct inode *inode)
+{
+	return inode->i_sb->s_flags & SB_ACTIVE;
+}
+
+int rust_helper_inode_nlink(struct inode *inode)
+{
+	return inode->i_nlink;
+}
+
+bool rust_helper_inode_has_alloc(struct super_block *sb)
+{
+	return sb->s_op->alloc_inode;
+}
+
+struct inode *rust_helper_inode_alloc_fs(struct super_block *sb)
+{
+	return sb->s_op->alloc_inode(sb);
+}
+
+struct inode *rust_helper_inode_alloc_slab(struct super_block *sb)
+{
+	return alloc_inode_sb(sb, inode_cachep, GFP_KERNEL);
+}
+
+int rust_helper_inode_init_always(struct super_block *sb, struct inode *inode)
+{
+	return inode_init_always(sb, inode);
+}
+
+bool rust_helper_inode_has_destroy(struct inode *inode)
+{
+	return inode->i_sb->s_op->destroy_inode;
+}
+
+void rust_helper_inode_call_destroy(struct inode *inode)
+{
+	inode->i_sb->s_op->destroy_inode(inode);
+}
+
+bool rust_helper_inode_has_free(struct inode *inode)
+{
+	return inode->i_sb->s_op->free_inode;
+}
+
+void rust_helper_inode_set_free(struct inode *inode)
+{
+	inode->free_inode = inode->i_sb->s_op->free_inode;
+}
+
+void rust_helper_inode_destroy_common(struct inode *inode)
+{
+	__destroy_inode(inode);
+}
+
+void rust_helper_inode_schedule_free(struct inode *inode)
+{
+	call_rcu(&inode->i_rcu, i_callback);
+}
+
+void rust_helper_inode_free_now(struct inode *inode)
+{
+	i_callback(&inode->i_rcu);
+}
+
+bool rust_helper_inode_lru_empty(struct inode *inode)
+{
+	return list_empty(&inode->i_lru);
+}
+
+bool rust_helper_inode_has_evict(struct inode *inode)
+{
+	return inode->i_sb->s_op->evict_inode;
+}
+
+void rust_helper_inode_call_evict(struct inode *inode)
+{
+	inode->i_sb->s_op->evict_inode(inode);
+}
+
+void rust_helper_inode_default_evict(struct inode *inode)
+{
+	truncate_inode_pages_final(&inode->i_data);
+	clear_inode(inode);
+}
+
+void rust_helper_inode_io_list_del(struct inode *inode)
+{
+	inode_io_list_del(inode);
+}
+
+void rust_helper_inode_sb_list_del(struct inode *inode)
+{
+	inode_sb_list_del(inode);
+}
+
+void rust_helper_inode_wait_lru_isolating(struct inode *inode)
+{
+	inode_wait_for_lru_isolating(inode);
+}
+
+void rust_helper_inode_wait_writeback(struct inode *inode)
+{
+	inode_wait_for_writeback(inode);
+}
+
+void rust_helper_inode_wake_lru_isolating(struct inode *inode)
+{
+	inode_wake_up_bit(inode, __I_LRU_ISOLATING);
+}
+
+bool rust_helper_inode_has_cdev(struct inode *inode)
+{
+	return S_ISCHR(inode->i_mode) && inode->i_cdev;
+}
+
+void rust_helper_inode_forget_cdev(struct inode *inode)
+{
+	cd_forget(inode);
+}
+
+void rust_helper_inode_remove_hash(struct inode *inode)
+{
+	remove_inode_hash(inode);
+}
+
+void rust_helper_inode_wake_new(struct inode *inode)
+{
+	inode_wake_up_bit(inode, __I_NEW);
+}
+
+bool rust_helper_inode_mapping_shrinkable(struct inode *inode)
+{
+	return mapping_shrinkable(&inode->i_data);
+}
+
+bool rust_helper_inode_mapping_empty(struct inode *inode)
+{
+	return mapping_empty(&inode->i_data);
+}
+
+unsigned long rust_helper_inode_reclaim_mapping(struct inode *inode, struct list_lru_one *lru)
+{
+	unsigned long reap;
+
+	spin_unlock(&inode->i_lock);
+	spin_unlock(&lru->lock);
+	reap = invalidate_mapping_pages(&inode->i_data, 0, -1);
+	if (current_is_kswapd())
+		__count_vm_events(KSWAPD_INODESTEAL, reap);
+	else
+		__count_vm_events(PGINODESTEAL, reap);
+	mm_account_reclaimed_pages(reap);
+	spin_lock(&inode->i_lock);
+	return reap;
+}
+
+bool rust_helper_inode_lru_add(struct inode *inode)
+{
+	return list_lru_add_obj(&inode->i_sb->s_inode_lru, &inode->i_lru);
+}
+
+bool rust_helper_inode_lru_del(struct inode *inode)
+{
+	return list_lru_del_obj(&inode->i_sb->s_inode_lru, &inode->i_lru);
+}
+
+void rust_helper_inode_account_unused(int delta)
+{
+	this_cpu_add(nr_unused, delta);
+}
+
+bool rust_helper_inode_list_empty(struct list_head *head)
+{
+	return list_empty(head);
+}
+
+struct inode *rust_helper_inode_list_first(struct list_head *head)
+{
+	return list_first_entry(head, struct inode, i_lru);
+}
+
+void rust_helper_inode_list_del_init(struct list_head *entry)
+{
+	list_del_init(entry);
+}
+
+void rust_helper_inode_list_init(struct list_head *head)
+{
+	INIT_LIST_HEAD(head);
+}
+
+void rust_helper_inode_lru_isolate_move(struct list_lru_one *lru,
+					struct inode *inode,
+					struct list_head *head)
+{
+	list_lru_isolate_move(lru, &inode->i_lru, head);
+}
+
+void rust_helper_inode_cond_resched(void)
+{
+	cond_resched();
+}
+
+long rust_helper_inode_prune_lru(struct super_block *sb,
+				 struct shrink_control *sc,
+				 struct list_head *freeable)
+{
+	return list_lru_shrink_walk(&sb->s_inode_lru, sc,
+				    rust_inode_lru_isolate, freeable);
+}
+
+bool rust_helper_inode_has_drop(struct inode *inode)
+{
+	return inode->i_sb->s_op->drop_inode;
+}
+
+int rust_helper_inode_call_drop(struct inode *inode)
+{
+	return inode->i_sb->s_op->drop_inode(inode);
+}
+
+int rust_helper_inode_generic_drop(struct inode *inode)
+{
+	return inode_generic_drop(inode);
+}
+
+bool rust_helper_inode_sync_lazytime(struct inode *inode)
+{
+	return sync_lazytime(inode);
+}
+
+void rust_helper_inode_write_now(struct inode *inode)
+{
+	write_inode_now(inode, 1);
+}
+#endif /* CONFIG_RUST_INODE_LIFECYCLE */
 
 #ifdef CONFIG_BLOCK
 /**

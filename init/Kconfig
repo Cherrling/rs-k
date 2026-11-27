@@ -2192,6 +2192,25 @@ config RUST_DENTRY_LIFECYCLE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_INODE_LIFECYCLE
+	bool "Rust implementation of inode lifecycle"
+	depends on RUST
+	default y
+	help
+	  Use Rust to directly define inode allocation rollback, reference
+	  acquisition and release, LRU insertion and isolation, writeback
+	  triggering, eviction, and final destruction.
+
+	  C retains the inode and superblock layouts, slab allocation, hash and
+	  list traversal, page cache and writeback primitives, locks, security,
+	  filesystem callbacks, and superblock-shutdown traversal.
+
+	  The complete C implementation remains available when this option is
+	  disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_TEARDOWN
 	bool "Rust implementation of final task teardown"
 	depends on RUST

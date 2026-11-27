@@ -567,6 +567,10 @@ rust_non_gpl_exports := \
 	__move_to_shrink_list \
 	d_make_discardable \
 	dput \
+	ihold \
+	iput \
+	iput_not_last \
+	new_inode \
 	shrink_dentry_list \
 	alloc_file_pseudo \
 	fput \
@@ -826,6 +830,7 @@ rust_non_gpl_exports := \
 rust_unexported_symbols := \
 	__fput \
 	__get_unused_fd_flags \
+	alloc_inode \
 	alloc_empty_file \
 	alloc_file_clone \
 	dput_to_list \
@@ -837,6 +842,8 @@ rust_unexported_symbols := \
 	file_close_fd_locked \
 	fput_close \
 	fput_close_sync \
+	inode_lru_list_add \
+	prune_icache_sb \
 	put_files_struct \
 	rust_fdtable_test_alloc_count \
 	rust_fdtable_test_close_count \
@@ -854,6 +861,13 @@ rust_unexported_symbols := \
 	rust_dentry_lru_isolate \
 	rust_dentry_lru_isolate_shrink \
 	rust_dentry_shrink_kill \
+	rust_inode_destroy \
+	rust_inode_dispose_list \
+	rust_inode_lru_isolate \
+	rust_inode_lru_list_del \
+	rust_inode_test_counter \
+	rust_inode_test_fail \
+	rust_inode_test_reset \
 	rust_file_test_alloc_count \
 	rust_file_test_delayed_count \
 	rust_file_test_fail_next \
