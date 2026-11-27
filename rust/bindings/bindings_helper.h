@@ -87,6 +87,7 @@
 #include <linux/fwctl.h>
 #include <linux/fs.h>
 #include <linux/inode-rust.h>
+#include <linux/superblock-rust.h>
 #include <linux/generic-radix-tree.h>
 #include <linux/generic-radix-tree-rust.h>
 #include <linux/i2c.h>
@@ -293,6 +294,9 @@ const unsigned long RUST_CONST_HELPER_GPU_BUDDY_CLEAR_ALLOCATION = GPU_BUDDY_CLE
 const unsigned long RUST_CONST_HELPER_GPU_BUDDY_CLEARED = GPU_BUDDY_CLEARED;
 const unsigned long RUST_CONST_HELPER_GPU_BUDDY_TRIM_DISABLE = GPU_BUDDY_TRIM_DISABLE;
 #endif
+
+const unsigned int RUST_CONST_HELPER_SB_FREEZE_LEVELS = SB_FREEZE_LEVELS;
+const unsigned long RUST_CONST_HELPER_SB_DEAD = SB_DEAD;
 
 #if IS_ENABLED(CONFIG_ANDROID_BINDER_IPC_RUST)
 #include "../../drivers/android/binder/rust_binder.h"

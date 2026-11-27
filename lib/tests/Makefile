@@ -37,6 +37,7 @@ obj-$(CONFIG_FILE_LIFECYCLE_KUNIT_TEST) += file_lifecycle_kunit.o
 obj-$(CONFIG_FDTABLE_LIFECYCLE_KUNIT_TEST) += fdtable_lifecycle_kunit.o
 obj-$(CONFIG_DENTRY_LIFECYCLE_KUNIT_TEST) += dentry_lifecycle_kunit.o
 obj-$(CONFIG_INODE_LIFECYCLE_KUNIT_TEST) += inode_lifecycle_kunit.o
+obj-$(CONFIG_SUPERBLOCK_LIFECYCLE_KUNIT_TEST) += superblock_lifecycle_kunit.o
 obj-$(CONFIG_TASK_TEARDOWN_KUNIT_TEST) += test_task_teardown.o
 obj-$(CONFIG_TASK_WORK_KUNIT_TEST) += task_work_kunit.o
 obj-$(CONFIG_IRQ_WORK_KUNIT_TEST) += irq_work_kunit.o

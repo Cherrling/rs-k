@@ -2211,6 +2211,25 @@ config RUST_INODE_LIFECYCLE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SUPERBLOCK_LIFECYCLE
+	bool "Rust implementation of superblock lifecycle"
+	depends on RUST
+	default y
+	help
+	  Use Rust to directly define superblock allocation and rollback,
+	  publication, reference management, deactivation, death notification,
+	  and final workqueue destruction.
+
+	  C retains the superblock and filesystem-type layouts, superblock
+	  device table, slab and workqueue primitives, locks, LSM and fsnotify
+	  cleanup, shrinker and LRU primitives, and filesystem root callbacks.
+
+	  The complete C implementation remains available when this option is
+	  disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_TEARDOWN
 	bool "Rust implementation of final task teardown"
 	depends on RUST

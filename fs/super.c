@@ -39,6 +39,7 @@
 #include <linux/user_namespace.h>
 #include <linux/fs_context.h>
 #include <linux/fserror.h>
+#include <linux/superblock-rust.h>
 #include <uapi/linux/mount.h>
 #include "internal.h"
 
@@ -276,6 +277,8 @@ static unsigned long super_cache_count(struct shrinker *shrink,
 
 static struct super_dev *super_dev_alloc(dev_t dev, struct super_block *sb);
 
+#ifndef CONFIG_RUST_SUPERBLOCK_LIFECYCLE
+
 static void destroy_super_work(struct work_struct *work)
 {
 	struct super_block *s = container_of(work, struct super_block,
@@ -409,6 +412,7 @@ fail:
 	destroy_unused_super(s);
 	return NULL;
 }
+#endif /* !CONFIG_RUST_SUPERBLOCK_LIFECYCLE */
 
 /* Superblock refcounting  */
 
@@ -416,6 +420,7 @@ fail:
  * Drop a superblock's passive reference.  Must be called WITHOUT sb_lock held;
  * put_super() acquires sb_lock itself when the final reference is dropped.
  */
+#ifndef CONFIG_RUST_SUPERBLOCK_LIFECYCLE
 void put_super(struct super_block *s)
 {
 	if (refcount_dec_and_test(&s->s_passive)) {
@@ -434,6 +439,7 @@ void put_super(struct super_block *s)
 		put_filesystem(type);
 	}
 }
+#endif /* !CONFIG_RUST_SUPERBLOCK_LIFECYCLE */
 
 struct super_dev {
 	dev_t			sd_dev;
@@ -540,6 +546,7 @@ static struct super_dev *super_dev_next(struct super_dev *prev)
 	return sb_dev;
 }
 
+#ifndef CONFIG_RUST_SUPERBLOCK_LIFECYCLE
 static void kill_super_notify(struct super_block *sb)
 {
 	lockdep_assert_not_held(&sb->s_umount);
@@ -566,6 +573,11 @@ static void kill_super_notify(struct super_block *sb)
 	super_wake(sb, SB_DEAD);
 	spin_unlock(&sb_lock);
 }
+#endif /* !CONFIG_RUST_SUPERBLOCK_LIFECYCLE */
+
+#ifdef CONFIG_RUST_SUPERBLOCK_LIFECYCLE
+#define kill_super_notify rust_kill_super_notify
+#endif
 
 /**
  *	deactivate_locked_super	-	drop an active reference to superblock
@@ -578,6 +590,7 @@ static void kill_super_notify(struct super_block *sb)
  *
  *	Caller holds exclusive lock on superblock; that lock is released.
  */
+#ifndef CONFIG_RUST_SUPERBLOCK_LIFECYCLE
 void deactivate_locked_super(struct super_block *s)
 {
 	struct file_system_type *fs = s->s_type;
@@ -647,6 +660,7 @@ static bool grab_super(struct super_block *sb)
 	put_super(sb);
 	return false;
 }
+#endif /* !CONFIG_RUST_SUPERBLOCK_LIFECYCLE */
 
 /*
  *	super_trylock_shared - try to grab ->s_umount shared
@@ -836,6 +850,7 @@ bool mount_capable(struct fs_context *fc)
  * Return: On success, an extant or newly created superblock is
  *         returned. On failure an error pointer is returned.
  */
+#ifndef CONFIG_RUST_SUPERBLOCK_LIFECYCLE
 struct super_block *sget_fc(struct fs_context *fc,
 			    int (*test)(struct super_block *, struct fs_context *),
 			    int (*set)(struct super_block *, struct fs_context *))
@@ -919,6 +934,489 @@ share_extant_sb:
 	return old;
 }
 EXPORT_SYMBOL(sget_fc);
+#endif /* !CONFIG_RUST_SUPERBLOCK_LIFECYCLE */
+
+#ifdef CONFIG_RUST_SUPERBLOCK_LIFECYCLE
+/*
+ * Rust defines these functions. This object contains only ordinary export
+ * metadata so loadable modules can keep using the public superblock API.
+ */
+#define EXPORT_SUPER_ABI(symbol) EXPORT_SYMBOL(symbol)
+EXPORT_SUPER_ABI(deactivate_locked_super);
+EXPORT_SUPER_ABI(deactivate_super);
+EXPORT_SUPER_ABI(sget_fc);
+
+static const struct super_operations rust_super_default_op;
+
+struct super_block *rust_helper_super_alloc_slab(void)
+{
+	return kzalloc_obj(struct super_block);
+}
+
+struct user_namespace *
+rust_helper_super_get_user_ns(struct user_namespace *user_ns)
+{
+	return get_user_ns(user_ns);
+}
+
+struct user_namespace *rust_helper_super_init_user_ns(void)
+{
+	return &init_user_ns;
+}
+
+void rust_helper_super_set_user_ns(struct super_block *s,
+				   struct user_namespace *user_ns)
+{
+	s->s_user_ns = user_ns;
+}
+
+struct user_namespace *rust_helper_super_user_ns(struct super_block *s)
+{
+	return s->s_user_ns;
+}
+
+void rust_helper_super_init_umount(struct super_block *s,
+				   struct file_system_type *type)
+{
+	init_rwsem(&s->s_umount);
+	lockdep_set_class(&s->s_umount, &type->s_umount_key);
+}
+
+void rust_helper_super_lock_alloc(struct super_block *s)
+{
+	down_write_nested(&s->s_umount, SINGLE_DEPTH_NESTING);
+}
+
+int rust_helper_super_security_alloc(struct super_block *s)
+{
+	return security_sb_alloc(s);
+}
+
+int rust_helper_super_init_writer(struct super_block *s,
+				  struct file_system_type *type,
+				  unsigned int index)
+{
+	return __percpu_init_rwsem(&s->s_writers.rw_sem[index],
+				   sb_writers_name[index],
+				   &type->s_writers_key[index]);
+}
+
+void rust_helper_super_set_bdi_flags(struct super_block *s,
+				     unsigned long flags)
+{
+	s->s_bdi = &noop_backing_dev_info;
+	s->s_flags = flags;
+}
+
+void rust_helper_super_set_nodev(struct super_block *s)
+{
+	s->s_iflags |= SB_I_NODEV;
+}
+
+void rust_helper_super_init_layout(struct super_block *s)
+{
+	INIT_HLIST_NODE(&s->s_instances);
+	INIT_HLIST_BL_HEAD(&s->s_roots);
+	spin_lock_init(&s->s_roots_lock);
+	mutex_init(&s->s_sync_lock);
+	INIT_LIST_HEAD(&s->s_inodes);
+	spin_lock_init(&s->s_inode_list_lock);
+	INIT_LIST_HEAD(&s->s_inodes_wb);
+	spin_lock_init(&s->s_inode_wblist_lock);
+}
+
+void rust_helper_super_fserror_mount(struct super_block *s)
+{
+	fserror_mount(s);
+}
+
+void rust_helper_super_set_refs(struct super_block *s)
+{
+	refcount_set(&s->s_passive, 1);
+	atomic_set(&s->s_active, 1);
+}
+
+void rust_helper_super_init_rename_quota(struct super_block *s,
+					 struct file_system_type *type)
+{
+	mutex_init(&s->s_vfs_rename_mutex);
+	lockdep_set_class(&s->s_vfs_rename_mutex, &type->s_vfs_rename_key);
+	init_rwsem(&s->s_dquot.dqio_sem);
+}
+
+void rust_helper_super_set_limits(struct super_block *s)
+{
+	s->s_maxbytes = MAX_NON_LFS;
+	s->s_op = &rust_super_default_op;
+	s->s_time_gran = 1000000000;
+	s->s_time_min = TIME64_MIN;
+	s->s_time_max = TIME64_MAX;
+}
+
+bool rust_helper_super_alloc_shrinker(struct super_block *s,
+				      struct file_system_type *type)
+{
+	s->s_shrink = shrinker_alloc(SHRINKER_NUMA_AWARE | SHRINKER_MEMCG_AWARE,
+				     "sb-%s", type->name);
+	if (!s->s_shrink)
+		return false;
+
+	s->s_shrink->scan_objects = super_cache_scan;
+	s->s_shrink->count_objects = super_cache_count;
+	s->s_shrink->batch = 1024;
+	s->s_shrink->private_data = s;
+	return true;
+}
+
+int rust_helper_super_init_dentry_lru(struct super_block *s)
+{
+	return list_lru_init_memcg(&s->s_dentry_lru, s->s_shrink);
+}
+
+int rust_helper_super_init_inode_lru(struct super_block *s)
+{
+	return list_lru_init_memcg(&s->s_inode_lru, s->s_shrink);
+}
+
+bool rust_helper_super_alloc_dev(struct super_block *s)
+{
+	s->s_super_dev = super_dev_alloc(0, s);
+	return s->s_super_dev;
+}
+
+void rust_helper_super_set_min_writeback_pages(struct super_block *s)
+{
+	s->s_min_writeback_pages = MIN_WRITEBACK_PAGES;
+}
+
+void rust_helper_super_init_destroy_work(struct super_block *s,
+					 void (*callback)(struct work_struct *work))
+{
+	INIT_WORK(&s->destroy_work, callback);
+}
+
+void rust_helper_super_schedule_destroy_work(struct super_block *s)
+{
+	schedule_work(&s->destroy_work);
+}
+
+void rust_helper_super_call_rcu(struct super_block *s,
+				void (*callback)(struct rcu_head *head))
+{
+	call_rcu(&s->rcu, callback);
+}
+
+void rust_helper_super_free_fsnotify(struct super_block *s)
+{
+	fsnotify_sb_free(s);
+}
+
+void rust_helper_super_free_security(struct super_block *s)
+{
+	security_sb_free(s);
+}
+
+void rust_helper_super_put_user_ns(struct super_block *s)
+{
+	put_user_ns(s->s_user_ns);
+}
+
+void rust_helper_super_free_dev(struct super_block *s)
+{
+	kfree(s->s_super_dev);
+}
+
+void rust_helper_super_free_subtype(struct super_block *s)
+{
+	kfree(s->s_subtype);
+}
+
+void rust_helper_super_free_writer(struct super_block *s, unsigned int index)
+{
+	percpu_free_rwsem(&s->s_writers.rw_sem[index]);
+}
+
+void rust_helper_super_free(struct super_block *s)
+{
+	kfree(s);
+}
+
+void rust_helper_super_unlock_excl(struct super_block *s)
+{
+	super_unlock_excl(s);
+}
+
+void rust_helper_super_destroy_lrus(struct super_block *s)
+{
+	list_lru_destroy(&s->s_dentry_lru);
+	list_lru_destroy(&s->s_inode_lru);
+}
+
+void rust_helper_super_free_shrinker(struct super_block *s)
+{
+	shrinker_free(s->s_shrink);
+}
+
+bool rust_helper_super_passive_dec_and_test(struct super_block *s)
+{
+	return refcount_dec_and_test(&s->s_passive);
+}
+
+void rust_helper_super_passive_inc(struct super_block *s)
+{
+	refcount_inc(&s->s_passive);
+}
+
+struct file_system_type *rust_helper_super_type(struct super_block *s)
+{
+	return s->s_type;
+}
+
+void rust_helper_super_lock_global(void)
+{
+	spin_lock(&sb_lock);
+}
+
+void rust_helper_super_unlock_global(void)
+{
+	spin_unlock(&sb_lock);
+}
+
+void rust_helper_super_unlink_global(struct super_block *s)
+{
+	list_del_init(&s->s_list);
+	hlist_del_init(&s->s_instances);
+}
+
+void rust_helper_super_warn_teardown(struct super_block *s)
+{
+	WARN_ON(s->s_dentry_lru.node);
+	WARN_ON(s->s_inode_lru.node);
+	WARN_ON(s->s_mounts);
+}
+
+void rust_helper_super_put_filesystem(struct file_system_type *type)
+{
+	put_filesystem(type);
+}
+
+void rust_helper_super_lockdep_assert_unlocked(struct super_block *s)
+{
+	lockdep_assert_not_held(&s->s_umount);
+}
+
+bool rust_helper_super_flags(struct super_block *s, unsigned long flags)
+{
+	return super_flags(s, flags);
+}
+
+bool rust_helper_super_has_dev_claim(struct super_block *s)
+{
+	return s->s_super_dev && s->s_super_dev->sd_dev;
+}
+
+void rust_helper_super_put_dev_claim(struct super_block *s)
+{
+	if (!s->s_super_dev)
+		return;
+	super_dev_put(s->s_super_dev);
+	s->s_super_dev = NULL;
+}
+
+void rust_helper_super_wake(struct super_block *s, unsigned long flag)
+{
+	super_wake(s, flag);
+}
+
+void rust_helper_super_warn_once(bool condition)
+{
+	VFS_WARN_ON_ONCE(condition);
+}
+
+bool rust_helper_super_active_dec_and_test(struct super_block *s)
+{
+	return atomic_dec_and_test(&s->s_active);
+}
+
+bool rust_helper_super_active_dec_not_last(struct super_block *s)
+{
+	return atomic_add_unless(&s->s_active, -1, 1);
+}
+
+bool rust_helper_super_active_inc_not_zero(struct super_block *s)
+{
+	return atomic_inc_not_zero(&s->s_active);
+}
+
+bool rust_helper_super_lock_excl(struct super_block *s)
+{
+	return super_lock_excl(s);
+}
+
+void rust_helper_super_lock_excl_unconditional(struct super_block *s)
+{
+	__super_lock_excl(s);
+}
+
+void rust_helper_super_kill_sb(struct super_block *s)
+{
+	s->s_type->kill_sb(s);
+}
+
+void rust_helper_super_wait_dead(struct super_block *s)
+{
+	wait_var_event(&s->s_flags, super_flags(s, SB_DEAD));
+}
+
+bool rust_helper_super_fc_global(struct fs_context *fc)
+{
+	return fc->global;
+}
+
+struct user_namespace *rust_helper_super_fc_user_ns(struct fs_context *fc)
+{
+	return fc->user_ns;
+}
+
+struct file_system_type *rust_helper_super_fc_type(struct fs_context *fc)
+{
+	return fc->fs_type;
+}
+
+unsigned long rust_helper_super_fc_sb_flags(struct fs_context *fc)
+{
+	return fc->sb_flags;
+}
+
+unsigned long rust_helper_super_fc_iflags(struct fs_context *fc)
+{
+	return fc->s_iflags;
+}
+
+bool rust_helper_super_fc_exclusive(struct fs_context *fc)
+{
+	return fc->exclusive;
+}
+
+int rust_helper_super_fs_type_flags(struct file_system_type *type)
+{
+	return type->fs_flags;
+}
+
+void rust_helper_super_fc_error_userns(struct fs_context *fc)
+{
+	errorfc(fc, "VFS: Mounting from non-initial user namespace is not allowed");
+}
+
+void rust_helper_super_fc_warn_exclusive(struct fs_context *fc)
+{
+	warnfc(fc, "reusing existing filesystem not allowed");
+}
+
+void rust_helper_super_fc_warn_userns(struct fs_context *fc)
+{
+	warnfc(fc, "reusing existing filesystem in another namespace not allowed");
+}
+
+struct super_block *rust_helper_super_first_sb(struct file_system_type *type)
+{
+	struct super_block *s;
+
+	hlist_for_each_entry(s, &type->fs_supers, s_instances)
+		return s;
+	return NULL;
+}
+
+struct super_block *rust_helper_super_next_sb(struct super_block *s)
+{
+	if (!s->s_instances.next)
+		return NULL;
+	return container_of(s->s_instances.next, struct super_block,
+			    s_instances);
+}
+
+bool rust_helper_super_dead(struct super_block *s)
+{
+	return super_flags(s, SB_DEAD);
+}
+
+int rust_helper_super_call_test(int (*test)(struct super_block *,
+					    struct fs_context *),
+	struct super_block *s, struct fs_context *fc)
+{
+	return test(s, fc);
+}
+
+int rust_helper_super_call_set(int (*set)(struct super_block *,
+					  struct fs_context *),
+	struct super_block *s, struct fs_context *fc)
+{
+	return set(s, fc);
+}
+
+void rust_helper_super_set_fs_info(struct super_block *s,
+				   struct fs_context *fc)
+{
+	s->s_fs_info = fc->s_fs_info;
+}
+
+void rust_helper_super_clear_fs_info(struct super_block *s)
+{
+	s->s_fs_info = NULL;
+}
+
+void rust_helper_super_clear_fc_fs_info(struct fs_context *fc)
+{
+	fc->s_fs_info = NULL;
+}
+
+bool rust_helper_super_dev_registered(struct super_block *s)
+{
+	return s->s_super_dev && s->s_super_dev->sd_dev;
+}
+
+void rust_helper_super_set_type(struct super_block *s,
+				struct file_system_type *type)
+{
+	s->s_type = type;
+}
+
+void rust_helper_super_or_iflags(struct super_block *s, unsigned long flags)
+{
+	s->s_iflags |= flags;
+}
+
+void rust_helper_super_set_id(struct super_block *s)
+{
+	strscpy(s->s_id, s->s_type->name, sizeof(s->s_id));
+}
+
+void rust_helper_super_add_global(struct super_block *s)
+{
+	list_add_tail(&s->s_list, &super_blocks);
+}
+
+void rust_helper_super_add_instances(struct super_block *s)
+{
+	hlist_add_head(&s->s_instances, &s->s_type->fs_supers);
+}
+
+struct file_system_type *
+rust_helper_super_get_filesystem(struct file_system_type *type)
+{
+	return get_filesystem(type);
+}
+
+void rust_helper_super_register_shrinker(struct super_block *s)
+{
+	shrinker_register(s->s_shrink);
+}
+
+struct super_block *rust_helper_super_error_ptr(int error)
+{
+	return ERR_PTR(error);
+}
+#endif /* CONFIG_RUST_SUPERBLOCK_LIFECYCLE */
 
 void drop_super(struct super_block *sb)
 {

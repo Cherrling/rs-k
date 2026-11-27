@@ -10077,11 +10077,13 @@ F:	Documentation/rust/native-dentry-lifecycle.rst
 F:	Documentation/rust/native-fdtable-lifecycle.rst
 F:	Documentation/rust/native-file-lifecycle.rst
 F:	Documentation/rust/native-inode-lifecycle.rst
+F:	Documentation/rust/native-superblock-lifecycle.rst
 F:	fs/*
 F:	include/linux/dentry-rust.h
 F:	include/linux/fdtable-rust.h
 F:	include/linux/file-lifecycle-rust.h
 F:	include/linux/inode-rust.h
+F:	include/linux/superblock-rust.h
 F:	include/linux/fs.h
 F:	include/linux/fs_types.h
 F:	include/uapi/linux/fs.h
@@ -10092,10 +10094,12 @@ F:	lib/tests/dentry_lifecycle_kunit.c
 F:	lib/tests/fdtable_lifecycle_kunit.c
 F:	lib/tests/file_lifecycle_kunit.c
 F:	lib/tests/inode_lifecycle_kunit.c
+F:	lib/tests/superblock_lifecycle_kunit.c
 F:	rust/kernel/dentry_lifecycle.rs
 F:	rust/kernel/fdtable_lifecycle.rs
 F:	rust/kernel/file_lifecycle.rs
 F:	rust/kernel/inode_lifecycle.rs
+F:	rust/kernel/superblock_lifecycle.rs
 F:	rust/kernel/fs.rs
 F:	rust/kernel/fs/
 F:	rust/kernel/seq_file.rs

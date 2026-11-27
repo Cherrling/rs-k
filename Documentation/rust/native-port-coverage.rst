@@ -2060,6 +2060,50 @@ Risk: A wrong final-reference or LRU decision can evict an inode still used by
 writeback, page-cache reclaim, or filesystem callbacks. A wrong allocation
 rollback can leak partially initialized inode state.
 
+Superblock lifecycle
+--------------------
+
+Status: ``migrated``.
+
+Evidence: :doc:`native-superblock-lifecycle`.
+
+Rust directly defines ``deactivate_locked_super()``, ``deactivate_super()``,
+and ``sget_fc()``. Rust also defines the unexported ``put_super()`` and
+``rust_kill_super_notify()`` entries, and the private ``alloc_super()``,
+``grab_super()``, RCU callback, and workqueue destruction path.
+
+C retains the shared superblock, filesystem-type, superblock-device, writer,
+and callback layouts, slab, locks, security and fsnotify cleanup, shrinker and
+LRU primitives, device table, workqueue, and filesystem callbacks.
+``generic_shutdown_super()`` remains in C because it owns the dcache, VFS sync,
+inode eviction, workqueue, and filesystem callback sequence.
+
+Test: Native, fallback, C-only, Native KASAN Rust, lockdep, PREEMPT_RT, and
+DEBUG_VFS each passed SMP1 and SMP4. Native and the advanced configurations
+passed 7 of 7 cases. Fallback and C-only passed 5 of 5 cases. Coverage includes
+creation and final destruction, shared references, setup failure, exclusive
+reuse, four-thread concurrent reuse, allocation failure, and nine intermediate
+initialization rollback stages.
+
+Native ``rust/kernel.o`` defined all five production entries and the private
+allocation and destruction helpers. Native ``fs/super.o`` defined none of the
+five entries. The object retained 82 helpers, and Rust references all 82.
+Fallback and C-only ``fs/super.o`` each retained complete definitions.
+Native ``Module.symvers`` preserved ordinary exports for
+``deactivate_locked_super()``, ``deactivate_super()``, and ``sget_fc()``.
+``put_super()`` and ``rust_kill_super_notify()`` remained unexported.
+External GPL and non-GPL modules linked all three ordinary exports. Both
+license classes failed modpost with either unexported entry.
+
+Disassembly showed complete Rust implementations of ``sget_fc()``,
+``deactivate_super()``, and the final destruction path without a C tail-call
+adapter. The KASAN Rust object contained 17 ``__asan_*`` references.
+
+Risk: A wrong active or passive reference decision can free a superblock while
+lookup, device-table, or final filesystem shutdown still uses it. A wrong
+rollback can leak a partially initialized shrinker, LRU, writer semaphore, or
+device claim.
+
 Direct-entry audit
 ------------------
 

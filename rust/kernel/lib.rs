@@ -351,6 +351,8 @@ pub mod soc;
 #[doc(hidden)]
 pub mod std_vendor;
 pub mod str;
+#[cfg(CONFIG_RUST_SUPERBLOCK_LIFECYCLE)]
+mod superblock_lifecycle;
 #[cfg(CONFIG_RUST_SWAIT)]
 mod swait_core;
 pub mod sync;

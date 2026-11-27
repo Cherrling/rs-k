@@ -51,7 +51,7 @@ Order             Unit                        Status         Primary ownership
 5                 ``fdtable-lifecycle``       complete       FD allocation, growth, lookup, and RCU release.
 6                 ``dentry-lifecycle``        complete       Dentry reference, retention, and release.
 7                 ``inode-lifecycle``         complete       Inode allocation, reference, LRU, and destruction.
-8                 ``superblock-lifecycle``    pending        Superblock allocation, activation, and teardown.
+8                 ``superblock-lifecycle``    complete       Superblock allocation, activation, and teardown.
 9                 ``vfsmount-lifecycle``      pending        Mount clone, reference, detach, and release.
 10                ``path-lookup``             pending        Name resolution control flow and rollback.
 11                ``open-entry``              pending        Open dispatch, completion, and cleanup.

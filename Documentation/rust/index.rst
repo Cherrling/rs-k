@@ -45,6 +45,7 @@ more details.
     native-fdtable-lifecycle
     native-dentry-lifecycle
     native-inode-lifecycle
+    native-superblock-lifecycle
     native-port-coverage
     dup-task-struct
     task-teardown

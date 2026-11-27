@@ -567,10 +567,13 @@ rust_non_gpl_exports := \
 	__move_to_shrink_list \
 	d_make_discardable \
 	dput \
+	deactivate_locked_super \
+	deactivate_super \
 	ihold \
 	iput \
 	iput_not_last \
 	new_inode \
+	sget_fc \
 	shrink_dentry_list \
 	alloc_file_pseudo \
 	fput \
@@ -845,6 +848,7 @@ rust_unexported_symbols := \
 	inode_lru_list_add \
 	prune_icache_sb \
 	put_files_struct \
+	put_super \
 	rust_fdtable_test_alloc_count \
 	rust_fdtable_test_close_count \
 	rust_fdtable_test_copy_count \
@@ -868,6 +872,10 @@ rust_unexported_symbols := \
 	rust_inode_test_counter \
 	rust_inode_test_fail \
 	rust_inode_test_reset \
+	rust_kill_super_notify \
+	rust_super_test_counter \
+	rust_super_test_fail \
+	rust_super_test_reset \
 	rust_file_test_alloc_count \
 	rust_file_test_delayed_count \
 	rust_file_test_fail_next \

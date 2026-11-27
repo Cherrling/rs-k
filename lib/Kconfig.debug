@@ -2849,6 +2849,21 @@ config INODE_LIFECYCLE_KUNIT_TEST
 
 	  If unsure, say N.
 
+config SUPERBLOCK_LIFECYCLE_KUNIT_TEST
+	bool "KUnit test for superblock lifecycle" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for superblock allocation, setup
+	  rollback, publication, shared references, deactivation, final
+	  destruction, and concurrent reuse.
+
+	  The failure-injection and lifecycle counters run only with the
+	  native Rust implementation. The lifecycle cases run with either the
+	  C implementation or the native Rust implementation selected.
+
+	  If unsure, say N.
+
 config TASK_RELEASE_KUNIT_TEST
 	bool "KUnit test for zombie task release" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y
