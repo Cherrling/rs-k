@@ -32,6 +32,7 @@
 #include <linux/bit_spinlock.h>
 #include <linux/rculist_bl.h>
 #include <linux/list_lru.h>
+#include <linux/dentry-rust.h>
 #include "internal.h"
 #include "mount.h"
 
@@ -431,6 +432,7 @@ static inline void __d_clear_type_and_inode(struct dentry *dentry)
 #define D_FLAG_VERIFY(dentry, x) \
 	DENTRY_WARN_ONCE(((dentry)->d_flags & (DCACHE_LRU_LIST | DCACHE_SHRINK_LIST)) != (x), (dentry))
 
+#ifndef CONFIG_RUST_DENTRY_LIFECYCLE
 static void dentry_free(struct dentry *dentry)
 {
 	DENTRY_WARN_ONCE(d_really_is_positive(dentry), dentry);
@@ -449,6 +451,7 @@ static void dentry_free(struct dentry *dentry)
 	else
 		call_rcu(&dentry->d_rcu, __d_free);
 }
+#endif /* !CONFIG_RUST_DENTRY_LIFECYCLE */
 
 /*
  * When inode is unlinked and doesn't have any aliases (i.e., all fds pointing
@@ -491,6 +494,7 @@ static void dentry_unlink_inode(struct dentry * dentry)
 		iput(inode);
 }
 
+#ifndef CONFIG_RUST_DENTRY_LIFECYCLE
 /*
  * The DCACHE_LRU_LIST bit is set whenever the 'd_lru' entry
  * is in use - which includes both the "real" per-superblock
@@ -573,6 +577,7 @@ static void d_lru_shrink_move(struct list_lru_one *lru, struct dentry *dentry,
 		this_cpu_dec(nr_dentry_negative);
 	list_lru_isolate_move(lru, &dentry->d_lru, list);
 }
+#endif /* !CONFIG_RUST_DENTRY_LIFECYCLE */
 
 static void ___d_drop(struct dentry *dentry)
 {
@@ -770,6 +775,7 @@ static bool lock_for_kill(struct dentry *dentry)
 	return false;
 }
 
+#ifndef CONFIG_RUST_DENTRY_LIFECYCLE
 /**
  * dentry_kill - evict a dentry
  * @dentry:	dentry to be evicted
@@ -861,7 +867,9 @@ static struct dentry *dentry_kill(struct dentry *dentry)
 	}
 	return parent;
 }
+#endif /* !CONFIG_RUST_DENTRY_LIFECYCLE */
 
+#ifndef CONFIG_RUST_DENTRY_LIFECYCLE
 /*
  * Decide if dentry is worth retaining.  Usually this is called with dentry
  * locked; if not locked, we are more limited and might not be able to tell
@@ -915,6 +923,7 @@ static inline bool retain_dentry(struct dentry *dentry, bool locked)
 	}
 	return true;
 }
+#endif /* !CONFIG_RUST_DENTRY_LIFECYCLE */
 
 void d_mark_dontcache(struct inode *inode)
 {
@@ -931,6 +940,7 @@ void d_mark_dontcache(struct inode *inode)
 }
 EXPORT_SYMBOL(d_mark_dontcache);
 
+#ifndef CONFIG_RUST_DENTRY_LIFECYCLE
 /*
  * Try to do a lockless dput(), and return whether that was successful.
  *
@@ -1017,6 +1027,7 @@ static void finish_dput(struct dentry *dentry)
 		}
 	}
 }
+#endif /* !CONFIG_RUST_DENTRY_LIFECYCLE */
 
 /* 
  * This is dput
@@ -1035,6 +1046,7 @@ static void finish_dput(struct dentry *dentry)
  * Real recursion would eat up our stack space.
  */
 
+#ifndef CONFIG_RUST_DENTRY_LIFECYCLE
 /*
  * dput - release a dentry
  * @dentry: dentry to release 
@@ -1103,6 +1115,19 @@ void dput_to_list(struct dentry *dentry, struct list_head *list)
 	__move_to_shrink_list(dentry, list);
 	spin_unlock(&dentry->d_lock);
 }
+#endif /* !CONFIG_RUST_DENTRY_LIFECYCLE */
+
+#ifdef CONFIG_RUST_DENTRY_LIFECYCLE
+/*
+ * Rust defines these functions. This object contains only ordinary export
+ * metadata so loadable modules can keep using the public dentry API.
+ */
+#define EXPORT_DENTRY_ABI(symbol) EXPORT_SYMBOL(symbol)
+EXPORT_DENTRY_ABI(dput);
+EXPORT_DENTRY_ABI(d_make_discardable);
+EXPORT_DENTRY_ABI(__move_to_shrink_list);
+EXPORT_DENTRY_ABI(shrink_dentry_list);
+#endif
 
 struct dentry *dget_parent(struct dentry *dentry)
 {
@@ -1284,10 +1309,15 @@ EXPORT_SYMBOL(d_prune_aliases);
 
 static inline void shrink_kill(struct dentry *victim)
 {
+#ifdef CONFIG_RUST_DENTRY_LIFECYCLE
+	rust_dentry_shrink_kill(victim);
+#else
 	while ((victim = dentry_kill(victim)) != NULL)
 		;
+#endif
 }
 
+#ifndef CONFIG_RUST_DENTRY_LIFECYCLE
 void shrink_dentry_list(struct list_head *list)
 {
 	while (!list_empty(list)) {
@@ -1305,7 +1335,9 @@ void shrink_dentry_list(struct list_head *list)
 	}
 }
 EXPORT_SYMBOL(shrink_dentry_list);
+#endif /* !CONFIG_RUST_DENTRY_LIFECYCLE */
 
+#ifndef CONFIG_RUST_DENTRY_LIFECYCLE
 static enum lru_status dentry_lru_isolate(struct list_head *item,
 		struct list_lru_one *lru, void *arg)
 {
@@ -1363,6 +1395,11 @@ static enum lru_status dentry_lru_isolate(struct list_head *item,
 
 	return LRU_REMOVED;
 }
+#endif /* !CONFIG_RUST_DENTRY_LIFECYCLE */
+
+#ifdef CONFIG_RUST_DENTRY_LIFECYCLE
+#define dentry_lru_isolate rust_dentry_lru_isolate
+#endif
 
 /**
  * prune_dcache_sb - shrink the dcache
@@ -1387,6 +1424,7 @@ long prune_dcache_sb(struct super_block *sb, struct shrink_control *sc)
 	return freed;
 }
 
+#ifndef CONFIG_RUST_DENTRY_LIFECYCLE
 static enum lru_status dentry_lru_isolate_shrink(struct list_head *item,
 		struct list_lru_one *lru, void *arg)
 {
@@ -1406,7 +1444,11 @@ static enum lru_status dentry_lru_isolate_shrink(struct list_head *item,
 
 	return LRU_REMOVED;
 }
+#endif /* !CONFIG_RUST_DENTRY_LIFECYCLE */
 
+#ifdef CONFIG_RUST_DENTRY_LIFECYCLE
+#define dentry_lru_isolate_shrink rust_dentry_lru_isolate_shrink
+#endif
 
 /**
  * shrink_dcache_sb - shrink dcache for a superblock
@@ -1426,6 +1468,216 @@ void shrink_dcache_sb(struct super_block *sb)
 	} while (list_lru_count(&sb->s_dentry_lru) > 0);
 }
 EXPORT_SYMBOL(shrink_dcache_sb);
+
+#ifdef CONFIG_RUST_DENTRY_LIFECYCLE
+void rust_helper_dentry_might_sleep(void)
+{
+	might_sleep();
+}
+
+void rust_helper_dentry_lock(struct dentry *dentry)
+{
+	spin_lock(&dentry->d_lock);
+}
+
+bool rust_helper_dentry_trylock(struct dentry *dentry)
+{
+	return spin_trylock(&dentry->d_lock);
+}
+
+void rust_helper_dentry_lock_nested(struct dentry *dentry,
+				    unsigned int subclass)
+{
+	spin_lock_nested(&dentry->d_lock, subclass);
+}
+
+void rust_helper_dentry_unlock(struct dentry *dentry)
+{
+	spin_unlock(&dentry->d_lock);
+}
+
+unsigned int rust_helper_dentry_flags(const struct dentry *dentry)
+{
+	return READ_ONCE(dentry->d_flags);
+}
+
+void rust_helper_dentry_set_flags(struct dentry *dentry, unsigned int flags)
+{
+	WRITE_ONCE(dentry->d_flags, flags);
+}
+
+int rust_helper_dentry_count(const struct dentry *dentry)
+{
+	return dentry->d_lockref.count;
+}
+
+void rust_helper_dentry_dec_count(struct dentry *dentry)
+{
+	dentry->d_lockref.count--;
+}
+
+bool rust_helper_dentry_dead_or_zero(const struct dentry *dentry)
+{
+	return lockref_is_dead_or_zero(&dentry->d_lockref);
+}
+
+bool rust_helper_dentry_is_positive(const struct dentry *dentry)
+{
+	return d_really_is_positive(dentry);
+}
+
+bool rust_helper_dentry_is_negative(const struct dentry *dentry)
+{
+	return d_is_negative(dentry);
+}
+
+bool rust_helper_dentry_unhashed(const struct dentry *dentry)
+{
+	return d_unhashed(dentry);
+}
+
+bool rust_helper_dentry_is_root(const struct dentry *dentry)
+{
+	return IS_ROOT(dentry);
+}
+
+bool rust_helper_dentry_has_release(const struct dentry *dentry)
+{
+	return dentry->d_op && dentry->d_op->d_release;
+}
+
+struct dentry *rust_helper_dentry_parent(const struct dentry *dentry)
+{
+	return dentry->d_parent;
+}
+
+bool rust_helper_dentry_delete(struct dentry *dentry)
+{
+	return dentry->d_op->d_delete(dentry);
+}
+
+void rust_helper_dentry_prune(struct dentry *dentry)
+{
+	dentry->d_op->d_prune(dentry);
+}
+
+void rust_helper_dentry_release(struct dentry *dentry)
+{
+	dentry->d_op->d_release(dentry);
+}
+
+void rust_helper_dentry_verify_flags(const struct dentry *dentry,
+				     unsigned int expected)
+{
+	D_FLAG_VERIFY(dentry, expected);
+}
+
+void rust_helper_dentry_verify_free(const struct dentry *dentry)
+{
+	DENTRY_WARN_ONCE(d_really_is_positive(dentry), dentry);
+	DENTRY_WARN_ONCE(!lockref_is_dead(&dentry->d_lockref), dentry);
+	D_FLAG_VERIFY(dentry, 0);
+}
+
+bool rust_helper_dentry_warn_once(bool condition)
+{
+	return WARN_ON_ONCE(condition);
+}
+
+void rust_helper_dentry_account_unused(int delta)
+{
+	this_cpu_add(nr_dentry_unused, delta);
+}
+
+void rust_helper_dentry_account_negative(int delta)
+{
+	this_cpu_add(nr_dentry_negative, delta);
+}
+
+void rust_helper_dentry_account_dentry(int delta)
+{
+	this_cpu_add(nr_dentry, delta);
+}
+
+bool rust_helper_dentry_lru_add(struct dentry *dentry)
+{
+	return list_lru_add_obj(&dentry->d_sb->s_dentry_lru, &dentry->d_lru);
+}
+
+bool rust_helper_dentry_lru_del(struct dentry *dentry)
+{
+	return list_lru_del_obj(&dentry->d_sb->s_dentry_lru, &dentry->d_lru);
+}
+
+void rust_helper_dentry_list_add(struct list_head *new,
+				 struct list_head *head)
+{
+	list_add(new, head);
+}
+
+void rust_helper_dentry_list_del_init(struct list_head *entry)
+{
+	list_del_init(entry);
+}
+
+bool rust_helper_dentry_list_empty(const struct list_head *head)
+{
+	return list_empty(head);
+}
+
+struct dentry *rust_helper_dentry_lru_tail(struct list_head *head)
+{
+	return list_entry(head->prev, struct dentry, d_lru);
+}
+
+void rust_helper_dentry_drop(struct dentry *dentry)
+{
+	__d_drop(dentry);
+}
+
+bool rust_helper_dentry_lock_for_kill(struct dentry *dentry)
+{
+	return lock_for_kill(dentry);
+}
+
+void rust_helper_dentry_unlink_inode(struct dentry *dentry)
+{
+	dentry_unlink_inode(dentry);
+}
+
+void rust_helper_dentry_unlist(struct dentry *dentry)
+{
+	dentry_unlist(dentry);
+}
+
+void rust_helper_dentry_resched_tasks_rcu_qs(void)
+{
+	cond_resched_tasks_rcu_qs();
+}
+
+bool rust_helper_dentry_put_external_name(struct dentry *dentry)
+{
+	struct external_name *name;
+
+	if (!dname_external(dentry))
+		return false;
+
+	name = external_name(dentry);
+	if (!atomic_dec_and_test(&name->count))
+		return false;
+
+	call_rcu(&dentry->d_rcu, __d_free_external);
+	return true;
+}
+
+void rust_helper_dentry_free(struct dentry *dentry, bool use_rcu)
+{
+	if (use_rcu)
+		call_rcu(&dentry->d_rcu, __d_free);
+	else
+		__d_free(&dentry->d_rcu);
+}
+#endif /* CONFIG_RUST_DENTRY_LIFECYCLE */
 
 /**
  * enum d_walk_ret - action to take during tree walk

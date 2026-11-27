@@ -428,6 +428,8 @@ static inline void d_lookup_done(struct dentry *dentry)
 
 extern void dput(struct dentry *);
 
+void dput_to_list(struct dentry *dentry, struct list_head *list);
+
 static inline bool d_managed(const struct dentry *dentry)
 {
 	return dentry->d_flags & DCACHE_MANAGED_DENTRY;

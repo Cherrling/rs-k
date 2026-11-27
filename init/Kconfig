@@ -2173,6 +2173,25 @@ config RUST_FDTABLE_LIFECYCLE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_DENTRY_LIFECYCLE
+	bool "Rust implementation of dentry lifecycle"
+	depends on RUST
+	default y
+	help
+	  Use Rust to directly define dentry reference drop, retention,
+	  eviction, private shrink-list processing, LRU isolation decisions,
+	  and final release scheduling.
+
+	  C retains the dentry layout, lockref and RCU primitives, hash and
+	  tree unlinking, d_lock and inode-lock protocols, list-LRU traversal,
+	  accounting callbacks, and dentry operations.
+
+	  The complete C implementation remains available when this option is
+	  disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_TEARDOWN
 	bool "Rust implementation of final task teardown"
 	depends on RUST

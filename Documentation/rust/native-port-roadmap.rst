@@ -49,7 +49,7 @@ Order             Unit                        Status         Primary ownership
 3                 ``nsproxy-lifecycle``       complete       Namespace proxy copy, switch, and teardown.
 4                 ``file-lifecycle``          complete       File creation, close, delayed close, and release.
 5                 ``fdtable-lifecycle``       complete       FD allocation, growth, lookup, and RCU release.
-6                 ``dentry-lifecycle``        pending        Dentry reference, retention, and release.
+6                 ``dentry-lifecycle``        complete       Dentry reference, retention, and release.
 7                 ``inode-lifecycle``         pending        Inode allocation, reference, LRU, and destruction.
 8                 ``superblock-lifecycle``    pending        Superblock allocation, activation, and teardown.
 9                 ``vfsmount-lifecycle``      pending        Mount clone, reference, detach, and release.

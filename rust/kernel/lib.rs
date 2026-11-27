@@ -98,6 +98,8 @@ mod cred_lifecycle;
 pub mod debugfs;
 #[cfg(CONFIG_RUST_DEC_AND_LOCK)]
 mod dec_and_lock;
+#[cfg(CONFIG_RUST_DENTRY_LIFECYCLE)]
+mod dentry_lifecycle;
 pub mod device;
 #[cfg(CONFIG_RUST_DEVICE)]
 mod device_core;

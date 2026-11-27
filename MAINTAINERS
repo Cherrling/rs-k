@@ -10073,9 +10073,11 @@ L:	linux-fsdevel@vger.kernel.org
 S:	Maintained
 T:	git https://git.kernel.org/pub/scm/linux/kernel/git/vfs/vfs.git
 F:	Documentation/driver-api/early-userspace/buffer-format.rst
+F:	Documentation/rust/native-dentry-lifecycle.rst
 F:	Documentation/rust/native-fdtable-lifecycle.rst
 F:	Documentation/rust/native-file-lifecycle.rst
 F:	fs/*
+F:	include/linux/dentry-rust.h
 F:	include/linux/fdtable-rust.h
 F:	include/linux/file-lifecycle-rust.h
 F:	include/linux/fs.h
@@ -10084,8 +10086,10 @@ F:	include/uapi/linux/fs.h
 F:	include/uapi/linux/openat2.h
 F:	init/*initramfs*
 F:	init/do_mounts*
+F:	lib/tests/dentry_lifecycle_kunit.c
 F:	lib/tests/fdtable_lifecycle_kunit.c
 F:	lib/tests/file_lifecycle_kunit.c
+F:	rust/kernel/dentry_lifecycle.rs
 F:	rust/kernel/fdtable_lifecycle.rs
 F:	rust/kernel/file_lifecycle.rs
 F:	rust/kernel/fs.rs

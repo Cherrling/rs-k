@@ -2820,6 +2820,20 @@ config FDTABLE_LIFECYCLE_KUNIT_TEST
 
 	  If unsure, say N.
 
+config DENTRY_LIFECYCLE_KUNIT_TEST
+	bool "KUnit test for dentry lifecycle" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for dentry reference drops,
+	  private shrink-list processing, LRU retention, persistent
+	  references, final release, and concurrent lookup and drop.
+
+	  The tests run with either the C implementation or the native Rust
+	  implementation selected.
+
+	  If unsure, say N.
+
 config TASK_RELEASE_KUNIT_TEST
 	bool "KUnit test for zombie task release" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

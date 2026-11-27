@@ -1973,6 +1973,49 @@ Risk: A wrong capacity or rollback decision can leak a dynamic fdtable or file
 reference. A wrong RCU validation can return a reused file object after a
 concurrent close or table replacement.
 
+Dentry lifecycle
+----------------
+
+Status: ``migrated``.
+
+Evidence: :doc:`native-dentry-lifecycle`.
+
+Rust directly defines ``dput()``, ``d_make_discardable()``,
+``__move_to_shrink_list()``, ``shrink_dentry_list()``, and the unexported
+``dput_to_list()``. Rust owns reference-drop selection, lockless retention,
+filesystem delete decisions, LRU and shrink-list transitions, eviction,
+parent-chain release, persistent-reference transfer, external-name release
+selection, and RCU versus immediate final-free selection.
+
+C retains the shared dentry, inode, list, and external-name layouts, lockref
+and flag primitives, RCU, hash and tree unlinking, the nested lock protocol,
+inode alias removal, accounting, and dentry operation callbacks.
+
+Test: Native, fallback, C-only, Native KASAN Rust, lockdep, PREEMPT_RT, and
+DEBUG_VFS each passed SMP1 and SMP4 with 9 of 9 cases. Coverage includes null,
+final, shared, external-name, shrink-list, LRU shrink and retention,
+discardable, and concurrent lookup and drop paths. Each case uses a real
+rootfs path and ``path_put()``.
+
+Native ``rust/kernel.o`` defined all five entries and the three private
+callbacks. Native ``fs/dcache.o`` defined none of the five entries. The
+object retained 38 helpers, and all 38 have Rust references. Fallback and
+C-only ``fs/dcache.o`` retained the complete implementation. Native
+``Module.symvers`` preserved ordinary exports for ``dput()``,
+``d_make_discardable()``, ``__move_to_shrink_list()``, and
+``shrink_dentry_list()``. ``dput_to_list()`` remained unexported. External
+GPL and non-GPL modules linked all four ordinary exports, and both license
+classes failed modpost with the unexported entry. Disassembly showed complete
+Rust implementations without a C tail-call adapter.
+
+``dget()`` remains a header inline because it is a hot wrapper around
+``lockref_get()``. ``d_mark_dontcache()`` remains in C because it traverses
+inode aliases and changes inode state under ``i_lock``.
+
+Risk: A wrong retention or lock acquisition decision can free a dentry while
+an RCU lookup or inode alias user still observes it. A wrong parent-chain
+release can leak a parent or use it after final release.
+
 Direct-entry audit
 ------------------
 

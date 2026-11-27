@@ -564,6 +564,10 @@ $(obj)/helpers/helpers.bc $(obj)/helpers/helpers_module.bc: $(src)/helpers/helpe
 # their EXPORT_SYMBOL() metadata, so the automatic Rust exporter must skip
 # them to avoid duplicate GPL exports.
 rust_non_gpl_exports := \
+	__move_to_shrink_list \
+	d_make_discardable \
+	dput \
+	shrink_dentry_list \
 	alloc_file_pseudo \
 	fput \
 	__fput_sync \
@@ -824,6 +828,7 @@ rust_unexported_symbols := \
 	__get_unused_fd_flags \
 	alloc_empty_file \
 	alloc_file_clone \
+	dput_to_list \
 	dup_fd \
 	exit_files \
 	fdget_raw \
@@ -846,6 +851,9 @@ rust_unexported_symbols := \
 	rust_fdtable_expand_files \
 	rust_fdtable_fget_rcu \
 	rust_fdtable_put_unused_locked \
+	rust_dentry_lru_isolate \
+	rust_dentry_lru_isolate_shrink \
+	rust_dentry_shrink_kill \
 	rust_file_test_alloc_count \
 	rust_file_test_delayed_count \
 	rust_file_test_fail_next \
