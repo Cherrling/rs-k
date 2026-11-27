@@ -10,8 +10,10 @@
 
 use crate::bindings;
 #[cfg(CONFIG_SUPERBLOCK_LIFECYCLE_KUNIT_TEST)]
+use core::ffi::c_uint;
+#[cfg(CONFIG_SUPERBLOCK_LIFECYCLE_KUNIT_TEST)]
 use core::sync::atomic::{AtomicU32, Ordering};
-use core::{ffi::c_int, ffi::c_uint, ptr};
+use core::{ffi::c_int, ptr};
 use macros::export;
 
 type FileSystemType = bindings::file_system_type;

@@ -11,9 +11,11 @@
 
 use crate::bindings;
 #[cfg(CONFIG_VFSMOUNT_LIFECYCLE_KUNIT_TEST)]
+use core::ffi::c_uint;
+#[cfg(CONFIG_VFSMOUNT_LIFECYCLE_KUNIT_TEST)]
 use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use core::{
-    ffi::{c_int, c_uchar, c_uint},
+    ffi::{c_int, c_uchar},
     mem::MaybeUninit,
     ptr,
 };
