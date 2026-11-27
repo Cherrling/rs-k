@@ -52,7 +52,7 @@ Order             Unit                        Status         Primary ownership
 6                 ``dentry-lifecycle``        complete       Dentry reference, retention, and release.
 7                 ``inode-lifecycle``         complete       Inode allocation, reference, LRU, and destruction.
 8                 ``superblock-lifecycle``    complete       Superblock allocation, activation, and teardown.
-9                 ``vfsmount-lifecycle``      pending        Mount clone, reference, detach, and release.
+9                 ``vfsmount-lifecycle``      complete       Mount clone, reference, detach, and release.
 10                ``path-lookup``             pending        Name resolution control flow and rollback.
 11                ``open-entry``              pending        Open dispatch, completion, and cleanup.
 12                ``vfs-io``                  pending        Read, write, seek, and operation dispatch.

@@ -34,6 +34,7 @@
 #include <linux/mnt_idmapping.h>
 #include <linux/pidfs.h>
 #include <linux/nstree.h>
+#include <linux/vfsmount-rust.h>
 
 #include "pnode.h"
 #include "internal.h"
@@ -311,6 +312,7 @@ int mnt_get_count(struct mount *mnt)
 #endif
 }
 
+#ifndef CONFIG_RUST_VFSMOUNT_LIFECYCLE
 static struct mount *alloc_vfsmnt(const char *name)
 {
 	struct mount *mnt = kmem_cache_zalloc(mnt_cache, GFP_KERNEL);
@@ -374,6 +376,7 @@ out_free_cache:
 	kmem_cache_free(mnt_cache, mnt);
 	return NULL;
 }
+#endif /* !CONFIG_RUST_VFSMOUNT_LIFECYCLE */
 
 /*
  * Most r/o checks on a fs are for operations that take
@@ -759,6 +762,7 @@ int sb_prepare_remount_readonly(struct super_block *sb)
 	return err;
 }
 
+#ifndef CONFIG_RUST_VFSMOUNT_LIFECYCLE
 static void free_vfsmnt(struct mount *mnt)
 {
 	mnt_idmap_put(mnt_idmap(&mnt->mnt));
@@ -775,6 +779,7 @@ static void delayed_free_vfsmnt(struct rcu_head *head)
 {
 	free_vfsmnt(container_of(head, struct mount, mnt_rcu));
 }
+#endif /* !CONFIG_RUST_VFSMOUNT_LIFECYCLE */
 
 /* call under rcu_read_lock */
 int __legitimize_mnt(struct vfsmount *bastard, unsigned seq)
@@ -1234,6 +1239,7 @@ static void commit_tree(struct mount *mnt)
 	touch_mnt_namespace(n);
 }
 
+#ifndef CONFIG_RUST_VFSMOUNT_LIFECYCLE
 static void setup_mnt(struct mount *m, struct dentry *root)
 {
 	struct super_block *s = root->d_sb;
@@ -1276,6 +1282,7 @@ struct vfsmount *vfs_create_mount(struct fs_context *fc)
 	return &mnt->mnt;
 }
 EXPORT_SYMBOL(vfs_create_mount);
+#endif /* !CONFIG_RUST_VFSMOUNT_LIFECYCLE */
 
 struct vfsmount *fc_mount(struct fs_context *fc)
 {
@@ -1326,8 +1333,9 @@ struct vfsmount *vfs_kern_mount(struct file_system_type *type,
 }
 EXPORT_SYMBOL_GPL(vfs_kern_mount);
 
+#ifndef CONFIG_RUST_VFSMOUNT_LIFECYCLE
 static struct mount *clone_mnt(struct mount *old, struct dentry *root,
-					int flag)
+			       int flag)
 {
 	struct mount *mnt;
 	int err;
@@ -1378,7 +1386,9 @@ static struct mount *clone_mnt(struct mount *old, struct dentry *root,
 	free_vfsmnt(mnt);
 	return ERR_PTR(err);
 }
+#endif /* !CONFIG_RUST_VFSMOUNT_LIFECYCLE */
 
+#ifndef CONFIG_RUST_VFSMOUNT_LIFECYCLE
 static void cleanup_mnt(struct mount *mnt)
 {
 	/*
@@ -1515,6 +1525,7 @@ void mnt_make_shortterm(struct vfsmount *mnt)
 	if (mnt)
 		WRITE_ONCE(real_mount(mnt)->mnt_ns, NULL);
 }
+#endif /* !CONFIG_RUST_VFSMOUNT_LIFECYCLE */
 
 /**
  * path_is_mountpoint() - Check if path is a mount in the current namespace.
@@ -1546,6 +1557,7 @@ bool path_is_mountpoint(const struct path *path)
 }
 EXPORT_SYMBOL(path_is_mountpoint);
 
+#ifndef CONFIG_RUST_VFSMOUNT_LIFECYCLE
 struct vfsmount *mnt_clone_internal(const struct path *path)
 {
 	struct mount *p;
@@ -1555,6 +1567,512 @@ struct vfsmount *mnt_clone_internal(const struct path *path)
 	p->mnt.mnt_flags |= MNT_INTERNAL;
 	return &p->mnt;
 }
+#endif /* !CONFIG_RUST_VFSMOUNT_LIFECYCLE */
+
+#ifdef CONFIG_RUST_VFSMOUNT_LIFECYCLE
+/*
+ * Rust defines the mount lifecycle entries. C retains the shared layout,
+ * per-CPU counting, locking, mount hash, allocation, dentry, superblock,
+ * fsnotify, task-work and delayed-work primitives.
+ */
+#define EXPORT_VFSMOUNT_ABI(symbol) EXPORT_SYMBOL(symbol)
+EXPORT_VFSMOUNT_ABI(vfs_create_mount);
+EXPORT_VFSMOUNT_ABI(mntput);
+EXPORT_VFSMOUNT_ABI(mntget);
+#undef EXPORT_VFSMOUNT_ABI
+
+static LLIST_HEAD(delayed_mntput_list);
+
+static void delayed_mntput(struct work_struct *unused)
+{
+	struct llist_node *node = llist_del_all(&delayed_mntput_list);
+	struct mount *m, *t;
+
+	llist_for_each_entry_safe(m, t, node, mnt_llist)
+		rust_mnt_cleanup_delayed(m);
+}
+
+static DECLARE_DELAYED_WORK(delayed_mntput_work, delayed_mntput);
+
+struct mount *rust_helper_mnt_alloc_object(void)
+{
+	return kmem_cache_zalloc(mnt_cache, GFP_KERNEL);
+}
+
+void rust_helper_mnt_free_object(struct mount *mnt)
+{
+	kmem_cache_free(mnt_cache, mnt);
+}
+
+int rust_helper_mnt_alloc_cover(struct mount *mnt)
+{
+	mnt->mnt_cover = kzalloc_obj(struct mnt_cover, GFP_KERNEL_ACCOUNT);
+	return mnt->mnt_cover ? 0 : -ENOMEM;
+}
+
+void rust_helper_mnt_free_cover(struct mount *mnt)
+{
+	kfree(mnt->mnt_cover);
+}
+
+int rust_helper_mnt_alloc_id(struct mount *mnt)
+{
+	return mnt_alloc_id(mnt);
+}
+
+void rust_helper_mnt_free_id(struct mount *mnt)
+{
+	mnt_free_id(mnt);
+}
+
+const char *rust_helper_mnt_dup_devname(const char *name)
+{
+	if (name)
+		return kstrdup_const(name, GFP_KERNEL_ACCOUNT);
+	return "none";
+}
+
+void rust_helper_mnt_set_devname(struct mount *mnt, const char *name)
+{
+	mnt->mnt_devname = name;
+}
+
+const char *rust_helper_mnt_devname(const struct mount *mnt)
+{
+	return mnt->mnt_devname;
+}
+
+void rust_helper_mnt_free_devname(struct mount *mnt)
+{
+	kfree_const(mnt->mnt_devname);
+}
+
+bool rust_helper_mnt_alloc_pcp(struct mount *mnt)
+{
+#ifdef CONFIG_SMP
+	mnt->mnt_pcp = alloc_percpu(struct mnt_pcp);
+	if (!mnt->mnt_pcp)
+		return false;
+	this_cpu_inc(mnt->mnt_pcp->mnt_gets);
+#else
+	mnt->mnt_count = 1;
+	mnt->mnt_writers = 0;
+#endif
+	return true;
+}
+
+void rust_helper_mnt_free_pcp(struct mount *mnt)
+{
+#ifdef CONFIG_SMP
+	free_percpu(mnt->mnt_pcp);
+#endif
+}
+
+void rust_helper_mnt_init_layout(struct mount *mnt)
+{
+	INIT_HLIST_NODE(&mnt->mnt_hash);
+	INIT_LIST_HEAD(&mnt->mnt_child);
+	INIT_LIST_HEAD(&mnt->mnt_mounts);
+	INIT_LIST_HEAD(&mnt->mnt_list);
+	INIT_LIST_HEAD(&mnt->mnt_expire);
+	INIT_LIST_HEAD(&mnt->mnt_share);
+	INIT_HLIST_HEAD(&mnt->mnt_slave_list);
+	INIT_HLIST_NODE(&mnt->mnt_slave);
+	INIT_HLIST_NODE(&mnt->mnt_mp_list);
+	INIT_HLIST_HEAD(&mnt->mnt_covers);
+	INIT_HLIST_NODE(&mnt->mnt_ns_visible);
+#ifdef CONFIG_FSNOTIFY
+	INIT_LIST_HEAD(&mnt->to_notify);
+#endif
+	RB_CLEAR_NODE(&mnt->mnt_node);
+}
+
+void rust_helper_mnt_set_default_idmap(struct mount *mnt)
+{
+	mnt->mnt.mnt_idmap = &nop_mnt_idmap;
+}
+
+int rust_helper_mnt_flags(const struct mount *mnt)
+{
+	return READ_ONCE(mnt->mnt.mnt_flags);
+}
+
+void rust_helper_mnt_set_flags(struct mount *mnt, int flags)
+{
+	mnt->mnt.mnt_flags = flags;
+}
+
+void rust_helper_mnt_or_flags(struct mount *mnt, int flags)
+{
+	mnt->mnt.mnt_flags |= flags;
+}
+
+int rust_helper_mnt_t_flags(const struct mount *mnt)
+{
+	return mnt->mnt_t_flags;
+}
+
+void rust_helper_mnt_set_t_flags(struct mount *mnt, int flags)
+{
+	mnt->mnt_t_flags = flags;
+}
+
+int rust_helper_mnt_group_id(const struct mount *mnt)
+{
+	return mnt->mnt_group_id;
+}
+
+void rust_helper_mnt_set_group_id(struct mount *mnt, int group_id)
+{
+	mnt->mnt_group_id = group_id;
+}
+
+int rust_helper_mnt_alloc_group_id(struct mount *mnt)
+{
+	return mnt_alloc_group_id(mnt);
+}
+
+struct mnt_idmap *rust_helper_mnt_idmap_get(struct mount *mnt)
+{
+	return mnt_idmap_get(mnt_idmap(&mnt->mnt));
+}
+
+void rust_helper_mnt_set_idmap(struct mount *mnt, struct mnt_idmap *idmap)
+{
+	mnt->mnt.mnt_idmap = idmap;
+}
+
+void rust_helper_mnt_idmap_put(struct mount *mnt)
+{
+	mnt_idmap_put(mnt_idmap(&mnt->mnt));
+}
+
+void rust_helper_mnt_set_shared(struct mount *mnt)
+{
+	set_mnt_shared(mnt);
+}
+
+bool rust_helper_mnt_peers(const struct mount *mnt, const struct mount *old)
+{
+	return peers(mnt, old);
+}
+
+void rust_helper_mnt_add_peer(struct mount *mnt, struct mount *old)
+{
+	list_add(&mnt->mnt_share, &old->mnt_share);
+}
+
+bool rust_helper_mnt_is_slave(const struct mount *mnt)
+{
+	return IS_MNT_SLAVE(mnt);
+}
+
+struct mount *rust_helper_mnt_master(const struct mount *mnt)
+{
+	return mnt->mnt_master;
+}
+
+void rust_helper_mnt_add_slave(struct mount *mnt, struct mount *old)
+{
+	hlist_add_head(&mnt->mnt_slave, &old->mnt_slave_list);
+}
+
+void rust_helper_mnt_add_slave_behind(struct mount *mnt, struct mount *old)
+{
+	hlist_add_behind(&mnt->mnt_slave, &old->mnt_slave);
+}
+
+void rust_helper_mnt_set_master(struct mount *mnt, struct mount *master)
+{
+	mnt->mnt_master = master;
+}
+
+struct super_block *rust_helper_mnt_dentry_super(const struct dentry *dentry)
+{
+	return dentry->d_sb;
+}
+
+struct vfsmount *rust_helper_mnt_vfsmount(struct mount *mnt)
+{
+	return &mnt->mnt;
+}
+
+struct mount *rust_helper_mnt_from_vfsmount(struct vfsmount *mnt)
+{
+	return real_mount(mnt);
+}
+
+struct vfsmount *rust_helper_mnt_path_mount(const struct path *path)
+{
+	return path->mnt;
+}
+
+struct dentry *rust_helper_mnt_path_dentry(const struct path *path)
+{
+	return path->dentry;
+}
+
+struct mount *rust_helper_mnt_from_callback_head(struct callback_head *head)
+{
+	return container_of(head, struct mount, mnt_rcu);
+}
+
+void rust_helper_mnt_active_inc(struct super_block *sb)
+{
+	atomic_inc(&sb->s_active);
+}
+
+void rust_helper_mnt_set_root(struct mount *mnt, struct dentry *root)
+{
+	mnt->mnt.mnt_root = dget(root);
+	mnt->mnt_mountpoint = mnt->mnt.mnt_root;
+}
+
+void rust_helper_mnt_set_super(struct mount *mnt, struct super_block *sb)
+{
+	mnt->mnt.mnt_sb = sb;
+}
+
+void rust_helper_mnt_set_parent_self(struct mount *mnt)
+{
+	mnt->mnt_parent = mnt;
+}
+
+void rust_helper_mnt_lock_instance(void)
+{
+	read_seqlock_excl(&mount_lock);
+}
+
+void rust_helper_mnt_unlock_instance(void)
+{
+	read_sequnlock_excl(&mount_lock);
+}
+
+void rust_helper_mnt_add_instance(struct mount *mnt, struct super_block *sb)
+{
+	mnt_add_instance(mnt, sb);
+}
+
+struct dentry *rust_helper_mnt_fc_root(const struct fs_context *fc)
+{
+	return fc->root;
+}
+
+const char *rust_helper_mnt_fc_source(const struct fs_context *fc)
+{
+	return fc->source;
+}
+
+bool rust_helper_mnt_fc_kern_mount(const struct fs_context *fc)
+{
+	return !!(fc->sb_flags & SB_KERNMOUNT);
+}
+
+bool rust_helper_mnt_is_err(const void *value)
+{
+	return IS_ERR(value);
+}
+
+void *rust_helper_mnt_err_ptr(long error)
+{
+	return ERR_PTR(error);
+}
+
+long rust_helper_mnt_ptr_err(const void *value)
+{
+	return PTR_ERR(value);
+}
+
+void rust_helper_mnt_inc_count(struct mount *mnt)
+{
+	mnt_inc_count(mnt);
+}
+
+void rust_helper_mnt_dec_count(struct mount *mnt)
+{
+	mnt_dec_count(mnt);
+}
+
+void rust_helper_mnt_dec_put_fast(struct mount *mnt)
+{
+	smp_wmb(); /* pairs with the smp_mb() in mnt_get_count() */
+	mnt_dec_count(mnt);
+}
+
+int rust_helper_mnt_get_count(struct mount *mnt)
+{
+	return mnt_get_count(mnt);
+}
+
+void rust_helper_mnt_lock_hash(void)
+{
+	lock_mount_hash();
+}
+
+void rust_helper_mnt_unlock_hash(void)
+{
+	unlock_mount_hash();
+}
+
+void rust_helper_mnt_rcu_read_lock(void)
+{
+	rcu_read_lock();
+}
+
+void rust_helper_mnt_rcu_read_unlock(void)
+{
+	rcu_read_unlock();
+}
+
+bool rust_helper_mnt_has_namespace(const struct mount *mnt)
+{
+	return READ_ONCE(mnt->mnt_ns);
+}
+
+bool rust_helper_mnt_expiry_mark(const struct mount *mnt)
+{
+	return mnt->mnt_expiry_mark;
+}
+
+void rust_helper_mnt_clear_expiry_mark(struct mount *mnt)
+{
+	WRITE_ONCE(mnt->mnt_expiry_mark, 0);
+}
+
+void rust_helper_mnt_make_shortterm(struct mount *mnt)
+{
+	WRITE_ONCE(mnt->mnt_ns, NULL);
+}
+
+void rust_helper_mnt_del_instance(struct mount *mnt)
+{
+	mnt_del_instance(mnt);
+}
+
+bool rust_helper_mnt_expire_empty(const struct mount *mnt)
+{
+	return list_empty(&mnt->mnt_expire);
+}
+
+void rust_helper_mnt_remove_expire(struct mount *mnt)
+{
+	list_del(&mnt->mnt_expire);
+}
+
+void rust_helper_mnt_warn_mounted_children(const struct mount *mnt)
+{
+	VFS_WARN_ON_ONCE(!list_empty(&mnt->mnt_mounts));
+}
+
+void rust_helper_mnt_warn_negative_count(int count)
+{
+	WARN_ON(count < 0);
+}
+
+void rust_helper_mnt_init_list(struct list_head *list)
+{
+	INIT_LIST_HEAD(list);
+}
+
+void rust_helper_mnt_drop_covers(struct mount *mnt,
+				 struct list_head *shrink_list)
+{
+	struct mnt_cover *cover;
+	struct hlist_node *n;
+
+	hlist_for_each_entry_safe(cover, n, &mnt->mnt_covers, node)
+		drop_cover(cover, shrink_list);
+}
+
+void rust_helper_mnt_shrink_dentries(struct list_head *list)
+{
+	shrink_dentry_list(list);
+}
+
+void rust_helper_mnt_warn_writers(struct mount *mnt)
+{
+	WARN_ON(mnt_get_writers(mnt));
+}
+
+bool rust_helper_mnt_pins_empty(const struct mount *mnt)
+{
+	return hlist_empty(&mnt->mnt_pins);
+}
+
+void rust_helper_mnt_kill_pins(struct mount *mnt)
+{
+	mnt_pin_kill(mnt);
+}
+
+void rust_helper_mnt_fsnotify_delete(struct mount *mnt)
+{
+	fsnotify_vfsmount_delete(&mnt->mnt);
+}
+
+void rust_helper_mnt_dput_root(struct mount *mnt)
+{
+	dput(mnt->mnt.mnt_root);
+}
+
+void rust_helper_mnt_deactivate_super(struct mount *mnt)
+{
+	deactivate_super(mnt->mnt.mnt_sb);
+}
+
+void rust_helper_mnt_call_rcu(struct mount *mnt,
+			      void (*callback)(struct callback_head *head))
+{
+	call_rcu(&mnt->mnt_rcu, callback);
+}
+
+bool rust_helper_mnt_can_use_task_work(void)
+{
+	return !(current->flags & PF_KTHREAD);
+}
+
+bool rust_helper_mnt_queue_task_work(struct mount *mnt,
+				     void (*callback)(struct callback_head *head))
+{
+	init_task_work(&mnt->mnt_rcu, callback);
+	return !task_work_add(current, &mnt->mnt_rcu, TWA_RESUME);
+}
+
+void rust_helper_mnt_queue_delayed(struct mount *mnt)
+{
+	if (llist_add(&mnt->mnt_llist, &delayed_mntput_list))
+		schedule_delayed_work(&delayed_mntput_work, 1);
+}
+
+void rust_helper_mnt_flush_delayed(void)
+{
+	flush_delayed_work(&delayed_mntput_work);
+}
+
+void rust_helper_mnt_synchronize_rcu(void)
+{
+	rcu_barrier();
+}
+#endif /* CONFIG_RUST_VFSMOUNT_LIFECYCLE */
+
+#ifdef CONFIG_VFSMOUNT_LIFECYCLE_KUNIT_TEST
+void vfsmount_lifecycle_test_flush(void)
+{
+#ifdef CONFIG_RUST_VFSMOUNT_LIFECYCLE
+	rust_helper_mnt_flush_delayed();
+#else
+	flush_delayed_work(&delayed_mntput_work);
+#endif
+}
+
+void rust_helper_mnt_test_release_group_id(struct mount *mnt)
+{
+	if (!mnt->mnt_group_id)
+		return;
+	down_write(&namespace_sem);
+	mnt_release_group_id(mnt);
+	up_write(&namespace_sem);
+}
+#endif
 
 /*
  * Returns the mount which either has the specified mnt_id, or has the next

@@ -2230,6 +2230,26 @@ config RUST_SUPERBLOCK_LIFECYCLE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_VFSMOUNT_LIFECYCLE
+	bool "Rust implementation of vfsmount lifecycle"
+	depends on RUST
+	default y
+	help
+	  Use Rust to directly define vfsmount allocation, cloning, reference
+	  acquisition and release, detached mount cleanup, and the decision to
+	  defer final cleanup through task work or a delayed workqueue.
+
+	  C retains the mount and vfsmount layouts, per-CPU reference counters,
+	  mount hash and namespace locks, mount identifiers, slab and per-CPU
+	  allocation primitives, dentry and superblock operations, fsnotify,
+	  task work, delayed work, and propagation primitives.
+
+	  The complete C implementation remains available when this option is
+	  disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_TEARDOWN
 	bool "Rust implementation of final task teardown"
 	depends on RUST

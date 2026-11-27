@@ -46,6 +46,7 @@ more details.
     native-dentry-lifecycle
     native-inode-lifecycle
     native-superblock-lifecycle
+    native-vfsmount-lifecycle
     native-port-coverage
     dup-task-struct
     task-teardown

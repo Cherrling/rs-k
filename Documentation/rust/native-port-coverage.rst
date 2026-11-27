@@ -2104,6 +2104,59 @@ lookup, device-table, or final filesystem shutdown still uses it. A wrong
 rollback can leak a partially initialized shrinker, LRU, writer semaphore, or
 device claim.
 
+Vfsmount lifecycle
+------------------
+
+Status: ``migrated``.
+
+Evidence: :doc:`native-vfsmount-lifecycle`.
+
+Rust directly defines ``vfs_create_mount()``, ``mntget()``, and
+``mntput()``. Rust also defines the unexported ``clone_mnt()``,
+``mnt_clone_internal()``, ``mntput_no_expire()``, and
+``mnt_make_shortterm()`` entries, plus the private cleanup callback.
+
+Rust owns allocation order and rollback, mount setup, clone flags and
+propagation links, reference transitions, final-reference detection,
+detached cleanup, task-work and delayed-work selection, and final RCU
+destruction.
+
+C retains the shared mount and vfsmount layouts, per-CPU reference and writer
+counters, slab and per-CPU allocation, mount identifiers, mount hash and
+namespace locks, dentry and superblock primitives, fsnotify, pins, covers,
+task work, delayed work, and propagation primitives. ``umount_tree()`` and
+namespace tree ownership remain in C and transfer only final detached mount
+references to Rust.
+
+Test: Native, fallback, C-only, Native KASAN Rust, lockdep, PREEMPT_RT, and
+DEBUG_VFS each passed SMP1 and SMP4. Native and the advanced configurations
+passed 11 of 11 cases. Fallback and C-only passed 8 of 8 cases. Coverage
+includes null operations, final task-work cleanup, shared references,
+internal and shared clones, shortterm transition, delayed cleanup from a
+kernel thread, four-thread final release, VFS path integration, allocation
+rollback after five stages, and clone peer-group rollback.
+
+Native ``rust/kernel.o`` defined all seven entries and the private cleanup
+callback. Native ``fs/namespace.o`` defined none of the seven entries. The
+object retained 84 helpers, and Rust references all 84. Fallback and C-only
+``fs/namespace.o`` each retained complete definitions. Native
+``Module.symvers`` preserved ordinary exports for ``vfs_create_mount()``,
+``mntget()``, and ``mntput()``. The other four entries remained unexported.
+External GPL and non-GPL modules linked all three ordinary exports. Both
+license classes failed modpost with the unexported entries.
+
+Disassembly showed complete Rust implementations of ``vfs_create_mount()``,
+``clone_mnt()``, ``mntget()``, ``mntput()``, and the final-reference path
+without a C tail-call adapter.
+
+Rustfmt, Clippy, Rustdoc, focused Sphinx, strict checkpatch, and
+``git diff --check`` passed.
+
+Risk: A wrong final-reference or clone decision can free a mount still used
+by namespace traversal, propagation, a cover, or an RCU path. A wrong
+rollback can leak a mount identifier, peer group, idmap, dentry, or
+superblock reference.
+
 Direct-entry audit
 ------------------
 

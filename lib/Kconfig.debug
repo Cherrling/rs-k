@@ -2864,6 +2864,22 @@ config SUPERBLOCK_LIFECYCLE_KUNIT_TEST
 
 	  If unsure, say N.
 
+config VFSMOUNT_LIFECYCLE_KUNIT_TEST
+	bool "KUnit test for vfsmount lifecycle" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for vfsmount allocation and
+	  rollback, cloning, shared references, detached cleanup, shortterm
+	  mounts, task-work and delayed cleanup, concurrent final release, and
+	  VFS path integration.
+
+	  The failure-injection and lifecycle counters run only with the native
+	  Rust implementation. The lifecycle cases run with either the C
+	  implementation or the native Rust implementation selected.
+
+	  If unsure, say N.
+
 config TASK_RELEASE_KUNIT_TEST
 	bool "KUnit test for zombie task release" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

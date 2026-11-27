@@ -873,6 +873,23 @@ rust_unexported_symbols := \
 	rust_inode_test_fail \
 	rust_inode_test_reset \
 	rust_kill_super_notify \
+	clone_mnt \
+	mnt_clone_internal \
+	mnt_make_shortterm \
+	mntget \
+	mntput \
+	mntput_no_expire \
+	rust_mnt_cleanup_delayed \
+	rust_mnt_test_alloc \
+	rust_mnt_test_clone \
+	rust_mnt_test_counter \
+	rust_mnt_test_count \
+	rust_mnt_test_fail_next \
+	rust_mnt_test_force_task_work \
+	rust_mnt_test_flush_delayed \
+	rust_mnt_test_reset \
+	rust_mnt_test_synchronize_rcu \
+	vfs_create_mount \
 	rust_super_test_counter \
 	rust_super_test_fail \
 	rust_super_test_reset \

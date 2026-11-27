@@ -88,6 +88,7 @@
 #include <linux/fs.h>
 #include <linux/inode-rust.h>
 #include <linux/superblock-rust.h>
+#include <linux/vfsmount-rust.h>
 #include <linux/generic-radix-tree.h>
 #include <linux/generic-radix-tree-rust.h>
 #include <linux/i2c.h>

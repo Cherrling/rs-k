@@ -376,6 +376,8 @@ pub mod types;
 pub mod uaccess;
 #[cfg(CONFIG_USB = "y")]
 pub mod usb;
+#[cfg(CONFIG_RUST_VFSMOUNT_LIFECYCLE)]
+mod vfsmount_lifecycle;
 #[cfg(CONFIG_RUST_VMA_COPY)]
 mod vma_copy;
 #[cfg(CONFIG_RUST_VMA_EXPAND)]
