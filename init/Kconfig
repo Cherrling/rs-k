@@ -2327,6 +2327,24 @@ config RUST_SOCKET_LIFECYCLE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SKB_LIFECYCLE
+	bool "Rust implementation of skb lifecycle"
+	depends on NET && RUST && TRACEPOINTS
+	default y
+	help
+	  Use Rust to directly define generic skb allocation, clone, reference
+	  release, list drop, NAPI consumption, and final release ordering.
+
+	  C retains the skb and shared-info layouts, slab and page-fragment
+	  allocation, NAPI caches, DMA and page-pool recycling, protocol
+	  headers, destructor callbacks, and driver interfaces.
+
+	  The complete C implementation remains available when this option is
+	  disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_TEARDOWN
 	bool "Rust implementation of final task teardown"
 	depends on RUST

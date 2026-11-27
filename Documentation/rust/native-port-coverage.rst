@@ -2290,7 +2290,9 @@ External GPL and non-GPL modules linked both ordinary exports. Modpost
 rejected both license classes with the unexported entries. Disassembly shows
 complete Rust implementations without a public C tail-call adapter.
 Rustfmt, Clippy, Rustdoc, focused Sphinx, strict checkpatch, and
-``git diff --check`` pass.
+``git diff --check`` pass. Focused Sphinx reports only the existing
+``kernel-docs`` document warning. Strict checkpatch reports only the generic
+new-file MAINTAINERS prompt.
 
 Risk: A wrong range check can pass an overflowing range to a filesystem. A
 wrong callback selection or notification order can violate filesystem,
@@ -2343,6 +2345,58 @@ Rustfmt, Clippy, Rustdoc, focused Sphinx, strict checkpatch, and
 Risk: A wrong module, namespace, file, inode, security, or accounting
 reference can leak or release a resource too early. A wrong write-memory or
 RCU decision can free a sock during lookup or transmit completion.
+
+Generic skb lifecycle
+---------------------
+
+Status: ``migrated``.
+
+Evidence: :doc:`native-skb-lifecycle`.
+
+Rust directly defines ``__alloc_skb()``, ``__consume_stateless_skb()``,
+``__kfree_skb()``, ``sk_skb_reason_drop()``, ``kfree_skb_list_reason()``,
+``consume_skb()``, ``napi_consume_skb()``, ``skb_clone()``,
+``alloc_skb_for_msg()``, and ``skb_morph()``.
+
+Rust owns allocation cache and NUMA fallback selection, NAPI cache entry,
+memalloc-socket handling, shell and head failure cleanup, fclone setup,
+reference transitions, consume and drop tracing, bulk list release, NAPI
+deferred-free selection, clone setup, message-wrapper setup, and final shell
+sequencing.
+
+C retains the skb, shared-info, fclone, socket, NAPI-cache, page-fragment,
+DMA, and page-pool layouts. C also retains slab and page-fragment allocation,
+NAPI cache reclaim, DMA and page-pool recycling, tracepoints, destructor
+callbacks, protocol-header primitives, KASAN cache operations, and driver
+interfaces. The narrow helper ABI is in
+``include/linux/skb-lifecycle-rust.h``.
+
+Test: Native, KASAN with lockdep, PREEMPT_RT, and DEBUG_VFS each passed SMP1
+and SMP4 with 13 of 13 cases. Fallback and C-only passed SMP1 and SMP4 with
+12 of 12 cases. Coverage includes normal and injected allocation failures,
+shared and fclone clones, reference drop, stateless consume, linked-list bulk
+release, NAPI budgets, message wrapping, morph, socket-owned skb release,
+cross-layer credential, file, socket, and skb release, and concurrent
+allocation and release.
+
+Native ``rust/kernel.o`` defines all ten entries. Native
+``net/core/skbuff.o`` defines none. Fallback and C-only
+``net/core/skbuff.o`` retain all ten definitions. Native
+``Module.symvers`` contains seven ordinary exports and two GPL-only exports.
+``__consume_stateless_skb()`` remains unexported.
+
+External GPL modules linked all nine exports. External non-GPL modules linked
+the seven ordinary exports. Modpost rejected a non-GPL module that used the
+GPL-only exports and rejected both license classes for the unexported entry.
+Disassembly shows complete Rust implementations without a public C tail-call
+adapter.
+
+Rustfmt, Clippy, Rustdoc, focused Sphinx, strict checkpatch, and
+``git diff --check`` pass.
+
+Risk: A wrong cache, NUMA, fclone, reference, NAPI, trace, destructor, or
+shared-data decision can corrupt a per-CPU cache, leak a resource, free an skb
+too early, or report an incorrect release reason.
 
 Direct-entry audit
 ------------------
@@ -5018,7 +5072,8 @@ Core filesystem
 Core networking
   Status: ``pending``.
 
-  Begin after the core contracts stabilize.
+  The generic skb lifecycle is complete. Continue with the page and frame,
+  receive, transmit, route, neighbour, UDP, and TCP production paths.
 
 Device drivers
   Status: ``pending``.

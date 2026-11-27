@@ -2940,6 +2940,21 @@ config SOCKET_LIFECYCLE_KUNIT_TEST
 
 	  If unsure, say N.
 
+config SKB_LIFECYCLE_KUNIT_TEST
+	bool "KUnit test for skb lifecycle" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y && NET
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for generic skb allocation,
+	  cloning, shared-data release, list drop, NAPI consumption,
+	  concurrent release, and socket-owned skb teardown.
+
+	  The behavior cases run with either the C implementation or the
+	  native Rust implementation selected. Rust failure injection and
+	  observation counters run only with the native implementation.
+
+	  If unsure, say N.
+
 config TASK_RELEASE_KUNIT_TEST
 	bool "KUnit test for zombie task release" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

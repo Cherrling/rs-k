@@ -52,6 +52,7 @@
 #include <linux/string.h>
 #include <linux/skbuff.h>
 #include <linux/skbuff_ref.h>
+#include <linux/skb-lifecycle-rust.h>
 #include <linux/splice.h>
 #include <linux/cache.h>
 #include <linux/rtnetlink.h>
@@ -671,6 +672,7 @@ out:
  *	Buffers may only be allocated from interrupts using a @gfp_mask of
  *	%GFP_ATOMIC.
  */
+#ifndef CONFIG_RUST_SKB_LIFECYCLE
 struct sk_buff *__alloc_skb(unsigned int size, gfp_t gfp_mask,
 			    int flags, int node)
 {
@@ -743,6 +745,7 @@ nodata:
 	kmem_cache_free(cache, skb);
 	return NULL;
 }
+#endif /* !CONFIG_RUST_SKB_LIFECYCLE */
 EXPORT_SYMBOL(__alloc_skb);
 
 /**
@@ -1206,13 +1209,16 @@ static void skb_release_all(struct sk_buff *skb, enum skb_drop_reason reason)
  *	always call kfree_skb
  */
 
+#ifndef CONFIG_RUST_SKB_LIFECYCLE
 void __kfree_skb(struct sk_buff *skb)
 {
 	skb_release_all(skb, SKB_DROP_REASON_NOT_SPECIFIED);
 	kfree_skbmem(skb);
 }
+#endif /* !CONFIG_RUST_SKB_LIFECYCLE */
 EXPORT_SYMBOL(__kfree_skb);
 
+#ifndef CONFIG_RUST_SKB_LIFECYCLE
 static __always_inline
 bool __sk_skb_reason_drop(const struct sock *sk, struct sk_buff *skb,
 			  enum skb_drop_reason reason)
@@ -1249,8 +1255,10 @@ sk_skb_reason_drop(const struct sock *sk, struct sk_buff *skb,
 	if (__sk_skb_reason_drop(sk, skb, reason))
 		__kfree_skb(skb);
 }
+#endif /* !CONFIG_RUST_SKB_LIFECYCLE */
 EXPORT_SYMBOL(sk_skb_reason_drop);
 
+#ifndef CONFIG_RUST_SKB_LIFECYCLE
 #define KFREE_SKB_BULK_SIZE	16
 
 struct skb_free_array {
@@ -1299,6 +1307,7 @@ kfree_skb_list_reason(struct sk_buff *segs, enum skb_drop_reason reason)
 	if (sa.skb_count)
 		kmem_cache_free_bulk(net_hotdata.skbuff_cache, sa.skb_count, sa.skb_array);
 }
+#endif /* !CONFIG_RUST_SKB_LIFECYCLE */
 EXPORT_SYMBOL(kfree_skb_list_reason);
 
 /* Dump skb information and contents.
@@ -1439,6 +1448,7 @@ EXPORT_SYMBOL(skb_tx_error);
  *	Functions identically to kfree_skb, but kfree_skb assumes that the frame
  *	is being dropped after a failure and notes that
  */
+#ifndef CONFIG_RUST_SKB_LIFECYCLE
 void consume_skb(struct sk_buff *skb)
 {
 	if (!skb_unref(skb))
@@ -1447,6 +1457,7 @@ void consume_skb(struct sk_buff *skb)
 	trace_consume_skb(skb, __builtin_return_address(0));
 	__kfree_skb(skb);
 }
+#endif /* !CONFIG_RUST_SKB_LIFECYCLE */
 EXPORT_SYMBOL(consume_skb);
 #endif
 
@@ -1457,12 +1468,14 @@ EXPORT_SYMBOL(consume_skb);
  *	Alike consume_skb(), but this variant assumes that this is the last
  *	skb reference and all the head states have been already dropped
  */
+#ifndef CONFIG_RUST_SKB_LIFECYCLE
 void __consume_stateless_skb(struct sk_buff *skb)
 {
 	trace_consume_skb(skb, __builtin_return_address(0));
 	skb_release_data(skb, SKB_CONSUMED);
 	kfree_skbmem(skb);
 }
+#endif /* !CONFIG_RUST_SKB_LIFECYCLE */
 
 static void napi_skb_cache_put(struct sk_buff *skb)
 {
@@ -1519,6 +1532,7 @@ void napi_skb_free_stolen_head(struct sk_buff *skb)
  * Passing @budget of 0 is safe from any context, it turns this function
  * into dev_consume_skb_any().
  */
+#ifndef CONFIG_RUST_SKB_LIFECYCLE
 void napi_consume_skb(struct sk_buff *skb, int budget)
 {
 	if (unlikely(!budget || !skb)) {
@@ -1549,6 +1563,7 @@ void napi_consume_skb(struct sk_buff *skb, int budget)
 	skb_release_all(skb, SKB_CONSUMED);
 	napi_skb_cache_put(skb);
 }
+#endif /* !CONFIG_RUST_SKB_LIFECYCLE */
 EXPORT_SYMBOL(napi_consume_skb);
 
 /* Make sure a field is contained by headers group */
@@ -1607,6 +1622,7 @@ static void __copy_skb_header(struct sk_buff *new, const struct sk_buff *old)
  * You should not add any new code to this function.  Add it to
  * __copy_skb_header above instead.
  */
+#ifndef CONFIG_RUST_SKB_LIFECYCLE
 static struct sk_buff *__skb_clone(struct sk_buff *n, struct sk_buff *skb)
 {
 #define C(x) n->x = skb->x
@@ -1639,11 +1655,13 @@ static struct sk_buff *__skb_clone(struct sk_buff *n, struct sk_buff *skb)
 	return n;
 #undef C
 }
+#endif /* !CONFIG_RUST_SKB_LIFECYCLE */
 
 /**
  * alloc_skb_for_msg() - allocate sk_buff to wrap frag list forming a msg
  * @first: first sk_buff of the msg
  */
+#ifndef CONFIG_RUST_SKB_LIFECYCLE
 struct sk_buff *alloc_skb_for_msg(struct sk_buff *first)
 {
 	struct sk_buff *n;
@@ -1663,6 +1681,7 @@ struct sk_buff *alloc_skb_for_msg(struct sk_buff *first)
 
 	return n;
 }
+#endif /* !CONFIG_RUST_SKB_LIFECYCLE */
 EXPORT_SYMBOL_GPL(alloc_skb_for_msg);
 
 /**
@@ -1675,11 +1694,13 @@ EXPORT_SYMBOL_GPL(alloc_skb_for_msg);
  *
  *	The target skb is returned upon exit.
  */
+#ifndef CONFIG_RUST_SKB_LIFECYCLE
 struct sk_buff *skb_morph(struct sk_buff *dst, struct sk_buff *src)
 {
 	skb_release_all(dst, SKB_CONSUMED);
 	return __skb_clone(dst, src);
 }
+#endif /* !CONFIG_RUST_SKB_LIFECYCLE */
 EXPORT_SYMBOL_GPL(skb_morph);
 
 int mm_account_pinned_pages(struct mmpin *mmp, size_t size)
@@ -2097,6 +2118,7 @@ EXPORT_SYMBOL_GPL(skb_copy_ubufs);
  *	%GFP_ATOMIC.
  */
 
+#ifndef CONFIG_RUST_SKB_LIFECYCLE
 struct sk_buff *skb_clone(struct sk_buff *skb, gfp_t gfp_mask)
 {
 	struct sk_buff_fclones *fclones = container_of(skb,
@@ -2125,7 +2147,342 @@ struct sk_buff *skb_clone(struct sk_buff *skb, gfp_t gfp_mask)
 
 	return __skb_clone(n, skb);
 }
+#endif /* !CONFIG_RUST_SKB_LIFECYCLE */
 EXPORT_SYMBOL(skb_clone);
+
+#ifdef CONFIG_RUST_SKB_LIFECYCLE
+
+#ifdef CONFIG_SKB_LIFECYCLE_KUNIT_TEST
+static atomic_t skb_test_next_failure = ATOMIC_INIT(0);
+static atomic_t skb_test_counters[RUST_SKB_TEST_COUNTER_COUNT];
+
+bool rust_helper_skb_test_fail(unsigned int stage)
+{
+	return atomic_cmpxchg(&skb_test_next_failure, stage, 0) == stage;
+}
+
+void rust_helper_skb_test_record(unsigned int counter)
+{
+	atomic_inc(&skb_test_counters[counter]);
+}
+
+unsigned int rust_helper_skb_test_counter(unsigned int counter)
+{
+	return atomic_read(&skb_test_counters[counter]);
+}
+
+void rust_skb_test_reset(void)
+{
+	unsigned int index;
+
+	atomic_set(&skb_test_next_failure, 0);
+	for (index = 0; index < RUST_SKB_TEST_COUNTER_COUNT; index++)
+		atomic_set(&skb_test_counters[index], 0);
+}
+
+void rust_skb_test_fail_next(unsigned int stage)
+{
+	atomic_set(&skb_test_next_failure, stage);
+}
+
+#define skb_test_fail(stage) \
+	rust_helper_skb_test_fail(stage)
+#else
+#define skb_test_fail(stage) \
+	((void)(stage), false)
+#endif
+
+bool rust_helper_skb_memalloc_socks(void)
+{
+	return sk_memalloc_socks();
+}
+
+gfp_t rust_helper_skb_gfp_memalloc(gfp_t gfp_mask)
+{
+	return gfp_mask | __GFP_MEMALLOC;
+}
+
+gfp_t rust_helper_skb_gfp_for_cache(gfp_t gfp_mask)
+{
+	return gfp_mask & ~GFP_DMA;
+}
+
+struct kmem_cache *rust_helper_skb_cache(bool fclone)
+{
+	if (fclone)
+		return net_hotdata.skbuff_fclone_cache;
+	return net_hotdata.skbuff_cache;
+}
+
+bool rust_helper_skb_node_requires_fallback(int node)
+{
+	return node != NUMA_NO_NODE && node != numa_mem_id();
+}
+
+bool rust_helper_skb_can_use_napi_cache(void)
+{
+	return !in_hardirq() && !irqs_disabled();
+}
+
+struct sk_buff *rust_helper_skb_napi_cache_get(bool alloc)
+{
+	return napi_skb_cache_get(alloc);
+}
+
+struct sk_buff *rust_helper_skb_napi_cache_get_bh(void)
+{
+	struct sk_buff *skb;
+
+	local_bh_disable();
+	skb = napi_skb_cache_get(false);
+	local_bh_enable();
+	return skb;
+}
+
+struct sk_buff *rust_helper_skb_cache_alloc(struct kmem_cache *cache,
+					    gfp_t gfp_mask, int node)
+{
+	return kmem_cache_alloc_node(cache, gfp_mask, node);
+}
+
+void rust_helper_skb_cache_free(struct kmem_cache *cache,
+				struct sk_buff *skb)
+{
+	kmem_cache_free(cache, skb);
+}
+
+void rust_helper_skb_clear(struct sk_buff *skb)
+{
+	skbuff_clear(skb);
+}
+
+void *rust_helper_skb_alloc_head(unsigned int *size, gfp_t gfp_mask,
+				 int node, struct sk_buff *skb)
+{
+	if (skb_test_fail(RUST_SKB_TEST_FAIL_HEAD))
+		return NULL;
+	return kmalloc_reserve(size, gfp_mask, node, skb);
+}
+
+void rust_helper_skb_finalize_around(struct sk_buff *skb, void *data,
+				     unsigned int size)
+{
+	__finalize_skb_around(skb, data, size);
+}
+
+void rust_helper_skb_init_fclone(struct sk_buff *skb)
+{
+	struct sk_buff_fclones *fclones;
+
+	fclones = container_of(skb, struct sk_buff_fclones, skb1);
+	BUILD_BUG_ON(SKB_FCLONE_UNAVAILABLE != 0);
+	DEBUG_NET_WARN_ON_ONCE(skb->fclone != SKB_FCLONE_UNAVAILABLE);
+	skb->fclone |= SKB_FCLONE_ORIG;
+	refcount_set(&fclones->fclone_ref, 1);
+}
+
+void rust_helper_skb_release_data(struct sk_buff *skb, u32 reason)
+{
+	skb_release_data(skb, (enum skb_drop_reason)reason);
+}
+
+void rust_helper_skb_release_all(struct sk_buff *skb, u32 reason)
+{
+	skb_release_all(skb, (enum skb_drop_reason)reason);
+}
+
+void rust_helper_skb_release_head_state(struct sk_buff *skb)
+{
+	skb_release_head_state(skb);
+}
+
+void rust_helper_skb_free_shell(struct sk_buff *skb)
+{
+	kfree_skbmem(skb);
+}
+
+void rust_helper_skb_free_shell_bulk(void **skbs, unsigned int count)
+{
+	kmem_cache_free_bulk(net_hotdata.skbuff_cache, count, skbs);
+}
+
+bool rust_helper_skb_unref(struct sk_buff *skb)
+{
+	return skb_unref(skb);
+}
+
+struct sk_buff *rust_helper_skb_next(struct sk_buff *skb)
+{
+	return skb->next;
+}
+
+void rust_helper_skb_poison_list(struct sk_buff *skb)
+{
+	skb_poison_list(skb);
+}
+
+bool rust_helper_skb_reason_is_consumed(u32 reason)
+{
+	return reason == SKB_CONSUMED;
+}
+
+void rust_helper_skb_check_drop_reason(u32 reason)
+{
+	DEBUG_NET_WARN_ON_ONCE(reason == SKB_NOT_DROPPED_YET ||
+			       u32_get_bits(reason,
+					    SKB_DROP_REASON_SUBSYS_MASK) >=
+				SKB_DROP_REASON_SUBSYS_NUM);
+}
+
+noinline void rust_helper_skb_trace_consume(struct sk_buff *skb)
+{
+	trace_consume_skb(skb, __builtin_return_address(0));
+}
+
+noinline void rust_helper_skb_trace_drop(const struct sock *sk,
+					 struct sk_buff *skb, u32 reason)
+{
+	trace_kfree_skb(skb, __builtin_return_address(0),
+			(enum skb_drop_reason)reason, sk);
+}
+
+bool rust_helper_skb_defer_disabled(void)
+{
+	return static_branch_unlikely(&skb_defer_disable_key);
+}
+
+bool rust_helper_skb_alloc_cpu_matches(struct sk_buff *skb)
+{
+	return skb->alloc_cpu == smp_processor_id();
+}
+
+bool rust_helper_skb_shared(struct sk_buff *skb)
+{
+	return skb_shared(skb);
+}
+
+void rust_helper_skb_check_napi_context(void)
+{
+	DEBUG_NET_WARN_ON_ONCE(!in_softirq());
+}
+
+void rust_helper_skb_dev_consume_any(struct sk_buff *skb)
+{
+	dev_consume_skb_any(skb);
+}
+
+void rust_helper_skb_attempt_defer_free(struct sk_buff *skb)
+{
+	skb_attempt_defer_free(skb);
+}
+
+void rust_helper_skb_napi_cache_put(struct sk_buff *skb)
+{
+	napi_skb_cache_put(skb);
+}
+
+int rust_helper_skb_orphan_frags(struct sk_buff *skb, gfp_t gfp_mask)
+{
+	return skb_orphan_frags(skb, gfp_mask);
+}
+
+bool rust_helper_skb_pfmemalloc(struct sk_buff *skb)
+{
+	return skb_pfmemalloc(skb);
+}
+
+bool rust_helper_skb_fclone_ready(struct sk_buff *skb)
+{
+	const struct sk_buff_fclones *fclones;
+
+	if (skb->fclone != SKB_FCLONE_ORIG)
+		return false;
+
+	fclones = container_of(skb, const struct sk_buff_fclones, skb1);
+	return refcount_read(&fclones->fclone_ref) == 1;
+}
+
+struct sk_buff *rust_helper_skb_fclone_take(struct sk_buff *skb)
+{
+	struct sk_buff_fclones *fclones;
+
+	fclones = container_of(skb, struct sk_buff_fclones, skb1);
+	refcount_set(&fclones->fclone_ref, 2);
+	fclones->skb2.fclone = SKB_FCLONE_CLONE;
+	return &fclones->skb2;
+}
+
+struct sk_buff *rust_helper_skb_clone_cache_alloc(gfp_t gfp_mask)
+{
+	if (skb_test_fail(RUST_SKB_TEST_FAIL_CLONE))
+		return NULL;
+	return kmem_cache_alloc(net_hotdata.skbuff_cache, gfp_mask);
+}
+
+void rust_helper_skb_set_fclone_unavailable(struct sk_buff *skb)
+{
+	skb->fclone = SKB_FCLONE_UNAVAILABLE;
+}
+
+void rust_helper_skb_clone_reset_links(struct sk_buff *skb)
+{
+	skb->next = NULL;
+	skb->prev = NULL;
+	skb->sk = NULL;
+}
+
+void rust_helper_skb_copy_header(struct sk_buff *new,
+				 const struct sk_buff *old)
+{
+	__copy_skb_header(new, old);
+}
+
+void rust_helper_skb_clone_copy_fields(struct sk_buff *new,
+				       const struct sk_buff *old)
+{
+	new->len = old->len;
+	new->data_len = old->data_len;
+	new->mac_len = old->mac_len;
+	new->hdr_len = old->nohdr ? skb_headroom(old) : old->hdr_len;
+	new->cloned = 1;
+	new->nohdr = 0;
+	new->peeked = 0;
+	new->pfmemalloc = old->pfmemalloc;
+	new->pp_recycle = old->pp_recycle;
+	new->destructor = NULL;
+	new->tail = old->tail;
+	new->end = old->end;
+	new->head = old->head;
+	new->head_frag = old->head_frag;
+	new->data = old->data;
+	new->truesize = old->truesize;
+	refcount_set(&new->users, 1);
+}
+
+void rust_helper_skb_clone_share_data(struct sk_buff *new,
+				      struct sk_buff *old)
+{
+	atomic_inc(&skb_shinfo(old)->dataref);
+	old->cloned = 1;
+}
+
+void rust_helper_skb_clear_destructor(struct sk_buff *skb)
+{
+	skb->destructor = NULL;
+}
+
+void rust_helper_skb_set_message_frag_list(struct sk_buff *skb,
+					   struct sk_buff *first)
+{
+	skb_shinfo(skb)->frag_list = first;
+}
+
+u32 rust_helper_skb_fclone_state(const struct sk_buff *skb)
+{
+	return skb->fclone;
+}
+
+#endif /* CONFIG_RUST_SKB_LIFECYCLE */
 
 void skb_headers_offset_update(struct sk_buff *skb, int off)
 {

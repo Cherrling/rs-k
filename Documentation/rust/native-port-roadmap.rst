@@ -57,7 +57,7 @@ Order             Unit                        Status         Primary ownership
 11                ``open-entry``              complete       Open dispatch, completion, and cleanup.
 12                ``vfs-io``                  complete       Read, write, seek, and operation dispatch.
 13                ``socket-lifecycle``        complete       Socket allocation, reference, close, and release.
-14                ``skb-lifecycle``           pending        SKB allocation, clone, recycle, and destruction.
+14                ``skb-lifecycle``           complete       SKB allocation, clone, recycle, and destruction.
 ================  ==========================  =============  =====================================================
 
 Unit dependencies

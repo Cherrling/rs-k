@@ -51,6 +51,7 @@ more details.
     native-open-entry
     native-vfs-io
     native-socket-lifecycle
+    native-skb-lifecycle
     native-port-coverage
     dup-task-struct
     task-teardown

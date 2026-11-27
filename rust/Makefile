@@ -598,6 +598,13 @@ rust_non_gpl_exports := \
 	sock_create_kern \
 	sk_alloc \
 	sk_free \
+	__alloc_skb \
+	__kfree_skb \
+	sk_skb_reason_drop \
+	kfree_skb_list_reason \
+	consume_skb \
+	napi_consume_skb \
+	skb_clone \
 	rw_verify_area \
 	vfs_llseek \
 	__put_cred \
@@ -847,6 +854,9 @@ rust_non_gpl_exports := \
 rust_unexported_symbols := \
 	__fput \
 	__get_unused_fd_flags \
+	__consume_stateless_skb \
+	alloc_skb_for_msg \
+	skb_morph \
 	alloc_inode \
 	alloc_empty_file \
 	alloc_file_clone \

@@ -19475,7 +19475,9 @@ M:	Kuniyuki Iwashima <kuniyu@google.com>
 M:	Paolo Abeni <pabeni@redhat.com>
 M:	Willem de Bruijn <willemb@google.com>
 S:	Maintained
+F:	Documentation/rust/native-skb-lifecycle.rst
 F:	Documentation/rust/native-socket-lifecycle.rst
+F:	include/linux/skb-lifecycle-rust.h
 F:	include/linux/sock_diag.h
 F:	include/linux/socket-lifecycle-rust.h
 F:	include/linux/socket.h
@@ -19483,10 +19485,13 @@ F:	include/linux/sockptr.h
 F:	include/net/sock.h
 F:	include/net/sock_reuseport.h
 F:	include/uapi/linux/socket.h
+F:	lib/tests/skb_lifecycle_kunit.c
 F:	lib/tests/socket_lifecycle_kunit.c
 F:	net/core/*sock*
 F:	net/core/scm.c
+F:	net/core/skbuff.c
 F:	net/socket.c
+F:	rust/kernel/skb_lifecycle.rs
 F:	rust/kernel/socket_lifecycle.rs
 
 NETWORKING [UNIX SOCKETS]
