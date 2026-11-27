@@ -78,6 +78,7 @@
 #include <linux/ethtool.h>
 #include <linux/exit-mmap-rust.h>
 #include <linux/fdtable.h>
+#include <linux/fdtable-rust.h>
 #include <linux/file.h>
 #include <linux/file-lifecycle-rust.h>
 #include <linux/firmware.h>

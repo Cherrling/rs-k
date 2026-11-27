@@ -16,6 +16,7 @@
 #include <linux/slab.h>
 #include <linux/file.h>
 #include <linux/fdtable.h>
+#include <linux/fdtable-rust.h>
 #include <linux/bitops.h>
 #include <linux/spinlock.h>
 #include <linux/rcupdate.h>
@@ -152,6 +153,41 @@ static void copy_fdtable(struct fdtable *nfdt, struct fdtable *ofdt)
 	copy_fd_bitmaps(nfdt, ofdt, fdt_words(ofdt));
 }
 
+static struct fdtable *fdtable_alloc_raw(unsigned int nr)
+{
+	struct fdtable *fdt;
+	void *data;
+
+	fdt = kmalloc_obj(struct fdtable, GFP_KERNEL_ACCOUNT);
+	if (!fdt)
+		return NULL;
+	fdt->max_fds = nr;
+	data = kvmalloc_objs(struct file *, nr, GFP_KERNEL_ACCOUNT);
+	if (!data)
+		goto out_fdt;
+	fdt->fd = data;
+
+	data = kvmalloc(max_t(size_t,
+			      2 * nr / BITS_PER_BYTE + BITBIT_SIZE(nr),
+			      L1_CACHE_BYTES),
+			GFP_KERNEL_ACCOUNT);
+	if (!data)
+		goto out_arr;
+	fdt->open_fds = data;
+	data += nr / BITS_PER_BYTE;
+	fdt->close_on_exec = data;
+	data += nr / BITS_PER_BYTE;
+	fdt->full_fds_bits = data;
+
+	return fdt;
+
+out_arr:
+	kvfree(fdt->fd);
+out_fdt:
+	kfree(fdt);
+	return NULL;
+}
+
 /*
  * Note how the fdtable bitmap allocations very much have to be a multiple of
  * BITS_PER_LONG. This is not only because we walk those things in chunks of
@@ -159,11 +195,12 @@ static void copy_fdtable(struct fdtable *nfdt, struct fdtable *ofdt)
  * kernel bitmaps are defined to work: they are not "bits in an array of bytes",
  * they are very much "bits in an array of unsigned long".
  */
+#ifndef CONFIG_RUST_FDTABLE_LIFECYCLE
+
 static struct fdtable *alloc_fdtable(unsigned int slots_wanted)
 {
 	struct fdtable *fdt;
 	unsigned int nr;
-	void *data;
 
 	/*
 	 * Figure out how many fds we actually want to support in this fdtable.
@@ -212,35 +249,11 @@ static struct fdtable *alloc_fdtable(unsigned int slots_wanted)
 	if (unlikely(nr > INT_MAX / sizeof(struct file *)))
 		return ERR_PTR(-EMFILE);
 
-	fdt = kmalloc_obj(struct fdtable, GFP_KERNEL_ACCOUNT);
-	if (!fdt)
-		goto out;
-	fdt->max_fds = nr;
-	data = kvmalloc_objs(struct file *, nr, GFP_KERNEL_ACCOUNT);
-	if (!data)
-		goto out_fdt;
-	fdt->fd = data;
-
-	data = kvmalloc(max_t(size_t,
-				 2 * nr / BITS_PER_BYTE + BITBIT_SIZE(nr), L1_CACHE_BYTES),
-				 GFP_KERNEL_ACCOUNT);
-	if (!data)
-		goto out_arr;
-	fdt->open_fds = data;
-	data += nr / BITS_PER_BYTE;
-	fdt->close_on_exec = data;
-	data += nr / BITS_PER_BYTE;
-	fdt->full_fds_bits = data;
-
-	return fdt;
-
-out_arr:
-	kvfree(fdt->fd);
-out_fdt:
-	kfree(fdt);
-out:
-	return ERR_PTR(-ENOMEM);
+	fdt = fdtable_alloc_raw(nr);
+	return fdt ?: ERR_PTR(-ENOMEM);
 }
+
+#endif /* !CONFIG_RUST_FDTABLE_LIFECYCLE */
 
 /*
  * Expand the file descriptor table.
@@ -249,6 +262,8 @@ out:
  * Return <0 error code on error; 0 on successful completion.
  * The files->file_lock should be held on entry, and will be held on exit.
  */
+#ifndef CONFIG_RUST_FDTABLE_LIFECYCLE
+
 static int expand_fdtable(struct files_struct *files, unsigned int nr)
 	__releases(files->file_lock)
 	__acquires(files->file_lock)
@@ -319,6 +334,8 @@ repeat:
 	return error;
 }
 
+#endif /* !CONFIG_RUST_FDTABLE_LIFECYCLE */
+
 static inline void __set_close_on_exec(unsigned int fd, struct fdtable *fdt,
 				       bool set)
 {
@@ -351,6 +368,8 @@ static inline bool fd_is_open(unsigned int fd, const struct fdtable *fdt)
 {
 	return test_bit(fd, fdt->open_fds);
 }
+
+#ifndef CONFIG_RUST_FDTABLE_LIFECYCLE
 
 /*
  * Note that a sane fdtable size always has to be a multiple of
@@ -527,6 +546,8 @@ void exit_files(struct task_struct *tsk)
 	}
 }
 
+#endif /* !CONFIG_RUST_FDTABLE_LIFECYCLE */
+
 struct files_struct init_files = {
 	.count		= ATOMIC_INIT(1),
 	.fdt		= &init_files.fdtab,
@@ -540,6 +561,8 @@ struct files_struct init_files = {
 	.file_lock	= __SPIN_LOCK_UNLOCKED(init_files.file_lock),
 	.resize_wait	= __WAIT_QUEUE_HEAD_INITIALIZER(init_files.resize_wait),
 };
+
+#ifndef CONFIG_RUST_FDTABLE_LIFECYCLE
 
 static unsigned int find_next_fd(struct fdtable *fdt, unsigned int start)
 {
@@ -640,6 +663,8 @@ void put_unused_fd(unsigned int fd)
 
 EXPORT_SYMBOL(put_unused_fd);
 
+#endif /* !CONFIG_RUST_FDTABLE_LIFECYCLE */
+
 /*
  * Install a file pointer in the fd array while it is being resized.
  *
@@ -656,6 +681,8 @@ EXPORT_SYMBOL(put_unused_fd);
  * This is moved out of line from fd_install() to convince gcc to optimize that
  * routine better.
  */
+#ifndef CONFIG_RUST_FDTABLE_LIFECYCLE
+
 static void noinline fd_install_slowpath(unsigned int fd, struct file *file)
 {
 	struct files_struct *files = current->files;
@@ -744,6 +771,8 @@ int close_fd(unsigned fd)
 	return filp_close(file, files);
 }
 EXPORT_SYMBOL(close_fd);
+
+#endif /* !CONFIG_RUST_FDTABLE_LIFECYCLE */
 
 /**
  * last_fd - return last valid index into fd table
@@ -875,6 +904,8 @@ SYSCALL_DEFINE3(close_range, unsigned int, fd, unsigned int, max_fd,
  *
  * Returns: The file associated with @fd (NULL if @fd is not open)
  */
+#ifndef CONFIG_RUST_FDTABLE_LIFECYCLE
+
 struct file *file_close_fd(unsigned int fd)
 {
 	struct files_struct *files = current->files;
@@ -886,6 +917,8 @@ struct file *file_close_fd(unsigned int fd)
 
 	return file;
 }
+
+#endif /* !CONFIG_RUST_FDTABLE_LIFECYCLE */
 
 void do_close_on_exec(struct files_struct *files)
 {
@@ -912,7 +945,11 @@ void do_close_on_exec(struct files_struct *files)
 			if (!file)
 				continue;
 			rcu_assign_pointer(fdt->fd[fd], NULL);
+#ifdef CONFIG_RUST_FDTABLE_LIFECYCLE
+			rust_fdtable_put_unused_locked(files, fd);
+#else
 			__put_unused_fd(files, fd);
+#endif
 			spin_unlock(&files->file_lock);
 			filp_close(file, files);
 			cond_resched();
@@ -922,6 +959,8 @@ void do_close_on_exec(struct files_struct *files)
 	}
 	spin_unlock(&files->file_lock);
 }
+
+#ifndef CONFIG_RUST_FDTABLE_LIFECYCLE
 
 static struct file *__get_file_rcu(struct file __rcu **f)
 {
@@ -1214,6 +1253,8 @@ struct fd fdget_raw(unsigned int fd)
 	return __fget_light(fd, 0);
 }
 
+#endif /* !CONFIG_RUST_FDTABLE_LIFECYCLE */
+
 /*
  * Try to avoid f_pos locking. We only need it if the
  * file is marked for FMODE_ATOMIC_POS, and it can be
@@ -1354,7 +1395,11 @@ int replace_fd(unsigned fd, struct file *file, unsigned flags)
 		return -EBADF;
 
 	spin_lock(&files->file_lock);
+#ifdef CONFIG_RUST_FDTABLE_LIFECYCLE
+	err = rust_fdtable_expand_files(files, fd);
+#else
 	err = expand_files(files, fd);
+#endif
 	if (unlikely(err < 0))
 		goto out_unlock;
 	err = do_dup2(files, file, fd, flags);
@@ -1436,7 +1481,11 @@ static int ksys_dup3(unsigned int oldfd, unsigned int newfd, int flags)
 		return -EBADF;
 
 	spin_lock(&files->file_lock);
+#ifdef CONFIG_RUST_FDTABLE_LIFECYCLE
+	err = rust_fdtable_expand_files(files, newfd);
+#else
 	err = expand_files(files, newfd);
+#endif
 	file = files_lookup_fd_locked(files, oldfd);
 	if (unlikely(!file))
 		goto Ebadf;
@@ -1467,7 +1516,11 @@ SYSCALL_DEFINE2(dup2, unsigned int, oldfd, unsigned int, newfd)
 		int retval = oldfd;
 
 		rcu_read_lock();
+#ifdef CONFIG_RUST_FDTABLE_LIFECYCLE
+		f = rust_fdtable_fget_rcu(files, oldfd, 0);
+#else
 		f = __fget_files_rcu(files, oldfd, 0);
+#endif
 		if (!f)
 			retval = -EBADF;
 		rcu_read_unlock();
@@ -1499,7 +1552,11 @@ int f_dupfd(unsigned int from, struct file *file, unsigned flags)
 	int err;
 	if (from >= nofile)
 		return -EINVAL;
+#ifdef CONFIG_RUST_FDTABLE_LIFECYCLE
+	err = rust_fdtable_alloc(from, nofile, flags);
+#else
 	err = alloc_fd(from, nofile, flags);
+#endif
 	if (err >= 0) {
 		get_file(file);
 		fd_install(err, file);
@@ -1529,3 +1586,351 @@ int iterate_fd(struct files_struct *files, unsigned n,
 	return res;
 }
 EXPORT_SYMBOL(iterate_fd);
+
+#ifdef CONFIG_RUST_FDTABLE_LIFECYCLE
+
+struct files_struct *rust_helper_fdtable_current_files(void)
+{
+	return current->files;
+}
+
+struct files_struct *rust_helper_fdtable_task_files(struct task_struct *task)
+{
+	return task->files;
+}
+
+struct files_struct *
+rust_helper_fdtable_detach_task_files(struct task_struct *task)
+{
+	struct files_struct *files;
+
+	task_lock(task);
+	files = task->files;
+	task->files = NULL;
+	task_unlock(task);
+	return files;
+}
+
+void rust_helper_fdtable_task_lock(struct task_struct *task)
+{
+	task_lock(task);
+}
+
+void rust_helper_fdtable_task_unlock(struct task_struct *task)
+{
+	task_unlock(task);
+}
+
+struct files_struct *rust_helper_fdtable_alloc_files(void)
+{
+	return kmem_cache_alloc(files_cachep, GFP_KERNEL);
+}
+
+void rust_helper_fdtable_init_files(struct files_struct *files)
+{
+	struct fdtable *fdt = &files->fdtab;
+
+	atomic_set(&files->count, 1);
+	spin_lock_init(&files->file_lock);
+	files->resize_in_progress = false;
+	init_waitqueue_head(&files->resize_wait);
+	files->next_fd = 0;
+	fdt->max_fds = NR_OPEN_DEFAULT;
+	fdt->close_on_exec = files->close_on_exec_init;
+	fdt->open_fds = files->open_fds_init;
+	fdt->full_fds_bits = files->full_fds_bits_init;
+	fdt->fd = &files->fd_array[0];
+}
+
+void rust_helper_fdtable_free_files(struct files_struct *files)
+{
+	kmem_cache_free(files_cachep, files);
+}
+
+struct fdtable *rust_helper_fdtable_alloc(unsigned int nr)
+{
+	return fdtable_alloc_raw(nr);
+}
+
+void rust_helper_fdtable_free(struct fdtable *fdt)
+{
+	__free_fdtable(fdt);
+}
+
+void rust_helper_fdtable_free_rcu(struct fdtable *fdt)
+{
+	call_rcu(&fdt->rcu, free_fdtable_rcu);
+}
+
+bool rust_helper_fdtable_is_embedded(struct files_struct *files,
+				     struct fdtable *fdt)
+{
+	return fdt == &files->fdtab;
+}
+
+void rust_helper_fdtable_lock(struct files_struct *files)
+{
+	spin_lock(&files->file_lock);
+}
+
+void rust_helper_fdtable_unlock(struct files_struct *files)
+{
+	spin_unlock(&files->file_lock);
+}
+
+bool rust_helper_fdtable_resizing(const struct files_struct *files)
+{
+	return files->resize_in_progress;
+}
+
+void rust_helper_fdtable_set_resizing(struct files_struct *files, bool value)
+{
+	files->resize_in_progress = value;
+}
+
+void rust_helper_fdtable_wait_resize(struct files_struct *files)
+{
+	wait_event(files->resize_wait, !files->resize_in_progress);
+}
+
+void rust_helper_fdtable_wake_resize(struct files_struct *files)
+{
+	wake_up_all(&files->resize_wait);
+}
+
+int rust_helper_fdtable_count(const struct files_struct *files)
+{
+	return atomic_read(&files->count);
+}
+
+int rust_helper_fdtable_count_acquire(const struct files_struct *files)
+{
+	return atomic_read_acquire(&files->count);
+}
+
+bool rust_helper_fdtable_put_count(struct files_struct *files)
+{
+	return atomic_dec_and_test(&files->count);
+}
+
+unsigned int rust_helper_fdtable_next_fd(const struct files_struct *files)
+{
+	return files->next_fd;
+}
+
+void rust_helper_fdtable_set_next_fd(struct files_struct *files,
+				     unsigned int fd)
+{
+	files->next_fd = fd;
+}
+
+struct fdtable *rust_helper_fdtable_current(struct files_struct *files)
+{
+	return files_fdtable(files);
+}
+
+struct fdtable *rust_helper_fdtable_raw(struct files_struct *files)
+{
+	return rcu_dereference_raw(files->fdt);
+}
+
+unsigned int rust_helper_fdtable_max_fds(const struct fdtable *fdt)
+{
+	return fdt->max_fds;
+}
+
+void rust_helper_fdtable_publish(struct files_struct *files,
+				 struct fdtable *fdt)
+{
+	rcu_assign_pointer(files->fdt, fdt);
+}
+
+void rust_helper_fdtable_synchronize_rcu(void)
+{
+	synchronize_rcu();
+}
+
+void rust_helper_fdtable_read_lock(void)
+{
+	rcu_read_lock();
+}
+
+void rust_helper_fdtable_read_unlock(void)
+{
+	rcu_read_unlock();
+}
+
+void rust_helper_fdtable_read_lock_sched(void)
+{
+	rcu_read_lock_sched();
+}
+
+void rust_helper_fdtable_read_unlock_sched(void)
+{
+	rcu_read_unlock_sched();
+}
+
+struct file *rust_helper_fdtable_get_fd_raw(const struct fdtable *fdt,
+					    unsigned int fd)
+{
+	unsigned long mask = array_index_mask_nospec(fd, fdt->max_fds);
+	struct file *file = rcu_dereference_raw(fdt->fd[fd & mask]);
+
+	return (struct file *)(mask & (unsigned long)file);
+}
+
+struct file *rust_helper_fdtable_entry_raw(struct file **entry)
+{
+	return rcu_dereference_raw(*entry);
+}
+
+struct file **rust_helper_fdtable_fdentry(struct fdtable *fdt,
+					  unsigned int fd)
+{
+	unsigned long mask = array_index_mask_nospec(fd, fdt->max_fds);
+
+	return fdt->fd + (fd & mask);
+}
+
+void rust_helper_fdtable_set_fd(struct fdtable *fdt, unsigned int fd,
+				struct file *file)
+{
+	rcu_assign_pointer(fdt->fd[fd], file);
+}
+
+void rust_helper_fdtable_clear_fd(struct fdtable *fdt, unsigned int fd)
+{
+	rcu_assign_pointer(fdt->fd[fd], NULL);
+}
+
+unsigned long rust_helper_fdtable_open_word(const struct fdtable *fdt,
+					    unsigned int word)
+{
+	if (word >= fdt->max_fds / BITS_PER_LONG)
+		return 0;
+	return fdt->open_fds[word];
+}
+
+unsigned long rust_helper_fdtable_get_bit(const unsigned long *bitmap,
+					  unsigned int bit)
+{
+	return test_bit(bit, bitmap);
+}
+
+unsigned int rust_helper_fdtable_find_next_zero(const unsigned long *bitmap,
+						unsigned int size,
+						unsigned int offset)
+{
+	return find_next_zero_bit(bitmap, size, offset);
+}
+
+unsigned int rust_helper_fdtable_find_last_bit(const unsigned long *bitmap,
+					       unsigned int size)
+{
+	return find_last_bit(bitmap, size);
+}
+
+void rust_helper_fdtable_set_bit(unsigned long *bitmap, unsigned int bit)
+{
+	__set_bit(bit, bitmap);
+}
+
+void rust_helper_fdtable_clear_bit(unsigned long *bitmap, unsigned int bit)
+{
+	__clear_bit(bit, bitmap);
+}
+
+void rust_helper_fdtable_copy(struct fdtable *new_fdt,
+			      struct fdtable *old_fdt)
+{
+	copy_fdtable(new_fdt, old_fdt);
+}
+
+void rust_helper_fdtable_copy_bitmaps(struct fdtable *new_fdt,
+				      struct fdtable *old_fdt,
+				      unsigned int copy_words)
+{
+	copy_fd_bitmaps(new_fdt, old_fdt, copy_words);
+}
+
+void rust_helper_fdtable_clear_entries(struct fdtable *fdt,
+				       unsigned int start,
+				       unsigned int end)
+{
+	if (start >= end)
+		return;
+	memset(&fdt->fd[start], 0, (end - start) * sizeof(struct file *));
+}
+
+unsigned long rust_helper_fdtable_nofile(void)
+{
+	return rlimit(RLIMIT_NOFILE);
+}
+
+unsigned int rust_helper_fdtable_nr_open(void)
+{
+	return sysctl_nr_open;
+}
+
+int rust_helper_fdtable_close_file(struct file *file,
+				   struct files_struct *files)
+{
+	return filp_close(file, files);
+}
+
+void rust_helper_fdtable_resched(void)
+{
+	cond_resched();
+}
+
+void rust_helper_fdtable_assert_locked(struct files_struct *files)
+{
+	lockdep_assert_held(&files->file_lock);
+}
+
+bool rust_helper_fdtable_file_backing(const struct file *file)
+{
+	return file->f_mode & FMODE_BACKING;
+}
+
+u32 rust_helper_fdtable_file_mode(const struct file *file)
+{
+	return file->f_mode;
+}
+
+bool rust_helper_fdtable_file_ref_get(struct file *file)
+{
+	return file_ref_get(&file->f_ref);
+}
+
+void rust_helper_fdtable_get_file(struct file *file)
+{
+	get_file(file);
+}
+
+u32 rust_helper_fdtable_fmode_path(void)
+{
+	return FMODE_PATH;
+}
+
+bool rust_helper_fdtable_warn_backing(void)
+{
+	return WARN_ON_ONCE(1);
+}
+
+/*
+ * Rust defines these functions. This object contains only ordinary or GPL
+ * export metadata so loadable modules can keep using the public fd API.
+ */
+#define EXPORT_FDTABLE_ABI(symbol) EXPORT_SYMBOL(symbol)
+EXPORT_FDTABLE_ABI(get_unused_fd_flags);
+EXPORT_FDTABLE_ABI(put_unused_fd);
+EXPORT_FDTABLE_ABI(fd_install);
+EXPORT_FDTABLE_ABI(close_fd);
+EXPORT_FDTABLE_ABI(fget);
+EXPORT_FDTABLE_ABI(fget_raw);
+EXPORT_FDTABLE_ABI(fget_task_next);
+EXPORT_FDTABLE_ABI(fdget);
+#undef EXPORT_FDTABLE_ABI
+
+#endif /* CONFIG_RUST_FDTABLE_LIFECYCLE */

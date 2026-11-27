@@ -567,6 +567,14 @@ rust_non_gpl_exports := \
 	alloc_file_pseudo \
 	fput \
 	__fput_sync \
+	close_fd \
+	fd_install \
+	fdget \
+	fget \
+	fget_raw \
+	fget_task_next \
+	get_unused_fd_flags \
+	put_unused_fd \
 	__put_cred \
 	__task_pid_nr_ns \
 	__xa_alloc \
@@ -813,10 +821,31 @@ rust_non_gpl_exports := \
 # Rust-defined production symbols that must not receive automatic exports.
 rust_unexported_symbols := \
 	__fput \
+	__get_unused_fd_flags \
 	alloc_empty_file \
 	alloc_file_clone \
+	dup_fd \
+	exit_files \
+	fdget_raw \
+	fget_task \
+	file_close_fd \
+	file_close_fd_locked \
 	fput_close \
 	fput_close_sync \
+	put_files_struct \
+	rust_fdtable_test_alloc_count \
+	rust_fdtable_test_close_count \
+	rust_fdtable_test_copy_count \
+	rust_fdtable_test_fdget \
+	rust_fdtable_test_fail_next \
+	rust_fdtable_test_failure_count \
+	rust_fdtable_test_fget \
+	rust_fdtable_test_alloc_range \
+	rust_fdtable_test_install \
+	rust_fdtable_alloc \
+	rust_fdtable_expand_files \
+	rust_fdtable_fget_rcu \
+	rust_fdtable_put_unused_locked \
 	rust_file_test_alloc_count \
 	rust_file_test_delayed_count \
 	rust_file_test_fail_next \

@@ -34,6 +34,7 @@ obj-$(CONFIG_DUP_TASK_STRUCT_KUNIT_TEST) += test_dup_task_struct.o
 obj-$(CONFIG_CRED_LIFECYCLE_KUNIT_TEST) += cred_lifecycle_kunit.o
 obj-$(CONFIG_NSPROXY_LIFECYCLE_KUNIT_TEST) += nsproxy_lifecycle_kunit.o
 obj-$(CONFIG_FILE_LIFECYCLE_KUNIT_TEST) += file_lifecycle_kunit.o
+obj-$(CONFIG_FDTABLE_LIFECYCLE_KUNIT_TEST) += fdtable_lifecycle_kunit.o
 obj-$(CONFIG_TASK_TEARDOWN_KUNIT_TEST) += test_task_teardown.o
 obj-$(CONFIG_TASK_WORK_KUNIT_TEST) += task_work_kunit.o
 obj-$(CONFIG_IRQ_WORK_KUNIT_TEST) += irq_work_kunit.o

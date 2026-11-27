@@ -42,6 +42,7 @@ more details.
     native-cred-lifecycle
     native-nsproxy-lifecycle
     native-file-lifecycle
+    native-fdtable-lifecycle
     native-port-coverage
     dup-task-struct
     task-teardown

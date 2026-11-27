@@ -1922,6 +1922,57 @@ Risk: A wrong allocation rollback can leak a path, credential, mount, or
 accounted file object. A wrong final callback or reference order can release
 a file operation, dentry, or mount while another consumer still uses it.
 
+File descriptor table lifecycle
+-------------------------------
+
+Status: ``migrated``.
+
+Evidence: :doc:`native-fdtable-lifecycle`.
+
+Rust directly defines ``dup_fd()``, ``put_files_struct()``, ``exit_files()``,
+``__get_unused_fd_flags()``, ``get_unused_fd_flags()``, ``put_unused_fd()``,
+``fd_install()``, ``file_close_fd_locked()``, ``close_fd()``,
+``file_close_fd()``, ``get_file_rcu()``, ``get_file_active()``, ``fget()``,
+``fget_raw()``, ``fget_task()``, ``fget_task_next()``, ``fdget()``, and
+``fdget_raw()``. Rust owns fdtable capacity policy, expansion retry,
+descriptor bitmap selection, installation, close and teardown ordering,
+files-structure cloning, and RCU lookup retry.
+
+C retains the shared fdtable and files-structure layouts, slab and dynamic
+allocation, bitmap primitives, locks, task access, RCU publication, file
+references, and close callbacks.
+
+Test: Native, lockdep, KASAN, and PREEMPT_RT each passed SMP1 and SMP4 with
+6 of 6 cases. Fallback and C-only each passed SMP1 and SMP4 with 3 of 3
+cases. Coverage includes descriptor allocation, installation, borrowed and
+cloned lookup, close, table expansion, files-structure cloning, final
+release, allocation-failure rollback, concurrent RCU lookup, and reference
+transfer. A separate ``CONFIG_DEBUG_VFS=y`` build passed SMP1 and SMP4 with
+6 of 6 cases.
+
+Native ``rust/kernel.o`` defined all 18 entries and native ``fs/file.o``
+defined none. The C object retained 57 helpers, and Rust references all 57.
+Native ``Module.symvers`` preserved ordinary exports for
+``get_unused_fd_flags()``, ``put_unused_fd()``, ``fd_install()``,
+``close_fd()``, ``fget()``, ``fget_raw()``, ``fget_task_next()``, and
+``fdget()``. It preserved GPL exports for ``get_file_rcu()`` and
+``get_file_active()``. The other eight entries remained absent. External
+GPL and non-GPL modules linked all eight ordinary exports. A GPL module
+linked both GPL exports. Proprietary GPL-only and both unexported probes
+failed modpost as required. Disassembly showed complete Rust
+implementations of ``dup_fd()``, ``fd_install()``, and ``fget()`` without a
+C tail-call adapter.
+
+Fallback and C-only ``fs/file.o`` each define all 18 entries. The Rust
+fallback object defines none.
+
+Rustfmt, Clippy, Rustdoc, focused Sphinx, strict checkpatch, and
+``git diff --check`` passed.
+
+Risk: A wrong capacity or rollback decision can leak a dynamic fdtable or file
+reference. A wrong RCU validation can return a reused file object after a
+concurrent close or table replacement.
+
 Direct-entry audit
 ------------------
 

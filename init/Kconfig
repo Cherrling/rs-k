@@ -2154,6 +2154,25 @@ config RUST_FILE_LIFECYCLE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_FDTABLE_LIFECYCLE
+	bool "Rust implementation of file descriptor table lifecycle"
+	depends on RUST
+	default y
+	help
+	  Use Rust to directly define file descriptor table allocation,
+	  expansion, copying, descriptor reservation, installation, close,
+	  final files-structure release, and RCU reference lookup.
+
+	  C retains the fdtable and files-structure layouts, slab and dynamic
+	  allocation primitives, descriptor bitmaps, locks, RCU publication,
+	  task access, file references, and close callbacks.
+
+	  The complete C implementation remains available when this option is
+	  disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_TEARDOWN
 	bool "Rust implementation of final task teardown"
 	depends on RUST
