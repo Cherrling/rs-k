@@ -2306,6 +2306,27 @@ config RUST_VFS_IO
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_SOCKET_LIFECYCLE
+	bool "Rust implementation of socket and sock lifecycle"
+	depends on NET && RUST && RUST_FILE_LIFECYCLE && RUST_FDTABLE_LIFECYCLE
+	default y
+	help
+	  Use Rust to directly define socket allocation, file binding,
+	  protocol family creation and rollback, socket close, sock
+	  allocation, reference release, RCU scheduling, and final
+	  destruction.
+
+	  C retains the socket and sock layouts, socketfs inode and file
+	  allocation primitives, security hooks, net namespace accounting,
+	  module references, memcg and cgroup accounting, socket locks, RCU
+	  primitives, protocol callbacks, and diagnostic publication.
+
+	  The complete C implementation remains available when this option is
+	  disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_TEARDOWN
 	bool "Rust implementation of final task teardown"
 	depends on RUST

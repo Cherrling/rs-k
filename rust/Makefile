@@ -589,6 +589,15 @@ rust_non_gpl_exports := \
 	fget_task_next \
 	get_unused_fd_flags \
 	put_unused_fd \
+	sock_alloc_file \
+	sock_alloc \
+	sock_release \
+	sock_create_lite \
+	__sock_create \
+	sock_create \
+	sock_create_kern \
+	sk_alloc \
+	sk_free \
 	rw_verify_area \
 	vfs_llseek \
 	__put_cred \
@@ -918,6 +927,13 @@ rust_unexported_symbols := \
 	vfs_open \
 	vfs_read \
 	vfs_write \
+	sock_put \
+	rust_sock_close \
+	rust_socket_sk_destruct_rcu \
+	rust_socket_sk_free_final \
+	sk_destruct \
+	__sys_socket \
+	__sys_socket_file \
 	vfs_path_lookup \
 	vfs_path_parent_lookup \
 	rust_super_test_counter \

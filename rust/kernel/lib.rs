@@ -352,6 +352,8 @@ mod signal_wake_state;
 pub mod sizes;
 #[cfg(CONFIG_SOC_BUS)]
 pub mod soc;
+#[cfg(CONFIG_RUST_SOCKET_LIFECYCLE)]
+mod socket_lifecycle;
 #[doc(hidden)]
 pub mod std_vendor;
 pub mod str;

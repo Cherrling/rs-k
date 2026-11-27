@@ -2924,6 +2924,22 @@ config VFS_IO_KUNIT_TEST
 
 	  If unsure, say N.
 
+config SOCKET_LIFECYCLE_KUNIT_TEST
+	bool "KUnit test for socket and sock lifecycle" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y && NET
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for socket inode and file binding,
+	  protocol family creation and rollback, socket close, sock allocation,
+	  reference transitions, delayed write-memory release, RCU destruction,
+	  and concurrent create and close.
+
+	  The behavior cases run with either the C implementation or the
+	  native Rust implementation selected. Rust failure injection and
+	  release-order counters run only with the native implementation.
+
+	  If unsure, say N.
+
 config TASK_RELEASE_KUNIT_TEST
 	bool "KUnit test for zombie task release" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

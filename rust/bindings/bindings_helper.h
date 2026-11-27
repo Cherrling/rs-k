@@ -172,6 +172,7 @@
 #include <linux/semaphore-rust.h>
 #include <linux/serdev.h>
 #include <linux/send-signal-rust.h>
+#include <linux/socket-lifecycle-rust.h>
 #include <linux/prepare-signal-rust.h>
 #include <linux/signal-dequeue-rust.h>
 #include <linux/signal-exit-rust.h>

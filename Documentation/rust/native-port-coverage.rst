@@ -2297,6 +2297,53 @@ wrong callback selection or notification order can violate filesystem,
 fsnotify, security, and accounting contracts. An unbalanced write-freeze
 section can block filesystem freeze progress.
 
+Socket and sock lifecycle
+-------------------------
+
+Status: ``migrated``.
+
+Evidence: :doc:`native-socket-lifecycle`.
+
+Rust directly defines ``sock_alloc()``, ``sock_alloc_file()``,
+``sock_release()``, ``sock_create_lite()``, ``__sock_create()``,
+``sock_create()``, ``sock_create_kern()``, ``__sys_socket_file()``,
+``__sys_socket()``, ``sk_alloc()``, ``sk_destruct()``, ``sk_free()``, and
+the out-of-line built-in ``sock_put()``.
+
+Rust owns family and type validation, compatibility conversion,
+protocol-family module lookup, module references, file and descriptor
+binding, LSM ordering, create and close rollback, sock allocation and
+accounting order, write-memory delay, reuseport detachment, RCU scheduling,
+diagnostic publication, and final destruction.
+
+C retains the socket, sock, protocol, inode, file, namespace, and module
+layouts. C also retains socketfs allocation, protocol-family registration,
+LSM, network namespace and socket inuse accounting, memcg and cgroup
+accounting, locks, RCU, protocol callbacks, diagnostics, and namespace
+tracker primitives. The narrow helper ABI is in
+``include/linux/socket-lifecycle-rust.h``.
+
+Test: Native, KASAN, lockdep, PREEMPT_RT, and DEBUG_VFS each passed SMP1 and
+SMP4 with 13 of 13 cases. Fallback and C-only passed SMP1 and SMP4 with 10 of
+10 cases. Coverage includes allocation and close, kernel and lite creation,
+file and descriptor binding, invalid families and types, all injected
+creation failures, delayed write-memory release, RCU destruction, and
+concurrent create and close.
+
+Native ``rust/kernel.o`` defines all selected entries. Native
+``net/socket.o`` and ``net/core/sock.o`` define none. Native
+``Module.symvers`` contains ordinary exports for nine entries. External GPL
+and non-GPL modules linked those exports. Modpost rejected both license
+classes for the four unexported entries. Disassembly shows complete Rust
+implementations without a C public tail-call adapter.
+
+Rustfmt, Clippy, Rustdoc, focused Sphinx, strict checkpatch, and
+``git diff --check`` pass.
+
+Risk: A wrong module, namespace, file, inode, security, or accounting
+reference can leak or release a resource too early. A wrong write-memory or
+RCU decision can free a sock during lookup or transmit completion.
+
 Direct-entry audit
 ------------------
 

@@ -50,6 +50,7 @@ more details.
     native-path-lookup
     native-open-entry
     native-vfs-io
+    native-socket-lifecycle
     native-port-coverage
     dup-task-struct
     task-teardown

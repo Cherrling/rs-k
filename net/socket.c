@@ -106,6 +106,7 @@
 #include <linux/route.h>
 #include <linux/termios.h>
 #include <linux/sockios.h>
+#include <linux/socket-lifecycle-rust.h>
 #include <net/busy_poll.h>
 #include <linux/errqueue.h>
 #include <linux/ptp_clock_kernel.h>
@@ -122,7 +123,9 @@ static ssize_t sock_read_iter(struct kiocb *iocb, struct iov_iter *to);
 static ssize_t sock_write_iter(struct kiocb *iocb, struct iov_iter *from);
 static int sock_mmap(struct file *file, struct vm_area_struct *vma);
 
+#ifndef CONFIG_RUST_SOCKET_LIFECYCLE
 static int sock_close(struct inode *inode, struct file *file);
+#endif
 static __poll_t sock_poll(struct file *file,
 			      struct poll_table_struct *wait);
 static long sock_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
@@ -165,7 +168,11 @@ static const struct file_operations socket_file_ops = {
 #endif
 	.uring_cmd =    io_uring_cmd_sock,
 	.mmap =		sock_mmap,
+#ifdef CONFIG_RUST_SOCKET_LIFECYCLE
+	.release =	rust_sock_close,
+#else
 	.release =	sock_close,
+#endif
 	.fasync =	sock_fasync,
 	.splice_write = splice_to_socket,
 	.splice_read =	sock_splice_read,
@@ -547,6 +554,7 @@ static struct file_system_type sock_fs_type = {
  *	This function uses GFP_KERNEL internally.
  */
 
+#ifndef CONFIG_RUST_SOCKET_LIFECYCLE
 struct file *sock_alloc_file(struct socket *sock, int flags, const char *dname)
 {
 	struct file *file;
@@ -573,8 +581,10 @@ struct file *sock_alloc_file(struct socket *sock, int flags, const char *dname)
 	file_set_fsnotify_mode(file, FMODE_NONOTIFY_PERM);
 	return file;
 }
+#endif /* !CONFIG_RUST_SOCKET_LIFECYCLE */
 EXPORT_SYMBOL(sock_alloc_file);
 
+#ifndef CONFIG_RUST_SOCKET_LIFECYCLE
 static int sock_map_fd(struct socket *sock, int flags)
 {
 	struct file *newfile;
@@ -593,6 +603,7 @@ static int sock_map_fd(struct socket *sock, int flags)
 	put_unused_fd(fd);
 	return PTR_ERR(newfile);
 }
+#endif /* !CONFIG_RUST_SOCKET_LIFECYCLE */
 
 /**
  *	sock_from_file - Return the &socket bounded to @file.
@@ -702,6 +713,7 @@ static const struct inode_operations sockfs_inode_ops = {
  *	NULL is returned. This functions uses GFP_KERNEL internally.
  */
 
+#ifndef CONFIG_RUST_SOCKET_LIFECYCLE
 struct socket *sock_alloc(void)
 {
 	struct inode *inode;
@@ -721,8 +733,10 @@ struct socket *sock_alloc(void)
 
 	return sock;
 }
+#endif /* !CONFIG_RUST_SOCKET_LIFECYCLE */
 EXPORT_SYMBOL(sock_alloc);
 
+#ifndef CONFIG_RUST_SOCKET_LIFECYCLE
 static void __sock_release(struct socket *sock, struct inode *inode)
 {
 	const struct proto_ops *ops = READ_ONCE(sock->ops);
@@ -762,6 +776,7 @@ void sock_release(struct socket *sock)
 {
 	__sock_release(sock, NULL);
 }
+#endif /* !CONFIG_RUST_SOCKET_LIFECYCLE */
 EXPORT_SYMBOL(sock_release);
 
 void __sock_tx_timestamp(__u32 tsflags, __u8 *tx_flags)
@@ -1462,6 +1477,7 @@ static long sock_ioctl(struct file *file, unsigned cmd, unsigned long arg)
  *	This function internally uses GFP_KERNEL.
  */
 
+#ifndef CONFIG_RUST_SOCKET_LIFECYCLE
 int sock_create_lite(int family, int type, int protocol, struct socket **res)
 {
 	int err;
@@ -1490,6 +1506,7 @@ out_release:
 	sock = NULL;
 	goto out;
 }
+#endif /* !CONFIG_RUST_SOCKET_LIFECYCLE */
 EXPORT_SYMBOL(sock_create_lite);
 
 /* No kernel lock held - perfect */
@@ -1521,11 +1538,13 @@ static int sock_mmap(struct file *file, struct vm_area_struct *vma)
 	return READ_ONCE(sock->ops)->mmap(file, sock, vma);
 }
 
+#ifndef CONFIG_RUST_SOCKET_LIFECYCLE
 static int sock_close(struct inode *inode, struct file *filp)
 {
 	__sock_release(SOCKET_I(inode), inode);
 	return 0;
 }
+#endif /* !CONFIG_RUST_SOCKET_LIFECYCLE */
 
 /*
  *	Update the socket async list
@@ -1602,6 +1621,7 @@ EXPORT_SYMBOL(sock_wake_async);
  *	This function internally uses GFP_KERNEL.
  */
 
+#ifndef CONFIG_RUST_SOCKET_LIFECYCLE
 int __sock_create(struct net *net, int family, int type, int protocol,
 			 struct socket **res, int kern)
 {
@@ -1716,6 +1736,7 @@ out_release:
 	rcu_read_unlock();
 	goto out_sock_release;
 }
+#endif /* !CONFIG_RUST_SOCKET_LIFECYCLE */
 EXPORT_SYMBOL(__sock_create);
 
 /**
@@ -1729,10 +1750,12 @@ EXPORT_SYMBOL(__sock_create);
  *	Returns 0 or an error. This function internally uses GFP_KERNEL.
  */
 
+#ifndef CONFIG_RUST_SOCKET_LIFECYCLE
 int sock_create(int family, int type, int protocol, struct socket **res)
 {
 	return __sock_create(current->nsproxy->net_ns, family, type, protocol, res, 0);
 }
+#endif /* !CONFIG_RUST_SOCKET_LIFECYCLE */
 EXPORT_SYMBOL(sock_create);
 
 /**
@@ -1747,12 +1770,15 @@ EXPORT_SYMBOL(sock_create);
  *	Returns 0 or an error. This function internally uses GFP_KERNEL.
  */
 
+#ifndef CONFIG_RUST_SOCKET_LIFECYCLE
 int sock_create_kern(struct net *net, int family, int type, int protocol, struct socket **res)
 {
 	return __sock_create(net, family, type, protocol, res, 1);
 }
+#endif /* !CONFIG_RUST_SOCKET_LIFECYCLE */
 EXPORT_SYMBOL(sock_create_kern);
 
+#ifndef CONFIG_RUST_SOCKET_LIFECYCLE
 static struct socket *__sys_socket_create(int family, int type, int protocol)
 {
 	struct socket *sock;
@@ -1774,7 +1800,9 @@ static struct socket *__sys_socket_create(int family, int type, int protocol)
 
 	return sock;
 }
+#endif /* !CONFIG_RUST_SOCKET_LIFECYCLE */
 
+#ifndef CONFIG_RUST_SOCKET_LIFECYCLE
 struct file *__sys_socket_file(int family, int type, int protocol)
 {
 	struct socket *sock;
@@ -1790,6 +1818,7 @@ struct file *__sys_socket_file(int family, int type, int protocol)
 
 	return sock_alloc_file(sock, flags, NULL);
 }
+#endif /* !CONFIG_RUST_SOCKET_LIFECYCLE */
 
 /*	A hook for bpf progs to attach to and update socket protocol.
  *
@@ -1810,6 +1839,7 @@ __weak noinline int update_socket_protocol(int family, int type, int protocol)
 
 __bpf_hook_end();
 
+#ifndef CONFIG_RUST_SOCKET_LIFECYCLE
 int __sys_socket(int family, int type, int protocol)
 {
 	struct socket *sock;
@@ -1826,6 +1856,230 @@ int __sys_socket(int family, int type, int protocol)
 
 	return sock_map_fd(sock, flags & (O_CLOEXEC | O_NONBLOCK));
 }
+#endif /* !CONFIG_RUST_SOCKET_LIFECYCLE */
+
+#ifdef CONFIG_RUST_SOCKET_LIFECYCLE
+
+#ifdef CONFIG_SOCKET_LIFECYCLE_KUNIT_TEST
+#define socket_test_fail(stage) \
+	rust_helper_socket_test_fail(stage)
+#define socket_test_record(counter) \
+	rust_helper_socket_test_record(counter)
+static atomic_t socket_test_next_failure = ATOMIC_INIT(0);
+static atomic_t socket_test_counters[RUST_SOCKET_TEST_COUNTER_COUNT];
+bool rust_helper_socket_test_fail(unsigned int stage)
+{
+	return atomic_cmpxchg(&socket_test_next_failure, stage, 0) == stage;
+}
+
+void rust_helper_socket_test_record(unsigned int counter)
+{
+	if (counter < RUST_SOCKET_TEST_COUNTER_COUNT)
+		atomic_inc(&socket_test_counters[counter]);
+}
+
+void rust_socket_test_reset(void)
+{
+	unsigned int index;
+
+	atomic_set(&socket_test_next_failure, 0);
+	for (index = 0; index < RUST_SOCKET_TEST_COUNTER_COUNT; index++)
+		atomic_set(&socket_test_counters[index], 0);
+}
+
+void rust_socket_test_fail_next(unsigned int stage)
+{
+	atomic_set(&socket_test_next_failure, stage);
+}
+
+unsigned int rust_helper_socket_test_counter(unsigned int counter)
+{
+	if (counter >= RUST_SOCKET_TEST_COUNTER_COUNT)
+		return 0;
+	return atomic_read(&socket_test_counters[counter]);
+}
+#else
+#define socket_test_fail(stage) \
+	((void)(stage), false)
+#define socket_test_record(counter) \
+	((void)(counter))
+#endif /* CONFIG_SOCKET_LIFECYCLE_KUNIT_TEST */
+
+struct inode *rust_helper_socket_new_pseudo_inode(void)
+{
+	struct inode *inode;
+
+	if (socket_test_fail(RUST_SOCKET_TEST_FAIL_INODE))
+		return NULL;
+
+	inode = new_inode_pseudo(sock_mnt->mnt_sb);
+	if (inode)
+		socket_test_record(RUST_SOCKET_TEST_COUNTER_INODE);
+	return inode;
+}
+
+struct socket *rust_helper_socket_from_inode(struct inode *inode)
+{
+	return SOCKET_I(inode);
+}
+
+struct inode *rust_helper_socket_inode_from_socket(struct socket *sock)
+{
+	return SOCK_INODE(sock);
+}
+
+void rust_helper_socket_init_inode(struct inode *inode)
+{
+	inode->i_ino = get_next_ino();
+	inode->i_mode = S_IFSOCK | 0777;
+	inode->i_uid = current_fsuid();
+	inode->i_gid = current_fsgid();
+	inode->i_op = &sockfs_inode_ops;
+}
+
+const struct file_operations *rust_helper_socket_file_operations(void)
+{
+	return &socket_file_ops;
+}
+
+struct vfsmount *rust_helper_socket_mount(void)
+{
+	return sock_mnt;
+}
+
+const char *rust_helper_socket_protocol_name(struct socket *sock)
+{
+	if (!sock->sk)
+		return "";
+	return sock->sk->sk_prot_creator->name;
+}
+
+void rust_helper_socket_file_set_nowait(struct file *file)
+{
+	file->f_mode |= FMODE_NOWAIT;
+}
+
+void rust_helper_socket_bind_file(struct socket *sock, struct file *file)
+{
+	sock->file = file;
+	file->private_data = sock;
+}
+
+void rust_helper_socket_stream_open(struct socket *sock, struct file *file)
+{
+	stream_open(SOCK_INODE(sock), file);
+}
+
+void rust_helper_socket_file_set_fsnotify_mode(struct file *file)
+{
+	file_set_fsnotify_mode(file, FMODE_NONOTIFY_PERM);
+}
+
+const struct proto_ops *rust_helper_socket_ops(struct socket *sock)
+{
+	return READ_ONCE(sock->ops);
+}
+
+void rust_helper_socket_inode_lock(struct inode *inode)
+{
+	inode_lock(inode);
+}
+
+void rust_helper_socket_inode_unlock(struct inode *inode)
+{
+	inode_unlock(inode);
+}
+
+bool rust_helper_socket_fasync_pending(struct socket *sock)
+{
+	return sock->wq.fasync_list;
+}
+
+void rust_helper_socket_warn_fasync(void)
+{
+	pr_err("__sock_release: fasync list not empty!\n");
+}
+
+void rust_helper_socket_clear_file(struct socket *sock)
+{
+	WRITE_ONCE(sock->file, NULL);
+}
+
+void rust_helper_socket_rcu_read_lock(void)
+{
+	rcu_read_lock();
+}
+
+void rust_helper_socket_rcu_read_unlock(void)
+{
+	rcu_read_unlock();
+}
+
+const struct net_proto_family *
+rust_helper_socket_family_lookup(unsigned int family)
+{
+	return rcu_dereference(net_families[family]);
+}
+
+void rust_helper_socket_request_family(unsigned int family)
+{
+#ifdef CONFIG_MODULES
+	if (!rcu_access_pointer(net_families[family]))
+		request_module("net-pf-%d", family);
+#endif
+}
+
+struct net *rust_helper_socket_current_net(void)
+{
+	return current->nsproxy->net_ns;
+}
+
+int rust_helper_socket_update_protocol(int family, int type, int protocol)
+{
+	return update_socket_protocol(family, type, protocol);
+}
+
+int rust_helper_socket_security_create(int family, int type, int protocol,
+				       int kern)
+{
+	if (socket_test_fail(RUST_SOCKET_TEST_FAIL_SECURITY_CREATE))
+		return -EPERM;
+	return security_socket_create(family, type, protocol, kern);
+}
+
+int rust_helper_socket_security_post_create(struct socket *sock, int family,
+					    int type, int protocol, int kern)
+{
+	if (socket_test_fail(RUST_SOCKET_TEST_FAIL_SECURITY_POST))
+		return -EPERM;
+	return security_socket_post_create(sock, family, type, protocol, kern);
+}
+
+void rust_helper_socket_warn_obsolete_packet(void)
+{
+	pr_info_once("%s uses obsolete (PF_INET,SOCK_PACKET)\n", current->comm);
+}
+
+void rust_helper_socket_warn_no_sockets(void)
+{
+	net_warn_ratelimited("socket: no more sockets\n");
+}
+
+void rust_helper_socket_warn_create_sk(struct socket *sock,
+				       const struct net_proto_family *family_ops,
+				       int family, int type, int protocol)
+{
+	DEBUG_NET_WARN_ONCE(sock->sk,
+			    "%ps must clear sock->sk on failure, family: %d, type: %d, protocol: %d\n",
+			    family_ops->create, family, type, protocol);
+}
+
+long rust_helper_socket_ptr_err(const void *value)
+{
+	return PTR_ERR(value);
+}
+
+#endif /* CONFIG_RUST_SOCKET_LIFECYCLE */
 
 SYSCALL_DEFINE3(socket, int, family, int, type, int, protocol)
 {

@@ -135,6 +135,7 @@
 #include <net/cls_cgroup.h>
 #include <net/netprio_cgroup.h>
 #include <linux/sock_diag.h>
+#include <linux/socket-lifecycle-rust.h>
 
 #include <linux/filter.h>
 #include <net/sock_reuseport.h>
@@ -2271,6 +2272,7 @@ out_free:
 	return NULL;
 }
 
+#ifndef CONFIG_RUST_SOCKET_LIFECYCLE
 static void sk_prot_free(struct proto *prot, struct sock *sk)
 {
 	struct kmem_cache *slab;
@@ -2342,11 +2344,13 @@ struct sock *sk_alloc(struct net *net, int family, gfp_t priority,
 
 	return sk;
 }
+#endif /* !CONFIG_RUST_SOCKET_LIFECYCLE */
 EXPORT_SYMBOL(sk_alloc);
 
 /* Sockets having SOCK_RCU_FREE will call this function after one RCU
  * grace period. This is the case for UDP sockets and TCP listeners.
  */
+#ifndef CONFIG_RUST_SOCKET_LIFECYCLE
 static void __sk_destruct(struct rcu_head *head)
 {
 	struct sock *sk = container_of(head, struct sock, sk_rcu);
@@ -2390,6 +2394,7 @@ static void __sk_destruct(struct rcu_head *head)
 	}
 	sk_prot_free(sk->sk_prot_creator, sk);
 }
+#endif /* !CONFIG_RUST_SOCKET_LIFECYCLE */
 
 void sk_net_refcnt_upgrade(struct sock *sk)
 {
@@ -2404,6 +2409,7 @@ void sk_net_refcnt_upgrade(struct sock *sk)
 }
 EXPORT_SYMBOL_GPL(sk_net_refcnt_upgrade);
 
+#ifndef CONFIG_RUST_SOCKET_LIFECYCLE
 void sk_destruct(struct sock *sk)
 {
 	bool use_call_rcu = sock_flag(sk, SOCK_RCU_FREE);
@@ -2440,7 +2446,351 @@ void sk_free(struct sock *sk)
 	if (refcount_dec_and_test(&sk->sk_wmem_alloc))
 		__sk_free(sk);
 }
+#endif /* !CONFIG_RUST_SOCKET_LIFECYCLE */
 EXPORT_SYMBOL(sk_free);
+
+#ifdef CONFIG_RUST_SOCKET_LIFECYCLE
+#define sock_final_free(sk)	rust_socket_sk_free_final(sk)
+#else
+#define sock_final_free(sk)	__sk_free(sk)
+#endif
+
+#ifdef CONFIG_RUST_SOCKET_LIFECYCLE
+
+#ifdef CONFIG_SOCKET_LIFECYCLE_KUNIT_TEST
+#define socket_test_fail(stage) \
+	rust_helper_socket_test_fail(stage)
+#else
+#define socket_test_fail(stage) \
+	((void)(stage), false)
+#endif
+
+struct sock *rust_helper_sock_prot_alloc(struct proto *prot, gfp_t priority)
+{
+	struct kmem_cache *slab;
+	struct sock *sk;
+
+	if (socket_test_fail(RUST_SOCKET_TEST_FAIL_SK_ALLOC))
+		return NULL;
+
+	slab = prot->slab;
+	if (slab) {
+		sk = kmem_cache_alloc(slab, priority & ~__GFP_ZERO);
+		if (!sk)
+			return NULL;
+		if (want_init_on_alloc(priority))
+			sk_prot_clear_nulls(sk, prot->obj_size);
+	} else {
+		sk = kmalloc(prot->obj_size, priority);
+	}
+
+	return sk;
+}
+
+void rust_helper_sock_prot_free(struct proto *prot, struct sock *sk)
+{
+	if (prot->slab)
+		kmem_cache_free(prot->slab, sk);
+	else
+		kfree(sk);
+}
+
+struct proto *rust_helper_sock_prot_creator(struct sock *sk)
+{
+	return sk->sk_prot_creator;
+}
+
+int rust_helper_sock_security_alloc(struct sock *sk, int family,
+				    gfp_t priority)
+{
+	if (socket_test_fail(RUST_SOCKET_TEST_FAIL_SK_SECURITY))
+		return -ENOMEM;
+	return security_sk_alloc(sk, family, priority);
+}
+
+void rust_helper_sock_security_free(struct sock *sk)
+{
+	security_sk_free(sk);
+}
+
+bool rust_helper_sock_module_get(struct proto *prot)
+{
+	if (socket_test_fail(RUST_SOCKET_TEST_FAIL_SK_MODULE))
+		return false;
+	return try_module_get(prot->owner);
+}
+
+void rust_helper_sock_module_put(struct proto *prot)
+{
+	module_put(prot->owner);
+}
+
+void rust_helper_sock_cgroup_free(struct sock *sk)
+{
+	cgroup_sk_free(&sk->sk_cgrp_data);
+}
+
+void rust_helper_sock_memcg_free(struct sock *sk)
+{
+	mem_cgroup_sk_free(sk);
+}
+
+void rust_helper_sock_owner_put(struct sock *sk)
+{
+	sk_owner_put(sk);
+}
+
+void rust_helper_sock_set_family(struct sock *sk, int family)
+{
+	sk->sk_family = family;
+}
+
+void rust_helper_sock_set_prot(struct sock *sk, struct proto *prot)
+{
+	sk->sk_prot_creator = prot;
+	sk->sk_prot = prot;
+}
+
+void rust_helper_sock_set_bypass(struct sock *sk, bool bypass)
+{
+	sk->sk_bypass_prot_mem = bypass;
+}
+
+void rust_helper_sock_set_kern(struct sock *sk, bool kern)
+{
+	sk->sk_kern_sock = kern;
+}
+
+bool rust_helper_sock_bypass(struct net *net)
+{
+	return READ_ONCE(net->core.sysctl_bypass_prot_mem);
+}
+
+void rust_helper_sock_lock_init(struct sock *sk)
+{
+	sock_lock_init(sk);
+}
+
+void rust_helper_sock_set_net_refcnt(struct sock *sk, bool refcnt)
+{
+	sk->sk_net_refcnt = refcnt;
+}
+
+bool rust_helper_sock_net_refcnt(struct sock *sk)
+{
+	return sk->sk_net_refcnt;
+}
+
+void rust_helper_sock_net_get_tracked(struct sock *sk, struct net *net,
+				      gfp_t priority)
+{
+	get_net_track(net, &sk->ns_tracker, priority);
+}
+
+void rust_helper_sock_net_passive_inc(struct net *net)
+{
+	net_passive_inc(net);
+}
+
+void rust_helper_sock_net_passive_dec(struct net *net)
+{
+	net_passive_dec(net);
+}
+
+void rust_helper_sock_net_tracker_alloc(struct sock *sk, struct net *net,
+					bool refcnted, gfp_t priority)
+{
+	__netns_tracker_alloc(net, &sk->ns_tracker, refcnted, priority);
+}
+
+void rust_helper_sock_net_tracker_free(struct sock *sk, struct net *net,
+				       bool refcnted)
+{
+	__netns_tracker_free(net, &sk->ns_tracker, refcnted);
+}
+
+void rust_helper_sock_net_set(struct sock *sk, struct net *net)
+{
+	sock_net_set(sk, net);
+}
+
+void rust_helper_sock_inuse_add(struct net *net, int value)
+{
+	sock_inuse_add(net, value);
+}
+
+void rust_helper_sock_wmem_init(struct sock *sk)
+{
+	refcount_set(&sk->sk_wmem_alloc, SK_WMEM_ALLOC_BIAS);
+}
+
+bool rust_helper_sock_wmem_put(struct sock *sk)
+{
+	return refcount_dec_and_test(&sk->sk_wmem_alloc);
+}
+
+void rust_helper_sock_memcg_alloc(struct sock *sk)
+{
+	mem_cgroup_sk_alloc(sk);
+}
+
+void rust_helper_sock_cgroup_alloc(struct sock *sk)
+{
+	cgroup_sk_alloc(&sk->sk_cgrp_data);
+}
+
+void rust_helper_sock_update_classid(struct sock *sk)
+{
+	sock_update_classid(&sk->sk_cgrp_data);
+}
+
+void rust_helper_sock_update_netprioidx(struct sock *sk)
+{
+	sock_update_netprioidx(&sk->sk_cgrp_data);
+}
+
+void rust_helper_sock_tx_queue_clear(struct sock *sk)
+{
+	sk_tx_queue_clear(sk);
+}
+
+bool rust_helper_sock_ref_put(struct sock *sk)
+{
+	return refcount_dec_and_test(&sk->sk_refcnt);
+}
+
+bool rust_helper_sock_rcu_free(struct sock *sk)
+{
+	return sock_flag(sk, SOCK_RCU_FREE);
+}
+
+bool rust_helper_sock_has_reuseport(struct sock *sk)
+{
+	return rcu_access_pointer(sk->sk_reuseport_cb);
+}
+
+void rust_helper_sock_reuseport_detach(struct sock *sk)
+{
+	reuseport_detach_sock(sk);
+}
+
+void rust_helper_sock_call_rcu(struct sock *sk,
+			       void (*callback)(struct callback_head *head))
+{
+	call_rcu(&sk->sk_rcu, callback);
+}
+
+struct sock *rust_helper_sock_from_rcu(struct callback_head *head)
+{
+	return container_of(head, struct sock, sk_rcu);
+}
+
+void rust_helper_sock_call_user_destruct(struct sock *sk)
+{
+	if (sk->sk_destruct)
+		sk->sk_destruct(sk);
+}
+
+void *rust_helper_sock_filter(struct sock *sk)
+{
+	return rcu_dereference_check(sk->sk_filter,
+				     refcount_read(&sk->sk_wmem_alloc) == 0);
+}
+
+bool rust_helper_sock_filter_uncharge(struct sock *sk, void *filter)
+{
+	if (!filter)
+		return false;
+
+	sk_filter_uncharge(sk, filter);
+	RCU_INIT_POINTER(sk->sk_filter, NULL);
+	return true;
+}
+
+void rust_helper_sock_disable_timestamp(struct sock *sk)
+{
+	sock_disable_timestamp(sk, SK_FLAGS_TIMESTAMP);
+}
+
+void rust_helper_sock_bpf_storage_free(struct sock *sk)
+{
+#ifdef CONFIG_BPF_SYSCALL
+	bpf_sk_storage_free(sk);
+#endif
+}
+
+bool rust_helper_sock_omem_leak(struct sock *sk)
+{
+	int allocated = atomic_read(&sk->sk_omem_alloc);
+
+	if (!allocated)
+		return false;
+
+	pr_debug("%s: optmem leakage (%d bytes) detected\n",
+		 __func__, allocated);
+	return true;
+}
+
+void rust_helper_sock_put_frag(struct sock *sk)
+{
+	if (!sk->sk_frag.page)
+		return;
+
+	put_page(sk->sk_frag.page);
+	sk->sk_frag.page = NULL;
+}
+
+void rust_helper_sock_put_peer_resources(struct sock *sk)
+{
+	put_cred(sk->sk_peer_cred);
+	put_pid(sk->sk_peer_pid);
+}
+
+void rust_helper_sock_put_net_tracked(struct sock *sk, struct net *net)
+{
+	put_net_track(net, &sk->ns_tracker);
+}
+
+struct net *rust_helper_sock_net(struct sock *sk)
+{
+	return sock_net(sk);
+}
+
+bool rust_helper_sock_diag_has_listeners(struct sock *sk)
+{
+	return sock_diag_has_destroy_listeners(sk);
+}
+
+void rust_helper_sock_diag_broadcast_destroy(struct sock *sk)
+{
+	sock_diag_broadcast_destroy(sk);
+}
+
+#ifdef CONFIG_SOCKET_LIFECYCLE_KUNIT_TEST
+void rust_socket_test_wmem_put_amount(struct sock *sk, unsigned int amount)
+{
+	if (refcount_sub_and_test(amount, &sk->sk_wmem_alloc))
+		rust_socket_sk_free_final(sk);
+}
+
+void rust_socket_test_set_rcu_free(struct sock *sk)
+{
+	sock_set_flag(sk, SOCK_RCU_FREE);
+}
+
+void rust_socket_test_synchronize_rcu(void)
+{
+	synchronize_rcu();
+	rcu_barrier();
+}
+
+int rust_socket_test_wmem_count(struct sock *sk)
+{
+	return refcount_read(&sk->sk_wmem_alloc);
+}
+#endif /* CONFIG_SOCKET_LIFECYCLE_KUNIT_TEST */
+
+#endif /* CONFIG_RUST_SOCKET_LIFECYCLE */
 
 static void sk_init_common(struct sock *sk)
 {
@@ -2705,7 +3055,7 @@ void sock_wfree(struct sk_buff *skb)
 			sock_def_write_space_wfree(sk, old - len);
 			rcu_read_unlock();
 			if (unlikely(free))
-				__sk_free(sk);
+				sock_final_free(sk);
 			return;
 		}
 
@@ -2722,7 +3072,7 @@ void sock_wfree(struct sk_buff *skb)
 	 * could not do because of in-flight packets
 	 */
 	if (refcount_sub_and_test(len, &sk->sk_wmem_alloc))
-		__sk_free(sk);
+		sock_final_free(sk);
 }
 EXPORT_SYMBOL(sock_wfree);
 
@@ -2735,7 +3085,7 @@ void __sock_wfree(struct sk_buff *skb)
 	struct sock *sk = skb->sk;
 
 	if (refcount_sub_and_test(skb->truesize, &sk->sk_wmem_alloc))
-		__sk_free(sk);
+		sock_final_free(sk);
 }
 EXPORT_SYMBOL_GPL(__sock_wfree);
 #endif
