@@ -931,6 +931,7 @@ cleanup_inode:
 	return error;
 }
 
+#ifndef CONFIG_RUST_OPEN_ENTRY
 static int do_dentry_open(struct file *f,
 			  int (*open)(struct inode *, struct file *))
 {
@@ -1031,6 +1032,7 @@ cleanup_file:
 	f->f_inode = NULL;
 	return error;
 }
+#endif /* !CONFIG_RUST_OPEN_ENTRY */
 
 /**
  * finish_open - finish opening a file
@@ -1049,6 +1051,7 @@ cleanup_file:
  *
  * Returns zero on success or -errno if the open failed.
  */
+#ifndef CONFIG_RUST_OPEN_ENTRY
 int finish_open(struct file *file, struct dentry *dentry,
 		int (*open)(struct inode *, struct file *))
 {
@@ -1057,7 +1060,6 @@ int finish_open(struct file *file, struct dentry *dentry,
 	file->__f_path.dentry = dentry;
 	return do_dentry_open(file, open);
 }
-EXPORT_SYMBOL(finish_open);
 
 /**
  * finish_no_open - finish ->atomic_open() without opening the file
@@ -1080,6 +1082,8 @@ int finish_no_open(struct file *file, struct dentry *dentry)
 	file->__f_path.dentry = dentry;
 	return 0;
 }
+#endif /* !CONFIG_RUST_OPEN_ENTRY */
+EXPORT_SYMBOL(finish_open);
 EXPORT_SYMBOL(finish_no_open);
 
 char *file_path(struct file *filp, char *buf, int buflen)
@@ -1093,6 +1097,7 @@ EXPORT_SYMBOL(file_path);
  * @path: path to open
  * @file: newly allocated file with f_flag initialized
  */
+#ifndef CONFIG_RUST_OPEN_ENTRY
 int vfs_open(const struct path *path, struct file *file)
 {
 	int ret;
@@ -1109,6 +1114,103 @@ int vfs_open(const struct path *path, struct file *file)
 	}
 	return ret;
 }
+#endif /* !CONFIG_RUST_OPEN_ENTRY */
+
+#ifdef CONFIG_RUST_OPEN_ENTRY
+const struct file_operations *rust_helper_open_empty_fops(void)
+{
+	static const struct file_operations empty_fops = {};
+
+	return &empty_fops;
+}
+
+errseq_t rust_helper_open_sample_wb_err(struct address_space *mapping)
+{
+	return filemap_sample_wb_err(mapping);
+}
+
+errseq_t rust_helper_open_sample_sb_err(struct file *file)
+{
+	return file_sample_sb_err(file);
+}
+
+void rust_helper_open_set_fsnotify_mode(struct file *file, unsigned int mode)
+{
+	file_set_fsnotify_mode(file, mode);
+}
+
+void rust_helper_open_readcount_inc(struct inode *inode)
+{
+	i_readcount_inc(inode);
+}
+
+int rust_helper_open_get_write_access(struct file *file)
+{
+	return file_get_write_access(file);
+}
+
+bool rust_helper_open_special_file(const struct inode *inode)
+{
+	return special_file(inode->i_mode);
+}
+
+const struct file_operations *rust_helper_open_get_fops(struct inode *inode)
+{
+	return fops_get(inode->i_fop);
+}
+
+void rust_helper_open_put_fops(const struct file_operations *fops)
+{
+	fops_put(fops);
+}
+
+void rust_helper_open_warn_missing_fops(void)
+{
+	WARN_ON_ONCE(1);
+}
+
+void rust_helper_open_put_file_access(struct file *file)
+{
+	put_file_access(file);
+}
+
+int rust_helper_open_break_lease(struct file *file)
+{
+	return break_lease(file_inode(file), file->f_flags);
+}
+
+int rust_helper_open_fsnotify_perm(struct file *file)
+{
+	return fsnotify_open_perm_and_set_mode(file);
+}
+
+void rust_helper_open_fsnotify_open(struct file *file)
+{
+	fsnotify_open(file);
+}
+
+int rust_helper_open_iocb_flags(struct file *file)
+{
+	return iocb_flags(file);
+}
+
+bool rust_helper_open_is_opened(const struct file *file)
+{
+	return file->f_mode & FMODE_OPENED;
+}
+
+void rust_helper_open_warn_invalid_result(void)
+{
+	WARN_ON(1);
+}
+
+int rust_helper_open_normalize_cleanup_error(int error)
+{
+	if (WARN_ON_ONCE(error > 0))
+		error = -EINVAL;
+	return error;
+}
+#endif /* CONFIG_RUST_OPEN_ENTRY */
 
 struct file *dentry_open(const struct path *path, int flags,
 			 const struct cred *cred)

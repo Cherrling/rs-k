@@ -2268,6 +2268,26 @@ config RUST_PATH_LOOKUP
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_OPEN_ENTRY
+	bool "Rust implementation of file open orchestration"
+	depends on RUST && RUST_PATH_LOOKUP
+	default y
+	help
+	  Use Rust to directly define file open dispatch, final-component
+	  lookup and creation, atomic open coordination, file-open completion,
+	  and the RCU and revalidation retry policy.
+
+	  C retains file, dentry, inode, path, and nameidata layouts, dentry and
+	  inode locking, RCU and ref-walk traversal, permission and security
+	  hooks, fsnotify delivery, filesystem lookup, create, atomic-open, and
+	  file-operation callbacks, and low-level allocation primitives.
+
+	  The complete C implementation remains available when this option is
+	  disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_TEARDOWN
 	bool "Rust implementation of final task teardown"
 	depends on RUST

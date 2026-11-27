@@ -19,6 +19,8 @@ struct iov_iter;
 struct mnt_idmap;
 struct ns_common;
 
+#include <linux/open-entry-rust.h>
+
 /*
  * block/bdev.c
  */
@@ -184,17 +186,6 @@ static inline void sb_end_ro_state_change(struct super_block *sb)
 /*
  * open.c
  */
-struct open_flags {
-	int open_flag;
-	umode_t mode;
-	int acc_mode;
-	int intent;
-	int lookup_flags;
-};
-extern struct file *do_file_open(int dfd, struct filename *pathname,
-		const struct open_flags *op);
-extern struct file *do_file_open_root(const struct path *,
-		const char *, const struct open_flags *);
 extern struct open_how build_open_how(int flags, umode_t mode);
 extern int build_open_flags(const struct open_how *how, struct open_flags *op);
 struct file *file_close_fd_locked(struct files_struct *files, unsigned fd);
@@ -204,8 +195,6 @@ int chmod_common(const struct path *path, umode_t mode);
 int do_fchownat(int dfd, const char __user *filename, uid_t user, gid_t group,
 		int flag);
 int chown_common(const struct path *path, uid_t user, gid_t group);
-extern int vfs_open(const struct path *, struct file *);
-
 /*
  * inode.c
  */

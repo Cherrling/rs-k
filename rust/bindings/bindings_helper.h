@@ -128,6 +128,7 @@
 #include <linux/mmap-region-setup-rust.h>
 #include <linux/mprotect-rust.h>
 #include <linux/move-page-tables-rust.h>
+#include <linux/open-entry-rust.h>
 #include <linux/path-lookup-rust.h>
 #include <linux/move-pgt-entry-rust.h>
 #include <linux/mremap-batch-rust.h>

@@ -175,12 +175,14 @@ unsafe fn path_lookupat_inner(nd: *mut Nameidata, flags: c_uint, path: *mut Path
         // SAFETY: The lookup state is active.
         error = unsafe { bindings::rust_helper_path_complete_walk(nd) };
     }
-    // SAFETY: The lookup state is active.
-    let requires_directory = unsafe { bindings::rust_helper_path_requires_directory(nd) };
-    // SAFETY: The lookup state is active.
-    let can_lookup = unsafe { bindings::rust_helper_path_can_lookup(nd) };
-    if error == 0 && requires_directory && !can_lookup {
-        error = -(bindings::ENOTDIR as c_int);
+    if error == 0 {
+        // SAFETY: The lookup state is active and successful.
+        let requires_directory = unsafe { bindings::rust_helper_path_requires_directory(nd) };
+        // SAFETY: A successful lookup has a valid final dentry.
+        let can_lookup = unsafe { bindings::rust_helper_path_can_lookup(nd) };
+        if requires_directory && !can_lookup {
+            error = -(bindings::ENOTDIR as c_int);
+        }
     }
     if error == 0 {
         // SAFETY: The output path is writable and the walk state is valid.

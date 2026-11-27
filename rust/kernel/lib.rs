@@ -267,6 +267,8 @@ pub mod num;
 #[cfg(CONFIG_RUST_OBJPOOL)]
 mod objpool;
 pub mod of;
+#[cfg(CONFIG_RUST_OPEN_ENTRY)]
+mod open_entry;
 #[cfg(CONFIG_PM_OPP)]
 pub mod opp;
 pub mod page;

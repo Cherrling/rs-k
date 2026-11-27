@@ -48,6 +48,7 @@ more details.
     native-superblock-lifecycle
     native-vfsmount-lifecycle
     native-path-lookup
+    native-open-entry
     native-port-coverage
     dup-task-struct
     task-teardown

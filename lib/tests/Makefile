@@ -40,6 +40,7 @@ obj-$(CONFIG_INODE_LIFECYCLE_KUNIT_TEST) += inode_lifecycle_kunit.o
 obj-$(CONFIG_SUPERBLOCK_LIFECYCLE_KUNIT_TEST) += superblock_lifecycle_kunit.o
 obj-$(CONFIG_VFSMOUNT_LIFECYCLE_KUNIT_TEST) += vfsmount_lifecycle_kunit.o
 obj-$(CONFIG_PATH_LOOKUP_KUNIT_TEST) += path_lookup_kunit.o
+obj-$(CONFIG_OPEN_ENTRY_KUNIT_TEST) += open_entry_kunit.o
 obj-$(CONFIG_TASK_TEARDOWN_KUNIT_TEST) += test_task_teardown.o
 obj-$(CONFIG_TASK_WORK_KUNIT_TEST) += task_work_kunit.o
 obj-$(CONFIG_IRQ_WORK_KUNIT_TEST) += irq_work_kunit.o

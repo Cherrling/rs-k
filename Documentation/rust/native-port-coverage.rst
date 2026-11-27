@@ -2204,6 +2204,54 @@ Risk: A wrong retry or success decision can reuse terminated state, return an
 unreferenced path, leak a referenced path, invoke audit on a partial lookup,
 or bypass scoped escape checks.
 
+Open entry orchestration
+------------------------
+
+Status: ``migrated``.
+
+Evidence: :doc:`native-open-entry`.
+
+Rust directly defines ``finish_open()``, ``finish_no_open()``,
+``vfs_open()``, ``vfs_lookup_open()``, ``dentry_create()``,
+``do_file_open()``, and ``do_file_open_root()``.
+
+Rust owns ordinary, O_PATH, and O_TMPFILE dispatch. Rust also owns
+final-component lookup and creation, atomic-open coordination, parent
+locking and mount writes, RCU and revalidation retries,
+``-EOPENSTALE`` conversion, delegation retry, permission and truncation
+ordering, notification selection, and ``do_dentry_open()`` rollback.
+The Rust path also converts the inherited duplicate-open ``BUG_ON()``
+invariant into a warning followed by ``-EBUSY``.
+
+C retains file, dentry, inode, path, and ``nameidata`` layouts. C also
+retains 76 open helpers, filesystem callbacks, locks, RCU primitives,
+permission and LSM hooks, fsnotify, audit, leases, delegation, and file
+allocation. ``vfs_tmpfile()`` and ``vfs_create()`` remain C creation
+boundaries.
+
+Test: Native, KASAN, lockdep, PREEMPT_RT, and DEBUG_VFS each passed SMP1
+and SMP4 with 10 of 10 cases. Fallback and C-only passed SMP1 and SMP4 with
+9 of 9 cases. Coverage includes ordinary open, O_PATH, O_TMPFILE, create,
+exclusive create, direct ``vfs_open()``, O_DIRECT rejection, both finish
+entries, atomic open and Atomic ``dentry_create()``, direct
+``vfs_lookup_open()``, and injected ``-ECHILD`` and ``-EOPENSTALE``
+retries.
+
+Native ``rust/kernel.o`` defines all seven entries. Native ``fs/open.o``
+and ``fs/namei.o`` define none. Fallback and C-only C objects retain the
+complete implementation. Native ``Module.symvers`` contains ordinary
+exports for ``finish_open()``, ``finish_no_open()``, and
+``dentry_create()``. It contains GPL-only ``module:nfsd`` metadata for
+``vfs_lookup_open()``. The other three entries remain unexported.
+
+Disassembly shows complete Rust implementations without a public C
+tail-call adapter. Rustfmt, Clippy, Rustdoc, focused Sphinx, strict
+checkpatch, and ``git diff --check`` pass.
+
+Risk: A wrong ownership transfer can leak or double-release a dentry,
+path, inode, file operation table, or mount write reference. A wrong retry
+or completion order can bypass permission and revalidation semantics.
+
 Direct-entry audit
 ------------------
 

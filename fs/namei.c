@@ -4459,6 +4459,7 @@ static int may_o_create(struct mnt_idmap *idmap,
  * Returns: the opened or looked-up dentry, or ERR_PTR() on failure.  The
  * reference to @dentry is consumed in either case.
  */
+#ifndef CONFIG_RUST_OPEN_ENTRY
 static struct dentry *atomic_open(const struct path *path, struct dentry *dentry,
 				  struct file *file,
 				  int open_flag, umode_t mode, int create_error)
@@ -4798,8 +4799,10 @@ struct file *vfs_lookup_open(struct path *parent, struct qstr *last,
 		return ERR_PTR(error);
 	return no_free_ptr(file);
 }
+#endif /* !CONFIG_RUST_OPEN_ENTRY */
 EXPORT_SYMBOL_FOR_MODULES(vfs_lookup_open, "nfsd");
 
+#ifndef CONFIG_RUST_OPEN_ENTRY
 static inline bool trailing_slashes(struct nameidata *nd)
 {
 	return (bool)nd->last.name[nd->last.len];
@@ -4951,6 +4954,7 @@ static int do_open(struct nameidata *nd,
 		mnt_drop_write(nd->path.mnt);
 	return error;
 }
+#endif /* !CONFIG_RUST_OPEN_ENTRY */
 
 /**
  * vfs_tmpfile - create tmpfile
@@ -5046,6 +5050,7 @@ struct file *kernel_tmpfile_open(struct mnt_idmap *idmap,
 }
 EXPORT_SYMBOL(kernel_tmpfile_open);
 
+#ifndef CONFIG_RUST_OPEN_ENTRY
 static int do_tmpfile(struct nameidata *nd, unsigned flags,
 		const struct open_flags *op,
 		struct file *file)
@@ -5162,6 +5167,357 @@ struct file *do_file_open_root(const struct path *root,
 	restore_nameidata();
 	return file;
 }
+#endif /* !CONFIG_RUST_OPEN_ENTRY */
+
+#ifdef CONFIG_RUST_OPEN_ENTRY
+struct dentry *rust_helper_open_nd_dentry(struct nameidata *nd)
+{
+	return nd->path.dentry;
+}
+
+struct inode *rust_helper_open_nd_dentry_inode(struct nameidata *nd)
+{
+	return nd->path.dentry->d_inode;
+}
+
+struct path *rust_helper_open_nd_path(struct nameidata *nd)
+{
+	return &nd->path;
+}
+
+void rust_helper_open_nd_set_dentry(struct nameidata *nd,
+				    struct dentry *dentry)
+{
+	nd->path.dentry = dentry;
+}
+
+void rust_helper_open_nd_add_flags(struct nameidata *nd, unsigned int flags)
+{
+	nd->flags |= flags;
+}
+
+void rust_helper_open_nd_clear_lookup_flags(struct nameidata *nd)
+{
+	nd->flags &= ~(LOOKUP_OPEN | LOOKUP_CREATE | LOOKUP_EXCL);
+}
+
+bool rust_helper_open_nd_trailing_slashes(struct nameidata *nd)
+{
+	return (bool)nd->last.name[nd->last.len];
+}
+
+bool rust_helper_open_nd_in_rcu(struct nameidata *nd)
+{
+	return nd->flags & LOOKUP_RCU;
+}
+
+bool rust_helper_open_nd_try_to_unlazy(struct nameidata *nd)
+{
+	return try_to_unlazy(nd);
+}
+
+void rust_helper_open_nd_put_link_if_needed(struct nameidata *nd)
+{
+	if (nd->depth)
+		put_link(nd);
+}
+
+const char *rust_helper_open_nd_handle_dots(struct nameidata *nd,
+					    unsigned int type)
+{
+	return handle_dots(nd, type);
+}
+
+const char *rust_helper_open_nd_step_into(struct nameidata *nd,
+					  struct dentry *dentry)
+{
+	return step_into(nd, WALK_TRAILING, dentry);
+}
+
+void rust_helper_open_nd_replace_final_dentry(struct nameidata *nd,
+					      struct dentry *dentry)
+{
+	dput(nd->path.dentry);
+	nd->path.dentry = dentry;
+}
+
+void rust_helper_open_nd_warn_rcu_without_create(void)
+{
+	WARN_ON_ONCE(1);
+}
+
+struct dentry *rust_helper_open_d_lookup(struct nameidata *nd)
+{
+	return d_lookup(nd->path.dentry, &nd->last);
+}
+
+struct dentry *rust_helper_open_d_alloc_parallel(struct nameidata *nd)
+{
+	return d_alloc_parallel(nd->path.dentry, &nd->last);
+}
+
+struct dentry *rust_helper_open_lookup_fast(struct nameidata *nd)
+{
+	return lookup_fast(nd);
+}
+
+bool rust_helper_open_d_in_lookup(const struct dentry *dentry)
+{
+	return d_in_lookup(dentry);
+}
+
+void rust_helper_open_d_lookup_done(struct dentry *dentry)
+{
+	d_lookup_done(dentry);
+}
+
+struct dentry *rust_helper_open_dget(struct dentry *dentry)
+{
+	return dget(dentry);
+}
+
+int rust_helper_open_d_revalidate(struct nameidata *nd, struct dentry *dentry)
+{
+	return d_revalidate(nd->path.dentry->d_inode, &nd->last, dentry,
+			    nd->flags);
+}
+
+bool rust_helper_open_dentry_positive(const struct dentry *dentry)
+{
+	return d_is_positive(dentry);
+}
+
+bool rust_helper_open_dentry_negative(const struct dentry *dentry)
+{
+	return d_is_negative(dentry);
+}
+
+bool rust_helper_open_dentry_dir(const struct dentry *dentry)
+{
+	return d_is_dir(dentry);
+}
+
+bool rust_helper_open_dentry_regular(const struct dentry *dentry)
+{
+	return d_is_reg(dentry);
+}
+
+bool rust_helper_open_dentry_can_lookup(const struct dentry *dentry)
+{
+	return d_can_lookup(dentry);
+}
+
+bool rust_helper_open_dentry_really_negative(const struct dentry *dentry)
+{
+	return d_really_is_negative(dentry);
+}
+
+struct inode *rust_helper_open_dentry_inode(const struct dentry *dentry)
+{
+	return d_inode(dentry);
+}
+
+struct inode *rust_helper_open_dentry_backing_inode(const struct dentry *dentry)
+{
+	return d_backing_inode(dentry);
+}
+
+struct dentry *rust_helper_open_dentry_parent(const struct dentry *dentry)
+{
+	return dentry->d_parent;
+}
+
+umode_t rust_helper_open_dentry_mode(const struct dentry *dentry)
+{
+	return d_backing_inode(dentry)->i_mode;
+}
+
+void rust_helper_open_nd_audit_parent(struct nameidata *nd)
+{
+	audit_inode(nd->name, nd->path.dentry, AUDIT_INODE_PARENT);
+}
+
+void rust_helper_open_nd_audit_inode(struct nameidata *nd,
+				     const struct dentry *dentry)
+{
+	audit_inode(nd->name, dentry, 0);
+}
+
+void rust_helper_open_audit_child_create(struct inode *dir,
+					 struct dentry *dentry)
+{
+	audit_inode_child(dir, dentry, AUDIT_TYPE_CHILD_CREATE);
+}
+
+int rust_helper_open_nd_want_write(struct nameidata *nd)
+{
+	return mnt_want_write(nd->path.mnt);
+}
+
+void rust_helper_open_nd_drop_write(struct nameidata *nd)
+{
+	mnt_drop_write(nd->path.mnt);
+}
+
+void rust_helper_open_nd_inode_lock(struct nameidata *nd, bool exclusive)
+{
+	if (exclusive)
+		inode_lock(nd->path.dentry->d_inode);
+	else
+		inode_lock_shared(nd->path.dentry->d_inode);
+}
+
+void rust_helper_open_nd_inode_unlock(struct nameidata *nd, bool exclusive)
+{
+	if (exclusive)
+		inode_unlock(nd->path.dentry->d_inode);
+	else
+		inode_unlock_shared(nd->path.dentry->d_inode);
+}
+
+bool rust_helper_open_nd_dead_dir(struct nameidata *nd)
+{
+	return IS_DEADDIR(nd->path.dentry->d_inode);
+}
+
+struct mnt_idmap *rust_helper_open_nd_idmap(struct nameidata *nd)
+{
+	return mnt_idmap(nd->path.mnt);
+}
+
+struct mnt_idmap *rust_helper_open_path_idmap(const struct path *path)
+{
+	return mnt_idmap(path->mnt);
+}
+
+umode_t rust_helper_open_prepare_mode(struct mnt_idmap *idmap,
+				      struct inode *dir, umode_t mode)
+{
+	return vfs_prepare_mode(idmap, dir, mode, mode, mode);
+}
+
+umode_t rust_helper_open_prepare_regular_mode(struct mnt_idmap *idmap,
+					      struct inode *dir,
+					      umode_t mode)
+{
+	return vfs_prepare_mode(idmap, dir, mode, S_IALLUGO, S_IFREG);
+}
+
+int rust_helper_open_may_o_create(struct mnt_idmap *idmap,
+				  struct nameidata *nd,
+				  struct dentry *dentry, umode_t mode)
+{
+	return may_o_create(idmap, &nd->path, dentry, mode);
+}
+
+int rust_helper_open_path_may_o_create(struct mnt_idmap *idmap,
+				       const struct path *path,
+				       struct dentry *dentry, umode_t mode)
+{
+	return may_o_create(idmap, path, dentry, mode);
+}
+
+unsigned int rust_helper_open_namei_flags(int flag)
+{
+	return open_to_namei_flags(flag);
+}
+
+void rust_helper_open_warn_atomic_unset(const struct dentry *dentry)
+{
+	const char *fsname = dentry->d_sb->s_type->name;
+
+	WARN(1, "%s: ->atomic_open() left file->f_path.dentry unset!\n",
+	     fsname);
+}
+
+int rust_helper_open_try_break_deleg(struct inode *inode,
+				     struct inode **delegated)
+{
+	struct delegated_inode di = {};
+	int error;
+
+	error = try_break_deleg(inode, LEASE_BREAK_DIR_CREATE, &di);
+	*delegated = is_delegated(&di) ? di.di_inode : NULL;
+	return error;
+}
+
+int rust_helper_open_break_deleg_wait(struct inode *inode)
+{
+	struct delegated_inode di = {
+		.di_inode = inode,
+	};
+
+	return break_deleg_wait(&di);
+}
+
+struct dentry *rust_helper_open_fs_lookup(struct inode *dir,
+					  struct dentry *dentry,
+					  struct nameidata *nd)
+{
+	return dir->i_op->lookup(dir, dentry, nd->flags);
+}
+
+int rust_helper_open_fs_create(struct mnt_idmap *idmap, struct inode *dir,
+			       struct dentry *dentry, umode_t mode)
+{
+	return dir->i_op->create(idmap, dir, dentry, mode);
+}
+
+void rust_helper_open_fsnotify_create(struct inode *dir,
+				      struct dentry *dentry)
+{
+	fsnotify_create(dir, dentry);
+}
+
+int rust_helper_open_may_create_in_sticky(struct mnt_idmap *idmap,
+					  struct nameidata *nd,
+					  struct inode *inode)
+{
+	return may_create_in_sticky(idmap, nd, inode);
+}
+
+int rust_helper_open_may_open(struct mnt_idmap *idmap,
+			      struct nameidata *nd, int acc_mode, int flag)
+{
+	return may_open(idmap, &nd->path, acc_mode, flag);
+}
+
+int rust_helper_open_handle_truncate(struct mnt_idmap *idmap,
+				     struct file *file)
+{
+	return handle_truncate(idmap, file);
+}
+
+bool rust_helper_open_root_rejects_symlink(const struct path *root, int intent)
+{
+	return d_is_symlink(root->dentry) && intent & LOOKUP_OPEN;
+}
+
+void rust_helper_open_init_vfs_lookup(struct nameidata *nd,
+				      const struct path *parent,
+				      const struct qstr *last,
+				      int open_flag)
+{
+	memset(nd, 0, sizeof(*nd));
+	nd->path = *parent;
+	nd->last = *last;
+	nd->flags = LOOKUP_OPEN;
+	if (open_flag & O_CREAT) {
+		nd->flags |= LOOKUP_CREATE;
+		if (open_flag & O_EXCL)
+			nd->flags |= LOOKUP_EXCL;
+	}
+}
+
+void rust_helper_open_warn_vfs_lookup(int mode, int open_flag)
+{
+	WARN_ONCE(mode & ~S_IALLUGO, "mode must only have permission bits");
+	WARN_ONCE(open_flag & ~(O_ACCMODE | O_CREAT | O_EXCL | O_TRUNC |
+			       __O_REGULAR),
+		  "open_flag has unsupported flags");
+}
+
+#endif /* CONFIG_RUST_OPEN_ENTRY */
 
 static struct dentry *filename_create(int dfd, struct filename *name,
 				      struct path *path, unsigned int lookup_flags)
@@ -5265,6 +5621,7 @@ EXPORT_SYMBOL(start_creating_user_path);
  * On success, returns a ``struct file *``. Otherwise an ERR_PTR
  * is returned.
  */
+#ifndef CONFIG_RUST_OPEN_ENTRY
 struct file *dentry_create(struct path *path, int flags, umode_t mode,
 			   const struct cred *cred)
 {
@@ -5321,6 +5678,7 @@ struct file *dentry_create(struct path *path, int flags, umode_t mode,
 
 	return no_free_ptr(file);
 }
+#endif /* !CONFIG_RUST_OPEN_ENTRY */
 EXPORT_SYMBOL(dentry_create);
 
 /**

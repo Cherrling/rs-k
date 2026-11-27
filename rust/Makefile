@@ -576,6 +576,9 @@ rust_non_gpl_exports := \
 	sget_fc \
 	shrink_dentry_list \
 	alloc_file_pseudo \
+	dentry_create \
+	finish_no_open \
+	finish_open \
 	fput \
 	__fput_sync \
 	close_fd \
@@ -836,6 +839,9 @@ rust_unexported_symbols := \
 	alloc_inode \
 	alloc_empty_file \
 	alloc_file_clone \
+	dentry_create \
+	do_file_open \
+	do_file_open_root \
 	dput_to_list \
 	dup_fd \
 	exit_files \
@@ -892,6 +898,11 @@ rust_unexported_symbols := \
 	rust_mnt_test_flush_delayed \
 	rust_mnt_test_reset \
 	rust_mnt_test_synchronize_rcu \
+	rust_open_test_attempts \
+	rust_open_test_fail_next \
+	rust_open_test_fail_retry \
+	rust_open_test_flags \
+	rust_open_test_reset \
 	path_lookupat \
 	rust_path_test_fail_lookup \
 	rust_path_test_fail_parent \
@@ -901,6 +912,8 @@ rust_unexported_symbols := \
 	rust_path_test_parent_flags \
 	rust_path_test_reset \
 	vfs_create_mount \
+	vfs_lookup_open \
+	vfs_open \
 	vfs_path_lookup \
 	vfs_path_parent_lookup \
 	rust_super_test_counter \
