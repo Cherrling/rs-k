@@ -2364,6 +2364,25 @@ config RUST_PAGE_FOLIO_RELEASE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_PAGE_ALLOC_FREE
+	bool "Rust implementation of page allocation and free policy"
+	depends on RUST && MMU
+	default y
+	help
+	  Use Rust to directly define public page allocation and free policy,
+	  NUMA fallback, reference attachment, folio conversion, rollback, and
+	  non-compound tail-page release.
+
+	  C retains the buddy allocator, per-CPU page lists, watermarks, reclaim,
+	  page and allocation-tag primitives, NUMA topology, and address
+	  translation.
+
+	  The complete C implementation remains available when this option is
+	  disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_TEARDOWN
 	bool "Rust implementation of final task teardown"
 	depends on RUST

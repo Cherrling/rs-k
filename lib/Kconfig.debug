@@ -2969,6 +2969,21 @@ config PAGE_FOLIO_RELEASE_KUNIT_TEST
 
 	  If unsure, say N.
 
+config PAGE_ALLOC_FREE_KUNIT_TEST
+	bool "KUnit test for page allocation and free policy" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y && MMU
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for page allocation, NUMA fallback,
+	  compound-folio conversion, reference attachment, final and non-final
+	  free, no-lock allocation, tail-page release, rollback, page-cache
+	  integration, and concurrent allocation.
+
+	  The behavior cases run with either the C implementation or the native
+	  Rust implementation selected.
+
+	  If unsure, say N.
+
 config TASK_RELEASE_KUNIT_TEST
 	bool "KUnit test for zombie task release" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

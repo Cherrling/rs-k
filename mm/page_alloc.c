@@ -46,6 +46,7 @@
 #include <linux/migrate.h>
 #include <linux/sched/mm.h>
 #include <linux/page_owner.h>
+#include <linux/page-alloc-free-rust.h>
 #include <linux/page_table_check.h>
 #include <linux/memcontrol.h>
 #include <linux/ftrace.h>
@@ -5486,6 +5487,7 @@ out:
 }
 EXPORT_SYMBOL(__alloc_frozen_pages_noprof);
 
+#ifndef CONFIG_RUST_PAGE_ALLOC_FREE
 struct page *__alloc_pages_noprof(gfp_t gfp, unsigned int order,
 		int preferred_nid, nodemask_t *nodemask, unsigned int alloc_flags)
 {
@@ -5497,7 +5499,9 @@ struct page *__alloc_pages_noprof(gfp_t gfp, unsigned int order,
 		set_page_refcounted(page);
 	return page;
 }
+#endif /* !CONFIG_RUST_PAGE_ALLOC_FREE */
 
+#ifndef CONFIG_RUST_PAGE_ALLOC_FREE
 struct page *alloc_pages_node_noprof(int nid, gfp_t gfp_mask, unsigned int order)
 {
 	if (nid == NUMA_NO_NODE)
@@ -5507,8 +5511,10 @@ struct page *alloc_pages_node_noprof(int nid, gfp_t gfp_mask, unsigned int order
 
 	return __alloc_pages_noprof(gfp_mask, order, nid, NULL, ALLOC_DEFAULT);
 }
+#endif /* !CONFIG_RUST_PAGE_ALLOC_FREE */
 EXPORT_SYMBOL(alloc_pages_node_noprof);
 
+#ifndef CONFIG_RUST_PAGE_ALLOC_FREE
 struct folio *__folio_alloc_noprof(gfp_t gfp, unsigned int order, int preferred_nid,
 		nodemask_t *nodemask)
 {
@@ -5516,6 +5522,7 @@ struct folio *__folio_alloc_noprof(gfp_t gfp, unsigned int order, int preferred_
 					preferred_nid, nodemask, ALLOC_DEFAULT);
 	return page_rmappable_folio(page);
 }
+#endif /* !CONFIG_RUST_PAGE_ALLOC_FREE */
 EXPORT_SYMBOL(__folio_alloc_noprof);
 
 /*
@@ -5540,6 +5547,7 @@ unsigned long get_zeroed_page_noprof(gfp_t gfp_mask)
 }
 EXPORT_SYMBOL(get_zeroed_page_noprof);
 
+#ifndef CONFIG_RUST_PAGE_ALLOC_FREE
 static void ___free_pages(struct page *page, unsigned int order,
 			  fpi_t fpi_flags)
 {
@@ -5564,6 +5572,7 @@ static void ___free_pages(struct page *page, unsigned int order,
 		}
 	}
 }
+#endif /* !CONFIG_RUST_PAGE_ALLOC_FREE */
 
 /**
  * __free_pages - Free pages allocated with alloc_pages().
@@ -5585,20 +5594,24 @@ static void ___free_pages(struct page *page, unsigned int order,
  * Context: May be called in interrupt context or while holding a normal
  * spinlock, but not in NMI context or while holding a raw spinlock.
  */
+#ifndef CONFIG_RUST_PAGE_ALLOC_FREE
 void __free_pages(struct page *page, unsigned int order)
 {
 	___free_pages(page, order, FPI_NONE);
 }
+#endif /* !CONFIG_RUST_PAGE_ALLOC_FREE */
 EXPORT_SYMBOL(__free_pages);
 
 /*
  * Can be called while holding raw_spin_lock or from IRQ and NMI for any
  * page type (not only those that came from alloc_pages_nolock)
  */
+#ifndef CONFIG_RUST_PAGE_ALLOC_FREE
 void free_pages_nolock(struct page *page, unsigned int order)
 {
 	___free_pages(page, order, FPI_NOLOCK);
 }
+#endif /* !CONFIG_RUST_PAGE_ALLOC_FREE */
 
 /**
  * free_pages - Free pages allocated with __get_free_pages().
@@ -5609,6 +5622,7 @@ void free_pages_nolock(struct page *page, unsigned int order)
  * to free pages when you only have a valid virtual address. If you have
  * the page, call __free_pages() instead.
  */
+#ifndef CONFIG_RUST_PAGE_ALLOC_FREE
 void free_pages(unsigned long addr, unsigned int order)
 {
 	if (addr != 0) {
@@ -5616,6 +5630,7 @@ void free_pages(unsigned long addr, unsigned int order)
 		__free_pages(virt_to_page((void *)addr), order);
 	}
 }
+#endif /* !CONFIG_RUST_PAGE_ALLOC_FREE */
 
 EXPORT_SYMBOL(free_pages);
 
@@ -8085,6 +8100,7 @@ struct page *alloc_frozen_pages_nolock_noprof(gfp_t gfp_flags, int nid, unsigned
  * Return: allocated page or NULL on failure. NULL does not mean EBUSY or EAGAIN.
  * It means ENOMEM. There is no reason to call it again and expect !NULL.
  */
+#ifndef CONFIG_RUST_PAGE_ALLOC_FREE
 struct page *alloc_pages_nolock_noprof(gfp_t gfp_flags, int nid, unsigned int order)
 {
 	struct page *page;
@@ -8094,4 +8110,116 @@ struct page *alloc_pages_nolock_noprof(gfp_t gfp_flags, int nid, unsigned int or
 		set_page_refcounted(page);
 	return page;
 }
+#endif /* !CONFIG_RUST_PAGE_ALLOC_FREE */
+#ifndef CONFIG_RUST_PAGE_ALLOC_FREE
 EXPORT_SYMBOL_GPL(alloc_pages_nolock_noprof);
+#endif
+
+#ifdef CONFIG_RUST_PAGE_ALLOC_FREE
+struct page *
+rust_helper_page_alloc_free_frozen(gfp_t gfp, unsigned int order, int nid,
+				   nodemask_t *nodemask,
+				   unsigned int alloc_flags)
+{
+	return __alloc_frozen_pages_noprof(gfp, order, nid, nodemask,
+					   alloc_flags);
+}
+
+gfp_t rust_helper_page_alloc_free_compound_flags(gfp_t gfp)
+{
+	return gfp | __GFP_COMP;
+}
+
+void rust_helper_page_alloc_free_set_refcounted(struct page *page)
+{
+	set_page_refcounted(page);
+}
+
+int rust_helper_page_alloc_free_numa_mem_id(void)
+{
+	return numa_mem_id();
+}
+
+int rust_helper_page_alloc_free_numa_node_id(void)
+{
+	return numa_node_id();
+}
+
+void rust_helper_page_alloc_free_warn_if_node_offline(int nid, gfp_t gfp)
+{
+	warn_if_node_offline(nid, gfp);
+}
+
+struct folio *rust_helper_page_alloc_free_rmappable_folio(struct page *page)
+{
+	return page_rmappable_folio(page);
+}
+
+bool rust_helper_page_alloc_free_page_head(struct page *page)
+{
+	return PageHead(page);
+}
+
+unsigned long rust_helper_page_alloc_free_tag_get(struct page *page)
+{
+	return (unsigned long)pgalloc_tag_get(page);
+}
+
+bool rust_helper_page_alloc_free_put_page_testzero(struct page *page)
+{
+	return put_page_testzero(page);
+}
+
+void rust_helper_page_alloc_free_tag_sub_pages(unsigned long tag,
+					       unsigned int nr_pages)
+{
+	pgalloc_tag_sub_pages((struct alloc_tag *)tag, nr_pages);
+}
+
+void rust_helper_page_alloc_free_clear_tail_tag(struct page *page)
+{
+	clear_page_tag_ref(page);
+}
+
+void rust_helper_page_alloc_free_frozen_page(struct page *page,
+					     unsigned int order)
+{
+	free_frozen_pages(page, order);
+}
+
+void rust_helper_page_alloc_free_frozen_page_nolock(struct page *page,
+						    unsigned int order)
+{
+	free_frozen_pages_nolock(page, order);
+}
+
+struct page *rust_helper_page_alloc_free_virt_to_page(unsigned long addr)
+{
+	VM_BUG_ON(!virt_addr_valid((void *)addr));
+	return virt_to_page((void *)addr);
+}
+
+#ifdef CONFIG_PAGE_ALLOC_FREE_KUNIT_TEST
+static atomic_t page_alloc_free_test_failure = ATOMIC_INIT(0);
+static atomic_t page_alloc_free_test_failure_count = ATOMIC_INIT(0);
+
+bool rust_helper_page_alloc_free_test_fail(unsigned int stage)
+{
+	if (atomic_cmpxchg(&page_alloc_free_test_failure, stage, 0) != stage)
+		return false;
+
+	atomic_inc(&page_alloc_free_test_failure_count);
+	return true;
+}
+
+void rust_page_alloc_free_test_fail_next(unsigned int stage)
+{
+	atomic_set(&page_alloc_free_test_failure, stage);
+}
+
+unsigned int rust_page_alloc_free_test_failure_count(void)
+{
+	return atomic_read(&page_alloc_free_test_failure_count);
+}
+#endif
+#endif /* CONFIG_RUST_PAGE_ALLOC_FREE */

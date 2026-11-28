@@ -609,6 +609,10 @@ rust_non_gpl_exports := \
 	folios_put_refs \
 	release_pages \
 	__folio_batch_release \
+	alloc_pages_node_noprof \
+	__folio_alloc_noprof \
+	__free_pages \
+	free_pages \
 	rw_verify_area \
 	vfs_llseek \
 	__put_cred \
@@ -859,6 +863,8 @@ rust_unexported_symbols := \
 	__fput \
 	__get_unused_fd_flags \
 	__consume_stateless_skb \
+	__alloc_pages_noprof \
+	free_pages_nolock \
 	alloc_skb_for_msg \
 	skb_morph \
 	alloc_inode \

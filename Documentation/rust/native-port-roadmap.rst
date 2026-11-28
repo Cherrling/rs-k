@@ -72,7 +72,7 @@ and finally UDP and TCP connection state.
 Order             Unit                        Status         Primary ownership
 ================  ==========================  =============  =====================================================
 1                 ``page-folio-release``      complete       Final page and folio reference release.
-2                 ``page-alloc-free``         pending        Page allocation and free policy.
+2                 ``page-alloc-free``         complete       Page allocation and free policy.
 3                 ``filemap-page-cache``      pending        Page-cache insertion, lookup, and removal.
 4                 ``page-fault-core``         pending        Fault validation, retry, and completion.
 5                 ``page-frag-lifecycle``     pending        Page-fragment allocation and recycling.

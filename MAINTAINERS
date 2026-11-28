@@ -17202,6 +17202,7 @@ S:	Maintained
 W:	http://www.linux-mm.org
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/akpm/mm
 F:	Documentation/admin-guide/sysctl/vm.rst
+F:	Documentation/rust/native-page-alloc-free.rst
 F:	Documentation/rust/native-page-folio-release.rst
 F:	include/linux/folio_batch.h
 F:	include/linux/gfp.h
@@ -17214,6 +17215,7 @@ F:	include/linux/mm_*.h
 F:	include/linux/mmzone.h
 F:	include/linux/mmdebug.h
 F:	include/linux/mmu_notifier.h
+F:	include/linux/page-alloc-free-rust.h
 F:	include/linux/page-folio-release-rust.h
 F:	include/linux/pagewalk.h
 F:	include/linux/pgalloc.h
@@ -17223,6 +17225,7 @@ F:	include/linux/vmpressure.h
 F:	include/linux/vmstat.h
 F:	fs/proc/meminfo.c
 F:	kernel/fork.c
+F:	lib/tests/page_alloc_free_kunit.c
 F:	lib/tests/page_folio_release_kunit.c
 F:	mm/Kconfig
 F:	mm/debug.c
@@ -17244,6 +17247,7 @@ F:	mm/sparse.h
 F:	mm/util.c
 F:	mm/vmpressure.c
 F:	mm/vmstat.c
+F:	rust/kernel/page_alloc_free.rs
 F:	rust/kernel/page_folio_release.rs
 N:	include\/linux\/page[-_][a-zA-Z]*
 

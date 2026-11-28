@@ -2441,6 +2441,58 @@ compaction or encoded reference count can corrupt unrelated memory. A wrong
 hugetlb, zone-device, LRU, memory-cgroup, or drain order can violate a
 subsystem-owned reference or lock contract.
 
+Page allocation and free policy
+-------------------------------
+
+Status: ``migrated``.
+
+Evidence: :doc:`native-page-alloc-free`.
+
+Rust directly defines ``__alloc_pages_noprof()``,
+``alloc_pages_node_noprof()``, ``__folio_alloc_noprof()``,
+``__free_pages()``, ``free_pages_nolock()``, ``free_pages()``, and
+``alloc_pages_nolock_noprof()``.
+
+Rust owns NUMA fallback, offline-node warning placement, first-reference
+attachment, post-allocation rollback, compound-folio conversion,
+final-reference selection, compound and non-compound free policy,
+allocation-tag adjustment, descending tail release, no-lock policy, and
+virtual-address validation order.
+
+C retains the buddy allocator, per-CPU lists, watermarks, reclaim, page and
+allocation-context layouts, reference and allocation-tag primitives, NUMA
+topology, and architecture address conversion. The narrow helper ABI is in
+``include/linux/page-alloc-free-rust.h``.
+
+Test: Focused KUnit covers injected pre-allocation rejection, injected
+post-allocation attachment failure and rollback, order 0, non-compound order
+1, compound folio order 1, NUMA fallback, explicit node selection, no-lock
+allocation and free, non-final references, tail release, address free, zero
+address, page-cache integration, and four concurrent workers.
+
+Native, KASAN with lockdep, PREEMPT_RT with lockdep, and DEBUG_VFS passed
+SMP1 and SMP4 with 14 of 14 cases. Fallback and C-only passed SMP1 and SMP4
+with 12 of 12 cases.
+
+Native ``rust/kernel.o`` defines all seven entries, while native
+``mm/page_alloc.o`` defines none. Fallback and C-only ``mm/page_alloc.o``
+retain all seven definitions. Native ``Module.symvers`` contains four
+ordinary exports and one GPL export. The two unexported names are absent.
+
+External GPL and non-GPL modules linked the matching exports. Modpost
+rejected a non-GPL use of the GPL-only symbol and both license classes
+rejected the two unexported names. Disassembly shows native Rust
+implementations for all seven entries.
+
+Rustfmt, Clippy, Rustdoc, focused Sphinx, strict checkpatch, and
+``git diff --check`` complete the gate. Strict checkpatch reports the
+new-file path warning and the retained ``VM_BUG_ON()`` warning.
+
+Risk: A wrong final-free decision can free a live page. A wrong non-compound
+tail release can leak or double-free memory. A wrong NUMA fallback can select
+an unexpected node. A wrong reference-attachment rollback can leak a frozen
+allocation.
+
 Direct-entry audit
 ------------------
 
