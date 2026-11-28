@@ -34,6 +34,7 @@
 #include <linux/local_lock.h>
 #include <linux/buffer_head.h>
 #include <linux/kvm_types.h>
+#include <linux/page-folio-release-rust.h>
 
 #include "internal.h"
 #include "page_alloc.h"
@@ -78,6 +79,7 @@ static void __page_cache_release(struct folio *folio, struct lruvec **lruvecp,
  * This path almost never happens for VM activity - pages are normally freed
  * in batches.  But it gets used by networking - and for compound pages.
  */
+#ifndef CONFIG_RUST_PAGE_FOLIO_RELEASE
 static void page_cache_release(struct folio *folio)
 {
 	struct lruvec *lruvec = NULL;
@@ -87,7 +89,9 @@ static void page_cache_release(struct folio *folio)
 	if (lruvec)
 		lruvec_unlock_irqrestore(lruvec, flags);
 }
+#endif /* !CONFIG_RUST_PAGE_FOLIO_RELEASE */
 
+#ifndef CONFIG_RUST_PAGE_FOLIO_RELEASE
 void __folio_put(struct folio *folio)
 {
 	if (unlikely(folio_is_zone_device(folio))) {
@@ -105,7 +109,127 @@ void __folio_put(struct folio *folio)
 	mem_cgroup_uncharge(folio);
 	free_frozen_pages(&folio->page, folio_order(folio));
 }
+#endif /* !CONFIG_RUST_PAGE_FOLIO_RELEASE */
 EXPORT_SYMBOL(__folio_put);
+
+#ifdef CONFIG_RUST_PAGE_FOLIO_RELEASE
+bool rust_helper_page_folio_release_is_zone_device(const struct folio *folio)
+{
+	return folio_is_zone_device(folio);
+}
+
+bool rust_helper_page_folio_release_is_hugetlb(const struct folio *folio)
+{
+	return folio_test_hugetlb(folio);
+}
+
+bool rust_helper_page_folio_release_is_huge_zero(const struct folio *folio)
+{
+	return is_huge_zero_folio(folio);
+}
+
+bool rust_helper_page_folio_release_folio_ref_sub_and_test(struct folio *folio,
+							   unsigned int refs)
+{
+	return folio_ref_sub_and_test(folio, refs);
+}
+
+void rust_helper_page_folio_release_zone_device(struct folio *folio)
+{
+#ifdef CONFIG_ZONE_DEVICE
+	free_zone_device_folio(folio);
+#else
+	WARN_ON_ONCE(1);
+#endif
+}
+
+void rust_helper_page_folio_release_hugetlb(struct folio *folio)
+{
+	free_huge_folio(folio);
+}
+
+void rust_helper_page_folio_release_deferred(struct folio *folio)
+{
+	folio_unqueue_deferred_split(folio);
+}
+
+void rust_helper_page_folio_release_cache_locked(struct folio *folio,
+						 struct lruvec **lruvec,
+						 unsigned long *flags)
+{
+	__page_cache_release(folio, lruvec, flags);
+}
+
+void rust_helper_page_folio_release_unlock(struct lruvec **lruvec,
+					   unsigned long *flags)
+{
+	if (*lruvec)
+		lruvec_unlock_irqrestore(*lruvec, *flags);
+	*lruvec = NULL;
+}
+
+void rust_helper_page_folio_release_uncharge(const struct folio *folio)
+{
+	mem_cgroup_uncharge((struct folio *)folio);
+}
+
+void rust_helper_page_folio_release_uncharge_batch(const struct folio_batch *folios)
+{
+	mem_cgroup_uncharge_folios((struct folio_batch *)folios);
+}
+
+void rust_helper_page_folio_release_frozen(struct folio *folio)
+{
+	free_frozen_pages(&folio->page, folio_order(folio));
+}
+
+void rust_helper_page_folio_release_unref_batch(const struct folio_batch *folios)
+{
+	free_unref_folios((struct folio_batch *)folios);
+}
+
+void rust_helper_page_folio_release_lru_drain(void)
+{
+	lru_add_drain();
+}
+
+struct folio *rust_helper_page_folio_release_page_folio(struct page *page)
+{
+	return page_folio(page);
+}
+
+struct page *rust_helper_page_folio_release_encoded_ptr(struct encoded_page *page)
+{
+	return encoded_page_ptr(page);
+}
+
+unsigned long
+rust_helper_page_folio_release_encoded_flags(struct encoded_page *page)
+{
+	return encoded_page_flags(page);
+}
+
+unsigned long
+rust_helper_page_folio_release_encoded_nr_pages(struct encoded_page *page)
+{
+	return encoded_nr_pages(page);
+}
+
+#ifdef CONFIG_PAGE_FOLIO_RELEASE_KUNIT_TEST
+static atomic_t page_folio_release_test_failure = ATOMIC_INIT(0);
+
+bool rust_helper_page_folio_release_test_fail(unsigned int stage)
+{
+	return atomic_cmpxchg(&page_folio_release_test_failure, stage, 0) ==
+		stage;
+}
+
+void rust_page_folio_release_test_fail_next(unsigned int stage)
+{
+	atomic_set(&page_folio_release_test_failure, stage);
+}
+#endif
+#endif /* CONFIG_RUST_PAGE_FOLIO_RELEASE */
 
 typedef void (*move_fn_t)(struct lruvec *lruvec, struct folio *folio);
 
@@ -978,6 +1102,7 @@ void lru_cache_disable(void)
  * Context: May be called in process or interrupt context, but not in NMI
  * context.  May be called while holding a spinlock.
  */
+#ifndef CONFIG_RUST_PAGE_FOLIO_RELEASE
 void folios_put_refs(struct folio_batch *folios, unsigned int *refs)
 {
 	int i, j;
@@ -1035,8 +1160,6 @@ void folios_put_refs(struct folio_batch *folios, unsigned int *refs)
 	mem_cgroup_uncharge_folios(folios);
 	free_unref_folios(folios);
 }
-EXPORT_SYMBOL(folios_put_refs);
-
 /**
  * release_pages - batched put_page()
  * @arg: array of pages to release
@@ -1075,8 +1198,6 @@ void release_pages(release_pages_arg arg, int nr)
 	if (fbatch.nr)
 		folios_put_refs(&fbatch, refs);
 }
-EXPORT_SYMBOL(release_pages);
-
 /*
  * The folios which we're about to release may be in the deferred lru-addition
  * queues.  That would prevent them from really being freed right now.  That's
@@ -1095,6 +1216,9 @@ void __folio_batch_release(struct folio_batch *fbatch)
 	}
 	folios_put(fbatch);
 }
+#endif /* !CONFIG_RUST_PAGE_FOLIO_RELEASE */
+EXPORT_SYMBOL(folios_put_refs);
+EXPORT_SYMBOL(release_pages);
 EXPORT_SYMBOL(__folio_batch_release);
 
 /**

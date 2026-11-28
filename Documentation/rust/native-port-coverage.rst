@@ -2398,6 +2398,49 @@ Risk: A wrong cache, NUMA, fclone, reference, NAPI, trace, destructor, or
 shared-data decision can corrupt a per-CPU cache, leak a resource, free an skb
 too early, or report an incorrect release reason.
 
+Page and folio release
+----------------------
+
+Status: ``migrated``.
+
+Evidence: :doc:`native-page-folio-release`.
+
+Rust directly defines ``__folio_put()``, ``folios_put_refs()``,
+``release_pages()``, and ``__folio_batch_release()``.
+
+Rust owns final-reference selection, zone-device, hugetlb, huge-zero, and
+ordinary-folio branch order, batch filtering and compaction, multi-reference
+subtraction, encoded-page parsing, 31-entry batch refill, LRU-cache drain
+selection, and release ordering.
+
+C retains the page and folio layouts, reference and map counts, LRU locks and
+vectors, memory cgroup accounting, hugetlb and zone-device release, deferred
+split queues, encoded-page layout, page allocator, and diagnostics. The narrow
+helper ABI is in ``include/linux/page-folio-release-rust.h``.
+
+Test: Native, KASAN with lockdep, PREEMPT_RT with lockdep, and DEBUG_VFS each
+passed SMP1 and SMP4 with 14 of 14 cases. Fallback and C-only passed SMP1 and
+SMP4 with 13 of 13 cases. Coverage includes injected pre-transfer failure,
+order-0 and order-1 release, non-final references, null entries, huge-zero
+skipping, page, folio, and encoded arrays, encoded reference counts, the
+31-entry boundary, retained batch drain state, page-cache removal, and
+concurrent release.
+
+Native ``rust/kernel.o`` defines all four entries. Native ``mm/folio.o``
+defines none. Fallback and C-only ``mm/folio.o`` retain all four definitions.
+Native ``Module.symvers`` contains four ordinary exports.
+
+External GPL and non-GPL modules linked all four exports. Disassembly shows
+Rust implementations for all production entries, with calls only to the
+documented primitive helpers. Rustfmt, Clippy, Rustdoc, focused Sphinx, strict
+checkpatch, and ``git diff --check`` pass. Focused Sphinx reports only the
+existing ``kernel-docs`` reference warning.
+
+Risk: A wrong final-reference decision can free a live page. A wrong batch
+compaction or encoded reference count can corrupt unrelated memory. A wrong
+hugetlb, zone-device, LRU, memory-cgroup, or drain order can violate a
+subsystem-owned reference or lock contract.
+
 Direct-entry audit
 ------------------
 

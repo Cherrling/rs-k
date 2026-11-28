@@ -52,6 +52,7 @@ more details.
     native-vfs-io
     native-socket-lifecycle
     native-skb-lifecycle
+    native-page-folio-release
     native-port-coverage
     dup-task-struct
     task-teardown

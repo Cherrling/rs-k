@@ -1,13 +1,13 @@
 .. SPDX-License-Identifier: GPL-2.0
 
-Native Rust VFS port roadmap
-============================
+Native Rust port roadmap
+========================
 
 Purpose
 -------
 
-This page defines the first native Rust migration wave from the core object
-lifecycles toward VFS and networking. The sequence is:
+This page defines the native Rust migration waves from core object lifecycles
+toward memory management, block I/O, and networking. Wave 1 uses this sequence:
 
 credentials -> namespaces -> files -> file descriptors -> dentries -> inodes
 -> superblocks -> mounts -> path lookup -> open -> VFS I/O -> sockets ->
@@ -60,6 +60,33 @@ Order             Unit                        Status         Primary ownership
 14                ``skb-lifecycle``           complete       SKB allocation, clone, recycle, and destruction.
 ================  ==========================  =============  =====================================================
 
+Wave 2 work packages
+--------------------
+
+Wave 2 moves from the generic page and folio release boundary through page
+allocation, page cache, faults, fragmentation and pools, block I/O, network
+device and NAPI flow, receive and transmit paths, route and neighbour state,
+and finally UDP and TCP connection state.
+
+================  ==========================  =============  =====================================================
+Order             Unit                        Status         Primary ownership
+================  ==========================  =============  =====================================================
+1                 ``page-folio-release``      complete       Final page and folio reference release.
+2                 ``page-alloc-free``         pending        Page allocation and free policy.
+3                 ``filemap-page-cache``      pending        Page-cache insertion, lookup, and removal.
+4                 ``page-fault-core``         pending        Fault validation, retry, and completion.
+5                 ``page-frag-lifecycle``     pending        Page-fragment allocation and recycling.
+6                 ``page-pool-lifecycle``     pending        Page-pool entry and drain lifecycle.
+7                 ``bio-block-lifecycle``     pending        BIO allocation, chaining, submission, and end I/O.
+8                 ``netdev-lifecycle``        pending        Network-device registration and teardown.
+9                 ``napi-lifecycle``          pending        NAPI registration, scheduling, and completion.
+10                ``network-rx-dispatch``     pending        Receive validation and protocol dispatch.
+11                ``network-tx-qdisc``        pending        Transmit queue selection and queue discipline flow.
+12                ``route-neigh-lifecycle``   pending        Route and neighbour lookup and release.
+13                ``udp-core``                pending        UDP socket and datagram flow state.
+14                ``tcp-connection-core``     pending        TCP connection and request state.
+================  ==========================  =============  =====================================================
+
 Unit dependencies
 -----------------
 
@@ -78,6 +105,17 @@ uses the resulting open-file state.
 Sockets reuse credential, file, namespace, wait, and socket-buffer ownership.
 SKB work depends on page, slab, socket, and network-device accounting
 primitives.
+
+Wave 2 starts with page release because page cache, faults, BIO, drivers, and
+network receive paths all return pages through that lifecycle. Page allocation
+must precede page cache and fault work because both depend on the allocator
+success and failure contract.
+
+Page fragmentation and pools feed BIO and network receive paths. Network device
+and NAPI lifecycles must precede receive and transmit dispatch. Route and
+neighbour state must precede transport connection work. TCP is last because it
+depends on page, BIO, device, NAPI, receive, transmit, route, neighbour, and UDP
+contracts.
 
 Per-unit completion gate
 ------------------------

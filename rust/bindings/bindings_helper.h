@@ -129,6 +129,7 @@
 #include <linux/mprotect-rust.h>
 #include <linux/move-page-tables-rust.h>
 #include <linux/open-entry-rust.h>
+#include <linux/page-folio-release-rust.h>
 #include <linux/path-lookup-rust.h>
 #include <linux/vfs-io-rust.h>
 #include <linux/move-pgt-entry-rust.h>

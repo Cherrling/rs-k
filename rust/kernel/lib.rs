@@ -272,6 +272,8 @@ mod open_entry;
 #[cfg(CONFIG_PM_OPP)]
 pub mod opp;
 pub mod page;
+#[cfg(CONFIG_RUST_PAGE_FOLIO_RELEASE)]
+mod page_folio_release;
 #[cfg(CONFIG_RUST_PATH_LOOKUP)]
 mod path_lookup;
 #[cfg(CONFIG_PCI)]

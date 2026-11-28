@@ -2345,6 +2345,25 @@ config RUST_SKB_LIFECYCLE
 	  This is part of the experimental native Rust kernel migration.
 	  If unsure, say Y.
 
+config RUST_PAGE_FOLIO_RELEASE
+	bool "Rust implementation of page and folio release"
+	depends on RUST && MMU
+	default y
+	help
+	  Use Rust to directly define final-reference selection, batched folio
+	  release, encoded-page parsing, page-cache release ordering, and deferred
+	  LRU-cache draining for pages and folios.
+
+	  C retains the page and folio layouts, reference-count and map-count
+	  primitives, LRU locks, memory cgroup accounting, hugetlb and zone-device
+	  release paths, deferred-split handling, and the page allocator.
+
+	  The complete C implementation remains available when this option is
+	  disabled.
+
+	  This is part of the experimental native Rust kernel migration.
+	  If unsure, say Y.
+
 config RUST_TASK_TEARDOWN
 	bool "Rust implementation of final task teardown"
 	depends on RUST

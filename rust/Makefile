@@ -605,6 +605,10 @@ rust_non_gpl_exports := \
 	consume_skb \
 	napi_consume_skb \
 	skb_clone \
+	__folio_put \
+	folios_put_refs \
+	release_pages \
+	__folio_batch_release \
 	rw_verify_area \
 	vfs_llseek \
 	__put_cred \

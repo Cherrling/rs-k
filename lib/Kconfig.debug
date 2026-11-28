@@ -2955,6 +2955,20 @@ config SKB_LIFECYCLE_KUNIT_TEST
 
 	  If unsure, say N.
 
+config PAGE_FOLIO_RELEASE_KUNIT_TEST
+	bool "KUnit test for page and folio release" if !KUNIT_ALL_TESTS
+	depends on KUNIT=y && MMU
+	default KUNIT_ALL_TESTS
+	help
+	  This option enables KUnit tests for final-reference folio release,
+	  batched reference drops, encoded-page arrays, folio-batch boundaries,
+	  deferred LRU drains, page-cache release, and concurrent page release.
+
+	  The behavior cases run with either the C implementation or the native
+	  Rust implementation selected.
+
+	  If unsure, say N.
+
 config TASK_RELEASE_KUNIT_TEST
 	bool "KUnit test for zombie task release" if !KUNIT_ALL_TESTS
 	depends on KUNIT=y

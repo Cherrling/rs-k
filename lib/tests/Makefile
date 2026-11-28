@@ -44,6 +44,7 @@ obj-$(CONFIG_OPEN_ENTRY_KUNIT_TEST) += open_entry_kunit.o
 obj-$(CONFIG_VFS_IO_KUNIT_TEST) += vfs_io_kunit.o
 obj-$(CONFIG_SOCKET_LIFECYCLE_KUNIT_TEST) += socket_lifecycle_kunit.o
 obj-$(CONFIG_SKB_LIFECYCLE_KUNIT_TEST) += skb_lifecycle_kunit.o
+obj-$(CONFIG_PAGE_FOLIO_RELEASE_KUNIT_TEST) += page_folio_release_kunit.o
 obj-$(CONFIG_TASK_TEARDOWN_KUNIT_TEST) += test_task_teardown.o
 obj-$(CONFIG_TASK_WORK_KUNIT_TEST) += task_work_kunit.o
 obj-$(CONFIG_IRQ_WORK_KUNIT_TEST) += irq_work_kunit.o
